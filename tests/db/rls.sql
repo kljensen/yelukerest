@@ -1,5 +1,5 @@
 begin;
-select * from no_plan();
+select plan(4);
 
 SELECT schema_privs_are(
     'api', 'webuser', ARRAY['USAGE'],
