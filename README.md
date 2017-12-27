@@ -9,3 +9,10 @@ pg_dump -h localhost -p 5432 -U $SUPER_USER --table data.meeting --data-only --c
 ```
 
 Where `$SUPER_USER` is in your environment and is the superuser for the Postgres instance.
+
+### Adding a table
+
+1. Add the table in  `db/src/data/yeluke`
+2. Add the auth in `db/src/authorization/yeluke`
+3. Add the api views in `db/src/api/yeluke`
+4. Add the tests in `tests/db/`
