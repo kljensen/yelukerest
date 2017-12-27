@@ -1,1 +1,1 @@
-\ir ./yeluke/meetings.sql
+\ir ./yeluke/meeting.sql
