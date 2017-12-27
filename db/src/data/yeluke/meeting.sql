@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS meeting (
         DEFAULT current_timestamp,
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
-        DEFAULT current_timestamp
+        DEFAULT current_timestamp,
+    CHECK (updated_at >= created_at)
 );
 
 -- trigger (updated_at)
