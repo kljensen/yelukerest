@@ -1,0 +1,1 @@
+\ir ./yeluke/meetings.sql

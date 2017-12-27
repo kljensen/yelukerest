@@ -46,3 +46,5 @@ grant select, insert, update, delete on api.todos to webuser;
 -- anonymous users can only request specific columns from this view
 grant select (id, todo) on api.todos to anonymous;
 -------------------------------------------------------------------------------
+
+\ir ./yeluke.sql
