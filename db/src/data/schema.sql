@@ -12,3 +12,4 @@ set search_path = data, public;
 
 -- import our application models
 \ir todo.sql
+\ir yeluke.sql
