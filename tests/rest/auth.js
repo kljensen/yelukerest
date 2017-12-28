@@ -2,7 +2,7 @@ import {rest_service, jwt, resetdb} from './common.js';
 const request = require('supertest');
 const should = require("should");
 
-describe('auth', function() {
+describe.skip('auth', function() {
   before(function(done){ resetdb(); done(); });
   
   it('login', function(done) {
