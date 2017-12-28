@@ -11,4 +11,6 @@ grant usage on data.meeting_id_seq to student;
 -- anonymous and authenticated users can select from this view
 grant select on api.meetings to student, anonymous;
 
--- TODO: add write privileges for admin
+-- faculty have CRUD privileges
+grant usage on data.meeting_id_seq to faculty;
+grant select, insert, update, delete on api.meetings to faculty;

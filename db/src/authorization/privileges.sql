@@ -8,7 +8,7 @@ select auth.set_auth_endpoints_privileges('api', :'anonymous', enum_range(null::
 
 -- specify which application roles can access this api (you'll probably list them all)
 -- remember to list all the values of user_role type here
-grant usage on schema api to anonymous, student;
+grant usage on schema api to anonymous, student, faculty;
 
 -- define the who can access todo model data
 -- enable RLS on the table holding the data
