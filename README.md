@@ -15,4 +15,5 @@ Where `$SUPER_USER` is in your environment and is the superuser for the Postgres
 1. Add the table in  `db/src/data/yeluke`
 2. Add the auth in `db/src/authorization/yeluke`
 3. Add the api views in `db/src/api/yeluke`
-4. Add the tests in `tests/db/`
+4. Add sample data in `db/src/sample_data/yeluke`
+5. Add the tests in `tests/db/`
