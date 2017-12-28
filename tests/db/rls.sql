@@ -2,7 +2,7 @@ begin;
 select plan(4);
 
 SELECT schema_privs_are(
-    'api', 'webuser', ARRAY['USAGE'],
+    'api', 'student', ARRAY['USAGE'],
     'authenticated users should have usage privilege of the api schema'
 );
 
@@ -19,8 +19,8 @@ select set_eq(
 
 
 -- switch to a specific application user
-set local role webuser;
-set request.jwt.claim.role = 'webuser';
+set local role student;
+set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1'; --alice
 
 select set_eq(

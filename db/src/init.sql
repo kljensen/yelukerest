@@ -29,7 +29,7 @@ begin;
 -- save app settings
 select settings.set('jwt_secret', :quoted_jwt_secret);
 select settings.set('jwt_lifetime', '3600');
-select settings.set('auth.default-role', 'webuser');
+select settings.set('auth.default-role', 'student');
 
 
 \echo # Loading application definitions
