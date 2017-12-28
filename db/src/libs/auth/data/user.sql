@@ -1,14 +1,14 @@
 select settings.set('auth.data-schema', current_schema);
 
--- CREATE OR REPLACE function clean_user_fields() returns trigger as $$
--- BEGIN
---     NEW.email := lower(NEW.email);
---     NEW.netid := lower(NEW.netid);
---     NEW.nickname := lower(NEW.nickname);
---     NEW.updated_at = current_timestamp;
---     return NEW;
--- END;
--- $$ language plpgsql;
+CREATE OR REPLACE function clean_user_fields() returns trigger as $$
+BEGIN
+    NEW.email := lower(NEW.email);
+    NEW.netid := lower(NEW.netid);
+    NEW.nickname := lower(NEW.nickname);
+    NEW.updated_at = current_timestamp;
+    return NEW;
+END;
+$$ language plpgsql;
 
 CREATE TABLE IF NOT EXISTS "user" (
     id SERIAL PRIMARY KEY,
@@ -29,3 +29,10 @@ CREATE TABLE IF NOT EXISTS "user" (
         DEFAULT current_timestamp,
 	CHECK (updated_at >= created_at)
 );
+
+-- trigger (updated_at)
+CREATE TRIGGER tg_users_default
+    BEFORE INSERT OR UPDATE
+    ON "user"
+    FOR EACH ROW
+EXECUTE PROCEDURE clean_user_fields();
