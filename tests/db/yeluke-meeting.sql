@@ -2,7 +2,12 @@
 BEGIN;
 
 -- Plan the tests.
-SELECT plan(9);
+SELECT plan(10);
+
+SELECT view_owner_is(
+    'api', 'meetings', 'api',
+    'api.meetings view should be owned by the api role'
+);
 
 -- switch to a anonymous application user
 set local role anonymous;
@@ -31,6 +36,8 @@ select set_eq(
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
 
+-- Note that, here we are testing the `data` schema,
+-- and NOT the `api` schema.
 SELECT throws_ok(
     'SELECT * FROM data.meeting',
     '42501',

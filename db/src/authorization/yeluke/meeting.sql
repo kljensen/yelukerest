@@ -1,5 +1,5 @@
 
--- give access to the view owner to this table
+-- Let the `api` role---the view owner---query the data.
 grant select, insert, update, delete on data.meeting to api;
 grant usage on data.meeting_id_seq to student;
 
