@@ -13,7 +13,7 @@
 \echo # filling table user (3)
 COPY data."user" (id,email,netid,"name",known_as,nickname,"role",created_at,updated_at) FROM STDIN (ENCODING 'utf-8', FREEZE ON);
 1	alice@yale.edu	abc123	Alice Miller	Alice	bright-horse	student	2017-12-27 19:14:36	2017-12-27 19:15:36
-2	bob@yale.edu	bde456	Bob Foo	Bob	silly-seahorse	student	2017-12-27 19:13:36	2017-12-27 19:14:36
+2	bob@yale.edu	bde456	Robert Foo	Bob	silly-seahorse	student	2017-12-27 19:13:36	2017-12-27 19:14:36
 3	kyle@yale.edu	klj789	Kyle Jensen	Kyle	shiny-turd	faculty	2017-12-27 19:13:36	2017-12-27 19:14:36
 \.
 
