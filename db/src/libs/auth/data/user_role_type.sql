@@ -1,1 +1,1 @@
-create type user_role as enum ('webuser');
+create type user_role as enum ('webuser', 'admin');
