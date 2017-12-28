@@ -17,10 +17,6 @@ using (
 	or
 	-- faculty can see engagement by all users
 	(request.user_role() = 'faculty')
-)
-with check (
-	-- authenticated users can only update/delete their engagements
-	(request.user_role() = 'student' and request.user_id() = user_id)
 );
 
 -- student users can select from this view. The RLS will
