@@ -1,1 +1,1 @@
-create type user_role as enum ('student', 'faculty');
+create type user_role as enum ('student', 'faculty', 'observer');
