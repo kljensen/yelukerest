@@ -12,6 +12,8 @@ $$ language plpgsql;
 
 CREATE TABLE IF NOT EXISTS "user" (
     id SERIAL PRIMARY KEY,
+    -- Notice that the team_nickname column is missing here, it will
+    -- be added later once we define the `data.team` table.
     email VARCHAR(100) UNIQUE
         CHECK ( email ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' ),
     netid VARCHAR(10) UNIQUE NOT NULL
