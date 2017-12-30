@@ -1,6 +1,6 @@
 # A restful API for class data
 We are using the excellent [postgrest start kit](https://github.com/subzerocloud/postgrest-starter-kit). The main
-entrypoint to this code is `docker-compose.yaml`, which shows what
+entrypoint to this code is `docker-compose.yml`, which shows what
 containers are started when you do `docker-compose up`. Once your
 containers are running, if you are in the root of this directory,
 running `subzero dashboard` will give you a useful view of the 
