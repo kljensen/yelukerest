@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS "user" (
     known_as VARCHAR(50),
     nickname VARCHAR(50) UNIQUE NOT NULL
         CHECK (nickname ~ '^[\w]{2,20}-[\w]{2,20}$'),
-	"role" user_role NOT NULL DEFAULT settings.get('auth.default-role')::user_role,
+    "role" user_role NOT NULL DEFAULT settings.get('auth.default-role')::user_role,
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
