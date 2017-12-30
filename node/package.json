@@ -1,0 +1,14 @@
+{
+  "name": "yeluke-frontend",
+  "version": "1.0.0",
+  "description": "Front end for Yeluke rest app",
+  "main": "server.js",
+  "scripts": {
+    "test": "test.js"
+  },
+  "author": "",
+  "license": "Unlicense",
+  "dependencies": {
+    "express": "^4.16.2"
+  }
+}

@@ -30,6 +30,25 @@ services:
       - "./db/src:/docker-entrypoint-initdb.d"
   ### DB END
 
+  ### NODE START
+  node:
+    image: node:carbon
+    ports:
+      - "8081:4000"
+    links:
+      - db:db
+    environment:
+      - DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      - JWT_SECRET=${JWT_SECRET}  
+    volumes:
+      - "./node/package.json:/package.json"
+      - "./node/package-lock.json:/package-lock.json"
+      - "./node/server.js:/server.js"
+      - "./node/run.sh:/run.sh"
+    entrypoint: "/run.sh"
+
+### NODE END
+
   # PostgREST instance, is responsible for communicating with the database
   # and providing a REST api, (almost) every request that is sent to the database goes through it
   postgrest:
@@ -101,4 +120,3 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-
