@@ -33,19 +33,36 @@ services:
   ### NODE START
   node:
     image: node:carbon
+    # Set the location where docker will put our files
+    working_dir: /app
+    # Map port 8081 on our host to port 4000 inside the container.
+    # Our node app should then run on port 4000 inside the container.
     ports:
       - "8081:4000"
+    # Link this app to the `db` app so that we can talk to postgres
+    # when we need to do so. We might also want to talk to the rest
+    # API directly, and we'll need to add that if so.
     links:
       - db:db
     environment:
+      # Pass in connection information for the database.
       - DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      # The express app will likely manage some of our JWT signing
+      # because we want to use Yale CAS auth infront of our app so
+      # that we can avoid storing passwords.
       - JWT_SECRET=${JWT_SECRET}  
     volumes:
-      - "./node/package.json:/package.json"
-      - "./node/package-lock.json:/package-lock.json"
-      - "./node/server.js:/server.js"
-      - "./node/run.sh:/run.sh"
-    entrypoint: "/run.sh"
+      # These are the files we wish to "move" into the docker container.
+      # Note that, they are not moved, just mounted---when they are
+      # edited on the host they will be changed in the container.
+      - "./node/package.json:/app/package.json"
+      - "./node/package-lock.json:/app/package-lock.json"
+      - "./node/server.js:/app/server.js"
+      - "./node/run.sh:/app/run.sh"
+    # The script that is run to start our process. It should begin
+    # the node process and will need to run `npm install` first, or
+    # similar.
+    entrypoint: "/app/run.sh"
 
 ### NODE END
 

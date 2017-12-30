@@ -1,14 +1,26 @@
 {
-  "name": "yeluke-frontend",
-  "version": "1.0.0",
-  "description": "Front end for Yeluke rest app",
-  "main": "server.js",
-  "scripts": {
-    "test": "test.js"
-  },
-  "author": "",
-  "license": "Unlicense",
-  "dependencies": {
-    "express": "^4.16.2"
-  }
+    "name": "yeluke-frontend",
+    "version": "1.0.0",
+    "description": "Front end for Yeluke rest app",
+    "main": "server.js",
+    "scripts": {
+        "test": "test.js"
+    },
+    "author": "",
+    "license": "Unlicense",
+    "dependencies": {
+        "connect-cas": "^1.7.0",
+        "express": "^4.16.2",
+        "express-session": "^1.15.6",
+        "nodemon": "^1.14.6"
+    },
+    "devDependencies": {
+        "js-beautify": "^1.7.5",
+        "babel-cli": "^6.26.0",
+        "babel-preset-env": "^1.6.0",
+        "eslint": "^4.13.0",
+        "eslint-config-airbnb-base": "^12.1.0",
+        "eslint-config-google": "^0.9.1",
+        "eslint-plugin-import": "^2.8.0"
+    }
 }

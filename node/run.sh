@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
 npm install
-node ./server.js
+./node_modules/.bin/nodemon -e html,js,css,json ./server.js
