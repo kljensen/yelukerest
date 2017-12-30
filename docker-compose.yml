@@ -95,12 +95,15 @@ services:
     links:
       - db:db
       - postgrest:postgrest
+      - node:node
     entrypoint: /entrypoint.sh
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - DEVELOPMENT=${DEVELOPMENT}
       - POSTGREST_HOST=${POSTGREST_HOST}
       - POSTGREST_PORT=${POSTGREST_PORT}
+      - NODE_HOST=${NODE_HOST}
+      - NODE_PORT=${NODE_PORT}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_NAME=${DB_NAME}
