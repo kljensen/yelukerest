@@ -56,3 +56,24 @@ tests and tests of the REST API using [supertest](https://github.com/visionmedia
 3. Add the api views in `db/src/api/yeluke`
 4. Add sample data in `db/src/sample_data/yeluke`
 5. Add the tests in `tests/db/`
+
+### Thoughts on the auth flow
+
+1. Most requests will go through OpenResty to the PostgREST instance
+   and require JWT tokens---very few of the API endpoints have information
+   for anonymous users. The JWT was signed using our private key,
+   so we know we created it and we're going to trust it. For most of
+   those, the JWT specifies a database "role" we wish to assume and
+   also the "user_id" of the person. For more, read
+   [here](https://github.com/subzerocloud/postgrest-starter-kit/wiki/Athentication-Authorization-Flow).
+2. Our database will generate the JWT tokens for us, as described above.
+   Or, we could use node to do this for us. See
+   [node-jsonwebtoken](https://github.com/auth0/node-jsonwebtoken).
+3. We use the node app to verify that the person logging-in is a Yale
+   affiliate. We need to verify that the person who authenticates with
+   CAS is also in our database. (We get their netid directly from Yale's
+   CAS server via https, so it is sufficient to check for the existance
+   of this user.) Once we do that, we should get them some JWT tokens
+   whenever their client---likely an ELM app in the browser---needs to
+   interact with the API. We should give those JWT tokens short expiration
+   times and refresh them as needed.
