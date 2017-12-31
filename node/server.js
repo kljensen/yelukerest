@@ -4,6 +4,7 @@ const app = require('express')();
 const session = require('express-session');
 const cas = require('connect-cas');
 const url = require('url');
+const RedisStore = require('connect-redis')(session);
 
 // Dump configZ
 cas.configure({
@@ -12,17 +13,40 @@ cas.configure({
 console.log(cas.configure());
 
 // Set up an Express session, which is required for CASAuthentication.
-app.use(session({
-    secret: 'super secret key',
+// See https://github.com/expressjs/session
+const sessionOptions = {
+    name: 'yeluke.sid',
+    // Use Redis to store our session
+    store: new RedisStore({
+        host: process.env.REDIS_HOST,
+        port: process.env.REDIS_PORT,
+    }),
+    cookie: {
+        // Protext against CSRF
+        sameSite: true,
+        // Expire after 5 days
+        maxAge: 5 * 24 * 60 * 60 * 1000,
+    },
+    secret: process.env.SESSION_SECRET, // TODO: Change this to be env var!
     resave: false,
     saveUninitialized: true,
-    // TODO: change session store because the in-memory
-    // store supposedly is bad: https://www.npmjs.com/package/express-session
-}));
+    // Trust the reverse proxy when setting secure cookies
+    // (via the "X-Forwarded-Proto" header).
+    proxy: true,
+};
+
+if ((app.get('env') || '')
+    .toLowerCase() === 'production') {
+    // Trust first proxy
+    app.set('trust proxy', 1);
+    // Serve secure cookies
+    sessionOptions.cookie.secure = true;
+}
+
+app.use(session(sessionOptions));
 
 
 app.get('/', (req, res) => {
-    console.log('wooot');
     if (req.session.cas && req.session.cas.user) {
         return res.send(`<p>You are logged in. Your username is ${req.session.cas.user} <a href="/logout">Log Out</a></p>`);
     }

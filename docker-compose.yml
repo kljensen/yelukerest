@@ -43,14 +43,18 @@ services:
     # when we need to do so. We might also want to talk to the rest
     # API directly, and we'll need to add that if so.
     links:
-      - db:db
+      - redis:redis
     environment:
       # Pass in connection information for the database.
       - DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
       # The express app will likely manage some of our JWT signing
       # because we want to use Yale CAS auth infront of our app so
       # that we can avoid storing passwords.
-      - JWT_SECRET=${JWT_SECRET}  
+      # - JWT_SECRET=${JWT_SECRET}  
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - SESSION_SECRET=${NODE_SESSION_SECRET}
+
     volumes:
       # These are the files we wish to "move" into the docker container.
       # Note that, they are not moved, just mounted---when they are
@@ -140,3 +144,8 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+  redis:
+    image: redis:4
+    ports:
+      - "6379:6379"
+    
