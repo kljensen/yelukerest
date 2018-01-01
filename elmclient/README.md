@@ -7,6 +7,13 @@ which students will interact with the class API.
 This code was forked from the [elm-webpack-starter](https://github.com/elm-community/elm-webpack-starter). Below,
 is the original README from that project.
 
+But first, some useful links from Kyle for Jacob
+* [https://medium.com/@andyccs/webpack-and-docker-for-development-and-deployment-ae0e73243db4](Webpack and Docker for Development and Deployment)
+* [https://medium.com/@zenitram.oiram/a-beginners-guide-to-making-a-single-page-app-in-elm-d1a89d3845fa](A Beginner’s Guide to making a Single Page app in Elm)
+* [http://madole.github.io/blog/2015/08/26/setting-up-webpack-dev-middleware-in-your-express-application/](Setting Up Webpack Dev Middleware in Express) (a bit dated)
+
+Note to self: we need to make this run differently in production---we shouldn't be using webpack-dev-server.
+
 
 ### About:
 A simple Webpack setup for writing [Elm](http://elm-lang.org/) apps:
