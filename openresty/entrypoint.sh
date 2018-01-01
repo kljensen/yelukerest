@@ -7,4 +7,5 @@ set -e
 DB_HOST=`getent hosts $DB_HOST | awk '{ print $1 }'`
 POSTGREST_HOST=`getent hosts $POSTGREST_HOST | awk '{ print $1 }'`
 AUTHAPP_HOST=`getent hosts $AUTHAPP_HOST | awk '{ print $1 }'`
+ELMCLIENT_HOST=`getent hosts $ELMCLIENT_HOST | awk '{ print $1 }'`
 exec /usr/local/openresty/bin/openresty -g "daemon off; error_log /dev/stderr info;"

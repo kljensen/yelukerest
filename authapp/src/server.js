@@ -44,12 +44,18 @@ if (config.is_production) {
 
 app.use(session(sessionOptions));
 
+// NOTE: I am not happy that I'm hard-coding the `/auth/`
+// prefix here and also in NGINX. I don't know how to pass
+// in an environment variable into Nginx so that this prefix
+// is configurable and only written down in one place.
+// TODO: find a solution.
+const mountPrefix = '/auth';
 
-app.get('/', (req, res) => {
+app.get(mountPrefix, (req, res) => {
     if (req.session.cas && req.session.cas.user) {
         return res.send(`<p>You are logged in. Your username is ${req.session.cas.user} <a href="/logout">Log Out</a></p>`);
     }
-    return res.send('<p>You are not logged in. <a href="/login">Log in now.</a><p>');
+    return res.send(`<p>You are not logged in. <a href="${mountPrefix}/login">Log in now.</a><p>`);
 });
 
 // This route has the serviceValidate middleware, which verifies
@@ -57,12 +63,21 @@ app.get('/', (req, res) => {
 // authenticate middleware, which requests it if it has not already
 // taken place.
 
-app.get('/login', cas.serviceValidate(), cas.authenticate(), (req, res) => {
-    // Great, we logged in, now redirect back to the home page.
+app.get(`${mountPrefix}/login`, cas.serviceValidate(), cas.authenticate(), (req, res) => {
+    // When the user lands on this route, they will be redirected
+    // to the CAS server if they do not already have the requisite
+    // session identifier. Once they return from CAS auth, they'll
+    // be redirected back this same URL with URL query parameters 
+    // like the following:
+    // /auth/login?ticket=ST-136710-jNP4f2342Xpn2bpiys71-vmssoprdapp01
+    // The CAS library will use this to fetch netid info and store
+    // that is `req.session.cas.user`.
+
+    // If that goes ok, we logged in, now redirect back to the home page.
     return res.redirect('/');
 });
 
-app.get('/logout', (req, res) => {
+app.get(`${mountPrefix}/logout`, (req, res) => {
     if (!req.session) {
         return res.redirect('/');
     }
