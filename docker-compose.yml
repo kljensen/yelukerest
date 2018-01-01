@@ -54,6 +54,8 @@ services:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
+      - DEVELOPMENT=${DEVELOPMENT}
+      - CAS_HOST=${AUTHAPP_CAS_HOST}
 
     volumes:
       # These are the files we wish to "move" into the docker container.

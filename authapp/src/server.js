@@ -5,12 +5,12 @@ const session = require('express-session');
 const cas = require('connect-cas');
 const url = require('url');
 const RedisStore = require('connect-redis')(session);
+const config = require('./config.js');
 
 // Dump configZ
 cas.configure({
-    host: 'secure.its.yale.edu',
+    host: config.cas_host,
 });
-console.log(cas.configure());
 
 // Set up an Express session, which is required for CASAuthentication.
 // See https://github.com/expressjs/session
@@ -18,8 +18,8 @@ const sessionOptions = {
     name: 'yeluke.sid',
     // Use Redis to store our session
     store: new RedisStore({
-        host: process.env.REDIS_HOST,
-        port: process.env.REDIS_PORT,
+        host: config.redis_host,
+        port: config.redis_port,
     }),
     cookie: {
         // Protext against CSRF
@@ -27,7 +27,7 @@ const sessionOptions = {
         // Expire after 5 days
         maxAge: 5 * 24 * 60 * 60 * 1000,
     },
-    secret: process.env.SESSION_SECRET, // TODO: Change this to be env var!
+    secret: config.session_secret,
     resave: false,
     saveUninitialized: true,
     // Trust the reverse proxy when setting secure cookies
@@ -35,8 +35,7 @@ const sessionOptions = {
     proxy: true,
 };
 
-if ((app.get('env') || '')
-    .toLowerCase() === 'production') {
+if (config.is_production) {
     // Trust first proxy
     app.set('trust proxy', 1);
     // Serve secure cookies
