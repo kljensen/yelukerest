@@ -30,9 +30,9 @@ services:
       - "./db/src:/docker-entrypoint-initdb.d"
   ### DB END
 
-  ### NODE START
-  node:
-    image: node:carbon
+  ### AUTHAPP START
+  authapp:
+    build: authapp
     # Set the location where docker will put our files
     working_dir: /app
     # Map port 8081 on our host to port 4000 inside the container.
@@ -53,22 +53,22 @@ services:
       # - JWT_SECRET=${JWT_SECRET}  
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
-      - SESSION_SECRET=${NODE_SESSION_SECRET}
+      - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
 
     volumes:
       # These are the files we wish to "move" into the docker container.
       # Note that, they are not moved, just mounted---when they are
       # edited on the host they will be changed in the container.
-      - "./node/package.json:/app/package.json"
-      - "./node/package-lock.json:/app/package-lock.json"
-      - "./node/server.js:/app/server.js"
-      - "./node/run.sh:/app/run.sh"
+      # - "./authapp/package.json:/app/package.json"
+      # - "./authapp/package-lock.json:/app/package-lock.json"
+      - "./authapp/src:/app/src"
+      - "./authapp/run.sh:/app/run.sh"
     # The script that is run to start our process. It should begin
     # the node process and will need to run `npm install` first, or
     # similar.
     entrypoint: "/app/run.sh"
 
-### NODE END
+### AUTHAPP END
 
   # PostgREST instance, is responsible for communicating with the database
   # and providing a REST api, (almost) every request that is sent to the database goes through it
@@ -99,15 +99,15 @@ services:
     links:
       - db:db
       - postgrest:postgrest
-      - node:node
+      - authapp:authapp
     entrypoint: /entrypoint.sh
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - DEVELOPMENT=${DEVELOPMENT}
       - POSTGREST_HOST=${POSTGREST_HOST}
       - POSTGREST_PORT=${POSTGREST_PORT}
-      - NODE_HOST=${NODE_HOST}
-      - NODE_PORT=${NODE_PORT}
+      - AUTHAPP_HOST=${AUTHAPP_HOST}
+      - AUTHAPP_PORT=${AUTHAPP_PORT}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_NAME=${DB_NAME}

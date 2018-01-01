@@ -1,8 +1,8 @@
 {
-    "name": "yeluke-frontend",
+    "name": "yeluke-authapp",
     "version": "1.0.0",
-    "description": "Front end for Yeluke rest app",
-    "main": "server.js",
+    "description": "Auth app for Yeluke --- does CAS auth and creates JWT tokens",
+    "main": "src/server.js",
     "scripts": {
         "test": "test.js"
     },
