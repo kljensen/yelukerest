@@ -15,6 +15,9 @@ const TARGET_ENV = process.env.npm_lifecycle_event === 'build' ? prod : dev;
 const isDev = TARGET_ENV == dev;
 const isProd = TARGET_ENV == prod;
 
+// Grab the port number
+const port = process.env.ELMCLIENT_PORT || 8080;
+
 // entry and output path/filename variables
 const entryPath = path.join(__dirname, 'src/static/index.js');
 const outputPath = path.join(__dirname, 'dist');
@@ -57,7 +60,7 @@ var commonConfig = {
 if (isDev === true) {
     module.exports = merge(commonConfig, {
         entry: [
-            'webpack-dev-server/client?http://0.0.0.0:8080',
+            'webpack-dev-server/client?http://0.0.0.0:' + port,
             entryPath
         ],
         devServer: {
@@ -65,7 +68,8 @@ if (isDev === true) {
             historyApiFallback: true,
             contentBase: './src',
             hot: true,
-            host: '0.0.0.0'
+            host: '0.0.0.0',
+            port: port
         },
         module: {
             rules: [{
