@@ -57,14 +57,15 @@ var commonConfig = {
 if (isDev === true) {
     module.exports = merge(commonConfig, {
         entry: [
-            'webpack-dev-server/client?http://localhost:8080',
+            'webpack-dev-server/client?http://0.0.0.0:8080',
             entryPath
         ],
         devServer: {
             // serve index.html in place of 404 responses
             historyApiFallback: true,
             contentBase: './src',
-            hot: true
+            hot: true,
+            host: '0.0.0.0'
         },
         module: {
             rules: [{
@@ -78,7 +79,7 @@ if (isDev === true) {
                         debug: true
                     }
                 }]
-            },{
+            }, {
                 test: /\.sc?ss$/,
                 use: ['style-loader', 'css-loader', 'postcss-loader', 'sass-loader']
             }]

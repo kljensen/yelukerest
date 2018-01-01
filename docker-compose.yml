@@ -1,7 +1,6 @@
 version: '2'
 services:
 
-  ### DB START
   # This is the database to which the all the other components in the stack will connect and interact with
   # (but mostly it's PostgREST that is going to be responsible for the bulk of the db traffic)
   # Having the database in a container is very convinient in development but in production you will
@@ -28,9 +27,7 @@ services:
 
     volumes:
       - "./db/src:/docker-entrypoint-initdb.d"
-  ### DB END
 
-  ### AUTHAPP START
   authapp:
     build: authapp
     # Set the location where docker will put our files
@@ -65,12 +62,26 @@ services:
       # - "./authapp/package-lock.json:/app/package-lock.json"
       - "./authapp/src:/app/src"
       - "./authapp/run.sh:/app/run.sh"
-    # The script that is run to start our process. It should begin
-    # the node process and will need to run `npm install` first, or
-    # similar.
+    # The script that is run to start our process.
     entrypoint: "/app/run.sh"
 
-### AUTHAPP END
+  elmclient:
+    build: elmclient
+    # Set the location where docker will put our files
+    working_dir: /opt/app
+    # Map port 8081 on our host to port 4000 inside the container.
+    # Our node app should then run on port 4000 inside the container.
+    ports:
+      - "8082:8080"
+    environment:
+      - DEVELOPMENT=${DEVELOPMENT}
+    volumes:
+      # Note that the package.json-like files were moved into the
+      # container as specified by the elmclient/Dockerfile.
+      - "./elmclient/src:/opt/app/src"
+      - "./elmclient/run.sh:/opt/app/run.sh"
+      - "./elmclient/webpack.config.js:/opt/app/webpack.config.js"
+    entrypoint: "/opt/app/run.sh"
 
   # PostgREST instance, is responsible for communicating with the database
   # and providing a REST api, (almost) every request that is sent to the database goes through it
