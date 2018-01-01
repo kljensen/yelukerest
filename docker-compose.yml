@@ -9,7 +9,7 @@ services:
   db:
     image: postgres:9.6
     ports:
-      - "5432:5432"
+      - "5432:${DB_PORT}"
     environment:
       # env vars specific to postgres image used on first boot
       - POSTGRES_USER=${SUPER_USER}
@@ -35,7 +35,7 @@ services:
     # Map port 8081 on our host to port 4000 inside the container.
     # Our node app should then run on port 4000 inside the container.
     ports:
-      - "8081:4000"
+      - "8081:${AUTHAPP_PORT}"
     # Link this app to the `db` app so that we can talk to postgres
     # when we need to do so. We might also want to talk to the rest
     # API directly, and we'll need to add that if so.
@@ -72,9 +72,10 @@ services:
     # Map port 8081 on our host to port 4000 inside the container.
     # Our node app should then run on port 4000 inside the container.
     ports:
-      - "8082:8080"
+      - "8082:${ELMCLIENT_PORT}"
     environment:
       - DEVELOPMENT=${DEVELOPMENT}
+      - ELMCLIENT_PORT=${ELMCLIENT_PORT}
     volumes:
       # Note that the package.json-like files were moved into the
       # container as specified by the elmclient/Dockerfile.
@@ -88,7 +89,7 @@ services:
   postgrest:
     image: postgrest/postgrest
     ports:
-      - "3000:3000"
+      - "3000:${POSTGREST_PORT}"
     links:
       - db:db
     environment:
