@@ -1,11 +1,40 @@
 'use strict';
 
-const app = require('express')();
+const express = require('express');
 const session = require('express-session');
 const cas = require('connect-cas');
 const url = require('url');
+const pg = require('pg');
 const RedisStore = require('connect-redis')(session);
 const config = require('./config.js');
+const morgan = require('morgan');
+const winston = require('winston');
+
+// Set up logging
+const level = process.env.LOG_LEVEL || 'debug';
+const logger = new winston.Logger({
+    transports: [
+        new winston.transports.Console({
+            level: level,
+            timestamp: function () {
+                return (new Date())
+                    .toISOString();
+            }
+        })
+    ]
+});
+
+const app = express();
+
+// Tell morgan to log through this winston logger
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
+    stream: {
+        write: msg => {
+            logger.info('-----------------');
+            logger.info(msg);
+        }
+    }
+}));
 
 // Dump configZ
 cas.configure({
@@ -14,6 +43,15 @@ cas.configure({
 });
 console.log('CAS configuration:');
 console.log(cas.configure());
+
+// Establish database connection
+const dbPool = pg.Pool({
+    host: config.db_host,
+    port: config.db_port,
+    database: config.db_name,
+    user: config.db_user,
+    password: config.db_pass,
+});
 
 // Set up an Express session, which is required for CASAuthentication.
 // See https://github.com/expressjs/session
@@ -47,14 +85,9 @@ if (config.is_production) {
 
 app.use(session(sessionOptions));
 
-// NOTE: I am not happy that I'm hard-coding the `/auth/`
-// prefix here and also in NGINX. I don't know how to pass
-// in an environment variable into Nginx so that this prefix
-// is configurable and only written down in one place.
-// TODO: find a solution.
-const mountPrefix = '/auth';
+const router = express.Router();
 
-app.get(mountPrefix, (req, res) => {
+router.get('/', (req, res) => {
     if (req.session.cas && req.session.cas.user) {
         return res.send(`<p>You are logged in. Your username is ${req.session.cas.user} <a href="/logout">Log Out</a></p>`);
     }
@@ -91,7 +124,7 @@ if (config.is_development && config.cas_service_validate_host) {
     serviceValidateOptions.host = config.cas_service_validate_host;
 }
 const serviceValidate = cas.serviceValidate(serviceValidateOptions);
-app.get(`${mountPrefix}/login`, serviceValidate, cas.authenticate(), (req, res) => {
+router.get('/login', serviceValidate, cas.authenticate(), (req, res) => {
     // When the user lands on this route, they will be redirected
     // to the CAS server if they do not already have the requisite
     // session identifier. Once they return from CAS auth, they'll
@@ -105,7 +138,7 @@ app.get(`${mountPrefix}/login`, serviceValidate, cas.authenticate(), (req, res) 
     return res.redirect('/');
 });
 
-app.get(`${mountPrefix}/logout`, (req, res) => {
+router.get('/logout', (req, res) => {
     if (!req.session) {
         return res.redirect('/');
     }
@@ -121,6 +154,36 @@ app.get(`${mountPrefix}/logout`, (req, res) => {
     options.pathname = options.paths.logout;
     return res.redirect(url.format(options));
 });
+
+router.get('/user/:id', (req, res) => {
+    // async/await - check out a client
+    (async() => {
+        const client = await dbPool.connect()
+        try {
+            await client.query('BEGIN');
+            await client.query('SET LOCAL ROLE faculty');
+            await client.query('set request.jwt.claim.role = faculty');
+            const result = await client.query('SELECT netid,role FROM api.users WHERE netid = $1', [req.params.id]);
+            logger.info(result.rows[0]);
+            logger.info(result.rows[0].netid);
+            await client.query('END');
+        } catch (e) {
+            await client.query('ROLLBACK');
+        } finally {
+            client.release();
+            res.send('woot');
+        }
+    })()
+    .catch(e => logger.error(e.stack))
+})
+
+// NOTE: I am not happy that I'm hard-coding the `/auth/`
+// prefix here and also in NGINX. I don't know how to pass
+// in an environment variable into Nginx so that this prefix
+// is configurable and only written down in one place.
+// TODO: find a solution.
+const mountPrefix = '/auth';
+app.use(mountPrefix, router);
 
 const PORT = 4000;
 const HOST = '0.0.0.0';

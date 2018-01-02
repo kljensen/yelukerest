@@ -56,6 +56,13 @@ services:
       - CAS_HOST=${AUTHAPP_CAS_HOST}
       - CAS_SERVICE_VALIDATE_HOST=${AUTHAPP_CAS_SERVICE_VALIDATE_HOST}
       - CAS_PROTOCOL=${AUTHAPP_CAS_PROTOCOL}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_SCHEMA=${DB_SCHEMA}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+
 
     volumes:
       # These are the files we wish to "move" into the docker container.

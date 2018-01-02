@@ -13,7 +13,10 @@
         "connect-redis": "^3.3.2",
         "express": "^4.16.2",
         "express-session": "^1.15.6",
-        "nodemon": "^1.14.6"
+        "morgan": "^1.9.0",
+        "nodemon": "^1.14.6",
+        "pg": "^7.4.0",
+        "winston": "^2.4.0"
     },
     "devDependencies": {
         "js-beautify": "^1.7.5",
