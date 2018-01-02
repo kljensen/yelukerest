@@ -24,6 +24,8 @@ services:
       - DB_ANON_ROLE=${DB_ANON_ROLE}
       - DEVELOPMENT=${DEVELOPMENT}
       - JWT_SECRET=${JWT_SECRET}
+      - AUTHAPP_DB_PASS=${AUTHAPP_DB_PASS}
+      - AUTHAPP_DB_USER=${AUTHAPP_DB_USER}
 
     volumes:
       - "./db/src:/docker-entrypoint-initdb.d"
@@ -60,8 +62,8 @@ services:
       - DB_PORT=${DB_PORT}
       - DB_SCHEMA=${DB_SCHEMA}
       - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
+      - DB_USER=${AUTHAPP_DB_USER}
+      - DB_PASS=${AUTHAPP_DB_PASS}
 
 
     volumes:

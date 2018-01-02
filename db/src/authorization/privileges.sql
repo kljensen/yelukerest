@@ -9,7 +9,7 @@
 
 -- specify which application roles can access this api (you'll probably list them all)
 -- remember to list all the values of user_role type here
-grant usage on schema api to anonymous, student, faculty;
+grant usage on schema api to anonymous, student, faculty, authapp;
 
 -- define the who can access todo model data
 -- enable RLS on the table holding the data

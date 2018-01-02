@@ -160,10 +160,12 @@ router.get('/user/:id', (req, res) => {
     (async() => {
         const client = await dbPool.connect()
         try {
+            logger.info('woot here');
             await client.query('BEGIN');
-            await client.query('SET LOCAL ROLE faculty');
-            await client.query('set request.jwt.claim.role = faculty');
+            // await client.query('SET LOCAL ROLE faculty');
+            // await client.query('set request.jwt.claim.role = faculty');
             const result = await client.query('SELECT netid,role FROM api.users WHERE netid = $1', [req.params.id]);
+            logger.info(`Got back ${result.rows.length} results`);
             logger.info(result.rows[0]);
             logger.info(result.rows[0].netid);
             await client.query('END');
