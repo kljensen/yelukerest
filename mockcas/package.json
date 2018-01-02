@@ -1,0 +1,23 @@
+{
+    "name": "mockcas",
+    "version": "1.0.0",
+    "description": "A mock cas server",
+    "main": "src/index.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "Unlicense",
+    "dependencies": {
+        "express": "^4.16.2",
+        "nodemon": "^1.14.7",
+        "pug": "^2.0.0-rc.4"
+    },
+    "devDependencies": {
+        "js-beautify": "^1.7.5",
+        "eslint": "^4.13.0",
+        "eslint-config-airbnb-base": "^12.1.0",
+        "eslint-config-google": "^0.9.1",
+        "eslint-plugin-import": "^2.8.0"
+    }
+}

@@ -10,7 +10,10 @@ const config = require('./config.js');
 // Dump configZ
 cas.configure({
     host: config.cas_host,
+    protocol: config.cas_protocol,
 });
+console.log('CAS configuration:');
+console.log(cas.configure());
 
 // Set up an Express session, which is required for CASAuthentication.
 // See https://github.com/expressjs/session
@@ -63,11 +66,36 @@ app.get(mountPrefix, (req, res) => {
 // authenticate middleware, which requests it if it has not already
 // taken place.
 
-app.get(`${mountPrefix}/login`, cas.serviceValidate(), cas.authenticate(), (req, res) => {
+// TODO: now we need to write a middleware that wraps
+// cas.serviceValidate() and cas.authenticate()
+
+// cas.serviceValidate() checks to see if there are CAS
+// query parameters in the current request. If there are,
+// it checks those against the CAS server and sets the user
+// details in the session. thus completing the CAS auth.
+// If there are no query parameters, nothing is set in the 
+// session.
+// See https://github.com/AceMetrix/connect-cas/blob/master/lib/service-validate.js
+//
+// cas.authenticate() checks if there is a valid session
+// and, if not, redirects to the CAS service.
+//
+// Now, need a final piece of middleware that will take the
+// `cas.user` (netid) from the session and check to see (over
+// the REST API) if that user exists on our database. If so,
+// we'll set `yelukerest.user_id` in the session. Then, our
+// JWT signing endpoint will check for the presence of that
+// in the session.
+const serviceValidateOptions = {};
+if (config.is_development && config.cas_service_validate_host) {
+    serviceValidateOptions.host = config.cas_service_validate_host;
+}
+const serviceValidate = cas.serviceValidate(serviceValidateOptions);
+app.get(`${mountPrefix}/login`, serviceValidate, cas.authenticate(), (req, res) => {
     // When the user lands on this route, they will be redirected
     // to the CAS server if they do not already have the requisite
     // session identifier. Once they return from CAS auth, they'll
-    // be redirected back this same URL with URL query parameters 
+    // be redirected back this same URL with URL query parameters
     // like the following:
     // /auth/login?ticket=ST-136710-jNP4f2342Xpn2bpiys71-vmssoprdapp01
     // The CAS library will use this to fetch netid info and store

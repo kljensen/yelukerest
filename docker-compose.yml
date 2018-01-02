@@ -41,6 +41,7 @@ services:
     # API directly, and we'll need to add that if so.
     links:
       - redis:redis
+      - mockcas:mockcas
     environment:
       # Pass in connection information for the database.
       - DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
@@ -53,6 +54,8 @@ services:
       - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
       - DEVELOPMENT=${DEVELOPMENT}
       - CAS_HOST=${AUTHAPP_CAS_HOST}
+      - CAS_SERVICE_VALIDATE_HOST=${AUTHAPP_CAS_SERVICE_VALIDATE_HOST}
+      - CAS_PROTOCOL=${AUTHAPP_CAS_PROTOCOL}
 
     volumes:
       # These are the files we wish to "move" into the docker container.
@@ -82,6 +85,24 @@ services:
       - "./elmclient/src:/opt/app/src"
       - "./elmclient/run.sh:/opt/app/run.sh"
       - "./elmclient/webpack.config.js:/opt/app/webpack.config.js"
+    entrypoint: "/opt/app/run.sh"
+
+  mockcas:
+    build: mockcas
+    # Set the location where docker will put our files
+    working_dir: /opt/app
+    # Map port 8081 on our host to port 4000 inside the container.
+    # Our node app should then run on port 4000 inside the container.
+    ports:
+      - "${MOCKCAS_HOST_PORT}:${MOCKCAS_PORT}"
+    environment:
+      - DEVELOPMENT=${DEVELOPMENT}
+      - PORT=${MOCKCAS_PORT}
+    volumes:
+      # Note that the package.json-like files were moved into the
+      # container as specified by the elmclient/Dockerfile.
+      - "./mockcas/src:/opt/app/src"
+      - "./mockcas/run.sh:/opt/app/run.sh"
     entrypoint: "/opt/app/run.sh"
 
   # PostgREST instance, is responsible for communicating with the database

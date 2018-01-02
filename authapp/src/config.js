@@ -28,6 +28,15 @@ if (process.env.DEVELOPMENT) {
 
 // Grab the CAS host
 config.cas_host = getRequiredEnvVariable('CAS_HOST');
+if (config.is_production) {
+    config.cas_protocol = 'https';
+} else {
+    config.cas_protocol = process.env.CAS_PROTOCOL || 'https';
+    // If we're running in a testing environment in docker containers,
+    // the service validation cas host might not be routable through
+    // the same host as the cas_host. Used for testing only!
+    config.cas_service_validate_host = process.env.CAS_SERVICE_VALIDATE_HOST;
+}
 
 // Grab Redis host and port
 config.redis_host = getRequiredEnvVariable('REDIS_HOST');
