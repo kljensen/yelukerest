@@ -10,8 +10,10 @@
     "license": "Unlicense",
     "dependencies": {
         "express": "^4.16.2",
+        "morgan": "^1.9.0",
         "nodemon": "^1.14.7",
-        "pug": "^2.0.0-rc.4"
+        "pug": "^2.0.0-rc.4",
+        "winston": "^2.4.0"
     },
     "devDependencies": {
         "js-beautify": "^1.7.5",
