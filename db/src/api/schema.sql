@@ -10,8 +10,8 @@ grant api to current_user; -- this is a workaround for RDS where the master user
 
 -- redifine this type to control the user properties returned by auth endpoints
 \ir ../libs/auth/api/user_type.sql
--- include all auth endpoints
-\ir ../libs/auth/api/all.sql
+-- Uncomment the following line to include all auth endpoints
+-- \ir ../libs/auth/api/all.sql
 
 -- our endpoints
 \ir todos.sql
