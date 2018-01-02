@@ -1,6 +1,8 @@
 {
   "name": "starter-kit",
-  "dependencies": {},
+  "dependencies": {
+    "subzero-cli": "^0.1.17"
+  },
   "devDependencies": {
     "babel-core": "^6.24.0",
     "babel-preset-latest": "^6.24.1",
