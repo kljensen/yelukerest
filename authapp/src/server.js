@@ -4,6 +4,7 @@ const express = require('express');
 const session = require('express-session');
 const cas = require('connect-cas');
 const url = require('url');
+const httpstatus = require('http-status-codes');
 const pg = require('pg');
 const RedisStore = require('connect-redis')(session);
 const config = require('./config.js');
@@ -15,13 +16,13 @@ const level = process.env.LOG_LEVEL || 'debug';
 const logger = new winston.Logger({
     transports: [
         new winston.transports.Console({
-            level: level,
-            timestamp: function () {
+            level,
+            timestamp() {
                 return (new Date())
                     .toISOString();
-            }
-        })
-    ]
+            },
+        }),
+    ],
 });
 
 const app = express();
@@ -29,11 +30,11 @@ const app = express();
 // Tell morgan to log through this winston logger
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
     stream: {
-        write: msg => {
+        write: (msg) => {
             logger.info('-----------------');
             logger.info(msg);
-        }
-    }
+        },
+    },
 }));
 
 // Dump configZ
@@ -41,10 +42,16 @@ cas.configure({
     host: config.cas_host,
     protocol: config.cas_protocol,
 });
-console.log('CAS configuration:');
-console.log(cas.configure());
 
-// Establish database connection
+if (config.is_development) {
+    logger.info('Configuration:');
+    logger.info(config);
+    logger.info('CAS configuration:');
+    logger.info(cas.configure());
+}
+
+// Establish database connection. This does not actually
+// establish a connection until we request a client from the pool.
 const dbPool = pg.Pool({
     host: config.db_host,
     port: config.db_port,
@@ -53,11 +60,15 @@ const dbPool = pg.Pool({
     password: config.db_pass,
 });
 
+
 // Set up an Express session, which is required for CASAuthentication.
 // See https://github.com/expressjs/session
 const sessionOptions = {
+    // The name of the cookie stored on the user's browser.
     name: 'yeluke.sid',
-    // Use Redis to store our session
+    // Use Redis to store our session information server side. The session
+    // id stored in the user's browser is only used to find the session info
+    // server-side.
     store: new RedisStore({
         host: config.redis_host,
         port: config.redis_port,
@@ -68,9 +79,12 @@ const sessionOptions = {
         // Expire after 5 days
         maxAge: 5 * 24 * 60 * 60 * 1000,
     },
+    // The secret used to sign the cookie so that it is tamper-proof
     secret: config.session_secret,
+    // No need to 'touch' our session. If it expires from the session store, fine.
     resave: false,
-    saveUninitialized: true,
+    // No need to save session information for people prior to authentication
+    saveUninitialized: false,
     // Trust the reverse proxy when setting secure cookies
     // (via the "X-Forwarded-Proto" header).
     proxy: true,
@@ -83,58 +97,118 @@ if (config.is_production) {
     sessionOptions.cookie.secure = true;
 }
 
+// Tell the app to use our session options
 app.use(session(sessionOptions));
+
+/**
+ * Check if a user exists in the database by netid
+ * @param  {pg.Pool} pool A connection pool from which to take a connection to Postgres.
+ * @param  {String} netid The netid of the student we wish to look for in the database.
+ * @returns {Promise} A promise that resolves to an object `id`, `netid` and `role` keys.
+ */
+async function getYelukeUserInfo(pool, netid) {
+    const userInfo = {};
+    // Note that this automatically returns the client drawn from the
+    // pool back to the pool after the query is completed.
+    // See https://github.com/brianc/node-pg-pool
+    try {
+        const result = await pool.query('SELECT id,netid,role FROM api.users WHERE netid = $1', [netid]);
+        userInfo.error = false;
+        if (result.rows.length !== 1) {
+            return userInfo;
+        }
+        userInfo.id = result.rows[0].id;
+        userInfo.netid = result.rows[0].netid;
+        userInfo.role = result.rows[0].role;
+    } catch (error) {
+        // Catch the promise rejection
+        userInfo.error = true;
+    }
+    return userInfo;
+}
+
+/**
+ * Destroys a session for a user
+ * @param  {express.Request} req The request with session info
+ * @returns {undefined}
+ */
+function destroyRequestSession(req) {
+    // Forget our own login session
+    if (req.session && req.session.destroy) {
+        req.session.destroy();
+    } else {
+        // Cookie-based sessions have no destroy()
+        req.session = null;
+    }
+}
+
+
+/**
+ * Check to see if the CAS user set by connect-cas exists in the Yeluke database
+ * @param  {express.Request} req An express request
+ * @param  {express.Response} res An express response
+ * @param  {function} next the callback to signal when we're done
+ * @returns {Promise} a promise that must be awaited
+ */
+async function validateYelukeUser(req, res, next) {
+    // Once we reach here, the user should have authenticated with CAS.
+
+    if (!req.session || !req.session.cas || !req.session.cas.user) {
+        logger.info('No CAS information in the session');
+        destroyRequestSession(req);
+        res.status(httpstatus.UNAUTHORIZED)
+            .send('Unauthorized');
+        return;
+    }
+    logger.info('Found CAS information');
+    const netid = req.session.cas.user;
+    const userInfo = await getYelukeUserInfo(dbPool, netid);
+    if (userInfo.error) {
+        destroyRequestSession(req);
+        res.send(httpstatus.INTERNAL_SERVER_ERROR);
+        return;
+    }
+    if (!userInfo.id || userInfo.netid != netid) {
+        destroyRequestSession(req);
+        res.status(httpstatus.UNAUTHORIZED)
+            .send(`CAS ${netid} is not authorized to log in`);
+        return;
+    }
+    req.session.yeluke = {
+        user: userInfo,
+    };
+    next();
+}
+
 
 const router = express.Router();
 
-router.get('/', (req, res) => {
-    if (req.session.cas && req.session.cas.user) {
-        return res.send(`<p>You are logged in. Your username is ${req.session.cas.user} <a href="/logout">Log Out</a></p>`);
-    }
-    return res.send(`<p>You are not logged in. <a href="${mountPrefix}/login">Log in now.</a><p>`);
-});
-
-// This route has the serviceValidate middleware, which verifies
-// that CAS authentication has taken place, and also the
-// authenticate middleware, which requests it if it has not already
-// taken place.
-
-// TODO: now we need to write a middleware that wraps
-// cas.serviceValidate() and cas.authenticate()
-
-// cas.serviceValidate() checks to see if there are CAS
-// query parameters in the current request. If there are,
-// it checks those against the CAS server and sets the user
-// details in the session. thus completing the CAS auth.
-// If there are no query parameters, nothing is set in the 
-// session.
-// See https://github.com/AceMetrix/connect-cas/blob/master/lib/service-validate.js
-//
-// cas.authenticate() checks if there is a valid session
-// and, if not, redirects to the CAS service.
-//
-// Now, need a final piece of middleware that will take the
-// `cas.user` (netid) from the session and check to see (over
-// the REST API) if that user exists on our database. If so,
-// we'll set `yelukerest.user_id` in the session. Then, our
-// JWT signing endpoint will check for the presence of that
-// in the session.
+// In development we might have difficultly connecting to the
+// service validation host if it is a mock cas server running
+// in a container. Hence, we allow this override.
 const serviceValidateOptions = {};
 if (config.is_development && config.cas_service_validate_host) {
     serviceValidateOptions.host = config.cas_service_validate_host;
 }
 const serviceValidate = cas.serviceValidate(serviceValidateOptions);
-router.get('/login', serviceValidate, cas.authenticate(), (req, res) => {
-    // When the user lands on this route, they will be redirected
-    // to the CAS server if they do not already have the requisite
-    // session identifier. Once they return from CAS auth, they'll
-    // be redirected back this same URL with URL query parameters
-    // like the following:
-    // /auth/login?ticket=ST-136710-jNP4f2342Xpn2bpiys71-vmssoprdapp01
-    // The CAS library will use this to fetch netid info and store
-    // that is `req.session.cas.user`.
 
-    // If that goes ok, we logged in, now redirect back to the home page.
+// The set of middleware to log in a user.
+const loginMiddlewareChain = [
+    // Check if there is a CAS ticket in the request query parameters.
+    // If so, validate it with the CAS server and set `cas.user` in
+    // the session.
+    serviceValidate,
+    // Check if there is a `cas.user` in the session. If there is not,
+    // redirect to the CAS service's login page.
+    cas.authenticate(),
+    // Check if the `cas.user` in the session is a valid Yeluke user.
+    // If so, set `yeluke.user` in the session. Else, unauthorized.
+    validateYelukeUser,
+];
+
+
+router.get('/login', loginMiddlewareChain, (req, res) => {
+    logger.info(`User ${req.session.cas.user} logged in`);
     return res.redirect('/');
 });
 
@@ -142,42 +216,13 @@ router.get('/logout', (req, res) => {
     if (!req.session) {
         return res.redirect('/');
     }
-    // Forget our own login session
-    if (req.session.destroy) {
-        req.session.destroy();
-    } else {
-        // Cookie-based sessions have no destroy()
-        req.session = null;
-    }
+    destroyRequestSession(req);
+
     // Send the user to the official campus-wide logout URL
     const options = cas.configure();
     options.pathname = options.paths.logout;
     return res.redirect(url.format(options));
 });
-
-router.get('/user/:id', (req, res) => {
-    // async/await - check out a client
-    (async() => {
-        const client = await dbPool.connect()
-        try {
-            logger.info('woot here');
-            await client.query('BEGIN');
-            // await client.query('SET LOCAL ROLE faculty');
-            // await client.query('set request.jwt.claim.role = faculty');
-            const result = await client.query('SELECT netid,role FROM api.users WHERE netid = $1', [req.params.id]);
-            logger.info(`Got back ${result.rows.length} results`);
-            logger.info(result.rows[0]);
-            logger.info(result.rows[0].netid);
-            await client.query('END');
-        } catch (e) {
-            await client.query('ROLLBACK');
-        } finally {
-            client.release();
-            res.send('woot');
-        }
-    })()
-    .catch(e => logger.error(e.stack))
-})
 
 // NOTE: I am not happy that I'm hard-coding the `/auth/`
 // prefix here and also in NGINX. I don't know how to pass
@@ -189,5 +234,23 @@ app.use(mountPrefix, router);
 
 const PORT = 4000;
 const HOST = '0.0.0.0';
-app.listen(PORT, HOST);
-console.log(`Running on http://${HOST}:${PORT}`);
+app.listen(PORT, HOST, () => {
+    logger.info(`Running on http://${HOST}:${PORT}`);
+});
+
+/** TODO: clean up database pool connections. I can't get this working with nodemon.
+ * @returns {Promise} a promise that you should await
+ */
+// function cleanUpDBPool() {
+//     console.log('wooot');
+//     logger.warn('Cleaning up database connections');
+//     return dbPool.end();
+// }
+// Clean up the database connections upon termination. I can't
+// seem to get this to work!
+// ['SIGUSR2', 'SIGTERM', 'SIGINT'].forEach((signal) => {
+//     process.on(signal, async() => {
+//         console.log('Caught signal', signal);
+//         await cleanUpDBPool();
+//     });
+// });

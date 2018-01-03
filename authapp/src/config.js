@@ -56,10 +56,6 @@ config.db_pass = getRequiredEnvVariable('DB_PASS');
 // Grab the host and port on which we should run
 config.host = '0.0.0.0';
 config.port = process.env.AUTHAPP_PORT || '4000';
-
-if (config.is_development) {
-    console.log('Configuration:');
-    console.log(config);
-}
+config.foo = 'bar';
 
 module.exports = config;
