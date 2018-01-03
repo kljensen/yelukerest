@@ -13,14 +13,6 @@ const agentCookies = require('expect-cookies');
 // Add the we string plugin
 we.use(chaiString);
 
-// Most of what we're testing here requires authentication.
-// We're going to need to set-up a mock CAS server,
-// like shown here https://github.com/AceMetrix/connect-cas/blob/master/test/service-validate.spec.js
-// The, we'll need to dynamically get JWT tokens from our
-// app. Also, we'll need to store credentials after logging-in. 
-// See https://medium.com/@juha.a.hytonen/testing-authenticated-requests-with-supertest-325ccf47c2bb
-// and https://github.com/visionmedia/superagent/blob/master/test/node/agency.js
-
 const authPath = '/auth/login';
 const jwtPath = '/auth/jwt';
 
