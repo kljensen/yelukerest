@@ -64,6 +64,8 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${AUTHAPP_DB_USER}
       - DB_PASS=${AUTHAPP_DB_PASS}
+      - JWT_SECRET=${JWT_SECRET}
+
 
 
     volumes:

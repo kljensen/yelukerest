@@ -2,6 +2,8 @@
   "name": "starter-kit",
   "dependencies": {
     "chai": "^4.1.2",
+    "chai-string": "^1.4.0",
+    "expect-cookies": "^0.1.2",
     "subzero-cli": "^0.1.17"
   },
   "devDependencies": {

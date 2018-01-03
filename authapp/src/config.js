@@ -45,6 +45,10 @@ config.redis_port = getRequiredEnvVariable('REDIS_PORT');
 // Grab the session secret, used for signing cookies
 config.session_secret = getRequiredEnvVariable('SESSION_SECRET');
 
+// Grab the jwt secret, used for signing JWTs
+config.jwt_secret = getRequiredEnvVariable('JWT_SECRET');
+config.jwt_issuer = 'yeluke-authapp';
+
 // Get database-related connection info
 config.db_host = getRequiredEnvVariable('DB_HOST');
 config.db_port = getRequiredEnvVariable('DB_PORT');

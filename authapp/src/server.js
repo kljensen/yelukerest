@@ -5,6 +5,7 @@ const session = require('express-session');
 const cas = require('connect-cas');
 const url = require('url');
 const httpstatus = require('http-status-codes');
+const jsonwebtoken = require('jsonwebtoken');
 const pg = require('pg');
 const RedisStore = require('connect-redis')(session);
 const config = require('./config.js');
@@ -144,7 +145,9 @@ function destroyRequestSession(req) {
 
 
 /**
- * Check to see if the CAS user set by connect-cas exists in the Yeluke database
+ * Check to see if the CAS user set by connect-cas exists in the Yeluke database.
+ * If so, set the Yeluke user information in the session. This *always* alters
+ * the session to reflect the most recent id/netid/role for the user.
  * @param  {express.Request} req An express request
  * @param  {express.Response} res An express response
  * @param  {function} next the callback to signal when we're done
@@ -207,11 +210,13 @@ const loginMiddlewareChain = [
 ];
 
 
+// Login a user. This creates session information.
 router.get('/login', loginMiddlewareChain, (req, res) => {
     logger.info(`User ${req.session.cas.user} logged in`);
     return res.redirect('/');
 });
 
+// Logout a user. This destroys the session.
 router.get('/logout', (req, res) => {
     if (!req.session) {
         return res.redirect('/');
@@ -222,6 +227,61 @@ router.get('/logout', (req, res) => {
     const options = cas.configure();
     options.pathname = options.paths.logout;
     return res.redirect(url.format(options));
+});
+
+// Sign a JWT for a user. They must have valid session info.
+router.get('/jwt', validateYelukeUser, (req, res) => {
+    const twoDaysOfSeconds = 2 * 24 * 60 * 60;
+    let expiresIn = twoDaysOfSeconds;
+
+    // Allow a custom expiration expressed in seconds.
+    if (req.query.expiresIn) {
+        if (isNaN(req.query.expiresIn)) {
+            res.send(httpstatus.BAD_REQUEST);
+        }
+        expiresIn = parseInt(req.query.expiresIn, 10);
+        if (expiresIn <= 0 || expiresIn > twoDaysOfSeconds) {
+            res.send(httpstatus.BAD_REQUEST);
+        }
+    }
+    // Since we used the `validateYelukeUser` middleware above, we know
+    // we have accurate Yeluke user information in the session. Now we'll
+    // create a JWT with it.
+    const jwtPayload = {
+        user_id: req.session.yeluke.user.id,
+        role: req.session.yeluke.user.role,
+    };
+    const signingOptions = {
+        algorithm: 'HS256',
+        expiresIn,
+        issuer: config.jwt_issuer,
+    };
+    const signedJWT = jsonwebtoken.sign(jwtPayload, config.jwt_secret, signingOptions);
+
+    // sendit is a function that writes the JWT to the response when called.
+    const sendit = () => {
+        res.send(signedJWT);
+    };
+
+    // Handle content negotiation and send the JWT.
+    // See http://expressjs.com/en/api.html#res.format
+    res.format({
+        'application/jwt': sendit,
+        'text/plain': sendit,
+        'text/html': sendit,
+        'application/json': () => {
+            // Have to wrap it in an object or an array.
+            // See https://www.ietf.org/rfc/rfc4627.txt
+            res.send({
+                token: signedJWT,
+            });
+        },
+        default () {
+            res.status(406)
+                .send('Not Acceptable');
+        },
+    });
+    res.send(signedJWT);
 });
 
 // NOTE: I am not happy that I'm hard-coding the `/auth/`
