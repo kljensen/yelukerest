@@ -15,23 +15,24 @@ main =
 
 
 -- MODEL
-type alias Model = Int
+type alias Model = {count: Int, page: String}
 
 model : Model
-model = 0
+model = {count = 0, page = "Home"}
 
 
 -- UPDATE
-type Msg = NoOp | Increment | About | Meetings | Assignments-- TODO: refactor navigation into its own class of messages?
+type Msg = NoOp | Increment | Home | About | Meetings | Assignments-- TODO: refactor navigation into its own class of messages?
 
 update : Msg -> Model -> Model
 update msg model =
   case msg of
     NoOp -> model
-    Increment -> model + 1
-    About -> model + 1
-    Meetings -> model + 1
-    Assignments -> model + 1
+    Increment -> {model | count = model.count + 1}
+    Home -> {model | count = model.count + 1}
+    About -> {model | count = model.count + 1}
+    Meetings -> {model | count = model.count + 1}
+    Assignments -> {model | count = model.count + 1}
 
 
 -- VIEW
@@ -44,7 +45,7 @@ view model =
       div [ class "col-xs-12" ][
         div [ class "jumbotron" ][
           img [ src "static/img/elm.jpg", style styles.img ] []                             -- inline CSS (via var)
-          , hello model                                                                     -- ext 'hello' component (takes 'model' as arg)
+          , hello model.count                                                                     -- ext 'hello' component (takes 'model' as arg)
           , p [] [ text ( "Elm Webpack Starter" ) ]
           , button [ class "btn btn-primary btn-lg", onClick Increment ] [                  -- click handler
             span[ class "glyphicon glyphicon-star" ][]                                      -- glyphicon
@@ -52,7 +53,10 @@ view model =
           ]
         ]
         , div [ class "nav" ][
-          button [ class "btn btn-primary btn-lg", onClick About ] [
+          button [ class "btn btn-primary btn-lg", onClick Home ] [
+           span [] [ text "Home" ]
+          ]
+          , button [ class "btn btn-primary btn-lg", onClick About ] [
            span [] [ text "About" ]
           ]
           , button [ class "btn btn-primary btn-lg", onClick Assignments ] [
