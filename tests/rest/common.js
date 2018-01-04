@@ -20,7 +20,7 @@ const PG = `${COMPOSE_PROJECT_NAME}_db_1`
 const psql_version = spawnSync('psql', ['--version']);
 const have_psql = (psql_version.stdout && psql_version.stdout.toString('utf8')
     .trim()
-    .length > 0)
+    .length > 0);
 
 const baseURL = 'http://localhost:8080';
 var restService = function () {
