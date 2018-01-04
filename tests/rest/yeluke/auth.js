@@ -14,11 +14,12 @@ const {
 } = require('./helpers.js');
 
 
-describe('Yeluke auth using CAS', () => {
-    before((done) => {
+describe('authentication API endpoint', () => {
+    const cleanup = (done) => {
         resetdb();
         done();
-    });
+    }
+    before(cleanup);
 
     it('login page should give a temporary redirect to the CAS server', async() => {
         await request(baseURL)
