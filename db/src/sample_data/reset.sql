@@ -4,6 +4,7 @@ BEGIN;
 set client_min_messages to warning;
 truncate data.todo restart identity cascade;
 truncate data.user restart identity cascade;
+truncate data.engagement restart identity cascade;
 set search_path = data, public;
 \ir ./yeluke/reset.sql
 \ir data.sql
