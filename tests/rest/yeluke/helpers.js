@@ -132,6 +132,21 @@ const postRequestWithJWT = (path, body, jwt) => {
     return req;
 };
 
+const getRequestWithJWT = (path, jwt) => {
+    let req = restService()
+        .get(path)
+        .set('Accept', 'application/vnd.pgrst.object+json');
+
+    if (jwt) {
+        console.log('jwt =', jwt);
+        req = req.set('Authorization', `Bearer ${jwt}`);
+    } else {
+        console.log('NO JWT');
+    }
+    return req;
+};
+
+
 /**
  * Dynamically creates a number of test cases on post/insert. The caller
  * supplies a the `it` from a mocha test suite and this function adds in tests.
@@ -153,6 +168,46 @@ async function makePostTestCases(theIt, path, body, testCases) {
     });
 }
 
+/**
+ * Dynamically creates a number of test cases. Often, we want to verify something
+ * like "a user can see only her/his rows" and "a faculty can see all rows". This
+ * helps us write those with minimal code duplication.
+ * @param  {it} theIt The `it` from a mocha test suite
+ * @param {String} path path to which we will POST
+ * @param {Function} setMaker a function that is applied to each row of the
+ *                              results to create a set.
+ * @param {Object} testCases the test cases, each of which can override path.
+ *                  These should have at least a `status` attribute. It can
+ *                  also have a `length` and a `set` attribute. The `set`
+ * @returns {undefined}
+ */
+async function makeListTestCases(theIt, path, setMaker, testCases) {
+    testCases.forEach((tc) => {
+        theIt(tc.title || 'the test', async() => {
+            we.expect(tc)
+                .to.have.property('status');
+            console.log('In makelisttestcases, tc = ', tc);
+            const response = await getRequestWithJWT(tc.path || path, tc.jwt)
+                .expect(tc.status);
+
+            // If we expect an OK response, let's check to ensure
+            // the content is also what we expect.
+            if (tc.status === 200) {
+                we.expect(response.body)
+                    .to.be.a.instanceOf(Array);
+                if (tc.length) {
+                    we.expect(response.body)
+                        .to.have.lengthOf(tc.length);
+                }
+                if ((tc.setMaker || setMaker) && tc.set) {
+                    const thisSet = new Set(response.body.map(tc.setMaker || setMaker));
+                    we.expect(thisSet)
+                        .to.equal(new Set(tc.set));
+                }
+            }
+        });
+    });
+}
 
 // const tryToInsertNewEngagement = jwt => postRequestWithJWT('/engagements', newEngagement, jwt);
 
@@ -170,4 +225,5 @@ module.exports = {
     we,
     postRequestWithJWT,
     makePostTestCases,
+    makeListTestCases,
 };

@@ -45,6 +45,7 @@ the auth flow.
 To run the tests, do `npm test` from the root of this project.
 The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
 tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
+Use a command like the following to run only certain tests or test suites: `npm run test_rest -- --grep 'users API'`.
 
 
 ## Random notes

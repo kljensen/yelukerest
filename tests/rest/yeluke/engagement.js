@@ -12,18 +12,17 @@ const {
     getJWTForNetid,
     we,
     makePostTestCases,
-    tryInserts,
+    makeListTestCases,
 } = require('./helpers.js');
 
-describe('engagements API endpoint', () => {
-    let student1JWT;
-    let facultyJWT;
+describe('engagements API endpoint', async() => {
+    let student1JWT = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+    let facultyJWT = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
 
     before(async() => {
         resetdb();
         try {
-            student1JWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
-            facultyJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
+            await Promise.all([student1JWT, facultyJWT]);
         } catch (error) {
             // eslint-disable-next-line no-console
             console.error('Could not get JWTs for users');
@@ -82,6 +81,25 @@ describe('engagements API endpoint', () => {
         we.expect(userIds.size)
             .to.equal(3);
     });
+    // async function makeListTestCases(theIt, path, setMaker, testCases) {
+
+
+    const listTestCases = [{
+        title: 'should allow students to see only their own engagements foo',
+        set: [1],
+        length: 1,
+        status: 200,
+        jwt: student1JWT,
+    }, {
+        title: 'should allow faculty to see all engagements foo',
+        set: [1, 2, 3],
+        length: 9,
+        status: 200,
+        jwt: facultyJWT,
+    }];
+    console.error(`facultyJWT = ${facultyJWT}`);
+
+    makeListTestCases(it, '/engagements', x => x.user_id, listTestCases);
 
     const newEngagement = {
         user_id: 5,
@@ -105,5 +123,6 @@ describe('engagements API endpoint', () => {
         status: 403,
         jwt: facultyJWT,
     }];
+    console.error(`facultyJWT = ${facultyJWT}`);
     makePostTestCases(it, '/engagements', newEngagement, insertTestCases);
 });

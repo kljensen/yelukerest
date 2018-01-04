@@ -30,21 +30,21 @@ describe('meetings API endpoint', () => {
         }
     });
 
-    it('should be selectable', (done) => {
-        restService()
+    it('should be selectable', async() => {
+        return restService()
             .get('/meetings?select=id')
             .expect('Content-Type', /json/)
-            .expect(200, done)
+            .expect(200)
             .expect((r) => {
                 r.body.length.should.equal(3);
                 r.body[0].id.should.equal(1);
             });
     });
 
-    it('should be selectable by primary key', (done) => {
-        restService()
+    it('should be selectable by primary key', async() => {
+        return restService()
             .get('/meetings/1')
-            .expect(200, done)
+            .expect(200)
             .expect((r) => {
                 r.body.id.should.equal(1);
                 r.body.slug.should.equal('intro');
