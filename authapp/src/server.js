@@ -265,8 +265,11 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
 
     // Handle content negotiation and send the JWT.
     // See http://expressjs.com/en/api.html#res.format
-    logger.info(req.headers);
-    logger.info(jwtPayload);
+    let logMsg = `Created JWT with payload = ${JSON.stringify(jwtPayload)}`;
+    logger.info(logMsg);
+    logMsg = `JWT = ${signedJWT.slice(0,10)}...${signedJWT.slice(-10)}`;
+    logger.info(logMsg);
+
     res.format({
         'application/jwt': sendit,
         'text/plain': sendit,
