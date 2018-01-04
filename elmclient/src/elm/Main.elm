@@ -22,13 +22,16 @@ model = 0
 
 
 -- UPDATE
-type Msg = NoOp | Increment
+type Msg = NoOp | Increment | About | Meetings | Assignments-- TODO: refactor navigation into its own class of messages?
 
 update : Msg -> Model -> Model
 update msg model =
   case msg of
     NoOp -> model
     Increment -> model + 1
+    About -> model + 1
+    Meetings -> model + 1
+    Assignments -> model + 1
 
 
 -- VIEW
@@ -46,6 +49,17 @@ view model =
           , button [ class "btn btn-primary btn-lg", onClick Increment ] [                  -- click handler
             span[ class "glyphicon glyphicon-star" ][]                                      -- glyphicon
             , span[][ text "FTW!" ]
+          ]
+        ]
+        , div [ class "nav" ][
+          button [ class "btn btn-primary btn-lg", onClick About ] [
+           span [] [ text "About" ]
+          ]
+          , button [ class "btn btn-primary btn-lg", onClick Assignments ] [
+           span [] [ text "Assignments" ]
+          ]
+          , button [ class "btn btn-primary btn-lg", onClick Meetings ] [
+           span [] [ text "Meetings" ]
           ]
         ]
       ]
