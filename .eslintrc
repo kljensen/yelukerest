@@ -1,0 +1,14 @@
+{
+    "extends": "airbnb-base",
+    "plugins": [
+        "import"
+    ],
+    "rules": {
+        "strict": 0,
+        "indent": ["error", 4],
+        "no-console": 2,
+        "require-jsdoc": 2,
+        "valid-jsdoc": 2,
+        "space-before-function-paren": 0
+    }
+}
