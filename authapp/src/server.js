@@ -171,7 +171,7 @@ async function validateYelukeUser(req, res, next) {
         res.send(httpstatus.INTERNAL_SERVER_ERROR);
         return;
     }
-    if (!userInfo.id || userInfo.netid != netid) {
+    if (!userInfo.id || userInfo.netid !== netid) {
         destroyRequestSession(req);
         res.status(httpstatus.UNAUTHORIZED)
             .send(`CAS ${netid} is not authorized to log in`);
@@ -236,7 +236,7 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
 
     // Allow a custom expiration expressed in seconds.
     if (req.query.expiresIn) {
-        if (isNaN(req.query.expiresIn)) {
+        if (Number.isNaN(req.query.expiresIn)) {
             res.send(httpstatus.BAD_REQUEST);
         }
         expiresIn = parseInt(req.query.expiresIn, 10);
@@ -265,6 +265,8 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
 
     // Handle content negotiation and send the JWT.
     // See http://expressjs.com/en/api.html#res.format
+    logger.info(req.headers);
+    logger.info(jwtPayload);
     res.format({
         'application/jwt': sendit,
         'text/plain': sendit,
@@ -281,7 +283,6 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
                 .send('Not Acceptable');
         },
     });
-    res.send(signedJWT);
 });
 
 // NOTE: I am not happy that I'm hard-coding the `/auth/`
