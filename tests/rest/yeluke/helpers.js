@@ -101,9 +101,25 @@ async function getJWT(thisBaseURL, thisJWTPath, cookies, contentType = 'text/pla
     return response.text;
 }
 
+/**
+ * Gets session and then JWT
+ * @param  {String} thisBaseURL Where to start
+ * @param  {String} thisAuthPath The path to begin log in
+ * @param  {String} thisJWTPath Path to route that gives us a JWT
+ * @param  {Array} netid The netid for wish we wish to get a JWT
+ * @param  {String} contentType The Content-Type that we wish to receive
+ * @param  {Number} expiresIn Number of seconds for JWT expiration
+ * @returns {Promise} A promise that resolves to a string containing a JWT
+ */
+async function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, contentType = 'text/plain', expiresIn = undefined) {
+    const cookie = await getUserSessionCookie(thisBaseURL, thisAuthPath, netid, true);
+    return getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
+}
+
 module.exports = {
     getJWTRequest,
     getJWT,
     getUserSessionCookie,
+    getJWTForNetid,
     we,
 };

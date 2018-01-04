@@ -2,7 +2,7 @@
 const common = require('../common.js');
 
 
-const restService = common.rest_service;
+const restService = common.restService;
 
 describe('meetings', () => {
     before((done) => {

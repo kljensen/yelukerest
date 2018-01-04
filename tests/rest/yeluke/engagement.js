@@ -1,14 +1,34 @@
 /* global describe it before */
 
-const common = require('../common.js');
+const {
+    resetdb,
+    baseURL,
+    authPath,
+    jwtPath,
+    restService,
+} = require('../common.js');
 
-const restService = common.rest_service;
-
+const {
+    getJWTForNetid,
+} = require('./helpers.js');
 
 describe('engagements', () => {
-    before((done) => {
-        common.resetdb();
-        done();
+    // eslint-disable-next-line no-unsed-vars
+    let student1JWT;
+    let student2JWT;
+    let facultyJWT;
+
+    before(async() => {
+        resetdb();
+        try {
+            student1JWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+            student2JWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'bde456');
+            facultyJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
+        } catch (error) {
+            /* eslint-disable-next-line no-console */
+            console.error('Could not get JWTs for users');
+            process.exit(1);
+        }
     });
 
     it('should not be visible to anonymous visitors', (done) => {
@@ -28,6 +48,7 @@ describe('engagements', () => {
             .expect(400, done);
     });
 
+    it('should not be query-able to anonymous visitors', async() => {});
 
     const newEngagement = {
         id: 100,

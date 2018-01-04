@@ -1,5 +1,5 @@
 const common = require('./common.js');
-const rest_service = common.rest_service;
+const restService = common.restService;
 const jwt = common.jwt;
 const resetdb = common.resetdb;
 const baseURL = common.baseURL;
@@ -13,7 +13,7 @@ describe.skip('auth', function () {
   });
 
   it('login', function (done) {
-    rest_service()
+    restService()
       .post('/rpc/login?select=me,token')
       .set('Accept', 'application/vnd.pgrst.object+json')
       .send({
@@ -29,7 +29,7 @@ describe.skip('auth', function () {
   });
 
   it('me', function (done) {
-    rest_service()
+    restService()
       .post('/rpc/me')
       .set('Accept', 'application/vnd.pgrst.object+json')
       .set('Authorization', 'Bearer ' + jwt)
@@ -43,7 +43,7 @@ describe.skip('auth', function () {
   });
 
   it('refresh_token', function (done) {
-    rest_service()
+    restService()
       .post('/rpc/refresh_token')
       .set('Accept', 'application/vnd.pgrst.object+json')
       .set('Authorization', 'Bearer ' + jwt)
@@ -57,7 +57,7 @@ describe.skip('auth', function () {
   });
 
   it('signup', function (done) {
-    rest_service()
+    restService()
       .post('/rpc/signup')
       .set('Accept', 'application/vnd.pgrst.object+json')
       .send({

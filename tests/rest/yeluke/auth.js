@@ -3,6 +3,8 @@
 const {
     resetdb,
     baseURL,
+    authPath,
+    jwtPath,
 } = require('../common.js');
 const request = require('supertest');
 const {
@@ -11,9 +13,6 @@ const {
     we,
 } = require('./helpers.js');
 
-
-const authPath = '/auth/login';
-const jwtPath = '/auth/jwt';
 
 describe('Yeluke auth using CAS', () => {
     before((done) => {
@@ -49,7 +48,7 @@ describe('Yeluke auth using CAS', () => {
 
     it('should not let invalid users get a JWT', async() => {
         const getCookieAndJWT = async() => {
-            const cookie = await getUserSessionCookie(baseURL, authPath, 'abc123', true);
+            const cookie = await getUserSessionCookie(baseURL, authPath, 'validuser', true);
             return getJWT(baseURL, jwtPath, [cookie]);
         };
         we.expect(getCookieAndJWT())

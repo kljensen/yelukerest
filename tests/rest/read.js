@@ -1,5 +1,5 @@
 const common = require('./common.js');
-const rest_service = common.rest_service;
+const restService = common.restService;
 const jwt = common.jwt;
 const resetdb = common.resetdb;
 const baseURL = common.baseURL;
@@ -13,7 +13,7 @@ describe('read', function () {
   });
 
   it('basic', function (done) {
-    rest_service()
+    restService()
       .get('/todos?select=id,todo')
       .expect('Content-Type', /json/)
       .expect(200, done)
@@ -24,7 +24,7 @@ describe('read', function () {
   });
 
   it('by primary key', function (done) {
-    rest_service()
+    restService()
       .get('/todos/1?select=id,todo')
       .expect(200, done)
       .expect(r => {
