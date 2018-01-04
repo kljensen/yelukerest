@@ -132,6 +132,36 @@ const postRequestWithJWT = (path, body, jwt) => {
     return req;
 };
 
+/**
+ * Dynamically creates a number of test cases on post/insert. The caller
+ * supplies a the `it` from a mocha test suite and this function adds in tests.
+ * @param  {it} theIt The `it` from a mocha test suite
+ * @param {String} path path to which we will POST
+ * @param {Object} body body we will POST
+ * @param {Object} testCases the test cases, each of which can override path or body.
+ *                  These should have at least a `status` attribute.
+ * @returns {undefined}
+ */
+async function makePostTestCases(theIt, path, body, testCases) {
+    testCases.forEach((tc) => {
+        theIt(tc.title || 'the test', async() => {
+            we.expect(tc)
+                .to.have.property('status');
+            postRequestWithJWT(tc.path || path, tc.body || body, tc.jwt)
+                .expect(tc.status);
+        });
+    });
+}
+
+
+// const tryToInsertNewEngagement = jwt => postRequestWithJWT('/engagements', newEngagement, jwt);
+
+// it('should not accept post requests from anonymous users', (done) => {
+//     tryToInsertNewEngagement()
+//         .expect(401, done);
+// });
+
+
 module.exports = {
     getJWTRequest,
     getJWT,
@@ -139,4 +169,5 @@ module.exports = {
     getJWTForNetid,
     we,
     postRequestWithJWT,
+    makePostTestCases,
 };

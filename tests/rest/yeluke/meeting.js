@@ -1,15 +1,33 @@
 /* global describe it before */
-const common = require('../common.js');
-
 
 const {
+    getJWTForNetid,
+    makePostTestCases,
+} = require('./helpers.js');
+
+const {
+    resetdb,
+    baseURL,
+    authPath,
+    jwtPath,
     restService,
-} = common;
+} = require('../common.js');
+
 
 describe('meetings API endpoint', () => {
-    before((done) => {
-        common.resetdb();
-        done();
+    let student1JWT;
+    let facultyJWT;
+
+    before(async() => {
+        resetdb();
+        try {
+            student1JWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+            facultyJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
+        } catch (error) {
+            // eslint-disable-next-line no-console
+            console.error('Could not get JWTs for users');
+            process.exit(1);
+        }
     });
 
     it('should be selectable', (done) => {
@@ -45,17 +63,22 @@ describe('meetings API endpoint', () => {
         updated_at: '2017-12-27T22:09:47.089125+00:00',
     };
 
-    it('should not accept other HTTP verbs', (done) => {
-        restService()
-            .post('/meetings')
-            .send(newMeeting)
-            .expect(401, done);
-    });
 
-    it('should not accept invalid POST requests', (done) => {
-        restService()
-            .post('/meetings')
-            .send({})
-            .expect(401, done);
-    });
+    const insertTestCases = [{
+        title: 'should NOT allow posts/inserts from anonymous users',
+        status: 403,
+    }, {
+        title: 'should allow posts/inserts from faculty',
+        status: 201,
+        jwt: facultyJWT,
+    }, {
+        title: 'should NOT allow posts/inserts from students',
+        status: 403,
+        jwt: student1JWT,
+    }, {
+        title: 'should should enforce primary key uniqueness constraints',
+        status: 403,
+        jwt: facultyJWT,
+    }];
+    makePostTestCases(it, '/engagements', newMeeting, insertTestCases);
 });

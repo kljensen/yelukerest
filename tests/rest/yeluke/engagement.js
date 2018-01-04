@@ -11,7 +11,8 @@ const {
 const {
     getJWTForNetid,
     we,
-    postRequestWithJWT,
+    makePostTestCases,
+    tryInserts,
 } = require('./helpers.js');
 
 describe('engagements API endpoint', () => {
@@ -88,27 +89,21 @@ describe('engagements API endpoint', () => {
         participation: 'led',
     };
 
-    const tryToInsertNewEngagement = jwt => postRequestWithJWT('/engagements', newEngagement, jwt);
-
-    it('should not accept post requests from anonymous users', (done) => {
-        tryToInsertNewEngagement()
-            .expect(401, done);
-    });
-
-    it('should not accept post requests from students', (done) => {
-        tryToInsertNewEngagement(student1JWT)
-            .expect(403, done);
-    });
-
-    it('should allow posts/inserts from faculty', async() => {
-        const req = tryToInsertNewEngagement(facultyJWT)
-            .expect(201);
-        return req;
-    });
-
-    it('should should enforce primary key uniqueness constraints', async() => {
-        const req = tryToInsertNewEngagement(facultyJWT)
-            .expect(409);
-        return req;
-    });
+    const insertTestCases = [{
+        title: 'should not accept post requests from anonymous users',
+        status: 403,
+    }, {
+        title: 'should allow posts/inserts from faculty',
+        status: 201,
+        jwt: facultyJWT,
+    }, {
+        title: 'should not accept post requests from students',
+        status: 403,
+        jwt: student1JWT,
+    }, {
+        title: 'should should enforce primary key uniqueness constraints',
+        status: 403,
+        jwt: facultyJWT,
+    }];
+    makePostTestCases(it, '/engagements', newEngagement, insertTestCases);
 });
