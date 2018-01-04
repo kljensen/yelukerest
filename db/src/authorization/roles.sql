@@ -34,3 +34,8 @@ $$  language plpgsql;;
 
 select _temp_create_application_roles(:'authenticator', enum_range(null::data.user_role)::text[]);
 drop function _temp_create_application_roles(text, text[]);
+
+-- Create the authapp user. Notice that these two variables
+-- are passed in from the environment
+drop role if exists authapp;
+create role authapp with login password :'authapp_pass';

@@ -26,8 +26,8 @@ SELECT lives_ok(
 );
 
 SELECT set_eq(
-    'SELECT (id) FROM api.users',
-    ARRAY[1,2,3,5],
+    'SELECT (id) FROM api.users ORDER BY id',
+    ARRAY[1,2,3,4,5],
     'faculty should be able to select from the api.users view'
 );
 

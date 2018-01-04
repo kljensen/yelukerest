@@ -45,13 +45,21 @@ config.redis_port = getRequiredEnvVariable('REDIS_PORT');
 // Grab the session secret, used for signing cookies
 config.session_secret = getRequiredEnvVariable('SESSION_SECRET');
 
+// Grab the jwt secret, used for signing JWTs
+config.jwt_secret = getRequiredEnvVariable('JWT_SECRET');
+config.jwt_issuer = 'yeluke-authapp';
+
+// Get database-related connection info
+config.db_host = getRequiredEnvVariable('DB_HOST');
+config.db_port = getRequiredEnvVariable('DB_PORT');
+config.db_schema = getRequiredEnvVariable('DB_SCHEMA');
+config.db_name = getRequiredEnvVariable('DB_NAME');
+config.db_user = getRequiredEnvVariable('DB_USER');
+config.db_pass = getRequiredEnvVariable('DB_PASS');
+
 // Grab the host and port on which we should run
 config.host = '0.0.0.0';
 config.port = process.env.AUTHAPP_PORT || '4000';
-
-if (config.is_development) {
-    console.log('Configuration:');
-    console.log(config);
-}
+config.foo = 'bar';
 
 module.exports = config;

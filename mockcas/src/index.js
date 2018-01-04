@@ -56,7 +56,7 @@ app.get('/cas/serviceValidate', (req, res) => {
     return res.send(response);
 });
 
-app.get('/cas/login', (req, res) => {
+app.use('/cas/login', (req, res) => {
     const service = req.query.service;
     if (!service) {
         logger.info('\t* No service specified in query. Sending 400 response');

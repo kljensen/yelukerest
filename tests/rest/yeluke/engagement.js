@@ -1,8 +1,9 @@
-import {
-  rest_service,
-  jwt,
-  resetdb
-} from '../common.js';
+const common = require('../common.js');
+const rest_service = common.rest_service;
+const jwt = common.jwt;
+const resetdb = common.resetdb;
+const baseURL = common.baseURL;
+
 const request = require('supertest');
 const should = require("should");
 
@@ -18,26 +19,23 @@ describe('engagements', function () {
     done();
   });
 
-  it('should be selectable', function (done) {
+  it('should not be visible to anonymous visitors', function (done) {
     rest_service()
-      .get('/engagements?select=id')
+      .get('/engagements')
       .expect('Content-Type', /json/)
-      .expect(200, done)
-      .expect(r => {
-        r.body.length.should.equal(3);
-        r.body[0].id.should.equal(1);
-      })
+      .expect(401, done);
   });
 
-  it('should be selectable by primary key', function (done) {
+  it('should not be query-able to anonymous visitors', function (done) {
     rest_service()
-      .get('/engagements/1')
-      .expect(200, done)
-      .expect(r => {
-        r.body.id.should.equal(1);
-        r.body.slug.should.equal('intro');
-      })
+      .get('/engagements?id=eq.1')
+      .expect('Content-Type', /json/)
+      // Notice how PostgREST has 400's in some cases where it seems
+      // like it should have 401. This is annoying. There is some info
+      // about similar problems https://github.com/begriffs/postgrest/issues?utf8=%E2%9C%93&q=400+401
+      .expect(400, done);
   });
+
 
   const newEngagement = {
     "id": 100,
@@ -55,7 +53,7 @@ describe('engagements', function () {
     rest_service()
       .post('/engagements')
       .send(newEngagement)
-      .expect(401, done);
+      .expect(400, done);
   });
 
   it('should not accept invalid POST requests', function (done) {

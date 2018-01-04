@@ -11,12 +11,12 @@ using (
 	(request.user_role() = 'student' and request.user_id() = id)
 	or
 	-- faculty can see user by all users
-	(request.user_role() = 'faculty')
+	(request.user_role() = 'faculty' or current_user = 'authapp')
 );
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own users.
-grant select on api.users to student;
+grant select on api.users to student, authapp;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.users to faculty;
