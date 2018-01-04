@@ -14,7 +14,6 @@ const {
 } = require('./helpers.js');
 
 describe('engagements API endpoint', () => {
-    // eslint-disable-next-line no-unsed-vars
     let student1JWT;
     let facultyJWT;
 
