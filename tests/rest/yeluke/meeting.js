@@ -2,9 +2,11 @@
 const common = require('../common.js');
 
 
-const restService = common.restService;
+const {
+    restService,
+} = common;
 
-describe('meetings', () => {
+describe('meetings API endpoint', () => {
     before((done) => {
         common.resetdb();
         done();
