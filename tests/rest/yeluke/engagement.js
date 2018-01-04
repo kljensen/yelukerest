@@ -11,6 +11,7 @@ const {
 const {
     getJWTForNetid,
     we,
+    postRequestWithJWT,
 } = require('./helpers.js');
 
 describe('engagements API endpoint', () => {
@@ -87,17 +88,7 @@ describe('engagements API endpoint', () => {
         participation: 'led',
     };
 
-    const tryToInsertNewEngagement = (jwt) => {
-        let req = restService()
-            .post('/engagements')
-            .set('Accept', 'application/vnd.pgrst.object+json');
-
-        if (jwt) {
-            req = req.set('Authorization', `Bearer ${jwt}`)
-        }
-        req = req.send(newEngagement);
-        return req;
-    };
+    const tryToInsertNewEngagement = jwt => postRequestWithJWT('/engagements', newEngagement, jwt);
 
     it('should not accept post requests from anonymous users', (done) => {
         tryToInsertNewEngagement()

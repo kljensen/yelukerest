@@ -6,6 +6,9 @@ const chaiAsPromised = require('chai-as-promised');
 const chaiString = require('chai-string');
 const dirtyChai = require('dirty-chai');
 
+const {
+    restService,
+} = require('../common.js');
 
 // Add the we string plugin
 we.use(chaiString);
@@ -116,10 +119,24 @@ async function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, con
     return getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
 }
 
+
+const postRequestWithJWT = (path, body, jwt) => {
+    let req = restService()
+        .post(path)
+        .set('Accept', 'application/vnd.pgrst.object+json');
+
+    if (jwt) {
+        req = req.set('Authorization', `Bearer ${jwt}`);
+    }
+    req = req.send(body);
+    return req;
+};
+
 module.exports = {
     getJWTRequest,
     getJWT,
     getUserSessionCookie,
     getJWTForNetid,
     we,
+    postRequestWithJWT,
 };
