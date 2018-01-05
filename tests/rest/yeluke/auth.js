@@ -49,7 +49,7 @@ describe('authentication API endpoint', () => {
 
     it('should not let invalid users get a JWT', async() => {
         const getCookieAndJWT = async() => {
-            const cookie = await getUserSessionCookie(baseURL, authPath, 'validuser', true);
+            const cookie = await getUserSessionCookie(baseURL, authPath, 'invaliduser', true);
             return getJWT(baseURL, jwtPath, [cookie]);
         };
         we.expect(getCookieAndJWT())
