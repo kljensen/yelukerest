@@ -12,11 +12,12 @@ const {
     getJWTForNetid,
     we,
     postRequestWithJWT,
+    makeInsertTestCases,
 } = require('./helpers.js');
 
 describe('engagements API endpoint', () => {
-    let studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
-    let facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
+    const studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+    const facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
     let studentJWT;
     let facultyJWT;
 
@@ -90,27 +91,21 @@ describe('engagements API endpoint', () => {
         participation: 'led',
     };
 
-    const tryToInsertNewEngagement = jwt => postRequestWithJWT('/engagements', newEngagement, jwt);
-
-    it('should not accept post requests from anonymous users', (done) => {
-        tryToInsertNewEngagement()
-            .expect(401, done);
-    });
-
-    it('should not accept post requests from students', (done) => {
-        tryToInsertNewEngagement(studentJWT)
-            .expect(403, done);
-    });
-
-    it('should allow posts/inserts from faculty', async() => {
-        const req = tryToInsertNewEngagement(facultyJWT)
-            .expect(201);
-        return req;
-    });
-
-    it('should should enforce primary key uniqueness constraints', async() => {
-        const req = tryToInsertNewEngagement(facultyJWT)
-            .expect(409);
-        return req;
-    });
+    const insertTestCases = [{
+        title: 'should not accept post requests from anonymous users',
+        status: 403,
+    }, {
+        title: 'should allow posts/inserts from faculty',
+        status: 201,
+        jwt: facultyJWTPromise,
+    }, {
+        title: 'should not accept post requests from students',
+        status: 403,
+        jwt: studentJWTPromise,
+    }, {
+        title: 'should should enforce primary key uniqueness constraints',
+        status: 403,
+        jwt: facultyJWTPromise,
+    }];
+    makeInsertTestCases(it, '/engagements', newEngagement, insertTestCases);
 });

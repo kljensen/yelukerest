@@ -154,7 +154,6 @@ async function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, con
     return getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
 }
 
-
 const postRequestWithJWT = (path, body, jwt) => {
     let req = restService()
         .post(path)
@@ -167,6 +166,93 @@ const postRequestWithJWT = (path, body, jwt) => {
     return req;
 };
 
+const getRequestWithJWT = (path, jwt) => {
+    let req = restService()
+        .get(path)
+        .set('Accept', 'application/vnd.pgrst.object+json');
+
+    if (jwt) {
+        console.log('jwt =', jwt);
+        req = req.set('Authorization', `Bearer ${jwt}`);
+    } else {
+        console.log('NO JWT');
+    }
+    return req;
+};
+
+
+/**
+ * Dynamically creates a number of test cases on post/insert. The caller
+ * supplies a the `it` from a mocha test suite and this function adds in tests.
+ * @param  {it} theIt The `it` from a mocha test suite
+ * @param {String} path path to which we will POST
+ * @param {Object} body body we will POST
+ * @param {Object} testCases the test cases, each of which can override path or body.
+ *                  These should have at least a `status` attribute.
+ * @returns {undefined}
+ */
+async function makeInsertTestCases(theIt, path, body, testCases) {
+    testCases.forEach((tc) => {
+        theIt(tc.title || 'the test', async() => {
+            we.expect(tc)
+                .to.have.property('status');
+            try {
+                postRequestWithJWT(tc.path || path, tc.body || body, tc.jwt)
+                    .expect(tc.status);
+            } catch (error) {
+                throw error;
+            }
+        });
+    });
+}
+
+/**
+ * Dynamically creates a number of test cases. Often, we want to verify something
+ * like "a user can see only her/his rows" and "a faculty can see all rows". This
+ * helps us write those with minimal code duplication.
+ * @param  {it} theIt The `it` from a mocha test suite
+ * @param {String} path path to which we will POST
+ * @param {Function} setMaker a function that is applied to each row of the
+ *                              results to create a set.
+ * @param {Object} testCases the test cases, each of which can override path.
+ *                  These should have at least a `status` attribute. It can
+ *                  also have a `length` and a `set` attribute. The `set`
+ * @returns {undefined}
+ */
+async function makeListTestCases(theIt, path, setMaker, testCases) {
+    testCases.forEach((tc) => {
+        theIt(tc.title || 'the test', async() => {
+            we.expect(tc)
+                .to.have.property('status');
+            console.log('In makelisttestcases, tc = ', tc);
+            let response;
+            try {
+                response = await getRequestWithJWT(tc.path || path, tc.jwt)
+                    .expect(tc.status);
+            } catch (error) {
+                throw error;
+            }
+
+            // If we expect an OK response, let's check to ensure
+            // the content is also what we expect.
+            if (tc.status === 200) {
+                we.expect(response.body)
+                    .to.be.a.instanceOf(Array);
+                if (tc.length) {
+                    we.expect(response.body)
+                        .to.have.lengthOf(tc.length);
+                }
+                if ((tc.setMaker || setMaker) && tc.set) {
+                    const thisSet = new Set(response.body.map(tc.setMaker || setMaker));
+                    we.expect(thisSet)
+                        .to.equal(new Set(tc.set));
+                }
+            }
+        });
+    });
+}
+
+
 module.exports = {
     getJWTRequest,
     getJWT,
@@ -174,4 +260,6 @@ module.exports = {
     getJWTForNetid,
     we,
     postRequestWithJWT,
+    makeListTestCases,
+    makeInsertTestCases,
 };
