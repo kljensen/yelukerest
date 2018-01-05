@@ -168,14 +168,10 @@ const postRequestWithJWT = (path, body, jwt) => {
 
 const getRequestWithJWT = (path, jwt) => {
     let req = restService()
-        .get(path)
-        .set('Accept', 'application/vnd.pgrst.object+json');
+        .get(path);
 
     if (jwt) {
-        console.log('jwt =', jwt);
         req = req.set('Authorization', `Bearer ${jwt}`);
-    } else {
-        console.log('NO JWT');
     }
     return req;
 };
@@ -189,15 +185,29 @@ const getRequestWithJWT = (path, jwt) => {
  * @param {Object} body body we will POST
  * @param {Object} testCases the test cases, each of which can override path or body.
  *                  These should have at least a `status` attribute.
- * @returns {undefined}
+ * @returns {Promise} A promise that is resolved when function finishes
  */
 async function makeInsertTestCases(theIt, path, body, testCases) {
     testCases.forEach((tc) => {
         theIt(tc.title || 'the test', async() => {
             we.expect(tc)
                 .to.have.property('status');
+
+            // If the JWT is a Promise, resolve it.
+            let jwtValue;
+            if (tc.jwt && tc.jwt instanceof Promise) {
+                try {
+                    jwtValue = await tc.jwt;
+                } catch (error) {
+                    throw error;
+                }
+            } else {
+                jwtValue = tc.jwt;
+            }
+
+            // Make the request
             try {
-                postRequestWithJWT(tc.path || path, tc.body || body, tc.jwt)
+                postRequestWithJWT(tc.path || path, tc.body || body, jwtValue)
                     .expect(tc.status);
             } catch (error) {
                 throw error;
@@ -212,22 +222,35 @@ async function makeInsertTestCases(theIt, path, body, testCases) {
  * helps us write those with minimal code duplication.
  * @param  {it} theIt The `it` from a mocha test suite
  * @param {String} path path to which we will POST
- * @param {Function} setMaker a function that is applied to each row of the
+ * @param {Function} transformation a function that is applied to each row of the
  *                              results to create a set.
  * @param {Object} testCases the test cases, each of which can override path.
  *                  These should have at least a `status` attribute. It can
- *                  also have a `length` and a `set` attribute. The `set`
- * @returns {undefined}
+ *                  also have a `length` and a `expected` attribute.
+ * @returns {Promise} A promise that is resolved when function finishes
  */
-async function makeListTestCases(theIt, path, setMaker, testCases) {
+async function makeListTestCases(theIt, path, transformation, testCases) {
     testCases.forEach((tc) => {
         theIt(tc.title || 'the test', async() => {
             we.expect(tc)
                 .to.have.property('status');
-            console.log('In makelisttestcases, tc = ', tc);
+
+            // If the JWT is a Promise, resolve it.
+            let jwtValue;
+            if (tc.jwt && tc.jwt instanceof Promise) {
+                try {
+                    jwtValue = await tc.jwt;
+                } catch (error) {
+                    throw error;
+                }
+            } else {
+                jwtValue = tc.jwt;
+            }
+
+            // Make the request
             let response;
             try {
-                response = await getRequestWithJWT(tc.path || path, tc.jwt)
+                response = await getRequestWithJWT(tc.path || path, jwtValue)
                     .expect(tc.status);
             } catch (error) {
                 throw error;
@@ -242,10 +265,10 @@ async function makeListTestCases(theIt, path, setMaker, testCases) {
                     we.expect(response.body)
                         .to.have.lengthOf(tc.length);
                 }
-                if ((tc.setMaker || setMaker) && tc.set) {
-                    const thisSet = new Set(response.body.map(tc.setMaker || setMaker));
-                    we.expect(thisSet)
-                        .to.equal(new Set(tc.set));
+                if ((tc.transformation || transformation) && tc.expected) {
+                    const received = response.body.map(tc.transformation || transformation);
+                    we.expecte(received)
+                        .to.equal(tc.expected);
                 }
             }
         });

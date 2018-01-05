@@ -10,8 +10,7 @@ const {
 
 const {
     getJWTForNetid,
-    we,
-    postRequestWithJWT,
+    makeListTestCases,
     makeInsertTestCases,
 } = require('./helpers.js');
 
@@ -40,50 +39,21 @@ describe('engagements API endpoint', () => {
             .expect(401, done);
     });
 
-    it('should not be query-able to anonymous visitors', (done) => {
-        restService()
-            .get('/engagements?user_id=eq.1')
-            .expect('Content-Type', /json/)
-            // Notice how PostgREST has 400's in some cases where it seems
-            // like it should have 401. This is annoying. There is some info
-            // about similar problems https://github.com/begriffs/postgrest/issues?utf8=%E2%9C%93&q=400+401
-            .expect(401, done);
-    });
+    const listTestCases = [{
+        title: 'should allow students to see only their own engagements foo',
+        set: [1],
+        length: 3,
+        status: 200,
+        jwt: studentJWTPromise,
+    }, {
+        title: 'should allow faculty to see all engagements foo',
+        set: [1, 2, 3],
+        length: 9,
+        status: 200,
+        jwt: facultyJWTPromise,
+    }];
 
-    it('should allow logged-in students to see only their own engagements', async() => {
-        const response = await restService()
-            .get('/engagements')
-            .set('Authorization', `Bearer ${studentJWT}`)
-            .expect('Content-Type', /json/)
-            .expect(200);
-        we.expect(response.body)
-            .to.be.a.instanceOf(Array);
-        we.expect(response.body)
-            .to.have.lengthOf(3);
-        const userIds = new Set(response.body.map(x => x.user_id));
-        we.expect(userIds.size)
-            .to.equal(1);
-        we.expect(userIds.has(1))
-            .to.have.true(1);
-    });
-
-    it('should allow faculty to see all engagements', async() => {
-        const response = await restService()
-            .get('/engagements')
-            .query({
-                meeting_id: 'eq.2',
-            })
-            .set('Authorization', `Bearer ${facultyJWT}`)
-            .expect('Content-Type', /json/)
-            .expect(200);
-        we.expect(response.body)
-            .to.be.a.instanceOf(Array);
-        we.expect(response.body)
-            .to.have.lengthOf(3);
-        const userIds = new Set(response.body.map(x => x.user_id));
-        we.expect(userIds.size)
-            .to.equal(3);
-    });
+    makeListTestCases(it, '/engagements', (x => x.user_id), listTestCases);
 
     const newEngagement = {
         user_id: 5,
