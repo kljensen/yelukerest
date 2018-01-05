@@ -15,13 +15,15 @@ const {
 } = require('./helpers.js');
 
 describe('engagements API endpoint', () => {
-    let student1JWT;
+    let studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+    let facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
+    let studentJWT;
     let facultyJWT;
 
     before(async() => {
         resetdb();
         try {
-            student1JWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+            studentJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
             facultyJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
         } catch (error) {
             // eslint-disable-next-line no-console
@@ -50,7 +52,7 @@ describe('engagements API endpoint', () => {
     it('should allow logged-in students to see only their own engagements', async() => {
         const response = await restService()
             .get('/engagements')
-            .set('Authorization', `Bearer ${student1JWT}`)
+            .set('Authorization', `Bearer ${studentJWT}`)
             .expect('Content-Type', /json/)
             .expect(200);
         we.expect(response.body)
@@ -96,7 +98,7 @@ describe('engagements API endpoint', () => {
     });
 
     it('should not accept post requests from students', (done) => {
-        tryToInsertNewEngagement(student1JWT)
+        tryToInsertNewEngagement(studentJWT)
             .expect(403, done);
     });
 
