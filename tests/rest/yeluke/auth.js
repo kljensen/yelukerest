@@ -9,10 +9,14 @@ const {
 const request = require('supertest');
 const {
     getUserSessionCookie,
-    getJWT,
+    getJWTForNetid,
     we,
 } = require('./helpers.js');
 
+process.on('unhandledRejection', (r) => {
+    console.error('Caught an unhandledRejection!');
+    console.error(r);
+});
 
 describe('authentication API endpoint', () => {
     const cleanup = (done) => {
@@ -22,25 +26,41 @@ describe('authentication API endpoint', () => {
     before(cleanup);
 
     it('login page should give a temporary redirect to the CAS server', async() => {
-        await request(baseURL)
-            .get(authPath)
-            .expect('Location', /http/)
-            .expect(307);
+        try {
+            await request(baseURL)
+                .get(authPath)
+                .expect('Location', /http/)
+                .expect(307);
+        } catch (error) {
+            throw error;
+        }
     });
 
     it('should create a session for a valid user', async() => {
-        await getUserSessionCookie(baseURL, authPath, 'abc123', true);
+        try {
+            await getUserSessionCookie(baseURL, authPath, 'abc123', true);
+        } catch (error) {
+            throw error;
+        }
     });
 
     it('should not create a session for an invalid user', async() => {
-        const p = getUserSessionCookie(baseURL, authPath, 'invalid23', false);
-        we.expect(p)
-            .to.be.rejectedWith(Error);
+        try {
+            const p = getUserSessionCookie(baseURL, authPath, 'invalid23', false);
+            we.expect(p)
+                .to.be.rejected;
+        } catch (error) {
+            throw error;
+        }
     });
 
     it('should let valid users get a JWT', async() => {
-        const cookie = await getUserSessionCookie(baseURL, authPath, 'abc123', true);
-        const jwt = await getJWT(baseURL, jwtPath, [cookie]);
+        let jwt;
+        try {
+            jwt = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+        } catch (error) {
+            throw error;
+        }
         we.expect(jwt)
             .to.be.a.singleLine();
         we.expect(jwt)
@@ -48,11 +68,13 @@ describe('authentication API endpoint', () => {
     });
 
     it('should not let invalid users get a JWT', async() => {
-        const getCookieAndJWT = async() => {
-            const cookie = await getUserSessionCookie(baseURL, authPath, 'invaliduser', true);
-            return getJWT(baseURL, jwtPath, [cookie]);
-        };
-        we.expect(getCookieAndJWT())
-            .to.be.rejectedWith(Error);
+        let jwt;
+        try {
+            jwt = await getJWTForNetid(baseURL, authPath, jwtPath, 'invalid234');
+        } catch (error) {
+            throw error;
+        }
+        we.expect(jwt)
+            .to.be.undefined();
     });
 });

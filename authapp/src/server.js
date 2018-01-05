@@ -154,8 +154,9 @@ function destroyRequestSession(req) {
  * @returns {Promise} a promise that must be awaited
  */
 async function validateYelukeUser(req, res, next) {
+    logger.info('Trying to validateYelukeUser');
     // Once we reach here, the user should have authenticated with CAS.
-
+    let logMsg;
     if (!req.session || !req.session.cas || !req.session.cas.user) {
         logger.info('No CAS information in the session');
         destroyRequestSession(req);
@@ -163,7 +164,8 @@ async function validateYelukeUser(req, res, next) {
             .send('Unauthorized');
         return;
     }
-    logger.info('Found CAS information');
+    logMsg = `Found CAS information in session: ${JSON.stringify(req.session.cas)}`;
+    logger.info(logMsg);
     const netid = req.session.cas.user;
     const userInfo = await getYelukeUserInfo(dbPool, netid);
     if (userInfo.error) {
@@ -171,12 +173,22 @@ async function validateYelukeUser(req, res, next) {
         res.send(httpstatus.INTERNAL_SERVER_ERROR);
         return;
     }
+    logMsg = `CAS ${netid} is NOT authorized to log in`;
     if (!userInfo.id || userInfo.netid !== netid) {
-        destroyRequestSession(req);
-        res.status(httpstatus.UNAUTHORIZED)
-            .send(`CAS ${netid} is not authorized to log in`);
-        return;
+        try {
+            logger.info(logMsg);
+            destroyRequestSession(req);
+            res.status(httpstatus.UNAUTHORIZED)
+                .send(logMsg);
+            return;
+
+        } catch (error) {
+            console.error(error);
+            throw error;
+        }
     }
+    logMsg = `CAS ${netid} is authorized to log in. Setting session info.`;
+    logger.info(logMsg);
     req.session.yeluke = {
         user: userInfo,
     };
@@ -265,7 +277,10 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
 
     // Handle content negotiation and send the JWT.
     // See http://expressjs.com/en/api.html#res.format
-    let logMsg = `Created JWT with payload = ${JSON.stringify(jwtPayload)}`;
+    let logMsg;
+    logMsg = `Had session info as follows = ${JSON.stringify(req.session.yeluke)}`;
+    logger.info(logMsg);
+    logMsg = `Created JWT with payload = ${JSON.stringify(jwtPayload)}`;
     logger.info(logMsg);
     logMsg = `JWT = ${signedJWT.slice(0,10)}...${signedJWT.slice(-10)}`;
     logger.info(logMsg);
