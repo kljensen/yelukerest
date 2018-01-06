@@ -32,6 +32,14 @@ app.engine('pug', require('pug')
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
 
+// Turn off all caching
+app.use((req, res, next) => {
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
+    next();
+});
+
 app.get('/cas/serviceValidate', (req, res) => {
     res.set('Content-Type', 'text/xml');
     const failureContent = '<cas:serviceResponse xmlns:cas="https://www.yale.edu/tp/cas"><cas:authenticationFailure code="INVALID_TICKET">Ticket ST-1856339-aA5Yuvrxzpv8Tau1cYQ7 not recognized</cas:authenticationFailure></cas:serviceResponse>';
