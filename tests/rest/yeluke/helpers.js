@@ -15,7 +15,6 @@ we.use(chaiString);
 we.use(dirtyChai);
 we.use(chaiAsPromised);
 
-
 /** Logs in a user by netid and returns a superagent agent
  *  that has session cookies set.
  * @param  {String} thisStartURL The base URL of the app
@@ -33,7 +32,6 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
             .get(thisAuthPath)
             .retry(2)
             .redirects(1);
-
     } catch (error) {
         throw error;
     }
@@ -81,6 +79,7 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
     // we.expect(finalResponse.header['set-cookie'])
     //     .to.have.lengthOf(1);
     const sidCookie = finalResponse.header['set-cookie'];
+
     return sidCookie;
 }
 
@@ -128,7 +127,6 @@ async function getJWT(thisBaseURL, thisJWTPath, cookies, contentType = 'text/pla
     if (response.ok) {
         return response.text;
     }
-    console.error(`Got response ${response.status} for cookies ${cookies}`);
     return undefined;
 }
 
@@ -152,7 +150,14 @@ async function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, con
     if (!cookie) {
         return undefined;
     }
-    return getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
+
+    let jwt;
+    try {
+        jwt = await getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
+    } catch (error) {
+        throw error;
+    }
+    return jwt;
 }
 
 const postRequestWithJWT = (path, body, jwt) => {
@@ -268,8 +273,8 @@ async function makeListTestCases(theIt, path, transformation, testCases) {
                 }
                 if ((tc.transformation || transformation) && tc.expected) {
                     const received = response.body.map(tc.transformation || transformation);
-                    we.expecte(received)
-                        .to.equal(tc.expected);
+                    we.expect(lodash.isEqual(received, tc.expected))
+                        .to.be.true();
                 }
             }
         });
