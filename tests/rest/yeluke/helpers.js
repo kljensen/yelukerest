@@ -4,6 +4,7 @@ const url = require('url');
 const chaiAsPromised = require('chai-as-promised');
 const chaiString = require('chai-string');
 const dirtyChai = require('dirty-chai');
+const lodash = require('lodash');
 
 const {
     restService,

@@ -8,6 +8,7 @@
     "eslint-config-airbnb-base": "^12.1.0",
     "eslint-plugin-import": "^2.8.0",
     "expect-cookies": "^0.1.2",
+    "lodash": "^4.17.4",
     "subzero-cli": "^0.1.17"
   },
   "devDependencies": {

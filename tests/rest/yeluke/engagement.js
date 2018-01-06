@@ -41,13 +41,13 @@ describe('engagements API endpoint', () => {
 
     const listTestCases = [{
         title: 'should allow students to see only their own engagements foo',
-        set: [1],
+        expected: [1, 1, 1],
         length: 3,
         status: 200,
         jwt: studentJWTPromise,
     }, {
         title: 'should allow faculty to see all engagements foo',
-        set: [1, 2, 3],
+        expected: [1, 2, 3, 1, 2, 3, 1, 2, 3],
         length: 9,
         status: 200,
         jwt: facultyJWTPromise,
