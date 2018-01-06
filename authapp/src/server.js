@@ -11,6 +11,7 @@ const RedisStore = require('connect-redis')(session);
 const config = require('./config.js');
 const morgan = require('morgan');
 const winston = require('winston');
+const cookieParser = require('cookie-parser');
 
 // Set up logging
 const level = process.env.LOG_LEVEL || 'debug';
@@ -32,8 +33,8 @@ const app = express();
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms', {
     stream: {
         write: (msg) => {
-            logger.info('-----------------');
             logger.info(msg);
+            logger.info('-----------------');
         },
     },
 }));
@@ -78,7 +79,7 @@ const sessionOptions = {
         // Protext against CSRF
         sameSite: true,
         // Expire after 5 days
-        maxAge: 5 * 24 * 60 * 60 * 1000,
+        maxAge: 5 * 24 * 60 * 60 * 1000
     },
     // The secret used to sign the cookie so that it is tamper-proof
     secret: config.session_secret,
@@ -98,8 +99,25 @@ if (config.is_production) {
     sessionOptions.cookie.secure = true;
 }
 
+// app.use(cookieParser(config.session_secret));
+
 // Tell the app to use our session options
 app.use(session(sessionOptions));
+
+// Turn off all caching
+app.use((req, res, next) => {
+    logger.info('----------*********************** START REQ');
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
+    if (req.session) {
+        logger.info(`Session cookie = ${JSON.stringify(req.session.cookie)}`);
+    } else {
+        logger.info('No session');
+    }
+    next();
+});
+
 
 /**
  * Check if a user exists in the database by netid
@@ -164,6 +182,8 @@ async function validateYelukeUser(req, res, next) {
             .send('Unauthorized');
         return;
     }
+    logMsg = `Found session ID: ${req.sessionID}`;
+    logger.info(logMsg);
     logMsg = `Found CAS information in session: ${JSON.stringify(req.session.cas)}`;
     logger.info(logMsg);
     const netid = req.session.cas.user;
@@ -303,6 +323,9 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
     });
 });
 
+
+
+
 // NOTE: I am not happy that I'm hard-coding the `/auth/`
 // prefix here and also in NGINX. I don't know how to pass
 // in an environment variable into Nginx so that this prefix
@@ -310,6 +333,7 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
 // TODO: find a solution.
 const mountPrefix = '/auth';
 app.use(mountPrefix, router);
+
 
 const PORT = 4000;
 const HOST = '0.0.0.0';
