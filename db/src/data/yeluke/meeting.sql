@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS meeting (
 );
 
 -- trigger (updated_at)
-DROP TRIGGER IF EXISTS tg_meetings_default ON meeting;
-CREATE TRIGGER tg_meetings_default
+DROP TRIGGER IF EXISTS tg_meeting_default ON meeting;
+CREATE TRIGGER tg_meeting_default
     BEFORE INSERT OR UPDATE
     ON meeting
     FOR EACH ROW
