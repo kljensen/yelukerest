@@ -25,6 +25,7 @@ ALTER TABLE "user"
     ON UPDATE CASCADE;
 
 -- Update the `updated_at` column when the team is changed.
+DROP TRIGGER IF EXISTS tg_team_update_timestamps ON team;
 CREATE TRIGGER tg_team_update_timestamps
     BEFORE INSERT OR UPDATE
     ON team

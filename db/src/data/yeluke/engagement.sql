@@ -17,7 +17,11 @@ CREATE TABLE IF NOT EXISTS engagement (
         DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
     PRIMARY KEY(user_id, meeting_id)
-);CREATE TRIGGER tg_engagement_update_timestamps
+);
+
+-- Update the `updated_at` column when the engagement is changed.
+DROP TRIGGER IF EXISTS tg_engagement_update_timestamps ON engagement;
+CREATE TRIGGER tg_engagement_update_timestamps
     BEFORE INSERT OR UPDATE
     ON engagement
     FOR EACH ROW
