@@ -51,8 +51,9 @@ tests and tests of the REST API using [supertest](https://github.com/visionmedia
 
 ### Adding a table when working on the database
 
-1. Add the table in  `db/src/data/yeluke`
-2. Add the auth in `db/src/authorization/yeluke`
+1. Add the table in  `db/src/data/yeluke.sql`
+2. Add the table in `db/src/sample_data/reset.sql`
+2. Add the auth in `db/src/authorization/yeluke.sql`
 3. Add the api views in `db/src/api/yeluke`
 4. Add sample data in `db/src/sample_data/yeluke`
 5. Add the tests in `tests/db/`
