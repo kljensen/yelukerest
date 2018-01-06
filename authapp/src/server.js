@@ -11,7 +11,6 @@ const RedisStore = require('connect-redis')(session);
 const config = require('./config.js');
 const morgan = require('morgan');
 const winston = require('winston');
-const cookieParser = require('cookie-parser');
 
 // Set up logging
 const level = process.env.LOG_LEVEL || 'debug';
@@ -79,7 +78,7 @@ const sessionOptions = {
         // Protext against CSRF
         sameSite: true,
         // Expire after 5 days
-        maxAge: 5 * 24 * 60 * 60 * 1000
+        maxAge: 5 * 24 * 60 * 60 * 1000,
     },
     // The secret used to sign the cookie so that it is tamper-proof
     secret: config.session_secret,
@@ -201,9 +200,7 @@ async function validateYelukeUser(req, res, next) {
             res.status(httpstatus.UNAUTHORIZED)
                 .send(logMsg);
             return;
-
         } catch (error) {
-            console.error(error);
             throw error;
         }
     }
@@ -302,7 +299,7 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
     logger.info(logMsg);
     logMsg = `Created JWT with payload = ${JSON.stringify(jwtPayload)}`;
     logger.info(logMsg);
-    logMsg = `JWT = ${signedJWT.slice(0,10)}...${signedJWT.slice(-10)}`;
+    logMsg = `JWT = ${signedJWT.slice(0, 10)}...${signedJWT.slice(-10)}`;
     logger.info(logMsg);
 
     res.format({
@@ -322,8 +319,6 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
         },
     });
 });
-
-
 
 
 // NOTE: I am not happy that I'm hard-coding the `/auth/`
