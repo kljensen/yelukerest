@@ -19,9 +19,9 @@ CREATE TABLE IF NOT EXISTS team (
 -- that this column will change if the `team.nickname` column
 -- to which is points changes. That is, we can change a team's
 -- name and it will be changed in the `data.user` table automatically.
-ALTER TABLE data."user"
+ALTER TABLE "user"
     ADD COLUMN team_nickname VARCHAR(50)
-    REFERENCES data.team
+    REFERENCES team
     ON UPDATE CASCADE;
 
 -- Update the `updated_at` column when the team is changed.
