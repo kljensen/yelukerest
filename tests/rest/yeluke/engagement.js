@@ -17,19 +17,9 @@ const {
 describe('engagements API endpoint', () => {
     const studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
     const facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
-    let studentJWT;
-    let facultyJWT;
 
     before(async() => {
         resetdb();
-        try {
-            studentJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
-            facultyJWT = await getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
-        } catch (error) {
-            // eslint-disable-next-line no-console
-            console.error('Could not get JWTs for users');
-            process.exit(1);
-        }
     });
 
     it('should not be visible to anonymous visitors', (done) => {
