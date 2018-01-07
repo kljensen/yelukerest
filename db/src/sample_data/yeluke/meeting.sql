@@ -15,6 +15,7 @@ COPY data.meeting (id,slug,summary,description,begins_at,duration,is_draft,creat
 1	intro	summary_2_2_2	description_1_	2017-12-27 14:54:50	80 minutes	FALSE	2017-12-27 14:54:50	2017-12-27 14:55:50
 2	structuredquerylang	summary_1_1_1_1_	descripti	2017-12-27 14:54:50	80 minutes	TRUE	2017-12-27 14:55:50	2017-12-27 14:53:50
 3	entrepreneurship-woot	summary_3_	description_1_	2017-12-27 14:55:50	80 minutes	FALSE	2017-12-27 14:53:50	2017-12-27 14:53:50
+4	server-side-apps	summary_3_	description_1_	2017-12-27 14:55:50	80 minutes	FALSE	2017-12-27 14:53:50	2017-12-27 14:53:50
 \.
 -- 
 -- restart sequences

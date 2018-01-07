@@ -28,7 +28,7 @@ SELECT throws_ok(
 
 select set_eq(
     'select id from api.meetings',
-    array[ 1, 2, 3 ],
+    array[ 1, 2, 3, 4],
     'anonymous user can see all rows of the api.meetings view'
 );
 
@@ -47,7 +47,7 @@ SELECT throws_ok(
 
 select set_eq(
     'select id from api.meetings',
-    array[ 1, 2, 3 ],
+    array[ 1, 2, 3, 4],
     'faculty user can see all rows of the api.meetings view'
 );
 
