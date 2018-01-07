@@ -15,6 +15,12 @@ using (
         -- that they have already begun. That is, quizzes
         -- for which they have a quiz submission.
         -- TODO: See if this is as inefficient as I expect it is.
+        -- Also, I received this note from R. Talpa:
+        -- "First thing to do is maybe to not reference api views in
+        -- the rls policies, it will be hard to figure out what rules
+        -- are applied, try and teference only tables from data in
+        -- your rls". However, when I change `api` below to `data`
+        -- I find that permission is denied.
         request.user_role() = 'student' and
         EXISTS(
             SELECT * FROM api.quiz_submissions AS qs
