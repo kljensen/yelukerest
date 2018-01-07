@@ -17,6 +17,29 @@ using (
 	or
 	-- faculty can see quiz_submission by all users
 	(request.user_role() = 'faculty')
+) WITH CHECK (
+	(request.user_role() = 'faculty')
+	or
+	(
+		-- Students may only submit a quiz under three conditions:
+		-- the user_id refers to themselves
+		-- the quiz is open for submission (after open, before close, and not draft)
+		request.user_role() = 'student' and (
+			request.user_id() = user_id
+			and
+			EXISTS(
+				SELECT * 
+				FROM api.quizzes as q
+				WHERE (
+					q.id = quiz_id and
+					q.is_draft = false and
+					q.open_at < current_timestamp and
+					current_timestamp < q.closed_at
+				)
+			)
+		)
+	)
+
 );
 
 -- student users can select from this view. The RLS will
