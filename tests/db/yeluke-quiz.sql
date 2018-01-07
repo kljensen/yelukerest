@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(8);
 
 SELECT view_owner_is(
     'api', 'quizzes', 'api',
@@ -37,17 +37,11 @@ set request.jwt.claim.role = 'student';
 
 SELECT set_eq(
     'SELECT id FROM api.quizzes ORDER BY (id)',
-    ARRAY[1, 2],
+    ARRAY[1, 2, 3],
     'students should be able to select from the api.quizzes view'
 );
 
-SELECT set_eq(
-    'SELECT id FROM api.quizzes ORDER BY (id)',
-    ARRAY[1, 2],
-    'students should not have SELECT on the api.quizzes view'
-);
-
-PREPARE doinsert AS INSERT INTO api.quizzes (meeting_id, points_possible, is_draft, duration, open_at, closed_at, created_at, updated_at) VALUES (3, 2, false, '00:10:00', '2017-01-04 07:55:50+00', '2017-01-06 07:55:50+00', '2018-01-06 07:55:50+00', '2018-01-06 13:10:23.24505+00');
+PREPARE doinsert AS INSERT INTO api.quizzes (meeting_id, points_possible, is_draft, duration, open_at, closed_at, created_at, updated_at) VALUES (4, 2, false, '00:10:00', '2017-01-04 07:55:50+00', '2017-01-06 07:55:50+00', '2018-01-06 07:55:50+00', '2018-01-06 13:10:23.24505+00');
 
 SELECT throws_ok(
     'doinsert',
