@@ -8,7 +8,7 @@ COPY data.quiz (id,meeting_id,points_possible,is_draft,duration,open_at,closed_a
 -- Notice the second quiz closes in 3019!
 
 -- restart sequences
-ALTER SEQUENCE data.quiz_id_seq RESTART WITH 3;
+ALTER SEQUENCE data.quiz_id_seq RESTART WITH 4;
 -- 
 -- analyze modified tables
 ANALYZE data.quiz;
