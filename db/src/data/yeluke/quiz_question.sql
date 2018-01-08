@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS quiz_question (
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
-    CONSTRAINT updated_after_created CHECK (updated_at >= created_at)
+    CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
+    UNIQUE (id, quiz_id)
     -- UNIQUE (id, quiz_id),
 );
 

@@ -7,4 +7,5 @@
 \ir ./yeluke/quiz.sql
 \ir ./yeluke/quiz_submission.sql
 \ir ./yeluke/quiz_question.sql
+\ir ./yeluke/quiz_question_option.sql
 
