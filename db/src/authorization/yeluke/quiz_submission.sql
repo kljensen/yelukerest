@@ -31,10 +31,7 @@ using (
 				SELECT * 
 				FROM api.quizzes as q
 				WHERE (
-					q.id = quiz_id and
-					q.is_draft = false and
-					q.open_at < current_timestamp and
-					current_timestamp < q.closed_at
+					q.id = quiz_id and q.is_open
 				)
 			)
 		)
