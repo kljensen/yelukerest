@@ -5,3 +5,4 @@
 \ir quiz_submission.sql
 \ir quiz_question.sql
 \ir quiz_question_option.sql
+\ir quiz_answer.sql

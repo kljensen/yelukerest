@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS quiz_question_option (
     -- so that we can ensure referential integrity. See the
     -- quiz_answer model for an explaination. 
     quiz_id INT NOT NULL,
+    UNIQUE (id, quiz_id), -- used for a composite foreign key
     body text NOT NULL,
     is_markdown BOOLEAN DEFAULT false NOT NULL,
     is_correct BOOLEAN DEFAULT false NOT NULL,

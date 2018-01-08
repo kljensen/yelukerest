@@ -8,4 +8,7 @@
 \ir ./yeluke/quiz_submission.sql
 \ir ./yeluke/quiz_question.sql
 \ir ./yeluke/quiz_question_option.sql
+\ir ./yeluke/quiz_answer.sql
 
+-- Remove api's ability to execute functions in public schema.
+ALTER DEFAULT PRIVILEGES FOR ROLE api REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
