@@ -28,9 +28,6 @@ using (
                 -- It is the current user
                 (qs.user_id = request.user_id()
                 AND
-                -- and it is the current quiz
-                --  this `quiz_id` is being taken from qs,
-                -- whereas I want it from quiz_question
                 quiz_question.quiz_id = qs.quiz_id)
         )
     )
