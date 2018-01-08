@@ -18,7 +18,7 @@ describe('meetings API endpoint', () => {
             .expect('Content-Type', /json/)
             .expect(200, done)
             .expect((r) => {
-                r.body.length.should.equal(3);
+                r.body.length.should.equal(4);
                 r.body[0].id.should.equal(1);
             });
     });

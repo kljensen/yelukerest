@@ -31,14 +31,14 @@ describe('quizzes API endpoint', () => {
 
     const listTestCases = [{
         title: 'should allow students to see all quizzes',
-        expected: [1, 2],
-        length: 2,
+        expected: [1, 2, 3],
+        length: 3,
         status: 200,
         jwt: studentJWTPromise,
     }, {
         title: 'should allow faculty to see all quizzes',
-        expected: [1, 2],
-        length: 2,
+        expected: [1, 2, 3],
+        length: 3,
         status: 200,
         jwt: facultyJWTPromise,
     }];
