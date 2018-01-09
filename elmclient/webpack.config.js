@@ -1,10 +1,10 @@
-var path = require('path');
-var webpack = require('webpack');
-var merge = require('webpack-merge');
-var HtmlWebpackPlugin = require('html-webpack-plugin');
-var autoprefixer = require('autoprefixer');
-var ExtractTextPlugin = require('extract-text-webpack-plugin');
-var CopyWebpackPlugin = require('copy-webpack-plugin');
+const path = require('path');
+const webpack = require('webpack');
+const merge = require('webpack-merge');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const autoprefixer = require('autoprefixer');
+const ExtractTextPlugin = require('extract-text-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 
 const prod = 'production';
@@ -12,8 +12,8 @@ const dev = 'development';
 
 // determine build env
 const TARGET_ENV = process.env.npm_lifecycle_event === 'build' ? prod : dev;
-const isDev = TARGET_ENV == dev;
-const isProd = TARGET_ENV == prod;
+const isDev = TARGET_ENV === dev;
+const isProd = TARGET_ENV === prod;
 
 // Grab the port number
 const port = process.env.ELMCLIENT_PORT || 8080;
@@ -21,47 +21,48 @@ const port = process.env.ELMCLIENT_PORT || 8080;
 // entry and output path/filename variables
 const entryPath = path.join(__dirname, 'src/static/index.js');
 const outputPath = path.join(__dirname, 'dist');
-const outputFilename = isProd ? '[name]-[hash].js' : '[name].js'
+const outputFilename = isProd ? '[name]-[hash].js' : '[name].js';
 
-console.log('WEBPACK GO! Building for ' + TARGET_ENV);
+// eslint-disable-next-line no-console
+console.log(`WEBPACK GO! Building for ${TARGET_ENV}`);
 
 // common webpack config (valid for dev and prod)
-var commonConfig = {
+const commonConfig = {
     output: {
         path: outputPath,
         filename: `static/js/${outputFilename}`,
     },
     resolve: {
         extensions: ['.js', '.elm'],
-        modules: ['node_modules']
+        modules: ['node_modules'],
     },
     module: {
         noParse: /\.elm$/,
         rules: [{
             test: /\.(eot|ttf|woff|woff2|svg)$/,
-            use: 'file-loader?publicPath=../../&name=static/css/[hash].[ext]'
-        }]
+            use: 'file-loader?publicPath=../../&name=static/css/[hash].[ext]',
+        }],
     },
     plugins: [
         new webpack.LoaderOptionsPlugin({
             options: {
-                postcss: [autoprefixer()]
-            }
+                postcss: [autoprefixer()],
+            },
         }),
         new HtmlWebpackPlugin({
             template: 'src/static/index.html',
             inject: 'body',
-            filename: 'index.html'
-        })
-    ]
-}
+            filename: 'index.html',
+        }),
+    ],
+};
 
 // additional webpack settings for local env (when invoked by 'npm start')
 if (isDev === true) {
     module.exports = merge(commonConfig, {
         entry: [
-            'webpack-dev-server/client?http://0.0.0.0:' + port,
-            entryPath
+            `webpack-dev-server/client?http://0.0.0.0:${port}`,
+            entryPath,
         ],
         devServer: {
             // serve index.html in place of 404 responses
@@ -69,7 +70,7 @@ if (isDev === true) {
             contentBase: './src',
             hot: true,
             host: '0.0.0.0',
-            port: port
+            port,
         },
         module: {
             rules: [{
@@ -80,14 +81,14 @@ if (isDev === true) {
                     options: {
                         verbose: true,
                         warn: true,
-                        debug: true
-                    }
-                }]
+                        debug: true,
+                    },
+                }],
             }, {
                 test: /\.sc?ss$/,
-                use: ['style-loader', 'css-loader', 'postcss-loader', 'sass-loader']
-            }]
-        }
+                use: ['style-loader', 'css-loader', 'postcss-loader', 'sass-loader'],
+            }],
+        },
     });
 }
 
@@ -99,14 +100,14 @@ if (isProd === true) {
             rules: [{
                 test: /\.elm$/,
                 exclude: [/elm-stuff/, /node_modules/],
-                use: 'elm-webpack-loader'
+                use: 'elm-webpack-loader',
             }, {
                 test: /\.sc?ss$/,
                 use: ExtractTextPlugin.extract({
                     fallback: 'style-loader',
-                    use: ['css-loader', 'postcss-loader', 'sass-loader']
-                })
-            }]
+                    use: ['css-loader', 'postcss-loader', 'sass-loader'],
+                }),
+            }],
         },
         plugins: [
             new ExtractTextPlugin({
@@ -115,9 +116,9 @@ if (isProd === true) {
             }),
             new CopyWebpackPlugin([{
                 from: 'src/static/img/',
-                to: 'static/img/'
+                to: 'static/img/',
             }, {
-                from: 'src/favicon.ico'
+                from: 'src/favicon.ico',
             }]),
 
             // extract CSS into a separate file
@@ -125,10 +126,10 @@ if (isProd === true) {
             new webpack.optimize.UglifyJsPlugin({
                 minimize: true,
                 compressor: {
-                    warnings: false
-                }
+                    warnings: false,
+                },
                 // mangle:  true
-            })
-        ]
+            }),
+        ],
     });
 }
