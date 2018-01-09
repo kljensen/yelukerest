@@ -1,5 +1,6 @@
 module Main exposing (..)
 
+import Meetings.Commands exposing (fetchMeetings)
 import Meetings.Model exposing (..)
 import Models exposing (Model, initialModel)
 import Msgs exposing (Msg)
@@ -16,7 +17,7 @@ init location =
         currentRoute =
             Routing.parseLocation location
     in
-    ( initialModel currentRoute, Cmd.batch [ fetchPlayers ] )
+    ( initialModel currentRoute, Cmd.batch [ fetchPlayers, fetchMeetings ] )
 
 
 subscriptions : Model -> Sub Msg

@@ -14,6 +14,9 @@ update msg model =
         Msgs.OnFetchPlayers response ->
             ( { model | players = response }, Cmd.none )
 
+        Msgs.OnFetchMeetings response ->
+            ( { model | meetings = response }, Cmd.none )
+
         Msgs.OnLocationChange location ->
             let
                 newRoute =

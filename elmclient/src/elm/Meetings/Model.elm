@@ -1,4 +1,4 @@
-module Meetings.Model exposing (Meeting)
+module Meetings.Model exposing (Meeting, meetingsDecoder)
 
 import Date exposing (Date)
 import Json.Decode as Decode
