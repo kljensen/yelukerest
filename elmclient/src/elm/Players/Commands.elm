@@ -1,4 +1,4 @@
-module Commands exposing (..)
+module Players.Commands exposing (..)
 
 import Http
 import Json.Decode as Decode
