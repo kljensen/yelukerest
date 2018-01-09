@@ -85,6 +85,9 @@ if (isDev === true) {
                     },
                 }],
             }, {
+                test: /\.css$/,
+                use: ['style-loader', 'css-loader', 'postcss-loader'],
+            }, {
                 test: /\.sc?ss$/,
                 use: ['style-loader', 'css-loader', 'postcss-loader', 'sass-loader'],
             }],
@@ -101,6 +104,12 @@ if (isProd === true) {
                 test: /\.elm$/,
                 exclude: [/elm-stuff/, /node_modules/],
                 use: 'elm-webpack-loader',
+            }, {
+                test: /\.css$/,
+                use: ExtractTextPlugin.extract({
+                    fallback: 'style-loader',
+                    use: ['css-loader', 'postcss-loader'],
+                }),
             }, {
                 test: /\.sc?ss$/,
                 use: ExtractTextPlugin.extract({
