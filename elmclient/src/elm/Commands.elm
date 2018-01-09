@@ -5,7 +5,7 @@ import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (decode, required)
 import Json.Encode as Encode
 import Msgs exposing (Msg)
-import Models exposing (PlayerId, Player)
+import Players.Model exposing (Player, PlayerId)
 import RemoteData
 
 

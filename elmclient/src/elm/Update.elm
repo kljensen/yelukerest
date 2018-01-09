@@ -1,7 +1,8 @@
 module Update exposing (..)
 
 import Commands exposing (savePlayerCmd)
-import Models exposing (Model, Player)
+import Players.Model exposing (Player, PlayerId)
+import Models exposing (Model)
 import Msgs exposing (Msg)
 import Routing exposing (parseLocation)
 import RemoteData

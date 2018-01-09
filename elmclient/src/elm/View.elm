@@ -1,7 +1,8 @@
 module View exposing (..)
 
 import Html exposing (Html, div, text)
-import Models exposing (Model, PlayerId)
+import Models exposing (Model)
+import Players.Model exposing (PlayerId)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Players.Edit

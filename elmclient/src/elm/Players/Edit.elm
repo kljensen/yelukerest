@@ -3,7 +3,7 @@ module Players.Edit exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (class, value, href)
 import Html.Events exposing (onClick)
-import Models exposing (Player)
+import Players.Model exposing (Player)
 import Msgs exposing (Msg)
 import Routing exposing (playersPath)
 

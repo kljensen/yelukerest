@@ -2,7 +2,7 @@ module Players.List exposing (..)
 
 import Html exposing (..)
 import Html.Attributes exposing (class, href)
-import Models exposing (Player)
+import Players.Model exposing (Player)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 import Routing exposing (playerPath)
