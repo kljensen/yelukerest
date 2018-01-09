@@ -1,18 +1,19 @@
 module Meetings.Model exposing (Meeting)
+
 import Date exposing (Date)
 import Json.Decode as Decode
-import Json.Decode.Pipeline exposing (decode, required)
 import Json.Decode.Extra exposing (date)
+import Json.Decode.Pipeline exposing (decode, required)
+
 
 type alias Meeting =
     { id : Int
     , slug : String
     , summary : String
     , description : String
-    , begins_at: Date
-    , is_draft: Bool
+    , begins_at : Date
+    , is_draft : Bool
     }
-
 
 
 meetingsDecoder : Decode.Decoder (List Meeting)
@@ -29,6 +30,7 @@ meetingDecoder =
         |> required "description" Decode.string
         |> required "begins_at" Json.Decode.Extra.date
         |> required "is_draft" Decode.bool
+
 
 
 -- Encoder not yet needed

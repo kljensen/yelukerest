@@ -1,4 +1,5 @@
-module Players.Model exposing (PlayerId, Player)
+module Players.Model exposing (Player, PlayerId)
+
 
 type alias PlayerId =
     String

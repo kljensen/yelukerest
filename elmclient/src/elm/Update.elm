@@ -1,11 +1,11 @@
 module Update exposing (..)
 
-import Players.Commands exposing (savePlayerCmd)
-import Players.Model exposing (Player, PlayerId)
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Routing exposing (parseLocation)
+import Players.Commands exposing (savePlayerCmd)
+import Players.Model exposing (Player, PlayerId)
 import RemoteData
+import Routing exposing (parseLocation)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -19,14 +19,14 @@ update msg model =
                 newRoute =
                     parseLocation location
             in
-                ( { model | route = newRoute }, Cmd.none )
+            ( { model | route = newRoute }, Cmd.none )
 
         Msgs.ChangeLevel player howMuch ->
             let
                 updatedPlayer =
                     { player | level = player.level + howMuch }
             in
-                ( model, savePlayerCmd updatedPlayer )
+            ( model, savePlayerCmd updatedPlayer )
 
         Msgs.OnPlayerSave (Ok player) ->
             ( updatePlayer model player, Cmd.none )
@@ -50,4 +50,4 @@ updatePlayer model updatedPlayer =
         updatedPlayers =
             RemoteData.map updatePlayerList model.players
     in
-        { model | players = updatedPlayers }
+    { model | players = updatedPlayers }

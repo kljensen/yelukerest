@@ -71,4 +71,4 @@ playerEncoder player =
             , ( "level", Encode.int player.level )
             ]
     in
-        Encode.object attributes
+    Encode.object attributes

@@ -1,10 +1,10 @@
 module Players.Edit exposing (..)
 
 import Html exposing (..)
-import Html.Attributes exposing (class, value, href)
+import Html.Attributes exposing (class, href, value)
 import Html.Events exposing (onClick)
-import Players.Model exposing (Player)
 import Msgs exposing (Msg)
+import Players.Model exposing (Player)
 import Routing exposing (playersPath)
 
 
@@ -50,8 +50,8 @@ btnLevelDecrease player =
         message =
             Msgs.ChangeLevel player -1
     in
-        a [ class "btn ml1 h1", onClick message ]
-            [ i [ class "fa fa-minus-circle" ] [] ]
+    a [ class "btn ml1 h1", onClick message ]
+        [ i [ class "fa fa-minus-circle" ] [] ]
 
 
 btnLevelIncrease : Player -> Html.Html Msg
@@ -60,8 +60,8 @@ btnLevelIncrease player =
         message =
             Msgs.ChangeLevel player 1
     in
-        a [ class "btn ml1 h1", onClick message ]
-            [ i [ class "fa fa-plus-circle" ] [] ]
+    a [ class "btn ml1 h1", onClick message ]
+        [ i [ class "fa fa-plus-circle" ] [] ]
 
 
 listBtn : Html Msg

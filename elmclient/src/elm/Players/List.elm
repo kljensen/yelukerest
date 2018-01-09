@@ -2,8 +2,8 @@ module Players.List exposing (..)
 
 import Html exposing (..)
 import Html.Attributes exposing (class, href)
-import Players.Model exposing (Player)
 import Msgs exposing (Msg)
+import Players.Model exposing (Player)
 import RemoteData exposing (WebData)
 import Routing exposing (playerPath)
 
@@ -72,8 +72,8 @@ editBtn player =
         path =
             playerPath player.id
     in
-        a
-            [ class "btn regular"
-            , href path
-            ]
-            [ i [ class "fa fa-pencil mr1" ] [], text "Edit" ]
+    a
+        [ class "btn regular"
+        , href path
+        ]
+        [ i [ class "fa fa-pencil mr1" ] [], text "Edit" ]
