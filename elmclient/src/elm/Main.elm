@@ -7,7 +7,7 @@ import Navigation exposing (Location)
 import Routing
 import Update exposing (update)
 import View exposing (view)
-
+import Meetings.Model exposing (..)
 
 init : Location -> ( Model, Cmd Msg )
 init location =
@@ -15,7 +15,7 @@ init location =
         currentRoute =
             Routing.parseLocation location
     in
-        ( initialModel currentRoute, fetchPlayers )
+        ( initialModel currentRoute, Cmd.batch [fetchPlayers] )
 
 
 subscriptions : Model -> Sub Msg

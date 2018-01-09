@@ -1,6 +1,6 @@
 module Update exposing (..)
 
-import Commands exposing (savePlayerCmd)
+import Players.Commands exposing (savePlayerCmd)
 import Players.Model exposing (Player, PlayerId)
 import Models exposing (Model)
 import Msgs exposing (Msg)
