@@ -9,6 +9,7 @@ import Json.Decode.Pipeline exposing (decode, required)
 type alias Meeting =
     { id : Int
     , slug : String
+    , title : String
     , summary : String
     , description : String
     , begins_at : Date
@@ -26,6 +27,7 @@ meetingDecoder =
     decode Meeting
         |> required "id" Decode.int
         |> required "slug" Decode.string
+        |> required "title" Decode.string
         |> required "summary" Decode.string
         |> required "description" Decode.string
         |> required "begins_at" Json.Decode.Extra.date

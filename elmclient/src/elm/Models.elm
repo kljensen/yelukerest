@@ -23,4 +23,5 @@ initialModel route =
 type Route
     = PlayersRoute
     | PlayerRoute PlayerId
+    | MeetingListRoute
     | NotFoundRoute

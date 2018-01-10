@@ -52,7 +52,7 @@ select set_eq(
 );
 
 SELECT lives_ok(
-    'INSERT INTO api.meetings (id, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (20, ''fakeclass'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    'INSERT INTO api.meetings (id, title, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (20, ''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
     'faculty should be able to insert into the api.meetings view'
 );
 
@@ -61,10 +61,9 @@ SELECT lives_ok(
     'faculty should be able to update meetings in the api.meetings view'
 );
 
-SELECT throws_ok(
-    'INSERT INTO api.meetings (id, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (21, ''fakeclass'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
-    '23505',
-    'duplicate key value violates unique constraint "meeting_slug_key"',
+SELECT throws_like(
+    'INSERT INTO api.meetings (id, title, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (20, ''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    '%duplicate key%',
     'meetings schema should reject duplicate slugs'
 );
 

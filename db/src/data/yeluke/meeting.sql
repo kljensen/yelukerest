@@ -4,6 +4,7 @@
 -- a hack-a-thon.
 CREATE TABLE IF NOT EXISTS meeting (
     id SERIAL PRIMARY KEY,
+    title VARCHAR(250) NOT NULL,
     slug VARCHAR(100) UNIQUE NOT NULL
         CHECK (slug ~ $$^[a-z0-9-]+$$),
     summary TEXT,
