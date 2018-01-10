@@ -1,7 +1,6 @@
 module Main exposing (..)
 
 import Meetings.Commands exposing (fetchMeetings)
-import Meetings.Model exposing (..)
 import Models exposing (Model, initialModel)
 import Msgs exposing (Msg)
 import Navigation exposing (Location)

@@ -1,7 +1,7 @@
 module View exposing (..)
 
 import Html exposing (Html, div, text)
-import Meetings.List
+import Meetings.Views
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Players.Edit
@@ -30,7 +30,10 @@ page model =
 
         -- TODO: Change
         Models.MeetingListRoute ->
-            Meetings.List.view model.meetings
+            Meetings.Views.listView model.meetings
+
+        Models.MeetingDetailRoute slug ->
+            Meetings.Views.detailView model.meetings slug
 
 
 playerEditPage : Model -> PlayerId -> Html Msg

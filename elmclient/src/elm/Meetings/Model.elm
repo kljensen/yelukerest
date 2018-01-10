@@ -1,9 +1,13 @@
-module Meetings.Model exposing (Meeting, meetingsDecoder)
+module Meetings.Model exposing (Meeting, MeetingSlug, meetingsDecoder)
 
 import Date exposing (Date)
 import Json.Decode as Decode
 import Json.Decode.Extra exposing (date)
 import Json.Decode.Pipeline exposing (decode, required)
+
+
+type alias MeetingSlug =
+    String
 
 
 type alias Meeting =

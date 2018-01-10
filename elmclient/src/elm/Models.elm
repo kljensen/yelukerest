@@ -1,6 +1,6 @@
 module Models exposing (..)
 
-import Meetings.Model exposing (Meeting)
+import Meetings.Model exposing (Meeting, MeetingSlug)
 import Players.Model exposing (Player, PlayerId)
 import RemoteData exposing (WebData)
 
@@ -24,4 +24,5 @@ type Route
     = PlayersRoute
     | PlayerRoute PlayerId
     | MeetingListRoute
+    | MeetingDetailRoute MeetingSlug
     | NotFoundRoute

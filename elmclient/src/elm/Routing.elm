@@ -3,29 +3,28 @@ module Routing exposing (..)
 import Models exposing (Route(..))
 import Navigation exposing (Location)
 import Players.Model exposing (PlayerId)
-import UrlParser exposing (..)
+import UrlParser exposing ((</>), Parser, map, oneOf, parseHash, s, string, top)
 
 
 matchers : Parser (Route -> a) a
 matchers =
     oneOf
-        [ map PlayersRoute top
+        [ map MeetingListRoute top
         , map PlayerRoute (s "players" </> string)
         , map PlayersRoute (s "players")
+        , map MeetingListRoute (s "meetings")
+        , map MeetingDetailRoute (s "meetings" </> string)
         ]
 
 
 parseLocation : Location -> Route
 parseLocation location =
-    MeetingListRoute
+    case parseHash matchers location of
+        Just route ->
+            route
 
-
-
--- case parseHash matchers location of
---     Just route ->
---         route
---     Nothing ->
---         NotFoundRoute
+        Nothing ->
+            NotFoundRoute
 
 
 playersPath : String
