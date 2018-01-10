@@ -66,11 +66,17 @@ if (isDev === true) {
         ],
         devServer: {
             // serve index.html in place of 404 responses
-            historyApiFallback: true,
-            contentBase: './src',
-            hot: true,
+            historyApiFallback: false,
+            contentBase: '.',
             host: '0.0.0.0',
             port,
+            watchOptions: {
+                watch: true,
+                // See https://webpack.js.org/configuration/watch/
+                ignored: /node_modules/,
+                poll: 1000,
+                aggregateTimeout: 300,
+            },
         },
         module: {
             rules: [{
