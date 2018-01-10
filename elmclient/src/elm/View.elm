@@ -1,6 +1,7 @@
 module View exposing (..)
 
 import Html exposing (Html, div, text)
+import Meetings.List
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Players.Edit
@@ -26,6 +27,10 @@ page model =
 
         Models.NotFoundRoute ->
             notFoundView
+
+        -- TODO: Change
+        Models.MeetingListRoute ->
+            Meetings.List.view model.meetings
 
 
 playerEditPage : Model -> PlayerId -> Html Msg
