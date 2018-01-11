@@ -57,10 +57,7 @@ def build_url(protocol, hostname, port, path):
 def get_api_path(base_url, key):
     """ Get the path for a part of the API
     """
-    api_mount_points = {
-        "meetings": 'meetings'
-    }
-    return urljoin(base_url, api_mount_points[key])
+    return urljoin(base_url, key)
 
 
 def get_typical_headers(jwt):
@@ -70,12 +67,12 @@ def get_typical_headers(jwt):
         "Content-Type": "application/json",
         "Authorization": "Bearer {0}".format(jwt),
         # Get back the rows inserted/updated
-        "Prefer": "return=representation"
+        # "Prefer": "return=representation"
     }
     return headers
 
 
-def upsert_meeting(base_url, jwt, meetings, slug):
+def load_meeting(base_url, jwt, meetings, slug):
     """ Upserts meetings into base_url
     """
     headers = get_typical_headers(jwt)
@@ -137,7 +134,130 @@ def update_meetings(ctx, yaml_file, slug):
     """ Reads meetings from a YAML file and uploads them
     """
     meetings = read_yaml(yaml_file)
-    upsert_meeting(ctx.obj["base_url"], ctx.obj["jwt"], meetings, slug)
+    load_meeting(ctx.obj["base_url"], ctx.obj["jwt"], meetings, slug)
+
+
+def fill_quiz_replace_fields(base_url, quiz):
+    """ Some keys will be like 'replace:meetings.slug:id:meeting_id', which 
+        means we should use the current value to seach meetings.slugs, take
+        the first result's `id` and make that the value of the `meeting_id`
+        key.
+    """
+    for k, v in quiz.items():
+        if k.startswith('replace:'):
+            (_, model_field, source_key, dest_key)  = k.split(":")
+            (model, field) = model_field.split(".")
+            response = requests.get(
+                get_api_path(base_url, model),
+                params={field: 'eq.{0}'.format(v)}
+            )
+            del quiz[k]
+            quiz[dest_key] = response.json()[0][source_key]
+    return quiz
+
+def nonchild(d):
+    """ Returns a copy of a dictionary where any key prefixed with "child:"
+        is removed.
+    """
+    return {k:v for k,v in d.items() if not k.startswith('child:')}
+
+def insert_quiz(base_url, jwt, quiz):
+    """ Loads a quiz into the database
+    """
+    quiz = fill_quiz_replace_fields(base_url, quiz)
+    quiz_to_save = nonchild(quiz)
+
+    if 'meeting_id' not in quiz:
+        raise Exception("Quizzes require meeting_ids before they can be saved")
+
+    headers = get_typical_headers(jwt)
+    # Delete any quiz for this meeting
+    response = requests.delete(
+        get_api_path(base_url, "quizzes"),
+        params={"meeting_id": "eq.{0}".format(quiz_to_save["meeting_id"])},
+        headers=headers
+    )
+    response.raise_for_status()
+
+    post_headers = get_typical_headers(jwt)
+    post_headers["Prefer"] = "return=representation"
+    response = requests.post(
+        get_api_path(base_url, "quizzes"),
+        json=quiz_to_save,
+        headers=post_headers
+    )
+    quiz_id = response.json()[0]["id"]
+    return insert_quiz_questions(base_url, jwt, quiz_id, quiz['child:quiz_questions'])
+
+
+def insert_quiz_questions(base_url, jwt, quiz_id, questions):
+    """ Inserts questions for a quiz
+    """
+    num_options = 0
+    # A this point, all quizzes should have been erased for the particular
+    # meeting and that cascaded down to questions.
+    post_headers = get_typical_headers(jwt)
+    post_headers["Prefer"] = "return=representation"
+    i=0
+    for question in questions:
+        question_to_save = nonchild(question)
+        question_to_save["quiz_id"] = quiz_id
+        response = requests.post(
+            get_api_path(base_url, "quiz_questions"),
+            json=question_to_save,
+            headers=post_headers
+        )
+        quiz_question_id = response.json()[0]["id"]
+        num_options += insert_quiz_question_options(
+            base_url,
+            jwt,
+            quiz_id,
+            quiz_question_id,
+            question["child:quiz_question_options"]
+        )
+        i+=1
+    return (i, num_options)
+
+def insert_quiz_question_options(base_url, jwt, quiz_id, quiz_question_id, options):
+    """ Inserts options for a quiz question
+    """
+    # A this point, all quizzes should have been erased for the particular
+    # meeting and that cascaded down to options.
+    post_headers = get_typical_headers(jwt)
+    post_headers["Prefer"] = "return=representation"
+    i = 0
+    for option in options:
+        option_to_save = nonchild(option)
+        option_to_save["quiz_id"] = quiz_id
+        option_to_save["quiz_question_id"] = quiz_question_id
+        response = requests.post(
+            get_api_path(base_url, "quiz_question_options"),
+            json=option_to_save,
+            headers=post_headers
+        )
+        i+=1
+    return i
+
+
+@rest.command()
+@click.pass_context
+@click.argument('yaml_file', type=click.File('r'))
+def nukeload_quizzes(ctx, yaml_file):
+    """ Nukes existing quizzes and loads new ones for meetings
+    """
+    quizzes = read_yaml(yaml_file)
+    totals = {
+        "quizzes": 0,
+        "quiz_questions": 0,
+        "quiz_question_options": 0
+    }
+    for quiz in quizzes:
+        (num_questions, num_options) = insert_quiz(ctx.obj["base_url"], ctx.obj["jwt"], quiz)
+        totals["quizzes"] += 1
+        totals["quiz_question_options"] += num_options
+        totals["quiz_questions"] += num_questions
+    click.echo("Done and inserted the following: {0}".format(totals))
+
 
 
 def delete_meeting_for_slug(base_url, jwt, slug, delete_all=False):
