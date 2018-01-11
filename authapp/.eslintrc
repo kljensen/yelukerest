@@ -9,6 +9,6 @@
         "no-console": 1,
         "require-jsdoc": 2,
         "valid-jsdoc": 2,
-        "space-before-function-paren": 0,
+        "space-before-function-paren": 0
     }
 }
