@@ -27,7 +27,7 @@ def rest(ctx, hostname, protocol, port, path, jwt):
     ctx.obj['protocol'] = protocol
     ctx.obj['port'] = port
     ctx.obj['path'] = path
-    ctx.obj['base_url'] =  build_url(protocol, hostname, port, path)
+    ctx.obj['base_url'] = build_url(protocol, hostname, port, path)
 
 
 def read_yaml(filehandle):
@@ -37,6 +37,7 @@ def read_yaml(filehandle):
     yaml = ruamel_yaml.YAML(typ="safe", pure=True)
     data = yaml.load(filehandle)
     return data
+
 
 def build_url(protocol, hostname, port, path):
     """ Returns a URL
@@ -61,7 +62,7 @@ def get_api_path(base_url, key):
         "meetings": 'meetings'
     }
     return urljoin(base_url, api_mount_points["meetings"])
-    
+
 
 def upsert_meeting(base_url, jwt, meetings, slug):
     """ Upserts meetings into base_url
@@ -71,41 +72,44 @@ def upsert_meeting(base_url, jwt, meetings, slug):
         "Authorization": "Bearer {0}".format(jwt)
     }
     for meeting in meetings:
-        if slug and meeting.slug != slug:
+        if slug and meeting["slug"] != slug:
             continue
 
-        click.echo("Checking if meeting exists for slug: {0}".format(slug))
+        click.echo(
+            "Checking if meeting exists for slug: {0}".format(meeting["slug"]))
         url = get_api_path(base_url, "meetings")
         payload = {'slug': 'eq.{0}'.format(meeting["slug"])}
         try:
             response = requests.get(url, headers=headers, params=payload)
-        except requests.exceptions.RequestException as err: 
+        except requests.exceptions.RequestException as err:
             # Catch all exceptions
             click.echo("ERROR speaking to API: {0}".format(err))
             raise
-
+        print(response.text)
         if not response.json():
             do_insert = True
         else:
-            do_insert = False 
+            do_insert = False
 
         if do_insert:
             try:
-                click.echo('Trying to insert new meeting for slug: {0}'.format(meeting["slug"]))
+                click.echo(
+                    'Trying to insert new meeting for slug: {0}'.format(meeting["slug"]))
                 response = requests.post(url, headers=headers, json=meeting)
                 response.raise_for_status()
-            except requests.exceptions.RequestException as err: 
+            except requests.exceptions.RequestException as err:
                 # Catch all exceptions
                 click.echo("ERROR speaking to API: {0}".format(err))
                 click.echo(response.json())
                 raise
-            
+
         try:
             click.echo(response.json())
         except:
             pass
 
     return
+
 
 @rest.command()
 @click.pass_context
