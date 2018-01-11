@@ -61,7 +61,7 @@ def get_api_path(base_url, key):
     api_mount_points = {
         "meetings": 'meetings'
     }
-    return urljoin(base_url, api_mount_points["meetings"])
+    return urljoin(base_url, api_mount_points[key])
 
 
 def upsert_meeting(base_url, jwt, meetings, slug):
@@ -69,44 +69,56 @@ def upsert_meeting(base_url, jwt, meetings, slug):
     """
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer {0}".format(jwt)
+        "Authorization": "Bearer {0}".format(jwt),
+        # Get back the rows inserted/updated
+        "Prefer": "return=representation"
     }
     for meeting in meetings:
         if slug and meeting["slug"] != slug:
             continue
+        query_params = {'slug': 'eq.{0}'.format(meeting["slug"])}
 
         click.echo(
             "Checking if meeting exists for slug: {0}".format(meeting["slug"]))
         url = get_api_path(base_url, "meetings")
-        payload = {'slug': 'eq.{0}'.format(meeting["slug"])}
         try:
-            response = requests.get(url, headers=headers, params=payload)
+            response = requests.get(url, headers=headers, params=query_params)
         except requests.exceptions.RequestException as err:
             # Catch all exceptions
             click.echo("ERROR speaking to API: {0}".format(err))
             raise
-        print(response.text)
+
         if not response.json():
             do_insert = True
         else:
             do_insert = False
 
         if do_insert:
+            # We don't have this meeting
             try:
                 click.echo(
-                    'Trying to insert new meeting for slug: {0}'.format(meeting["slug"]))
+                    'Trying to INSERT new meeting for slug: {0}'.format(meeting["slug"]))
                 response = requests.post(url, headers=headers, json=meeting)
                 response.raise_for_status()
             except requests.exceptions.RequestException as err:
                 # Catch all exceptions
-                click.echo("ERROR speaking to API: {0}".format(err))
+                click.echo("ERROR inserting meeting via API: {0}".format(err))
                 click.echo(response.json())
                 raise
-
-        try:
-            click.echo(response.json())
-        except:
-            pass
+        else:
+            # We already have this meeting and we're going to update
+            # its values.
+            try:
+                click.echo(
+                    'Trying to UPDATE new meeting for slug: {0}'.format(meeting["slug"]))
+                response = requests.patch(
+                    url, headers=headers, json=meeting, params=query_params)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as err:
+                # Catch all exceptions
+                click.echo("ERROR updating meeting via API: {0}".format(err))
+                click.echo(response.json())
+                raise
 
     return
 
