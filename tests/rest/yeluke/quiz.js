@@ -50,10 +50,6 @@ describe('quizzes API endpoint', () => {
         points_possible: 13,
         is_draft: false,
         duration: '00:10:00',
-        open_at: '2017-01-04 07:55:50+00',
-        closed_at: '2017-01-06 07:55:50+00',
-        created_at: '2018-01-06 07:55:50+00',
-        updated_at: '2018-01-06 13:10:23.24505+00',
     };
 
     const insertTestCases = [{

@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(10);
 
 SELECT view_owner_is(
     'api', 'quizzes', 'api',
@@ -56,6 +56,16 @@ set request.jwt.claim.role = 'faculty';
 SELECT lives_ok(
     'doinsert',
     'faculty should be able to insert'
+);
+
+SELECT lives_ok(
+    'DELETE FROM api.quizzes WHERE meeting_id = 4',
+    'faculty can delete quizzes'
+);
+
+SELECT lives_ok(
+    'INSERT INTO api.quizzes (meeting_id, points_possible, duration) VALUES (4, 13, ''10 minutes'')',
+    'triggers fill in default values for quizzes'
 );
 
 
