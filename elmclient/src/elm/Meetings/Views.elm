@@ -1,7 +1,9 @@
 module Meetings.Views exposing (detailView, listView)
 
+import Date
+import Date.Format as DateFormat
 import Html exposing (Html)
-import Html.Attributes
+import Html.Attributes as Attrs
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg)
@@ -40,10 +42,18 @@ detailView meetings slug =
             Html.text (toString err)
 
 
+dateToString : Date.Date -> String
+dateToString date =
+    DateFormat.format "%l%p %A, %B %e" date
+
+
 detailViewForJustMeeting : Meeting -> Html.Html Msg
 detailViewForJustMeeting meeting =
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title ]
+        , Html.div []
+            [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
+            ]
         , Markdown.toHtml [] meeting.description
         ]
 
@@ -57,8 +67,8 @@ meetingNotFoundView slug =
 
 nav : Html Msg
 nav =
-    Html.div [ Html.Attributes.class "clearfix mb2 white bg-black" ]
-        [ Html.div [ Html.Attributes.class "left p2" ] [ Html.text "Players" ] ]
+    Html.div [ Attrs.class "clearfix mb2 white bg-black" ]
+        [ Html.div [ Attrs.class "left p2" ] [ Html.text "Players" ] ]
 
 
 listOrStatus : WebData (List Meeting) -> Html Msg
@@ -89,5 +99,5 @@ meetingRow meeting =
             "#meetings/" ++ meeting.slug
     in
     Html.li []
-        [ Html.a [ Html.Attributes.href meetingDetailPath ] [ Html.text meeting.title ]
+        [ Html.a [ Attrs.href meetingDetailPath ] [ Html.text meeting.title ]
         ]
