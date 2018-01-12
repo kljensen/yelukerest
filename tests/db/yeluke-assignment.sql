@@ -36,7 +36,7 @@ set request.jwt.claim.role = 'student';
 
 SELECT set_eq(
     'SELECT slug FROM api.assignments ORDER BY (slug)',
-    ARRAY['exam-1', 'js-koans', 'team-selection'],
+    ARRAY['exam-1', 'js-koans', 'project-update-1', 'team-selection'],
     'students should be able to select from the api.assignments view'
 );
 

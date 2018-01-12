@@ -19,7 +19,7 @@ COPY data.meeting (id,slug,title,summary,description,begins_at,duration,is_draft
 \.
 -- 
 -- restart sequences
-ALTER SEQUENCE data.meeting_id_seq RESTART WITH 4;
+ALTER SEQUENCE data.meeting_id_seq RESTART WITH 5;
 -- 
 -- analyze modified tables
 ANALYZE data.meeting;

@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS assignment (
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
-    CONSTRAINT updated_after_created CHECK (updated_at >= created_at)
+    CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
+    UNIQUE(slug, is_team) -- For foreign keys
 );
 
 

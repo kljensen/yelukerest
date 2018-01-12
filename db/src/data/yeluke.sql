@@ -10,3 +10,4 @@
 \ir ./yeluke/ui_element.sql
 \ir ./yeluke/assignment.sql
 \ir ./yeluke/assignment_field.sql
+\ir ./yeluke/assignment_submission.sql

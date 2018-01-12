@@ -12,6 +12,7 @@
 \ir ./yeluke/ui_element.sql
 \ir ./yeluke/assignment.sql
 \ir ./yeluke/assignment_field.sql
+\ir ./yeluke/assignment_submission.sql
 
 -- Remove api's ability to execute functions in public schema.
 ALTER DEFAULT PRIVILEGES FOR ROLE api REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
