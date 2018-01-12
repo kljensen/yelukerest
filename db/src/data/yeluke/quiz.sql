@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS quiz (
 
 CREATE OR REPLACE FUNCTION quiz_set_defaults() RETURNS trigger AS $$
 BEGIN
-  RAISE NOTICE 'fucking shit';
   IF (NEW.closed_at IS NULL) THEN
     SELECT begins_at INTO NEW.closed_at
     FROM api.meetings
