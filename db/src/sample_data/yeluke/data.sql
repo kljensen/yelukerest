@@ -7,3 +7,4 @@
 \ir quiz_question_option.sql
 \ir quiz_answer.sql
 \ir ui_element.sql
+\ir assignment.sql

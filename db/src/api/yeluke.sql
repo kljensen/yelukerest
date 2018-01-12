@@ -8,3 +8,4 @@
 \ir ./yeluke/quiz_question_option.sql
 \ir ./yeluke/quiz_answer.sql
 \ir ./yeluke/ui_element.sql
+\ir ./yeluke/assignment.sql
