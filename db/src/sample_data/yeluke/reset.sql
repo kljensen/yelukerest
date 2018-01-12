@@ -8,4 +8,6 @@ truncate data.quiz_submission restart identity cascade;
 truncate data.quiz_answer restart identity cascade;
 truncate data.ui_element restart identity cascade;
 truncate data.assignment restart identity cascade;
+truncate data.assignment_field restart identity cascade;
+
 -- user is truncated elsewhere

@@ -8,3 +8,4 @@
 \ir quiz_answer.sql
 \ir ui_element.sql
 \ir assignment.sql
+\ir assignment_field.sql
