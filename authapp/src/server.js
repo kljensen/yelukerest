@@ -258,38 +258,83 @@ router.get('/logout', (req, res) => {
     return res.redirect(url.format(options));
 });
 
-// Sign a JWT for a user. They must have valid session info.
-router.get('/jwt', validateYelukeUser, (req, res) => {
-    const twoDaysOfSeconds = 2 * 24 * 60 * 60;
-    let expiresIn = twoDaysOfSeconds;
-
-    // Allow a custom expiration expressed in seconds.
-    if (req.query.expiresIn) {
-        if (Number.isNaN(req.query.expiresIn)) {
-            res.send(httpstatus.BAD_REQUEST);
-        }
-        expiresIn = parseInt(req.query.expiresIn, 10);
-        if (expiresIn <= 0 || expiresIn > twoDaysOfSeconds) {
-            res.send(httpstatus.BAD_REQUEST);
-        }
-    }
-    // Since we used the `validateYelukeUser` middleware above, we know
-    // we have accurate Yeluke user information in the session. Now we'll
-    // create a JWT with it.
-    const jwtPayload = {
-        user_id: req.session.yeluke.user.id,
-        role: req.session.yeluke.user.role,
+/**
+ * Creates a JWT
+ * @param  {Number} userID - the user id
+ * @param  {String} role - the role for this user
+ * @param  {Number} expiresIn - number of seconds in which JWT should expire
+ * @returns {String} A JWT
+ */
+function makeJWT(userID, role, expiresIn) {
+    const payload = {
+        user_id: userID,
+        role,
     };
     const signingOptions = {
         algorithm: 'HS256',
         expiresIn,
         issuer: config.jwt_issuer,
     };
-    const signedJWT = jsonwebtoken.sign(jwtPayload, config.jwt_secret, signingOptions);
+    const jwt = jsonwebtoken.sign(payload, config.jwt_secret, signingOptions);
+    return {
+        payload,
+        jwt,
+    };
+}
+
+const twoDaysOfSeconds = 2 * 24 * 60 * 60;
+
+/**
+ * Creates JWT info for req's session info
+ * @param  {Request} req A request
+ * @param  {Response} res A response
+ * @returns {Object} The jwt info
+ */
+function jwtForRequest(req, res) {
+    let expiresIn = twoDaysOfSeconds;
+    let error = false;
+    // Allow a custom expiration expressed in seconds.
+    if (req.query.expiresIn) {
+        if (Number.isNaN(req.query.expiresIn)) {
+            res.send(httpstatus.BAD_REQUEST);
+            error = true;
+        }
+        expiresIn = parseInt(req.query.expiresIn, 10);
+        if (expiresIn <= 0 || expiresIn > twoDaysOfSeconds) {
+            res.send(httpstatus.BAD_REQUEST);
+            error = true;
+        }
+    }
+    return makeJWT(
+        req.session.yeluke.user.id,
+        req.session.yeluke.user.role,
+        expiresIn,
+        error,
+    );
+}
+
+
+// Sign a JWT for a user. They must have valid session info.
+router.get('/jwt', validateYelukeUser, (req, res) => {
+    // Should already have session variables here.
+    // But, belts and suspenders.
+    if (!req.session.yeluke) {
+        return res.send(httpstatus.UNAUTHORIZED);
+    }
+
+    const {
+        payload,
+        jwt,
+        error,
+    } = jwtForRequest(req);
+    if (error) {
+        return;
+    }
+
 
     // sendit is a function that writes the JWT to the response when called.
     const sendit = () => {
-        res.send(signedJWT);
+        res.send(jwt);
     };
 
     // Handle content negotiation and send the JWT.
@@ -297,12 +342,12 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
     let logMsg;
     logMsg = `Had session info as follows = ${JSON.stringify(req.session.yeluke)}`;
     logger.info(logMsg);
-    logMsg = `Created JWT with payload = ${JSON.stringify(jwtPayload)}`;
+    logMsg = `Created JWT with payload = ${JSON.stringify(payload)}`;
     logger.info(logMsg);
-    logMsg = `JWT = ${signedJWT.slice(0, 10)}...${signedJWT.slice(-10)}`;
+    logMsg = `JWT = ${jwt.slice(0, 10)}...${jwt.slice(-10)}`;
     logger.info(logMsg);
 
-    res.format({
+    return res.format({
         'application/jwt': sendit,
         'text/plain': sendit,
         'text/html': sendit,
@@ -310,8 +355,51 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
             // Have to wrap it in an object or an array.
             // See https://www.ietf.org/rfc/rfc4627.txt
             res.send({
-                token: signedJWT,
+                token: jwt,
             });
+        },
+        default () {
+            res.status(406)
+                .send('Not Acceptable');
+        },
+    });
+});
+
+
+// Return user info, including jwt.
+router.get('/me', validateYelukeUser, async(req, res) => {
+    // Should already have session variables here.
+    // But, belts and suspenders.
+    if (!req.session.yeluke) {
+        res.send(httpstatus.UNAUTHORIZED);
+        return;
+    }
+
+    const {
+        jwt,
+        error,
+    } = jwtForRequest(req);
+    if (error) {
+        return;
+    }
+
+    const netid = req.session.cas.user;
+    const userInfo = await getYelukeUserInfo(dbPool, netid);
+    if (userInfo.error) {
+        destroyRequestSession(req);
+        res.send(httpstatus.INTERNAL_SERVER_ERROR);
+        return;
+    }
+
+    const responseData = {
+        netid: userInfo.netid,
+        user_id: userInfo.id,
+        jwt,
+    };
+
+    res.format({
+        'application/json': () => {
+            res.send(responseData);
         },
         default () {
             res.status(406)
