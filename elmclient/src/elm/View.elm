@@ -1,6 +1,8 @@
 module View exposing (..)
 
-import Html exposing (Html, div, text)
+import Auth.Views
+import Html exposing (Html, a, div, h1, text)
+import Html.Attributes exposing (href)
 import Meetings.Views
 import Models exposing (Model)
 import Msgs exposing (Msg)
@@ -13,12 +15,25 @@ import RemoteData
 view : Model -> Html Msg
 view model =
     div []
-        [ page model ]
+        [ div [] [ page model ]
+        ]
 
 
 page : Model -> Html Msg
 page model =
     case model.route of
+        Models.IndexRoute ->
+            indexView model
+
+        Models.CurrentUserDashboardRoute ->
+            Auth.Views.dashboard model.currentUser
+
+        Models.MeetingListRoute ->
+            Meetings.Views.listView model.meetings
+
+        Models.MeetingDetailRoute slug ->
+            Meetings.Views.detailView model.meetings slug
+
         Models.PlayersRoute ->
             Players.List.view model.players
 
@@ -28,12 +43,16 @@ page model =
         Models.NotFoundRoute ->
             notFoundView
 
-        -- TODO: Change
-        Models.MeetingListRoute ->
-            Meetings.Views.listView model.meetings
 
-        Models.MeetingDetailRoute slug ->
-            Meetings.Views.detailView model.meetings slug
+indexView : Model -> Html Msg
+indexView model =
+    div []
+        [ h1 [] [ text "Classname" ]
+        , div [] [ text "About" ]
+        , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
+        , div [] [ text "Assignments" ]
+        , div [] [ Auth.Views.nameOrDashboard model.currentUser ]
+        ]
 
 
 playerEditPage : Model -> PlayerId -> Html Msg

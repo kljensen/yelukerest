@@ -393,7 +393,7 @@ router.get('/me', validateYelukeUser, async(req, res) => {
 
     const responseData = {
         netid: userInfo.netid,
-        user_id: userInfo.id,
+        id: userInfo.id,
         jwt,
     };
 
