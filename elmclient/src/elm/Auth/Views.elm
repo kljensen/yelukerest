@@ -1,4 +1,4 @@
-module Auth.Views exposing (dashboard, nameOrDashboard)
+module Auth.Views exposing (dashboard, loginOrDashboard)
 
 import Auth.Model exposing (CurrentUser)
 import Html exposing (Html)
@@ -7,8 +7,8 @@ import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 
 
-nameOrDashboard : WebData CurrentUser -> Html.Html Msg
-nameOrDashboard currentUser =
+loginOrDashboard : WebData CurrentUser -> Html.Html Msg
+loginOrDashboard currentUser =
     case currentUser of
         RemoteData.NotAsked ->
             Html.text ""
@@ -22,7 +22,7 @@ nameOrDashboard currentUser =
                 [ Html.text "Dashboard" ]
 
         RemoteData.Failure err ->
-            Html.text (toString err)
+            Html.a [Attrs.href "/auth/login"] [Html.text "login"]
 
 
 dashboard : WebData CurrentUser -> Html.Html Msg
@@ -38,7 +38,7 @@ dashboard currentUser =
             showDashboard currentUser
 
         RemoteData.Failure err ->
-            Html.text (toString err)
+            Html.a [Attrs.href "/auth/login"] [Html.text "login"]
 
 
 showDashboard : CurrentUser -> Html.Html Msg
