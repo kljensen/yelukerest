@@ -7,6 +7,11 @@ import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 
 
+loginLink : Html.Html Msg
+loginLink =
+    Html.a [ Attrs.href "/auth/login" ] [ Html.text "login" ]
+
+
 loginOrDashboard : WebData CurrentUser -> Html.Html Msg
 loginOrDashboard currentUser =
     case currentUser of
@@ -14,7 +19,7 @@ loginOrDashboard currentUser =
             Html.text ""
 
         RemoteData.Loading ->
-            Html.text "Loading ..."
+            loginLink
 
         RemoteData.Success currentUser ->
             Html.a
@@ -22,7 +27,7 @@ loginOrDashboard currentUser =
                 [ Html.text "Dashboard" ]
 
         RemoteData.Failure err ->
-            Html.a [ Attrs.href "/auth/login" ] [ Html.text "login" ]
+            loginLink
 
 
 dashboard : WebData CurrentUser -> Html.Html Msg
