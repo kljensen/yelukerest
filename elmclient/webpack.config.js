@@ -60,24 +60,7 @@ const commonConfig = {
 // additional webpack settings for local env (when invoked by 'npm start')
 if (isDev === true) {
     module.exports = merge(commonConfig, {
-        entry: [
-            `webpack-dev-server/client?http://0.0.0.0:${port}`,
-            entryPath,
-        ],
-        devServer: {
-            // serve index.html in place of 404 responses
-            historyApiFallback: false,
-            contentBase: '.',
-            host: '0.0.0.0',
-            port,
-            watchOptions: {
-                watch: true,
-                // See https://webpack.js.org/configuration/watch/
-                ignored: /node_modules/,
-                poll: 1000,
-                aggregateTimeout: 300,
-            },
-        },
+        entry: entryPath,
         module: {
             rules: [{
                 test: /\.elm$/,
