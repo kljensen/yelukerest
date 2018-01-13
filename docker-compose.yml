@@ -1,4 +1,8 @@
 version: '3.2'
+volumes:
+  # A named volume to share data between containers
+  elmclient-build:
+    external: false
 services:
 
   # This is the database to which the all the other components in the stack will connect and interact with
@@ -93,6 +97,7 @@ services:
     volumes:
       # Note that the package.json-like files were moved into the
       # container as specified by the elmclient/Dockerfile.
+      - elmclient-build:/opt/app/dist
       - "./elmclient/src:/opt/app/src"
       - "./elmclient/run.sh:/opt/app/run.sh"
       - "./elmclient/webpack.config.js:/opt/app/webpack.config.js"
@@ -163,6 +168,7 @@ services:
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
     volumes:
+      - elmclient-build:/var/elmclient/
       - "./openresty/entrypoint.sh:/entrypoint.sh"
       - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf"
       - "./openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes"
@@ -196,4 +202,3 @@ services:
     image: redis:4
     ports:
       - "6379:6379"
-    

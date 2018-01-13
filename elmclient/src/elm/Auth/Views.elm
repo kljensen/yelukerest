@@ -22,7 +22,7 @@ loginOrDashboard currentUser =
                 [ Html.text "Dashboard" ]
 
         RemoteData.Failure err ->
-            Html.a [Attrs.href "/auth/login"] [Html.text "login"]
+            Html.a [ Attrs.href "/auth/login" ] [ Html.text "login" ]
 
 
 dashboard : WebData CurrentUser -> Html.Html Msg
@@ -38,7 +38,7 @@ dashboard currentUser =
             showDashboard currentUser
 
         RemoteData.Failure err ->
-            Html.a [Attrs.href "/auth/login"] [Html.text "login"]
+            Html.a [ Attrs.href "/auth/login" ] [ Html.text "login" ]
 
 
 showDashboard : CurrentUser -> Html.Html Msg

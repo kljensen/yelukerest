@@ -11,7 +11,7 @@ const prod = 'production';
 const dev = 'development';
 
 // determine build env
-const TARGET_ENV = process.env.npm_lifecycle_event === 'build' ? prod : dev;
+const TARGET_ENV = process.env.npm_lifecycle_event === 'dev' ? dev : prod;
 const isDev = TARGET_ENV === dev;
 const isProd = TARGET_ENV === prod;
 
