@@ -10,9 +10,8 @@
     },
     "scripts": {
         "start": "webpack-dev-server --progress --color --inline",
-        "prebuild": "rimraf dist",
+        "prebuild": "rimraf dist/*",
         "build": "webpack",
-        "dev": "webpack",
         "reinstall": "npm i rimraf && rimraf node_modules && npm uninstall elm && npm i elm && npm i && elm package install --yes"
     },
     "dependencies": {
