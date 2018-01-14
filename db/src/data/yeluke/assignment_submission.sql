@@ -56,7 +56,7 @@ RETURNS TRIGGER AS $$
 BEGIN
     IF (NEW.is_team IS NULL) THEN
         SELECT is_team INTO NEW.is_team
-        FROM assignment
+        FROM api.assignments
         WHERE slug = NEW.assignment_slug;
     END IF;
     NEW.updated_at = current_timestamp;
