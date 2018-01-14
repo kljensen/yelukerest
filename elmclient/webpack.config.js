@@ -11,12 +11,9 @@ const prod = 'production';
 const dev = 'development';
 
 // determine build env
-const TARGET_ENV = process.env.npm_lifecycle_event === 'dev' ? dev : prod;
+const TARGET_ENV = process.env.DEVELOPMENT ? dev : prod;
 const isDev = TARGET_ENV === dev;
 const isProd = TARGET_ENV === prod;
-
-// Grab the port number
-const port = process.env.ELMCLIENT_PORT || 8080;
 
 // entry and output path/filename variables
 const entryPath = path.join(__dirname, 'src/static/index.js');
@@ -61,6 +58,13 @@ const commonConfig = {
 if (isDev === true) {
     module.exports = merge(commonConfig, {
         entry: entryPath,
+        // Watch files in dev mode and rebuild on change
+        watch: true,
+        watchOptions: {
+            aggregateTimeout: 300,
+            poll: 1000,
+            ignored: /(node_modules|elm-stuff)/,
+        },
         module: {
             rules: [{
                 test: /\.elm$/,
