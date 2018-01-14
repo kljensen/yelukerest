@@ -1,5 +1,5 @@
 begin;
-select plan(7);
+select plan(10);
 
 SELECT view_owner_is(
     'api', 'quiz_question_options', 'api',
@@ -7,9 +7,26 @@ SELECT view_owner_is(
 );
 
 SELECT table_privs_are(
-    'api', 'quiz_question_options', 'student', ARRAY['SELECT'],
-    'student should only be granted SELECT on view "api.quiz_question_options"'
+    'api', 'quiz_question_options', 'student', ARRAY[]::text[],
+    'student should not be granted blanket select on view "api.quiz_question_options"'
 );
+
+SELECT column_privs_are(
+    'api', 'quiz_question_options', 'body', 'student', ARRAY['SELECT'],
+    'students can select the body column on view "api.quiz_question_options"'
+);
+
+SELECT column_privs_are(
+    'api', 'quiz_question_options', 'id', 'student', ARRAY['SELECT'],
+    'students can select the id column on view "api.quiz_question_options"'
+);
+
+SELECT column_privs_are(
+    'api', 'quiz_question_options', 'is_correct', 'student', ARRAY[]::text[],
+    'students cannot select the is_correct column on view "api.quiz_question_options"'
+);
+-- SELECT column_privs_are ( :schema, :table, :column, :role, :privileges, :description );
+
 
 SELECT table_privs_are(
     'api', 'quiz_question_options', 'faculty', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'],

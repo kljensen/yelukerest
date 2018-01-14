@@ -35,7 +35,7 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own quiz_question_options.
-grant select on api.quiz_question_options to student;
+grant select (id,quiz_question_id,quiz_id,body,is_markdown,created_at,updated_at) on api.quiz_question_options to student;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_question_options to faculty;
