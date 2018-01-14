@@ -43,7 +43,7 @@ dashboard currentUser =
             showDashboard currentUser
 
         RemoteData.Failure err ->
-            Html.a [ Attrs.href "/auth/login" ] [ Html.text "login" ]
+            loginLink
 
 
 showDashboard : CurrentUser -> Html.Html Msg
