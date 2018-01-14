@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS assignment_submission (
         (is_team)
         OR
         (NOT is_team AND (user_id = submitter_user_id))
-    )
+    ),
+    UNIQUE(id, assignment_slug) -- For foreign keys\
 );
 
 -- Only one submission per team per assignment

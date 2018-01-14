@@ -10,3 +10,4 @@
 \ir assignment.sql
 \ir assignment_field.sql
 \ir assignment_submission.sql
+\ir assignment_field_submission.sql

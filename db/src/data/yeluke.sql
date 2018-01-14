@@ -11,3 +11,4 @@
 \ir ./yeluke/assignment.sql
 \ir ./yeluke/assignment_field.sql
 \ir ./yeluke/assignment_submission.sql
+\ir ./yeluke/assignment_field_submission.sql

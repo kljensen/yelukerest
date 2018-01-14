@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS assignment_field (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT url_not_multiline CHECK (NOT (is_url AND is_multiline)),
-    CONSTRAINT updated_after_created CHECK (updated_at >= created_at)
-
+    CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
+    UNIQUE(id, assignment_slug) -- For foreign keys\
 );
 
 -- TODO: add ability include regular expressions and 
