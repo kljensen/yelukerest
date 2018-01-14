@@ -43,14 +43,6 @@ CREATE UNIQUE INDEX assignment_submission_unique_user
     ON assignment_submission (user_id, assignment_slug)
     WHERE team_nickname IS NULL;
 
-
-DROP TRIGGER IF EXISTS tg_assignment_submission_default ON assignment_submission;
-CREATE TRIGGER tg_assignment_submission_default
-    BEFORE INSERT OR UPDATE
-    ON assignment_submission
-    FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
-
 CREATE OR REPLACE FUNCTION fill_assignment_submission_defaults()
 RETURNS TRIGGER AS $$
 BEGIN
