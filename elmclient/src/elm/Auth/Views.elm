@@ -9,7 +9,7 @@ import RemoteData exposing (WebData)
 
 loginLink : Html.Html Msg
 loginLink =
-    Html.a [ Attrs.href "/auth/login" ] [ Html.text "login" ]
+    Html.a [ Attrs.href "/auth/login" ] [ Html.text "Login" ]
 
 
 loginOrDashboard : WebData CurrentUser -> Html.Html Msg
