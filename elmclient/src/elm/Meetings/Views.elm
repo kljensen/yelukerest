@@ -47,6 +47,11 @@ dateToString date =
     DateFormat.format "%l%p %A, %B %e" date
 
 
+shortDateToString : Date.Date -> String
+shortDateToString date =
+    DateFormat.format "%a %m%b" date
+
+
 detailViewForJustMeeting : Meeting -> Html.Html Msg
 detailViewForJustMeeting meeting =
     Html.div []
@@ -99,5 +104,9 @@ meetingRow meeting =
             "#meetings/" ++ meeting.slug
     in
     Html.li []
-        [ Html.a [ Attrs.href meetingDetailPath ] [ Html.text meeting.title ]
+        [ Html.time []
+            [ Html.text (shortDateToString meeting.begins_at ++ " — ") ]
+        , Html.a
+            [ Attrs.href meetingDetailPath ]
+            [ Html.text meeting.title ]
         ]
