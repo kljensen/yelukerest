@@ -18,4 +18,11 @@ DROP EXTENSION plpgsql CASCADE;
 
 DROP EXTENSION pgcrypto CASCADE;
 
+DROP ROLE anonymous;
+DROP ROLE authapp;
+DROP ROLE faculty;
+DROP ROLE observer;
+DROP ROLE student;
+DROP ROLE api;
+
 COMMIT TRANSACTION;

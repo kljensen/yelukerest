@@ -1,4 +1,8 @@
 version: '3.2'
+volumes:
+  # A named volume to share data between containers
+  yelukerest-pg-data:
+    external: true
 services:
 
   # This is the database to which the all the other components in the stack will connect and interact with
@@ -28,7 +32,7 @@ services:
       - AUTHAPP_DB_USER=${AUTHAPP_DB_USER}
 
     volumes:
-      - "./db/src:/docker-entrypoint-initdb.d"
+      - yelukerest-pg-data:/var/lib/postgresql/data
 
   authapp:
     build: authapp
