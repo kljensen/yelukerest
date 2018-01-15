@@ -3,12 +3,21 @@
 """ A client for Yelukereset, primarily to be used by faculty for
     bulk administration over the RESTful HTTP API.
 """
+import json
+import datetime
 from urllib.parse import urlunsplit, urljoin
 import click
 import ruamel.yaml as ruamel_yaml
 import requests
 # from ruamel_yaml.yaml import YAML
 
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, datetime.datetime):
+            return o.isoformat()
+        return json.JSONEncoder.default(self, o)
 
 @click.group()
 @click.pass_context
@@ -306,6 +315,77 @@ def delete_all_meetings(ctx, really):
         click.echo("No deleting all messages because --all flag absent")
     delete_meeting_for_slug(base_url, jwt, None, delete_all=really)
 
+
+
+def assignment_exists(base_url, jwt, slug):
+    """ Checks if an assignment exists
+    """
+    headers = get_typical_headers(jwt)
+    query_params = {'slug': 'eq.{0}'.format(slug)}
+    url = get_api_path(base_url, "assignments")
+    response = requests.get(url, headers=headers, params=query_params)
+    response.raise_for_status()
+    print(response.json())
+    return (len(response.json()) != 0)
+
+
+def nukeload_assignment_field(base_url, jwt, slug, field_data):
+    """ Nukes fields of an assignment and uploads new ones. Careful
+        with this, because it will delete all assignment field submission
+        via cascade!
+    """
+    url = get_api_path(base_url, "assignment_fields")
+    headers = get_typical_headers(jwt)
+    response = requests.post(url, headers=headers, json=field_data)
+    response.raise_for_status()
+
+
+
+def load_assignment(base_url, jwt, ass_data):
+    """ Load an assignment's data using either post or patch
+    """
+
+    # Check if this assignment exists
+    slug = ass_data['slug']
+    exists = assignment_exists(base_url, jwt, slug)
+
+    # If it does, PATCH, else POST
+    if exists:
+        http_call = requests.patch
+        query_params = {'slug': 'eq.{0}'.format(slug)}
+    else:
+        http_call = requests.post
+        query_params = None
+    url = get_api_path(base_url, "assignments")
+    data = json.dumps(nonchild(ass_data), cls=DateTimeEncoder)
+    headers = get_typical_headers(jwt)
+    headers['Content-Type'] = 'application/json'
+    response = http_call(url, headers=headers, data=data, params=query_params)
+
+    # Delete the fields for this assignment
+    fields = ass_data.get('child:assignment_fields', [])
+    if fields:
+        url = get_api_path(base_url, "assignment_fields")
+        query_params = {'assignment_slug': 'eq.{0}'.format(slug)}
+        headers = get_typical_headers(jwt)
+        response = requests.delete(url, headers=headers, params=query_params)
+        response.raise_for_status()
+
+    for field in fields:
+        nukeload_assignment_field(base_url, jwt, slug, field)
+
+
+@rest.command()
+@click.pass_context
+@click.argument('yaml_file', type=click.File('r'))
+def nukeload_assignments(ctx, yaml_file):
+    """ Nukes existing assignments and loads new ones
+    """
+    base_url = ctx.obj["base_url"]
+    jwt = ctx.obj["jwt"]
+    assignments = read_yaml(yaml_file)
+    for assignment in  assignments:
+        load_assignment(base_url, jwt, assignment)
 
 if __name__ == "__main__":
     rest(obj={})
