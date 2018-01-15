@@ -2,6 +2,12 @@ version: '3.2'
 volumes:
   # A named volume to share data between containers
   yelukerest-pg-data:
+    # External here indicates that the user must have
+    # created this volume independently. It must exist
+    # if you want to bring these services that depend
+    # on it up. (Postgres in production depends on this
+    # volume for persistence. 
+    # See https://docs.docker.com/engine/admin/volumes/volumes/
     external: true
 services:
 
