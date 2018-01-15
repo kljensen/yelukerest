@@ -5,55 +5,6 @@ volumes:
     external: false
 services: 
 
-  authapp:
-    build: authapp
-    # Set the location where docker will put our files
-    working_dir: /app
-    # Map port 8081 on our host to port 4000 inside the container.
-    # Our node app should then run on port 4000 inside the container.
-    ports:
-      - "8081:${AUTHAPP_PORT}"
-    # Link this app to the `db` app so that we can talk to postgres
-    # when we need to do so. We might also want to talk to the rest
-    # API directly, and we'll need to add that if so.
-    links:
-      - redis:redis
-      - mockcas:mockcas
-    environment:
-      # Pass in connection information for the database.
-      - DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-      # The express app will likely manage some of our JWT signing
-      # because we want to use Yale CAS auth infront of our app so
-      # that we can avoid storing passwords.
-      # - JWT_SECRET=${JWT_SECRET}  
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
-      - DEVELOPMENT=${DEVELOPMENT}
-      - CAS_HOST=${AUTHAPP_CAS_HOST}
-      - CAS_SERVICE_VALIDATE_HOST=${AUTHAPP_CAS_SERVICE_VALIDATE_HOST}
-      - CAS_PROTOCOL=${AUTHAPP_CAS_PROTOCOL}
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_SCHEMA=${DB_SCHEMA}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${AUTHAPP_DB_USER}
-      - DB_PASS=${AUTHAPP_DB_PASS}
-      - JWT_SECRET=${JWT_SECRET}
-
-
-
-    volumes:
-      # These are the files we wish to "move" into the docker container.
-      # Note that, they are not moved, just mounted---when they are
-      # edited on the host they will be changed in the container.
-      # - "./authapp/package.json:/app/package.json"
-      # - "./authapp/package-lock.json:/app/package-lock.json"
-      - "./authapp/src:/app/src"
-      - "./authapp/run.sh:/app/run.sh"
-    # The script that is run to start our process.
-    entrypoint: "/app/run.sh"
-
   elmclient:
     build: elmclient
     # Set the location where docker will put our files
@@ -68,8 +19,6 @@ services:
       - "./elmclient/run.sh:/opt/app/run.sh"
       - "./elmclient/webpack.config.js:/opt/app/webpack.config.js"
     entrypoint: "/opt/app/run.sh"
-
-
 
   # PostgREST instance, is responsible for communicating with the database
   # and providing a REST api, (almost) every request that is sent to the database goes through it
