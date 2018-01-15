@@ -86,6 +86,7 @@ def load_meeting(base_url, jwt, meetings, slug):
         url = get_api_path(base_url, "meetings")
         try:
             response = requests.get(url, headers=headers, params=query_params)
+            response.raise_for_status()
         except requests.exceptions.RequestException as err:
             # Catch all exceptions
             click.echo("ERROR speaking to API: {0}".format(err))
