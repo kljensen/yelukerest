@@ -95,7 +95,9 @@ if (config.is_production) {
     // Trust first proxy
     app.set('trust proxy', 1);
     // Serve secure cookies
-    sessionOptions.cookie.secure = true;
+    // TODO: fix this. Our production setup is losing
+    // the original client IP and proto.
+    // sessionOptions.cookie.secure = true;
 }
 
 // app.use(cookieParser(config.session_secret));
