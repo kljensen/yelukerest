@@ -19,7 +19,7 @@ SET standard_conforming_strings = on;
 CREATE ROLE authenticator WITH login password NULL; -- have to change this manually after migration
 CREATE ROLE anonymous;
 CREATE ROLE api;
-CREATE ROLE authapp;
+CREATE ROLE authapp WITH LOGIN PASSWORD NULL;
 CREATE ROLE faculty;
 CREATE ROLE observer;
 CREATE ROLE student;
