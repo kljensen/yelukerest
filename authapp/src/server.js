@@ -247,15 +247,10 @@ router.get('/login', loginMiddlewareChain, (req, res) => {
 
 // Logout a user. This destroys the session.
 router.get('/logout', (req, res) => {
-    if (!req.session) {
-        return res.redirect('/');
+    if (req.session) {
+        destroyRequestSession(req);
     }
-    destroyRequestSession(req);
-
-    // Send the user to the official campus-wide logout URL
-    const options = cas.configure();
-    options.pathname = options.paths.logout;
-    return res.redirect(url.format(options));
+    return res.redirect('/');
 });
 
 /**
