@@ -29,6 +29,8 @@ def database(ctx):
 @click.argument('nickname')
 def adduser(ctx, netid, role, nickname):
     """ Add a user to the database
+
+        Run like `honcho run python ./db_client.py adduser klj39 faculty short-owl`
     """
     conn = ctx.obj['conn']
     cur = conn.cursor()
