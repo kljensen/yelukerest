@@ -10,9 +10,9 @@
     },
     "scripts": {
         "start": "webpack-dev-server --progress --color --inline",
-        "prebuild": "rimraf dist/*",
+        "prebuild": "rm -rf dist/*",
         "build": "webpack",
-        "reinstall": "npm i rimraf && rimraf node_modules && npm uninstall elm && npm i elm && npm i && elm package install --yes"
+        "reinstall": "rm -rf dist/* node_modules && npm i elm && npm i && elm package install --yes"
     },
     "dependencies": {
         "ace-css": "^1.1.0",
