@@ -49,7 +49,7 @@ dateToString date =
 
 shortDateToString : Date.Date -> String
 shortDateToString date =
-    DateFormat.format "%a %m%b" date
+    DateFormat.format "%a %d%b" date
 
 
 detailViewForJustMeeting : Meeting -> Html.Html Msg
