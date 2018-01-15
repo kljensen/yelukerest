@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-""" A client for Yelukereset, primarily to be used by facutly for
+""" A client for Yelukereset, primarily to be used by faculty for
     bulk administration over the RESTful HTTP API.
 """
 from urllib.parse import urlunsplit, urljoin
