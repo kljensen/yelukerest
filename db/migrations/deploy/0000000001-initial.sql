@@ -11,6 +11,12 @@ SET standard_conforming_strings = on;
 -- Roles
 --
 
+-- NOTE: this migration does not include anything from
+-- our app that is not hardcoded. E.g. the authenticator
+-- password. Need to set that after migration ends as
+-- superuser.
+--
+CREATE ROLE authenticator WITH login password NULL; -- have to change this manually after migration
 CREATE ROLE anonymous;
 CREATE ROLE api;
 CREATE ROLE authapp;
