@@ -14,6 +14,7 @@ matchers =
         , map MeetingListRoute (s "meetings")
         , map MeetingDetailRoute (s "meetings" </> string)
         , map AssignmentListRoute (s "assignments")
+        , map AssignmentDetailRoute (s "assignments" </> string)
         , map PlayerRoute (s "players" </> string)
         , map PlayersRoute (s "players")
         ]

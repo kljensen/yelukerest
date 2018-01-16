@@ -38,6 +38,9 @@ page model =
         Models.AssignmentListRoute ->
             Assignments.Views.listView model.assignments
 
+        Models.AssignmentDetailRoute slug ->
+            Assignments.Views.detailView model.assignments slug
+
         Models.PlayersRoute ->
             Players.List.view model.players
 

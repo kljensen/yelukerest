@@ -42,4 +42,4 @@ sendRequestForAssignments currentUser =
 
 fetchAssignmentsUrl : String
 fetchAssignmentsUrl =
-    "/rest/assignments"
+    "/rest/assignments?order=closed_at"

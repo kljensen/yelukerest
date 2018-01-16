@@ -1,6 +1,6 @@
 module Models exposing (..)
 
-import Assignments.Model exposing (Assignment)
+import Assignments.Model exposing (Assignment, AssignmentSlug)
 import Auth.Model exposing (CurrentUser)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Players.Model exposing (Player, PlayerId)
@@ -34,4 +34,5 @@ type Route
     | MeetingListRoute
     | MeetingDetailRoute MeetingSlug
     | AssignmentListRoute
+    | AssignmentDetailRoute AssignmentSlug
     | NotFoundRoute

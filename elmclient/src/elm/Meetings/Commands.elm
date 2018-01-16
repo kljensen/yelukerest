@@ -15,4 +15,4 @@ fetchMeetings =
 
 fetchMeetingsUrl : String
 fetchMeetingsUrl =
-    "/rest/meetings"
+    "/rest/meetings?order=begins_at"
