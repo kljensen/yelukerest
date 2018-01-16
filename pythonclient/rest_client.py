@@ -162,7 +162,11 @@ def fill_quiz_replace_fields(base_url, quiz):
                 params={field: 'eq.{0}'.format(v)}
             )
             del quiz[k]
-            quiz[dest_key] = response.json()[0][source_key]
+            try:
+                quiz[dest_key] = response.json()[0][source_key]
+            except IndexError:
+                click.echo("Error filling {0} for {1} with {2}".format(dest_key, source_key, v))
+                raise
     return quiz
 
 def nonchild(d):
