@@ -3,7 +3,6 @@
 const express = require('express');
 const session = require('express-session');
 const cas = require('connect-cas');
-const url = require('url');
 const httpstatus = require('http-status-codes');
 const jsonwebtoken = require('jsonwebtoken');
 const pg = require('pg');
