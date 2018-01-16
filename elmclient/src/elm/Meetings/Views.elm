@@ -1,6 +1,7 @@
 module Meetings.Views exposing (detailView, listView)
 
 import Auth.Views
+import Common.Views
 import Date
 import Date.Format as DateFormat
 import Html exposing (Html)
@@ -89,23 +90,12 @@ listOrStatus meetings =
 
 listMeetings : List Meeting -> Html Msg
 listMeetings meetings =
-    Html.div [] (List.map meetingRow meetings)
-
-
-meetingRow : Meeting -> Html Msg
-meetingRow meeting =
     let
-        meetingDetailPath =
-            "#meetings/" ++ meeting.slug
+        meetingDetails =
+            List.map (\m -> { date = m.begins_at, title = m.title, href = "#meetings/" ++ m.slug }) meetings
     in
-    Html.div [ Attrs.class "clearfix mb2" ]
-        [ Html.time [ Attrs.class "left p1 mr1 classdate" ]
-            [ Html.div [] [ Html.text (DateFormat.format "%a" meeting.begins_at) ]
-            , Html.div [] [ Html.text (DateFormat.format "%d%b" meeting.begins_at) ]
-            ]
-        , Html.div [ Attrs.class "overflow-hidden p1" ]
-            [ Html.a
-                [ Attrs.href meetingDetailPath ]
-                [ Html.text meeting.title ]
-            ]
-        ]
+    Html.div [] (List.map Common.Views.dateTitleHrefRow meetingDetails)
+
+
+
+-- listDateTitleLinkView

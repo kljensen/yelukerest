@@ -2,6 +2,7 @@ module Assignments.Views exposing (listView)
 
 import Assignments.Model exposing (Assignment)
 import Auth.Views
+import Common.Views
 import Html exposing (Html, a, div, h1, text)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
@@ -36,9 +37,8 @@ loginToViewAssignments =
 
 listAssignments : List Assignment -> Html Msg
 listAssignments assignments =
-    Html.div [] (List.map assignmentRow assignments)
-
-
-assignmentRow : Assignment -> Html Msg
-assignmentRow assignment =
-    Html.text "woot"
+    let
+        assignmentDetails =
+            List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug }) assignments
+    in
+    Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
