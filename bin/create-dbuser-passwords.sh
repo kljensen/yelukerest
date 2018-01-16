@@ -6,6 +6,10 @@ set -a
 . ./.env
 set +a
 
+
+echo ALTER ROLE $DB_USER WITH LOGIN PASSWORD \'$DB_PASS\'\;
+echo ALTER ROLE $AUTHAPP_DB_USER WITH LOGIN PASSWORD \'$AUTHAPP_DB_PASS\'\;
+
 # Dump the table
 PGPASSWORD=$SUPER_USER_PASSWORD psql \
     --host $DB_DEV_HOST --port $DB_PORT \
