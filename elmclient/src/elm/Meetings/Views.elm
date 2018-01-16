@@ -98,11 +98,11 @@ meetingRow meeting =
             "#meetings/" ++ meeting.slug
     in
     Html.div [ Attrs.class "clearfix mb2" ]
-        [ Html.time [ Attrs.class "left p2 mr1 classdate" ]
+        [ Html.time [ Attrs.class "left p1 mr1 classdate" ]
             [ Html.div [] [ Html.text (DateFormat.format "%a" meeting.begins_at) ]
             , Html.div [] [ Html.text (DateFormat.format "%d%b" meeting.begins_at) ]
             ]
-        , Html.div [ Attrs.class "overflow-hidden p2" ]
+        , Html.div [ Attrs.class "overflow-hidden p1" ]
             [ Html.a
                 [ Attrs.href meetingDetailPath ]
                 [ Html.text meeting.title ]
