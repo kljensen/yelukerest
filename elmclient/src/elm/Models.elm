@@ -1,5 +1,6 @@
 module Models exposing (..)
 
+import Assignments.Model exposing (Assignment)
 import Auth.Model exposing (CurrentUser)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Players.Model exposing (Player, PlayerId)
@@ -11,6 +12,7 @@ type alias Model =
     , route : Route
     , meetings : WebData (List Meeting)
     , currentUser : WebData CurrentUser
+    , assignments : WebData (List Assignment)
     }
 
 
@@ -20,6 +22,7 @@ initialModel route =
     , route = route
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
+    , assignments = RemoteData.Loading
     }
 
 
@@ -30,4 +33,5 @@ type Route
     | PlayerRoute PlayerId
     | MeetingListRoute
     | MeetingDetailRoute MeetingSlug
+    | AssignmentListRoute
     | NotFoundRoute

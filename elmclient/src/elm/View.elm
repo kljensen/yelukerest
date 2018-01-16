@@ -1,5 +1,6 @@
 module View exposing (..)
 
+import Assignments.Views
 import Auth.Views
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
@@ -33,6 +34,9 @@ page model =
 
         Models.MeetingDetailRoute slug ->
             Meetings.Views.detailView model.meetings slug
+
+        Models.AssignmentListRoute ->
+            Assignments.Views.listView model.assignments
 
         Models.PlayersRoute ->
             Players.List.view model.players

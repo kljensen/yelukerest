@@ -1,5 +1,6 @@
 module Update exposing (..)
 
+import Assignments.Commands exposing (fetchAssignments)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Players.Commands exposing (savePlayerCmd)
@@ -21,8 +22,11 @@ update msg model =
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )
 
+        Msgs.OnFetchAssignments response ->
+            ( { model | assignments = response }, Cmd.none )
+
         Msgs.OnFetchCurrentUser response ->
-            ( { model | currentUser = response }, Cmd.none )
+            ( { model | currentUser = response }, fetchAssignments )
 
         -- Below here, old code from starter project
         Msgs.OnFetchPlayers response ->
