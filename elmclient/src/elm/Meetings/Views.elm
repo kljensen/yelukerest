@@ -1,6 +1,5 @@
 module Meetings.Views exposing (detailView, listView)
 
-import Auth.Views
 import Common.Views
 import Date
 import Date.Format as DateFormat
