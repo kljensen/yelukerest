@@ -12,7 +12,7 @@ COPY data."user" (id,email,netid,"name",known_as,nickname,"role",created_at,upda
 \.
 
 -- restart sequences
-ALTER SEQUENCE data.user_id_seq RESTART WITH 5;
+ALTER SEQUENCE data.user_id_seq RESTART WITH 6;
 -- 
 -- analyze modified tables
 ANALYZE data.user;
