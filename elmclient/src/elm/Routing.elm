@@ -13,6 +13,7 @@ matchers =
         , map CurrentUserDashboardRoute (s "dashboard")
         , map MeetingListRoute (s "meetings")
         , map MeetingDetailRoute (s "meetings" </> string)
+        , map AssignmentListRoute (s "assignments")
         , map PlayerRoute (s "players" </> string)
         , map PlayersRoute (s "players")
         ]

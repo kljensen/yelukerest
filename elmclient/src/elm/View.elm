@@ -54,7 +54,7 @@ indexView model =
         [ h1 [] [ text "Classname" ]
         , div [] [ text "About" ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
-        , div [] [ text "Assignments" ]
+        , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
         , div [] [ Auth.Views.loginOrDashboard model.currentUser ]
         ]
 

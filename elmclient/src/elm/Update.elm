@@ -26,7 +26,7 @@ update msg model =
             ( { model | assignments = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            ( { model | currentUser = response }, fetchAssignments )
+            ( { model | currentUser = response }, fetchAssignments response )
 
         -- Below here, old code from starter project
         Msgs.OnFetchPlayers response ->

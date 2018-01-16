@@ -12,7 +12,7 @@ type alias AssignmentSlug =
 
 type alias Assignment =
     { slug : String
-    , possible_points : Int
+    , points_possible : Int
     , is_draft : Bool
     , is_markdown : Bool
     , is_team : Bool
@@ -32,7 +32,7 @@ assignmentDecoder : Decode.Decoder Assignment
 assignmentDecoder =
     decode Assignment
         |> required "slug" Decode.string
-        |> required "possible_points" Decode.int
+        |> required "points_possible" Decode.int
         |> required "is_draft" Decode.bool
         |> required "is_markdown" Decode.bool
         |> required "is_team" Decode.bool

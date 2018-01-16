@@ -1,4 +1,4 @@
-module Auth.Views exposing (dashboard, loginOrDashboard)
+module Auth.Views exposing (dashboard, loginLink, loginOrDashboard)
 
 import Auth.Model exposing (CurrentUser)
 import Html exposing (Html)

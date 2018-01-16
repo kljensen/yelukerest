@@ -22,7 +22,7 @@ initialModel route =
     , route = route
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
-    , assignments = RemoteData.Loading
+    , assignments = RemoteData.NotAsked
     }
 
 
