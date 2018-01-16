@@ -57,7 +57,15 @@ def addstudents(ctx, infile):
     existing_nicknames = set([row[0] for row in cur.fetchall()])
     conn.commit()
 
+    cur = conn.cursor()
+    statement = 'SELECT netid FROM data.user'
+    cur.execute(statement)
+    existing_netids = set([row[0] for row in cur.fetchall()])
+    conn.commit()
+
     for netid in users:
+        if netid in existing_netids:
+            continue
         tries = 0
         new_nickname = None
         while tries == 0 or new_nickname in existing_nicknames:
