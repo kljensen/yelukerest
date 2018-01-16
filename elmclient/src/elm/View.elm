@@ -54,7 +54,7 @@ page model =
 indexView : Model -> Html Msg
 indexView model =
     div []
-        [ h1 [] [ text "Classname" ]
+        [ h1 [] [ text "CPSC213/MGT569" ]
         , div [] [ text "About" ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
