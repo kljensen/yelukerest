@@ -42,10 +42,10 @@ grant usage on data.todo_id_seq to student;
 -- are the rights of our application user in regard to this api view.
 
 -- authenticated users can request/change all the columns for this view
-grant select, insert, update, delete on api.todos to student;
+-- grant select, insert, update, delete on api.todos to student;
 
 -- anonymous users can only request specific columns from this view
-grant select (id, todo) on api.todos to anonymous;
+-- grant select (id, todo) on api.todos to anonymous;
 -------------------------------------------------------------------------------
 
 \ir ./yeluke.sql
