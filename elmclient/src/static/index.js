@@ -4,7 +4,9 @@ require('ace-css/css/ace.css');
 // require('milligram-scss/src/milligram.scss');
 require('font-awesome/css/font-awesome.css');
 
-// require('./styles/main.scss');
+// require('source-code-pro');
+
+require('./styles/main.scss');
 
 // const $ = jQuery = require( '../../node_modules/jquery/dist/jquery.js' );
 // // <--- remove if jQuery not needed

@@ -70,12 +70,6 @@ meetingNotFoundView slug =
         ]
 
 
-nav : Html Msg
-nav =
-    Html.div [ Attrs.class "clearfix mb2 white bg-black" ]
-        [ Html.div [ Attrs.class "left p2" ] [ Html.text "Players" ] ]
-
-
 listOrStatus : WebData (List Meeting) -> Html Msg
 listOrStatus meetings =
     case meetings of
@@ -94,7 +88,7 @@ listOrStatus meetings =
 
 listMeetings : List Meeting -> Html Msg
 listMeetings meetings =
-    Html.div [] [ Html.ul [] (List.map meetingRow meetings) ]
+    Html.div [] (List.map meetingRow meetings)
 
 
 meetingRow : Meeting -> Html Msg
@@ -103,10 +97,14 @@ meetingRow meeting =
         meetingDetailPath =
             "#meetings/" ++ meeting.slug
     in
-    Html.li []
-        [ Html.time []
-            [ Html.text (shortDateToString meeting.begins_at ++ " — ") ]
-        , Html.a
-            [ Attrs.href meetingDetailPath ]
-            [ Html.text meeting.title ]
+    Html.div [ Attrs.class "clearfix mb2" ]
+        [ Html.time [ Attrs.class "left p2 mr1 classdate" ]
+            [ Html.div [] [ Html.text (DateFormat.format "%a" meeting.begins_at) ]
+            , Html.div [] [ Html.text (DateFormat.format "%d%b" meeting.begins_at) ]
+            ]
+        , Html.div [ Attrs.class "overflow-hidden p2" ]
+            [ Html.a
+                [ Attrs.href meetingDetailPath ]
+                [ Html.text meeting.title ]
+            ]
         ]
