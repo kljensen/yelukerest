@@ -65,6 +65,9 @@ services:
       - DB_SCHEMA=${DB_SCHEMA}
       - DB_USER=${DB_USER}
       - DB_PASS=${DB_PASS}
+      - SWAGGER_JWT=${SWAGGER_JWT}
+      - SWAGGER_INFO_TITLE=${SWAGGER_INFO_TITLE}
+      - SWAGGER_INFO_DESCRIPTION=${SWAGGER_INFO_DESCRIPTION}
     volumes:
       - elmclient-build:/var/elmclient/
       - "./openresty/entrypoint.sh:/entrypoint.sh"
