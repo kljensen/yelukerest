@@ -58,6 +58,7 @@ indexView model =
         , div [] [ a [ href "https://github.com/yale-cpsc-213-spring-2018/about-this-class" ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
+        , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard model.currentUser ]
         ]
 
