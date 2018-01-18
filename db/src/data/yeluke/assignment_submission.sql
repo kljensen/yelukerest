@@ -52,6 +52,12 @@ BEGIN
         FROM api.assignments
         WHERE slug = NEW.assignment_slug;
     END IF;
+    IF (NEW.user_id IS NULL AND NOT NEW.is_team ) THEN
+        NEW.user_id = request.user_id();
+    END IF;
+    IF (NEW.submitter_user_id IS NULL ) THEN
+        NEW.submitter_user_id = request.user_id();
+    END IF;
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
