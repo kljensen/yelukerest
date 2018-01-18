@@ -131,7 +131,7 @@ async function getYelukeUserInfo(pool, netid) {
     // pool back to the pool after the query is completed.
     // See https://github.com/brianc/node-pg-pool
     try {
-        const result = await pool.query('SELECT id,netid,role FROM api.users WHERE netid = $1', [netid]);
+        const result = await pool.query('SELECT id,netid,nickname,role FROM api.users WHERE netid = $1', [netid]);
         userInfo.error = false;
         if (result.rows.length !== 1) {
             return userInfo;
