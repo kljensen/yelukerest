@@ -19,9 +19,21 @@ CREATE TABLE IF NOT EXISTS quiz_submission (
     -- UNIQUE (id, quiz_id),
 );
 
+
+CREATE OR REPLACE FUNCTION fill_quiz_submission_defaults()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (NEW.user_id IS NULL) THEN
+        NEW.user_id = request.user_id();
+    END IF;
+    NEW.updated_at = current_timestamp;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 DROP TRIGGER IF EXISTS tg_quiz_submission_default ON quiz_submission;
 CREATE TRIGGER tg_quiz_submission_default
     BEFORE INSERT OR UPDATE
     ON quiz_submission
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE PROCEDURE fill_quiz_submission_defaults();
