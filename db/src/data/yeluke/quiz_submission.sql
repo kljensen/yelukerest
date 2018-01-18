@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS quiz_submission (
     user_id INT REFERENCES "user"(id)
         ON DELETE CASCADE
         ON UPDATE CASCADE
-        NOT NULL,
+        NOT NULL DEFAULT request.user_id(),
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
