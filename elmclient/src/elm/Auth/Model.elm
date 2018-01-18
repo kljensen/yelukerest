@@ -1,13 +1,17 @@
-module Auth.Model exposing (CurrentUser, currentUserDecoder)
+module Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (decode, required)
 
 
+type alias JWT =
+    String
+
+
 type alias CurrentUser =
     { id : Int
     , netid : String
-    , jwt : String
+    , jwt : JWT
     }
 
 

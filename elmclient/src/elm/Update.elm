@@ -5,6 +5,7 @@ import Models exposing (Model)
 import Msgs exposing (Msg)
 import Players.Commands exposing (savePlayerCmd)
 import Players.Model exposing (Player, PlayerId)
+import Quizzes.Commands exposing (fetchQuizzes)
 import RemoteData
 import Routing exposing (parseLocation)
 
@@ -25,8 +26,11 @@ update msg model =
         Msgs.OnFetchAssignments response ->
             ( { model | assignments = response }, Cmd.none )
 
+        Msgs.OnFetchQuizzes response ->
+            ( { model | quizzes = response }, Cmd.none )
+
         Msgs.OnFetchCurrentUser response ->
-            ( { model | currentUser = response }, fetchAssignments response )
+            ( { model | currentUser = response }, Cmd.batch [ fetchAssignments response, fetchQuizzes response ] )
 
         -- Below here, old code from starter project
         Msgs.OnFetchPlayers response ->

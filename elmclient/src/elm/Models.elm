@@ -4,6 +4,7 @@ import Assignments.Model exposing (Assignment, AssignmentSlug)
 import Auth.Model exposing (CurrentUser)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Players.Model exposing (Player, PlayerId)
+import Quizzes.Model exposing (Quiz)
 import RemoteData exposing (WebData)
 
 
@@ -13,6 +14,7 @@ type alias Model =
     , meetings : WebData (List Meeting)
     , currentUser : WebData CurrentUser
     , assignments : WebData (List Assignment)
+    , quizzes : WebData (List Quiz)
     }
 
 
@@ -23,6 +25,7 @@ initialModel route =
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
     , assignments = RemoteData.NotAsked
+    , quizzes = RemoteData.NotAsked
     }
 
 

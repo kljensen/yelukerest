@@ -6,6 +6,7 @@ import Http
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
 import Players.Model exposing (Player, PlayerId)
+import Quizzes.Model exposing (Quiz)
 import RemoteData exposing (WebData)
 
 
@@ -14,6 +15,7 @@ type Msg
     | OnFetchMeetings (WebData (List Meeting))
     | OnFetchAssignments (WebData (List Assignment))
     | OnFetchCurrentUser (WebData CurrentUser)
+    | OnFetchQuizzes (WebData (List Quiz))
     | OnLocationChange Location
     | ChangeLevel Player Int
     | OnPlayerSave (Result Http.Error Player)
