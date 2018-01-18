@@ -1,5 +1,5 @@
 begin;
-select plan(15);
+select plan(16);
 
 SELECT view_owner_is(
     'api', 'quiz_answers', 'api',
@@ -80,6 +80,11 @@ SELECT lives_ok(
 SELECT lives_ok(
     'EXECUTE deleteanswer(3, 5)', 
     'students can delete answers to questions once they have a quiz submission'
+);
+
+SELECT lives_ok(
+    'INSERT INTO api.quiz_answers (quiz_question_option_id) VALUES (5)', 
+    'the quiz_id and user_id are automatically filled by triggers'
 );
 
 set local role faculty;

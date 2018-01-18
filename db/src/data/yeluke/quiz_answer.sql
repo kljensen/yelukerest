@@ -30,7 +30,7 @@ BEGIN
     -- Fill in the quiz_id if it is null
     IF (NEW.quiz_id IS NULL) THEN
         SELECT quiz_id INTO NEW.quiz_id
-        FROM quiz_question_option
+        FROM api.quiz_question_options
         WHERE id = NEW.quiz_question_option_id;
     END IF;
     IF (NEW.user_id IS NULL and request.user_id() IS NOT NULL) THEN
