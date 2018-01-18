@@ -8,6 +8,7 @@ import Html.Attributes as Attrs
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg)
+import Quizzes.Model exposing (Quiz)
 import RemoteData exposing (WebData)
 
 
@@ -16,8 +17,12 @@ listView meetings =
     Html.div [] [ listOrStatus meetings ]
 
 
-detailView : WebData (List Meeting) -> MeetingSlug -> Html.Html Msg
-detailView meetings slug =
+
+-- getQuizForMeeting
+
+
+detailView : WebData (List Meeting) -> MeetingSlug -> List Quiz -> Html.Html Msg
+detailView meetings slug quizzes =
     case meetings of
         RemoteData.NotAsked ->
             Html.text ""

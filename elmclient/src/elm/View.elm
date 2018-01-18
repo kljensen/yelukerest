@@ -33,7 +33,7 @@ page model =
             Meetings.Views.listView model.meetings
 
         Models.MeetingDetailRoute slug ->
-            Meetings.Views.detailView model.meetings slug
+            Meetings.Views.detailView model.meetings slug model.quizzes
 
         Models.AssignmentListRoute ->
             Assignments.Views.listView model.assignments
