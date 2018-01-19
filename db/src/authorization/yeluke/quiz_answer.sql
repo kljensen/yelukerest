@@ -24,14 +24,20 @@ using (
         request.user_role() = 'student'
         and
         -- if it is for themselves
-        request.user_id() = data.quiz_answer.user_id
+        request.user_id() = user_id
 		and
-        -- and the quiz is open for submission.
+        -- and the quiz is open for submission. 
         EXISTS(
             SELECT * 
             FROM api.quizzes as q
+            JOIN api.quiz_submissions as qs
+            ON (q.id = qs.quiz_id)
             WHERE (
                 q.id = quiz_id and q.is_open
+                and
+                qs.created_at + q.duration > current_timestamp
+                and
+                qs.user_id = user_id
             )
 		)
 	)

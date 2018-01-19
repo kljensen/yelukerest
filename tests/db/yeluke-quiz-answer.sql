@@ -24,6 +24,9 @@ SELECT table_privs_are(
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
 
+-- Make all the quizzes look like they were just started
+UPDATE api.quizzes SET created_at=current_timestamp, updated_at=current_timestamp;
+
 SELECT results_eq(
     'SELECT DISTINCT(user_id) FROM api.quiz_answers',
     ARRAY[1, 2],
@@ -68,8 +71,8 @@ SELECT throws_ilike(
 
 SELECT throws_ilike(
     'EXECUTE insertanswer(1, 3, 1)', 
-    '%row-level security%',
-    'students cannot submit a quiz answer a quiz they have not started'
+    '%foreign key constraint%',
+    'students cannot submit a quiz answer for a quiz they have not started'
 );
 
 SELECT lives_ok(
@@ -99,7 +102,7 @@ set request.jwt.claim.user_id = '3';
 
 SELECT throws_like(
     'EXECUTE insertanswer(2, 3, 5)', 
-    'foo'
+    '%row-level security%',
     'students cannot submit quiz answers after the quiz duration passes'
 );
 
