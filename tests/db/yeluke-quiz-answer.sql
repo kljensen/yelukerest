@@ -1,5 +1,5 @@
 begin;
-select plan(16);
+select plan(17);
 
 SELECT view_owner_is(
     'api', 'quiz_answers', 'api',
@@ -85,6 +85,22 @@ SELECT lives_ok(
 SELECT lives_ok(
     'INSERT INTO api.quiz_answers (quiz_question_option_id) VALUES (5)', 
     'the quiz_id and user_id are automatically filled by triggers'
+);
+
+-- Make this student's quiz submission look like it was started 1000 years ago
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+DELETE FROM api.quiz_answers WHERE user_id=3 AND quiz_question_option_id=5;
+UPDATE api.quiz_submissions SET created_at=created_at - '1000 years'::INTERVAL WHERE quiz_id=2 AND user_id=3;
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '3';
+
+
+SELECT throws_like(
+    'EXECUTE insertanswer(2, 3, 5)', 
+    'foo'
+    'students cannot submit quiz answers after the quiz duration passes'
 );
 
 set local role faculty;
