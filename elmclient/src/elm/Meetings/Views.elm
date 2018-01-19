@@ -22,6 +22,7 @@ listView meetings =
 
 
 detailView : WebData (List Meeting) -> MeetingSlug -> List Quiz -> Html.Html Msg
+detailView : WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> Html.Html Msg
 detailView meetings slug quizzes =
     case meetings of
         RemoteData.NotAsked ->
