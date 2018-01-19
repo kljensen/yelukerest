@@ -21,7 +21,18 @@ listView meetings =
 -- getQuizForMeeting
 
 
-detailView : WebData (List Meeting) -> MeetingSlug -> List Quiz -> Html.Html Msg
+getQuizForMeetingID : WebData (List Quiz) -> Int -> Maybe Quiz
+getQuizForMeetingID quizzes meeting_id =
+    case quizzes of
+        RemoteData.Success quizzes ->
+            quizzes
+                |> List.filter (\quiz -> quiz.meeting_id == meeting_id)
+                |> List.head
+
+        _ ->
+            Nothing
+
+
 detailView : WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> Html.Html Msg
 detailView meetings slug quizzes =
     case meetings of
