@@ -66,3 +66,22 @@ services:
       - "./authapp/src:/app/src"
       - "./authapp/run.sh:/app/run.sh"
     entrypoint: "/app/run.sh"
+
+
+  backup:
+    build: backup
+    links:
+      - db
+    environment:
+      - SCHEDULE=${BACKUP_SCHEDULE}
+      - S3_REGION=${BACKUP_S3_REGION}
+      - S3_ACCESS_KEY_ID=${BACKUP_S3_ACCESS_KEY_ID}
+      - S3_SECRET_ACCESS_KEY=${BACKUP_S3_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${BACKUP_S3_BUCKET}
+      - S3_PREFIX=${BACKUP_S3_PREFIX}
+      - S3_OBJECT_NAME=${BACKUP_S3_OBJECT_NAME}
+      - POSTGRES_DATABASE=${DB_NAME}
+      - POSTGRES_USER=${SUPER_USER}
+      - POSTGRES_PASSWORD=${SUPER_USER_PASSWORD}
+      - POSTGRES_HOST=${DB_HOST}
+      - POSTGRES_PORT=${DB_PORT}
