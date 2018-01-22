@@ -49,6 +49,7 @@ services:
     links:
       - postgrest:postgrest
       - authapp:authapp
+      - sharedterminal:sharedterminal
     entrypoint: /entrypoint.sh
     environment:
       - JWT_SECRET=${JWT_SECRET}
@@ -59,6 +60,7 @@ services:
       - AUTHAPP_PORT=${AUTHAPP_PORT}
       - ELMCLIENT_HOST=${ELMCLIENT_HOST}
       - ELMCLIENT_PORT=${ELMCLIENT_PORT}
+      - SHARED_TERMINAL_PORT=${SHARED_TERMINAL_PORT}
       - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT}
       - DB_NAME=${DB_NAME}
@@ -103,3 +105,10 @@ services:
     image: redis:4
     ports:
       - "6379:6379"
+
+
+
+  sharedterminal:
+    build: sharedterminal
+    environment:
+      - SHARED_TERMINAL_PORT=${SHARED_TERMINAL_PORT}
