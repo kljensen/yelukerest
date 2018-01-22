@@ -43,7 +43,7 @@ def do_ldap_search(netid):
 def ldapget(result, key):
     try:
         return str(getattr(result, key))
-    except ldap3.core.exceptions.LDAPKeyError:
+    except (ldap3.core.exceptions.LDAPKeyError, ldap3.core.exceptions.LDAPCursorError):
         return None
 
 
