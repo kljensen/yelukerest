@@ -5,3 +5,4 @@
 0000000002-data 2018-01-15T12:12:16Z root <root@linuxkit-025000000001> # initial dataset
 0000000003-data 2018-01-18T15:35:38Z root <root@linuxkit-025000000001> # fix quiz answer trigger
 0000000004-quiz_answer_rls 2018-01-19T22:01:20Z root <root@linuxkit-025000000001> # Change RLS on quiz answers
+0000000005-data 2018-01-22T17:30:01Z root <root@linuxkit-025000000001> # Fill assignment slug with trigger

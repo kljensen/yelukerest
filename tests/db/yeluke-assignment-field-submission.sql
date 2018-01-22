@@ -94,9 +94,10 @@ set local role student;
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '4';
 
+
 SELECT lives_ok(
-    'EXECUTE doinsert(11, 1, ''team-selection'', ''mysecret'', 4)', 
-    'students can create assignment field submissions'
+    'INSERT INTO api.assignment_field_submissions (assignment_submission_id,assignment_field_id, body) VALUES (11, 1, ''mysecret'')',
+    'students can create assignment field submissions and defaults get set'
 );
 
 SELECT results_eq(
