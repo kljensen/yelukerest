@@ -49,7 +49,6 @@ services:
     links:
       - postgrest:postgrest
       - authapp:authapp
-      - sharedterminal:sharedterminal
     entrypoint: /entrypoint.sh
     environment:
       - JWT_SECRET=${JWT_SECRET}
