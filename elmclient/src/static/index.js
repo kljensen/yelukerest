@@ -1,18 +1,19 @@
+/* eslint-env browser */
+/* global PIAZZA_URL COURSE_TITLE */
 // pull in desired CSS/SASS files
 
+// eslint-disable-next-line import/no-unresolved
 require('ace-css/css/ace.css');
-// require('milligram-scss/src/milligram.scss');
+// eslint-disable-next-line import/no-unresolved
 require('font-awesome/css/font-awesome.css');
-
-// require('source-code-pro');
-
 require('./styles/main.scss');
 
-// const $ = jQuery = require( '../../node_modules/jquery/dist/jquery.js' );
-// // <--- remove if jQuery not needed
-// require('../../node_modules/bootstrap-sass/assets/javascripts/bootstrap.js' );
-// // <--- remove if Bootstrap's JS not needed 
 
-// inject bundled Elm app into div#main
+// Inject bundled Elm app into div#main
+// eslint-disable-next-line import/no-unresolved
 const Elm = require('../elm/Main');
-Elm.Main.embed(document.getElementById('main'));
+
+Elm.Main.embed(document.getElementById('main'), {
+    courseTitle: COURSE_TITLE,
+    piazzaURL: PIAZZA_URL,
+});

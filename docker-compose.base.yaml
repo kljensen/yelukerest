@@ -11,6 +11,8 @@ services:
     working_dir: /opt/app
     environment:
       - DEVELOPMENT=${DEVELOPMENT}
+      - PIAZZA_URL=${ELMCLIENT_PIAZZA_URL}
+      - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
     volumes:
       # Note that the package.json-like files were moved into the
       # container as specified by the elmclient/Dockerfile.

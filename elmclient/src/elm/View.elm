@@ -2,6 +2,7 @@ module View exposing (..)
 
 import Assignments.Views
 import Auth.Views
+import Common.Views exposing (piazzaLink)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
 import Meetings.Views
@@ -54,10 +55,11 @@ page model =
 indexView : Model -> Html Msg
 indexView model =
     div []
-        [ h1 [] [ text "CPSC213/MGT569" ]
+        [ h1 [] [ text model.uiElements.courseTitle ]
         , div [] [ a [ href "https://github.com/yale-cpsc-213-spring-2018/about-this-class" ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
+        , piazzaLink model.uiElements.piazzaURL
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard model.currentUser ]
         ]

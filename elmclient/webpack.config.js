@@ -51,6 +51,12 @@ const commonConfig = {
             inject: 'body',
             filename: 'index.html',
         }),
+        new webpack.DefinePlugin({
+            // Todo: get these via a call to the database instead
+            // of through the environment. (?)
+            COURSE_TITLE: JSON.stringify(process.env.COURSE_TITLE),
+            PIAZZA_URL: JSON.stringify(process.env.PIAZZA_URL),
+        }),
     ],
 };
 

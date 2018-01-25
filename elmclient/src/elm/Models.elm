@@ -8,6 +8,18 @@ import Quizzes.Model exposing (Quiz)
 import RemoteData exposing (WebData)
 
 
+type alias Flags =
+    { courseTitle : String
+    , piazzaURL : Maybe String
+    }
+
+
+type alias UIElements =
+    { courseTitle : String
+    , piazzaURL : Maybe String
+    }
+
+
 type alias Model =
     { players : WebData (List Player)
     , route : Route
@@ -15,17 +27,22 @@ type alias Model =
     , currentUser : WebData CurrentUser
     , assignments : WebData (List Assignment)
     , quizzes : WebData (List Quiz)
+    , uiElements : UIElements
     }
 
 
-initialModel : Route -> Model
-initialModel route =
+initialModel : Flags -> Route -> Model
+initialModel flags route =
     { players = RemoteData.Loading
     , route = route
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
     , assignments = RemoteData.NotAsked
     , quizzes = RemoteData.NotAsked
+    , uiElements =
+        { courseTitle = flags.courseTitle
+        , piazzaURL = flags.piazzaURL
+        }
     }
 
 

@@ -1,4 +1,4 @@
-module Common.Views exposing (DateTitleHrefRecord, dateTitleHrefRow)
+module Common.Views exposing (DateTitleHrefRecord, dateTitleHrefRow, piazzaLink)
 
 import Date exposing (Date)
 import Date.Format as DateFormat
@@ -27,3 +27,13 @@ dateTitleHrefRow dth =
                 [ Html.text dth.title ]
             ]
         ]
+
+
+piazzaLink : Maybe String -> Html Msg
+piazzaLink piazzaURL =
+    case piazzaURL of
+        Just url ->
+            Html.a [ Attrs.href url ] [ Html.text "Piazza" ]
+
+        Nothing ->
+            Html.text ""
