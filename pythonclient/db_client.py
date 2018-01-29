@@ -3,12 +3,12 @@
 """ A client for Yelukereset, primarily to be used by faculty for
     bulk administration connecting directly to the database.
 """
-import click
 import os
+import click
 import ldap3
 import psycopg2
 from names import get_student_nickname
-
+from models import quiz
 
 @click.group()
 @click.pass_context
@@ -41,9 +41,12 @@ def do_ldap_search(netid):
 
 
 def ldapget(result, key):
+    """ Get a value from the LDAP result using a key. Return None
+        if the key does not exist
+    """
     try:
         return str(getattr(result, key))
-    except (ldap3.core.exceptions.LDAPKeyError, ldap3.core.exceptions.LDAPCursorError):
+    except ldap3.core.exceptions.LDAPKeyError:
         return None
 
 
@@ -130,6 +133,16 @@ def addstudents(ctx, infile):
         cur.execute(statement, (netid, "student", new_nickname))
         conn.commit()
 
+@database.command()
+@click.pass_context
+@click.argument('quiz_id', type=click.INT)
+def grade_quiz(ctx, quiz_id):
+    """ Grades a quiz
+    """
+    conn = ctx.obj['conn']
+    quiz.grade(conn, quiz_id)
+
 
 if __name__ == "__main__":
+     #pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     database(obj={})

@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS quiz (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    CONSTRAINT closed_after_open CHECK (closed_at > open_at)
+    CONSTRAINT closed_after_open CHECK (closed_at > open_at),
+    UNIQUE(id, points_possible) -- for foreign key from quiz_grade
 );
 
 CREATE OR REPLACE FUNCTION quiz_set_defaults() RETURNS trigger AS $$

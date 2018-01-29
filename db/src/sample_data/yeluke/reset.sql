@@ -11,5 +11,7 @@ truncate data.assignment restart identity cascade;
 truncate data.assignment_field restart identity cascade;
 truncate data.assignment_submission restart identity cascade;
 truncate data.assignment_field_submission restart identity cascade;
+truncate data.quiz_grade restart identity cascade;
+
 
 -- user is truncated elsewhere

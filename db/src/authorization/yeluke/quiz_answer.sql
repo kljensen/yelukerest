@@ -13,7 +13,7 @@ using (
 	(request.user_role() = 'student' and request.user_id() = user_id)
 
 	or
-	-- Faculty can see engagement by all users.
+	-- Faculty can see quiz answers by all users.
 	(request.user_role() = 'faculty')
 ) WITH CHECK (
     -- Facutly can write to any row
@@ -43,10 +43,6 @@ using (
 	)
 
 );
-
--- NOTE: we are using a trigger to apply the time limits
--- associated with the quiz_answers. Doing so allows me
--- to not duplicate a lot of the RLS code above.
 
 -- student users need to edit their answers
 grant select, insert, delete on api.quiz_answers to student;
