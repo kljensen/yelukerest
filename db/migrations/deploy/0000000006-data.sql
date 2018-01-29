@@ -37,6 +37,11 @@ BEGIN
 END;
 $$;
 
+CREATE TRIGGER tg_quiz_grade_default
+	BEFORE INSERT OR UPDATE ON quiz_grade
+	FOR EACH ROW
+	EXECUTE PROCEDURE fill_quiz_grade_defaults();
+
 ALTER TABLE quiz_grade
 	ADD CONSTRAINT quiz_grade_pkey PRIMARY KEY (quiz_id, user_id);
 
@@ -75,10 +80,6 @@ REVOKE ALL ON TABLE quiz_grades FROM faculty;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE quiz_grades TO faculty;
 
 
-CREATE TRIGGER tg_quiz_grade_default
-	BEFORE INSERT OR UPDATE ON quiz_grade
-	FOR EACH ROW
-	EXECUTE PROCEDURE fill_quiz_grade_defaults();
 CREATE POLICY quiz_grade_access_policy ON quiz_grade FOR ALL TO api
 USING (
   (((request.user_role() = 'student'::text) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text))
