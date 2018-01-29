@@ -1,22 +1,5 @@
 START TRANSACTION;
 
-SET search_path = api, pg_catalog;
-
-CREATE VIEW quiz_grades AS
-	SELECT quiz_grade.quiz_id,
-    quiz_grade.points,
-    quiz_grade.points_possible,
-    quiz_grade.user_id,
-    quiz_grade.created_at,
-    quiz_grade.updated_at
-   FROM data.quiz_grade;
-
-ALTER VIEW quiz_grades OWNER TO api;
-REVOKE ALL ON TABLE quiz_grades FROM student;
-GRANT SELECT ON TABLE quiz_grades TO student;
-REVOKE ALL ON TABLE quiz_grades FROM faculty;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE quiz_grades TO faculty;
-
 SET search_path = data, pg_catalog;
 
 CREATE TABLE quiz_grade (
@@ -70,6 +53,26 @@ ALTER TABLE quiz_grade
 
 ALTER TABLE quiz
 	ADD CONSTRAINT quiz_id_points_possible_key UNIQUE (id, points_possible);
+
+
+
+SET search_path = api, pg_catalog;
+
+CREATE VIEW quiz_grades AS
+	SELECT quiz_grade.quiz_id,
+    quiz_grade.points,
+    quiz_grade.points_possible,
+    quiz_grade.user_id,
+    quiz_grade.created_at,
+    quiz_grade.updated_at
+   FROM data.quiz_grade;
+
+ALTER VIEW quiz_grades OWNER TO api;
+REVOKE ALL ON TABLE quiz_grades FROM student;
+GRANT SELECT ON TABLE quiz_grades TO student;
+REVOKE ALL ON TABLE quiz_grades FROM faculty;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE quiz_grades TO faculty;
+
 
 CREATE TRIGGER tg_quiz_grade_default
 	BEFORE INSERT OR UPDATE ON quiz_grade
