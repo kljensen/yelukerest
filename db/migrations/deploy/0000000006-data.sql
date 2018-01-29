@@ -2,6 +2,10 @@ START TRANSACTION;
 
 SET search_path = data, pg_catalog;
 
+ALTER TABLE quiz
+	ADD CONSTRAINT quiz_id_points_possible_key UNIQUE (id, points_possible);
+
+
 CREATE TABLE quiz_grade (
 	quiz_id integer NOT NULL,
 	points real NOT NULL,
@@ -50,9 +54,6 @@ ALTER TABLE quiz_grade
 
 ALTER TABLE quiz_grade
 	ADD CONSTRAINT quiz_grade_user_id_fkey FOREIGN KEY (user_id) REFERENCES "user"(id) ON UPDATE CASCADE ON DELETE CASCADE;
-
-ALTER TABLE quiz
-	ADD CONSTRAINT quiz_id_points_possible_key UNIQUE (id, points_possible);
 
 
 
