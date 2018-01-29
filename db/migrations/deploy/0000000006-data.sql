@@ -80,7 +80,7 @@ REVOKE ALL ON TABLE quiz_grades FROM faculty;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE quiz_grades TO faculty;
 
 
-CREATE POLICY quiz_grade_access_policy ON quiz_grade FOR ALL TO api
+CREATE POLICY quiz_grade_access_policy ON data.quiz_grade FOR ALL TO api
 USING (
   (((request.user_role() = 'student'::text) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text))
 )
