@@ -4,7 +4,6 @@ import Common.Views
 import Date
 import Date.Format as DateFormat
 import Html exposing (Html)
-import Html.Attributes as Attrs
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg)
@@ -70,21 +69,10 @@ shortDateToString date =
     DateFormat.format "%a %d%b" date
 
 
-showDraftStatus : Bool -> Html.Html Msg
-showDraftStatus is_draft =
-    case is_draft of
-        True ->
-            Html.span [ Attrs.class "meeting-draft" ]
-                [ Html.text "[draft]" ]
-
-        False ->
-            Html.text ""
-
-
 detailViewForJustMeeting : Meeting -> Html.Html Msg
 detailViewForJustMeeting meeting =
     Html.div []
-        [ Html.h1 [] [ Html.text meeting.title, showDraftStatus meeting.is_draft ]
+        [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
         , Html.div []
             [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
             ]

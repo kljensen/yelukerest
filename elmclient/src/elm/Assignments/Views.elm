@@ -94,7 +94,7 @@ dateTimeToString date =
 detailViewForJustAssignment : Assignment -> Html.Html Msg
 detailViewForJustAssignment assignment =
     Html.div []
-        [ Html.h1 [] [ Html.text assignment.title ]
+        [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
             [ Html.text "Due: "
             , Html.time [] [ Html.text (dateTimeToString assignment.closed_at) ]

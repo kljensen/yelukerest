@@ -1,4 +1,4 @@
-module Common.Views exposing (DateTitleHrefRecord, dateTitleHrefRow, piazzaLink)
+module Common.Views exposing (DateTitleHrefRecord, dateTitleHrefRow, piazzaLink, showDraftStatus)
 
 import Date exposing (Date)
 import Date.Format as DateFormat
@@ -12,6 +12,17 @@ type alias DateTitleHrefRecord =
     , title : String
     , href : String
     }
+
+
+showDraftStatus : Bool -> Html.Html Msg
+showDraftStatus is_draft =
+    case is_draft of
+        True ->
+            Html.span [ Attrs.class "meeting-draft" ]
+                [ Html.text "[draft]" ]
+
+        False ->
+            Html.text ""
 
 
 dateTitleHrefRow : DateTitleHrefRecord -> Html Msg
