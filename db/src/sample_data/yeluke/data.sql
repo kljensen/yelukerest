@@ -12,3 +12,4 @@
 \ir assignment_submission.sql
 \ir assignment_field_submission.sql
 \ir quiz_grade.sql
+\ir assignment_grade.sql

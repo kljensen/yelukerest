@@ -43,7 +43,7 @@ using (
         request.user_role() = 'student'
         -- They can write rows in the assignment_submissions table if
         and
-            -- The quiz is open
+            -- The assignment is open
 			EXISTS(
 				SELECT * 
 				FROM api.assignments as a

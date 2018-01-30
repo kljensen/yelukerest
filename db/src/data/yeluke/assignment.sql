@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS assignment (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    UNIQUE(slug, is_team) -- For foreign keys
+    UNIQUE(slug, is_team), -- For foreign keys
+    UNIQUE(slug, points_possible)
 );
 
 
