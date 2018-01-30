@@ -16,12 +16,19 @@ SET standard_conforming_strings = on;
 -- password. Need to set that after migration ends as
 -- superuser.
 --
--- CREATE ROLE authenticator WITH login password NULL; -- have to change this manually after migration
-CREATE ROLE anonymous;
+
+DROP ROLE IF EXISTS authenticator;
+CREATE ROLE authenticator WITH login password NULL; -- have to change this manually after migration
+-- CREATE ROLE anonymous;
+DROP ROLE IF EXISTS api;
 CREATE ROLE api;
+DROP ROLE IF EXISTS authapp;
 CREATE ROLE authapp WITH LOGIN PASSWORD NULL;
+DROP ROLE IF EXISTS faculty;
 CREATE ROLE faculty;
+DROP ROLE IF EXISTS observer;
 CREATE ROLE observer;
+DROP ROLE IF EXISTS student;
 CREATE ROLE student;
 
 
