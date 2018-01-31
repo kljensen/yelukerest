@@ -1,6 +1,6 @@
 module Update exposing (..)
 
-import Assignments.Commands exposing (fetchAssignments)
+import Assignments.Commands exposing (fetchAssignmentSubmissions, fetchAssignments)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Players.Commands exposing (savePlayerCmd)
@@ -20,17 +20,23 @@ update msg model =
             in
             ( { model | route = newRoute }, Cmd.none )
 
+        Msgs.OnFetchDate d ->
+            ( { model | current_date = Just d }, Cmd.none )
+
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )
 
         Msgs.OnFetchAssignments response ->
             ( { model | assignments = response }, Cmd.none )
 
+        Msgs.OnFetchAssignmentSubmissions response ->
+            ( { model | assignmentSubmissions = response }, Cmd.none )
+
         Msgs.OnFetchQuizzes response ->
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            ( { model | currentUser = response }, Cmd.batch [ fetchAssignments response, fetchQuizzes response ] )
+            ( { model | currentUser = response }, Cmd.batch [ fetchAssignments response, fetchQuizzes response, fetchAssignmentSubmissions response ] )
 
         -- Below here, old code from starter project
         Msgs.OnFetchPlayers response ->
