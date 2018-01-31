@@ -40,7 +40,7 @@ page model =
             Assignments.Views.listView model.assignments
 
         Models.AssignmentDetailRoute slug ->
-            Assignments.Views.detailView model.assignments slug
+            Assignments.Views.detailView model.assignments slug model.current_date
 
         Models.PlayersRoute ->
             Players.List.view model.players
