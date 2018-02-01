@@ -48,16 +48,11 @@ listAssignments assignments =
     Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
 
 
-getSubmissionForSlug : WebData (List AssignmentSubmission) -> AssignmentSlug -> Maybe AssignmentSubmission
-getSubmissionForSlug assignmentSubmissions slug =
-    case assignmentSubmissions of
-        RemoteData.Success submissions ->
-            submissions
-                |> List.filter (\submission -> submission.assignment_slug == slug)
-                |> List.head
-
-        _ ->
-            Nothing
+getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> Maybe AssignmentSubmission
+getSubmissionForSlug submissions slug =
+    submissions
+        |> List.filter (\submission -> submission.assignment_slug == slug)
+        |> List.head
 
 
 
@@ -67,14 +62,8 @@ getSubmissionForSlug assignmentSubmissions slug =
 
 detailView : WebData (List Assignment) -> WebData (List AssignmentSubmission) -> AssignmentSlug -> Maybe Date -> Html.Html Msg
 detailView assignments assignmentSubmissions slug current_date =
-    case assignments of
-        RemoteData.NotAsked ->
-            Html.text ""
-
-        RemoteData.Loading ->
-            Html.text "Loading ..."
-
-        RemoteData.Success assignments ->
+    case ( assignments, assignmentSubmissions ) of
+        ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
                 maybeAssignment =
                     assignments
@@ -82,7 +71,7 @@ detailView assignments assignmentSubmissions slug current_date =
                         |> List.head
 
                 maybeSubmission =
-                    getSubmissionForSlug assignmentSubmissions slug
+                    getSubmissionForSlug submissions slug
             in
             case maybeAssignment of
                 Just assignment ->
@@ -91,7 +80,7 @@ detailView assignments assignmentSubmissions slug current_date =
                 Nothing ->
                     meetingNotFoundView slug
 
-        RemoteData.Failure err ->
+        ( _, _ ) ->
             loginToViewAssignments
 
 
@@ -120,11 +109,13 @@ detailViewForJustAssignment assignment maybeSubmission current_date =
             , Html.time [] [ Html.text (dateTimeToString assignment.closed_at) ]
             ]
         , Markdown.toHtml [] assignment.body
+        , Html.hr [] []
         , case maybeSubmission of
             Just submission ->
                 Html.div []
                     [ showPreviousAssignment assignment submission
-                    , Html.h3 [] [ Html.text "Update assignment fields" ]
+                    , Html.hr [] []
+                    , Html.h3 [] [ Html.text "Update submission" ]
                     , submissionInstructions assignment submission
                     ]
 
@@ -140,9 +131,14 @@ showPreviousAssignment assignment submission =
             showPreviousSubmissionField submission.fields
     in
     Html.div []
-        [ Html.h3 [] [ Html.text "Your existing submission" ]
-        , Html.pre [] [ Html.text "woot" ]
-        ]
+        ([ Html.h3
+            []
+            [ Html.text "Your existing submission" ]
+         ]
+            ++ List.map
+                show
+                assignment.fields
+        )
 
 
 beginSubmission : Assignment -> Html.Html Msg
@@ -202,6 +198,22 @@ showFormField assignmentField =
         ]
 
 
+getSubmissionValueForFieldID : List AssignmentFieldSubmission -> Int -> String
+getSubmissionValueForFieldID fieldSubmissions fieldID =
+    let
+        maybeSubmission =
+            fieldSubmissions
+                |> List.filter (\f -> f.assignment_field_id == fieldID)
+                |> List.head
+    in
+    case maybeSubmission of
+        Just submission ->
+            submission.body
+
+        Nothing ->
+            "Nothing"
+
+
 showPreviousSubmissionField : List AssignmentFieldSubmission -> AssignmentField -> Html.Html Msg
 showPreviousSubmissionField fieldSubmissions field =
     let
@@ -219,6 +231,8 @@ showPreviousSubmissionField fieldSubmissions field =
                     [ Attrs.class "textarea"
                     , Attrs.placeholder field.placeholder
                     , Attrs.name (toString field.id)
+                    , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
+                    , Attrs.disabled True
                     ]
                     []
 
@@ -229,6 +243,8 @@ showPreviousSubmissionField fieldSubmissions field =
                     , Attrs.placeholder field.placeholder
                     , Attrs.title field.help
                     , Attrs.name (toString field.id)
+                    , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
+                    , Attrs.disabled True
                     ]
                     []
         ]
