@@ -1,6 +1,6 @@
 module Assignments.Views exposing (detailView, listView)
 
-import Assignments.Model exposing (Assignment, AssignmentField, AssignmentSlug)
+import Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
 import Auth.Views
 import Common.Views
 import Date exposing (Date)
@@ -48,13 +48,25 @@ listAssignments assignments =
     Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
 
 
+getSubmissionForSlug : WebData (List AssignmentSubmission) -> AssignmentSlug -> Maybe AssignmentSubmission
+getSubmissionForSlug assignmentSubmissions slug =
+    case assignmentSubmissions of
+        RemoteData.Success submissions ->
+            submissions
+                |> List.filter (\submission -> submission.assignment_slug == slug)
+                |> List.head
+
+        _ ->
+            Nothing
+
+
 
 -- TODO: refactor this---it duplicates a lot of code in the Meetings detail view.
 -- in particular, we can generalize all the RemoteData logic into a shared function.
 
 
-detailView : WebData (List Assignment) -> AssignmentSlug -> Maybe Date -> Html.Html Msg
-detailView assignments slug current_date =
+detailView : WebData (List Assignment) -> WebData (List AssignmentSubmission) -> AssignmentSlug -> Maybe Date -> Html.Html Msg
+detailView assignments assignmentSubmissions slug current_date =
     case assignments of
         RemoteData.NotAsked ->
             Html.text ""
@@ -68,10 +80,13 @@ detailView assignments slug current_date =
                     assignments
                         |> List.filter (\assignment -> assignment.slug == slug)
                         |> List.head
+
+                maybeSubmission =
+                    getSubmissionForSlug assignmentSubmissions slug
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment assignment current_date
+                    detailViewForJustAssignment assignment maybeSubmission current_date
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -96,8 +111,8 @@ dateTimeToString date =
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Assignment -> Maybe Date -> Html.Html Msg
-detailViewForJustAssignment assignment current_date =
+detailViewForJustAssignment : Assignment -> Maybe AssignmentSubmission -> Maybe Date -> Html.Html Msg
+detailViewForJustAssignment assignment maybeSubmission current_date =
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
@@ -105,20 +120,38 @@ detailViewForJustAssignment assignment current_date =
             , Html.time [] [ Html.text (dateTimeToString assignment.closed_at) ]
             ]
         , Markdown.toHtml [] assignment.body
-        , case current_date of
-            Just d ->
+        , case maybeSubmission of
+            Just submission ->
                 Html.div []
-                    [ Html.h3 [] [ Html.text "How to submit" ]
-                    , submissionInstructions assignment d
+                    [ showPreviousAssignment assignment submission
+                    , Html.h3 [] [ Html.text "Update assignment fields" ]
+                    , submissionInstructions assignment submission
                     ]
 
             Nothing ->
-                Html.text ""
+                beginSubmission assignment
         ]
 
 
-submissionInstructions : Assignment -> Date -> Html.Html Msg
-submissionInstructions assignment current_date =
+showPreviousAssignment : Assignment -> AssignmentSubmission -> Html.Html Msg
+showPreviousAssignment assignment submission =
+    let
+        show =
+            showPreviousSubmissionField submission.fields
+    in
+    Html.div []
+        [ Html.h3 [] [ Html.text "Your existing submission" ]
+        , Html.pre [] [ Html.text "woot" ]
+        ]
+
+
+beginSubmission : Assignment -> Html.Html Msg
+beginSubmission assignment =
+    Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Begin assignment" ]
+
+
+submissionInstructions : Assignment -> AssignmentSubmission -> Html.Html Msg
+submissionInstructions assignment submission =
     case assignment.is_open of
         True ->
             showSubmissionForm assignment
@@ -164,6 +197,38 @@ showFormField assignmentField =
                     , Attrs.placeholder assignmentField.placeholder
                     , Attrs.title assignmentField.help
                     , Attrs.name (toString assignmentField.id)
+                    ]
+                    []
+        ]
+
+
+showPreviousSubmissionField : List AssignmentFieldSubmission -> AssignmentField -> Html.Html Msg
+showPreviousSubmissionField fieldSubmissions field =
+    let
+        fieldType =
+            if field.is_url then
+                "url"
+            else
+                "text"
+    in
+    Html.div []
+        [ Html.label [] [ Html.text field.label ]
+        , case field.is_multiline of
+            True ->
+                Html.textarea
+                    [ Attrs.class "textarea"
+                    , Attrs.placeholder field.placeholder
+                    , Attrs.name (toString field.id)
+                    ]
+                    []
+
+            False ->
+                Html.input
+                    [ Attrs.type_ fieldType
+                    , Attrs.class "input field"
+                    , Attrs.placeholder field.placeholder
+                    , Attrs.title field.help
+                    , Attrs.name (toString field.id)
                     ]
                     []
         ]
