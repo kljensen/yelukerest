@@ -2,7 +2,6 @@ module Routing exposing (..)
 
 import Models exposing (Route(..))
 import Navigation exposing (Location)
-import Players.Model exposing (PlayerId)
 import UrlParser exposing ((</>), Parser, map, oneOf, parseHash, s, string, top)
 
 
@@ -15,8 +14,6 @@ matchers =
         , map MeetingDetailRoute (s "meetings" </> string)
         , map AssignmentListRoute (s "assignments")
         , map AssignmentDetailRoute (s "assignments" </> string)
-        , map PlayerRoute (s "players" </> string)
-        , map PlayersRoute (s "players")
         ]
 
 
@@ -28,13 +25,3 @@ parseLocation location =
 
         Nothing ->
             NotFoundRoute
-
-
-playersPath : String
-playersPath =
-    "#players"
-
-
-playerPath : PlayerId -> String
-playerPath id =
-    "#players/" ++ id
