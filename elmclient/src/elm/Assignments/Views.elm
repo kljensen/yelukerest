@@ -55,11 +55,6 @@ getSubmissionForSlug submissions slug =
         |> List.head
 
 
-
--- TODO: refactor this---it duplicates a lot of code in the Meetings detail view.
--- in particular, we can generalize all the RemoteData logic into a shared function.
-
-
 detailView : WebData (List Assignment) -> WebData (List AssignmentSubmission) -> AssignmentSlug -> Maybe Date -> Html.Html Msg
 detailView assignments assignmentSubmissions slug current_date =
     case ( assignments, assignmentSubmissions ) of
