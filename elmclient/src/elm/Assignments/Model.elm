@@ -1,4 +1,4 @@
-module Assignments.Model exposing (Assignment, AssignmentField, AssignmentSlug, AssignmentSubmission, assignmentSubmissionsDecoder, assignmentsDecoder)
+module Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, assignmentSubmissionsDecoder, assignmentsDecoder)
 
 import Date exposing (Date)
 import Json.Decode as Decode
@@ -47,6 +47,7 @@ type alias AssignmentSubmission =
     , submitter_user_id : Int
     , created_at : Date
     , updated_at : Date
+    , fields : List AssignmentFieldSubmission
     }
 
 
@@ -117,6 +118,7 @@ assignmentSubmissionDecoder =
         |> required "submitter_user_id" Decode.int
         |> required "created_at" Json.Decode.Extra.date
         |> required "updated_at" Json.Decode.Extra.date
+        |> required "fields" assignmentFieldSubmissionsDecoder
 
 
 assignmentFieldSubmissionsDecoder : Decode.Decoder (List AssignmentFieldSubmission)
