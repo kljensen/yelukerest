@@ -1,6 +1,6 @@
 module Update exposing (..)
 
-import Assignments.Commands exposing (fetchAssignmentSubmissions, fetchAssignments)
+import Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments)
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
@@ -42,4 +42,12 @@ update msg model =
                 pba =
                     Dict.insert assignment_slug RemoteData.Loading model.pendingBeginAssignments
             in
-            ( { model | pendingBeginAssignments = pba }, Cmd.none )
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( { model | pendingBeginAssignments = pba }, Cmd.batch [ createAssignmentSubmission user.jwt assignment_slug ] )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnBeginAssignmentComplete response ->
+            ( model, Cmd.none )
