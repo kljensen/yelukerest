@@ -1,10 +1,21 @@
-module Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments, assignmentSubmissionDecoder, assignmentSubmissionsDecoder, assignmentsDecoder)
+module Assignments.Model
+    exposing
+        ( Assignment
+        , AssignmentField
+        , AssignmentFieldSubmission
+        , AssignmentSlug
+        , AssignmentSubmission
+        , PendingBeginAssignments
+        , assignmentSubmissionDecoder
+        , assignmentSubmissionsDecoder
+        , assignmentsDecoder
+        )
 
 import Date exposing (Date)
 import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Decode.Extra exposing (date)
-import Json.Decode.Pipeline exposing (decode, required)
+import Json.Decode.Pipeline exposing (decode, hardcoded, optional, required)
 import RemoteData exposing (WebData)
 
 
@@ -73,6 +84,11 @@ assignmentsDecoder =
     Decode.list assignmentDecoder
 
 
+emptyAssignmentFieldSubmissionList : List AssignmentFieldSubmission
+emptyAssignmentFieldSubmissionList =
+    []
+
+
 assignmentDecoder : Decode.Decoder Assignment
 assignmentDecoder =
     decode Assignment
@@ -124,7 +140,7 @@ assignmentSubmissionDecoder =
         |> required "submitter_user_id" Decode.int
         |> required "created_at" Json.Decode.Extra.date
         |> required "updated_at" Json.Decode.Extra.date
-        |> required "fields" assignmentFieldSubmissionsDecoder
+        |> optional "fields" assignmentFieldSubmissionsDecoder emptyAssignmentFieldSubmissionList
 
 
 assignmentFieldSubmissionsDecoder : Decode.Decoder (List AssignmentFieldSubmission)

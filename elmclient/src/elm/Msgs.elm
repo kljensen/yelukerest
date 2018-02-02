@@ -14,7 +14,7 @@ type Msg
     | OnFetchAssignments (WebData (List Assignment))
     | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))
-    | OnBeginAssignmentComplete (WebData AssignmentSubmission)
+    | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
     | OnLocationChange Location
