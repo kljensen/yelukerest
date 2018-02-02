@@ -1,8 +1,9 @@
 module Models exposing (..)
 
-import Assignments.Model exposing (Assignment, AssignmentSlug, AssignmentSubmission)
+import Assignments.Model exposing (Assignment, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments)
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
+import Dict exposing (Dict)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Quizzes.Model exposing (Quiz)
 import RemoteData exposing (WebData)
@@ -29,6 +30,11 @@ type alias Model =
     , quizzes : WebData (List Quiz)
     , uiElements : UIElements
     , assignmentSubmissions : WebData (List AssignmentSubmission)
+
+    -- A dictionary that tracks requests initiated to begin a
+    -- particular assignment, that is, to create an assignment submission
+    -- for the current user.
+    , pendingBeginAssignments : PendingBeginAssignments
     }
 
 
@@ -45,6 +51,7 @@ initialModel flags route =
         , piazzaURL = flags.piazzaURL
         }
     , assignmentSubmissions = RemoteData.NotAsked
+    , pendingBeginAssignments = Dict.empty
     }
 
 
