@@ -1,6 +1,12 @@
 module Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments)
 
-import Assignments.Model exposing (AssignmentSlug, assignmentSubmissionDecoder, assignmentSubmissionsDecoder, assignmentsDecoder)
+import Assignments.Model
+    exposing
+        ( AssignmentSlug
+        , assignmentSubmissionDecoder
+        , assignmentSubmissionsDecoder
+        , assignmentsDecoder
+        )
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser, JWT)
 import Http
@@ -34,6 +40,8 @@ createAssignmentSubmission jwt slug =
     let
         headers =
             [ Http.header "Authorization" ("Bearer " ++ jwt)
+            , Http.header "Prefer" "return=representation"
+            , Http.header "Accept" "application/vnd.pgrst.object+json"
             ]
 
         request =
@@ -49,4 +57,4 @@ createAssignmentSubmission jwt slug =
     in
     request
         |> RemoteData.sendRequest
-        |> Cmd.map Msgs.OnBeginAssignmentComplete
+        |> Cmd.map (Msgs.OnBeginAssignmentComplete slug)

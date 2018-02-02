@@ -49,5 +49,15 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        Msgs.OnBeginAssignmentComplete response ->
-            ( model, Cmd.none )
+        Msgs.OnBeginAssignmentComplete assignment_slug response ->
+            case ( model.assignmentSubmissions, response ) of
+                ( _, RemoteData.Failure error ) ->
+                    ( { model | pendingBeginAssignments = Dict.update assignment_slug (\_ -> Just (RemoteData.Failure error)) model.pendingBeginAssignments }, Cmd.none )
+
+                ( RemoteData.Success submissions, RemoteData.Success newSubmission ) ->
+                    -- Append this submission to the list of existing submissions
+                    ( { model | assignmentSubmissions = RemoteData.Success (submissions ++ [ newSubmission ]) }, Cmd.none )
+
+                ( _, _ ) ->
+                    -- In other cases do nothing
+                    ( model, Cmd.none )

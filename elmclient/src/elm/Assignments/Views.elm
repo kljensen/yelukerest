@@ -166,13 +166,16 @@ beginSubmission assignment maybeBeginAssignment =
                 , spinner
                 ]
 
+        Just (RemoteData.Failure error) ->
+            Html.div [ Attrs.class "red" ] [ Html.text (toString error) ]
+
         _ ->
-            Html.text "other"
+            Html.text "other error"
 
 
 spinner : Html.Html Msg
 spinner =
-    Html.span [ Attrs.class "btn-spinner" ]
+    Html.span [ Attrs.class "btn-icon" ]
         [ Html.i [ Attrs.class "fas fa-sync fa-spin" ] []
         ]
 
