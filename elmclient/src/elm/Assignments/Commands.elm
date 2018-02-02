@@ -1,8 +1,10 @@
-module Assignments.Commands exposing (fetchAssignmentSubmissions, fetchAssignments)
+module Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments)
 
-import Assignments.Model exposing (assignmentSubmissionsDecoder, assignmentsDecoder)
+import Assignments.Model exposing (AssignmentSlug, assignmentSubmissionDecoder, assignmentSubmissionsDecoder, assignmentsDecoder)
 import Auth.Commands exposing (fetchForCurrentUser)
-import Auth.Model exposing (CurrentUser)
+import Auth.Model exposing (CurrentUser, JWT)
+import Http
+import Json.Encode as Encode
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 
@@ -25,3 +27,26 @@ fetchAssignmentSubmissions currentUser =
 fetchAssignmentSubmissionsUrl : String
 fetchAssignmentSubmissionsUrl =
     "/rest/assignment_submissions?select=*,fields:assignment_field_submissions(*)"
+
+
+createAssignmentSubmission : JWT -> AssignmentSlug -> Cmd Msg
+createAssignmentSubmission jwt slug =
+    let
+        headers =
+            [ Http.header "Authorization" ("Bearer " ++ jwt)
+            ]
+
+        request =
+            Http.request
+                { method = "POST"
+                , headers = headers
+                , url = "/rest/assignment_submissions"
+                , timeout = Nothing
+                , expect = Http.expectJson assignmentSubmissionDecoder
+                , withCredentials = False
+                , body = Http.jsonBody (Encode.object [ ( "assignment_slug", Encode.string slug ) ])
+                }
+    in
+    request
+        |> RemoteData.sendRequest
+        |> Cmd.map Msgs.OnBeginAssignmentComplete

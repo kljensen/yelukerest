@@ -1,4 +1,4 @@
-module Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments, assignmentSubmissionsDecoder, assignmentsDecoder)
+module Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments, assignmentSubmissionDecoder, assignmentSubmissionsDecoder, assignmentsDecoder)
 
 import Date exposing (Date)
 import Dict exposing (Dict)

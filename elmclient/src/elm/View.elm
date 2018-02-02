@@ -3,7 +3,6 @@ module View exposing (..)
 import Assignments.Views
 import Auth.Views
 import Common.Views exposing (piazzaLink)
-import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
 import Meetings.Views
