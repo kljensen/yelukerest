@@ -1,12 +1,14 @@
 module Assignments.Views exposing (detailView, listView)
 
-import Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
+import Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments)
 import Auth.Views
 import Common.Views
 import Date exposing (Date)
 import Date.Format as DateFormat
+import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
+import Html.Events as Events
 import Markdown
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
@@ -55,8 +57,8 @@ getSubmissionForSlug submissions slug =
         |> List.head
 
 
-detailView : WebData (List Assignment) -> WebData (List AssignmentSubmission) -> AssignmentSlug -> Maybe Date -> Html.Html Msg
-detailView assignments assignmentSubmissions slug current_date =
+detailView : WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
+detailView assignments assignmentSubmissions pendingBeginAssignments slug current_date =
     case ( assignments, assignmentSubmissions ) of
         ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
@@ -67,10 +69,13 @@ detailView assignments assignmentSubmissions slug current_date =
 
                 maybeSubmission =
                     getSubmissionForSlug submissions slug
+
+                maybePendingBegin =
+                    Dict.get slug pendingBeginAssignments
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment assignment maybeSubmission current_date
+                    detailViewForJustAssignment assignment maybeSubmission maybePendingBegin current_date
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -95,8 +100,8 @@ dateTimeToString date =
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Assignment -> Maybe AssignmentSubmission -> Maybe Date -> Html.Html Msg
-detailViewForJustAssignment assignment maybeSubmission current_date =
+detailViewForJustAssignment : Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Date -> Html.Html Msg
+detailViewForJustAssignment assignment maybeSubmission maybeBeginAssignment current_date =
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
@@ -115,7 +120,12 @@ detailViewForJustAssignment assignment maybeSubmission current_date =
                     ]
 
             Nothing ->
-                beginSubmission assignment
+                case assignment.is_draft of
+                    True ->
+                        Html.em [] [ text "This assignment is still in draft mode." ]
+
+                    False ->
+                        beginSubmission assignment maybeBeginAssignment
         ]
 
 
@@ -136,9 +146,35 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : Assignment -> Html.Html Msg
-beginSubmission assignment =
-    Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Begin assignment" ]
+beginSubmission : Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+beginSubmission assignment maybeBeginAssignment =
+    case maybeBeginAssignment of
+        Nothing ->
+            Html.button
+                [ Attrs.class "btn btn-primary"
+                , Events.onClick (Msgs.OnBeginAssignment assignment.slug)
+                ]
+                [ Html.text "Begin assignment"
+                ]
+
+        Just RemoteData.Loading ->
+            Html.button
+                [ Attrs.class "btn btn-primary black bg-silver"
+                , Attrs.disabled True
+                ]
+                [ Html.text "Begin assignment"
+                , spinner
+                ]
+
+        _ ->
+            Html.text "other"
+
+
+spinner : Html.Html Msg
+spinner =
+    Html.span [ Attrs.class "btn-spinner" ]
+        [ Html.i [ Attrs.class "fas fa-sync fa-spin" ] []
+        ]
 
 
 submissionInstructions : Assignment -> AssignmentSubmission -> Html.Html Msg
@@ -206,7 +242,7 @@ getSubmissionValueForFieldID fieldSubmissions fieldID =
             submission.body
 
         Nothing ->
-            "Nothing"
+            "NO SUBMISSION"
 
 
 showPreviousSubmissionField : List AssignmentFieldSubmission -> AssignmentField -> Html.Html Msg

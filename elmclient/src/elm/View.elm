@@ -3,6 +3,7 @@ module View exposing (..)
 import Assignments.Views
 import Auth.Views
 import Common.Views exposing (piazzaLink)
+import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
 import Meetings.Views
@@ -36,7 +37,7 @@ page model =
             Assignments.Views.listView model.assignments
 
         Models.AssignmentDetailRoute slug ->
-            Assignments.Views.detailView model.assignments model.assignmentSubmissions slug model.current_date
+            Assignments.Views.detailView model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
 
         Models.NotFoundRoute ->
             notFoundView

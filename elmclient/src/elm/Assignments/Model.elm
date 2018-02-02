@@ -1,9 +1,11 @@
-module Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, assignmentSubmissionsDecoder, assignmentsDecoder)
+module Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments, assignmentSubmissionsDecoder, assignmentsDecoder)
 
 import Date exposing (Date)
+import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Decode.Extra exposing (date)
 import Json.Decode.Pipeline exposing (decode, required)
+import RemoteData exposing (WebData)
 
 
 type alias AssignmentSlug =
@@ -60,6 +62,10 @@ type alias AssignmentFieldSubmission =
     , created_at : Date
     , updated_at : Date
     }
+
+
+type alias PendingBeginAssignments =
+    Dict AssignmentSlug (WebData AssignmentSubmission)
 
 
 assignmentsDecoder : Decode.Decoder (List Assignment)

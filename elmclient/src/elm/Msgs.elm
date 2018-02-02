@@ -1,6 +1,6 @@
 module Msgs exposing (..)
 
-import Assignments.Model exposing (Assignment, AssignmentSubmission)
+import Assignments.Model exposing (Assignment, AssignmentSlug, AssignmentSubmission)
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Meetings.Model exposing (Meeting)
@@ -12,6 +12,7 @@ import RemoteData exposing (WebData)
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
     | OnFetchAssignments (WebData (List Assignment))
+    | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
