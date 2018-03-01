@@ -19,7 +19,7 @@ services:
   db:
     image: postgres:9.6
     ports:
-      - "5432:${DB_PORT}"
+      - "127.0.0.1:5432:${DB_PORT}"
     environment:
       # env vars specific to postgres image used on first boot
       - POSTGRES_USER=${SUPER_USER}
@@ -44,7 +44,7 @@ services:
     build: authapp
     working_dir: /app
     ports:
-      - "8081:${AUTHAPP_PORT}"
+      - "127.0.0.1:8081:${AUTHAPP_PORT}"
     links:
       - redis:redis
     environment:

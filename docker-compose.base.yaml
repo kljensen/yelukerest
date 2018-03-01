@@ -27,7 +27,7 @@ services:
   postgrest:
     image: postgrest/postgrest:v0.4.4.0
     ports:
-      - "3000:${POSTGREST_PORT}"
+      - "127.0.0.1:3000:${POSTGREST_PORT}"
     links:
       - db:db
     environment:
@@ -47,7 +47,7 @@ services:
   openresty:
     image: openresty/openresty:jessie
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     links:
       - postgrest:postgrest
       - authapp:authapp
@@ -97,13 +97,13 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5671:5671"
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5671:5671"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
   redis:
     image: redis:4
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
