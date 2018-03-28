@@ -19,7 +19,8 @@ SET standard_conforming_strings = on;
 
 DROP ROLE IF EXISTS authenticator;
 CREATE ROLE authenticator WITH login password NULL; -- have to change this manually after migration
--- CREATE ROLE anonymous;
+DROP ROLE IF EXISTS anonymous;
+CREATE ROLE anonymous;
 DROP ROLE IF EXISTS api;
 CREATE ROLE api;
 DROP ROLE IF EXISTS authapp;

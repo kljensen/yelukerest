@@ -8,3 +8,4 @@
 0000000005-data 2018-01-22T17:30:01Z root <root@linuxkit-025000000001> # Fill assignment slug with trigger
 0000000006-data 2018-01-29T21:31:31Z root <root@linuxkit-025000000001> # Add quiz_grade table
 0000000007-data 2018-01-30T16:05:35Z root <root@linuxkit-025000000001> # Add assignment_grade table
+0000000008-data 2018-03-28T20:24:21Z root <root@linuxkit-025000000001> # Fill in team_nickname automatically when creating assignment_submission
