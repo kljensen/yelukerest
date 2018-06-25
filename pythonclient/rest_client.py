@@ -14,7 +14,12 @@ import requests
 
 
 class DateTimeEncoder(json.JSONEncoder):
+    """ Handles encoding DateTime objects
+    """
     def default(self, o):
+        """ Checks if something is a datetime and handles output if so,
+            otherwise defers to default JSON encoder.
+        """
         if isinstance(o, datetime.datetime):
             return o.isoformat()
         return json.JSONEncoder.default(self, o)
@@ -244,7 +249,7 @@ def insert_quiz_question_options(base_url, jwt, quiz_id, quiz_question_id, optio
         option_to_save = nonchild(option)
         option_to_save["quiz_id"] = quiz_id
         option_to_save["quiz_question_id"] = quiz_question_id
-        response = requests.post(
+        requests.post(
             get_api_path(base_url, "quiz_question_options"),
             json=option_to_save,
             headers=post_headers
