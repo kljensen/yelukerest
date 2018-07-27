@@ -58,16 +58,6 @@ def build_url(protocol, hostname, port, path):
     return urlunsplit((protocol, ':'.join((hostname, port)), path, '', ''))
 
 
-# @cli.command()
-# @click.argument("infile", type=click.File('r'))
-# @click.argument("outfile", type=click.File('w'))
-# def json_to_yaml(infile, outfile):
-#     """ Converts JSON to YAML
-#     """
-#     data = json.load(infile)
-#     yaml = ruamel_yaml.YAML()
-#     yaml.dump(data, outfile)
-
 def get_api_path(base_url, key):
     """ Get the path for a part of the API
     """
@@ -396,5 +386,21 @@ def nukeload_assignments(ctx, yaml_file):
     for assignment in  assignments:
         load_assignment(base_url, jwt, assignment)
 
+@click.group()
+def local():
+    pass
+
+@local.command()
+@click.argument("infile", type=click.File('r'))
+@click.argument("outfile", type=click.File('w'))
+def json_to_yaml(infile, outfile):
+    """ Converts JSON to YAML
+    """
+    data = json.load(infile)
+    yaml = ruamel_yaml.YAML()
+    yaml.dump(data, outfile)
+
+
+cli = click.CommandCollection(sources=[rest, local])
 if __name__ == "__main__":
-    rest(obj={})
+    cli(obj={})
