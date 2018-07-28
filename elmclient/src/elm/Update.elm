@@ -1,12 +1,11 @@
 module Update exposing (..)
 
-import Assignments.Commands exposing (fetchAssignments)
+import Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments)
+import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Players.Commands exposing (savePlayerCmd)
-import Players.Model exposing (Player, PlayerId)
 import Quizzes.Commands exposing (fetchQuizzes)
-import RemoteData
+import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 
 
@@ -20,49 +19,45 @@ update msg model =
             in
             ( { model | route = newRoute }, Cmd.none )
 
+        Msgs.OnFetchDate d ->
+            ( { model | current_date = Just d }, Cmd.none )
+
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )
 
         Msgs.OnFetchAssignments response ->
             ( { model | assignments = response }, Cmd.none )
 
+        Msgs.OnFetchAssignmentSubmissions response ->
+            ( { model | assignmentSubmissions = response }, Cmd.none )
+
         Msgs.OnFetchQuizzes response ->
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            ( { model | currentUser = response }, Cmd.batch [ fetchAssignments response, fetchQuizzes response ] )
+            ( { model | currentUser = response }, Cmd.batch [ fetchAssignments response, fetchQuizzes response, fetchAssignmentSubmissions response ] )
 
-        -- Below here, old code from starter project
-        Msgs.OnFetchPlayers response ->
-            ( { model | players = response }, Cmd.none )
-
-        Msgs.ChangeLevel player howMuch ->
+        Msgs.OnBeginAssignment assignment_slug ->
             let
-                updatedPlayer =
-                    { player | level = player.level + howMuch }
+                pba =
+                    Dict.insert assignment_slug RemoteData.Loading model.pendingBeginAssignments
             in
-            ( model, savePlayerCmd updatedPlayer )
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( { model | pendingBeginAssignments = pba }, Cmd.batch [ createAssignmentSubmission user.jwt assignment_slug ] )
 
-        Msgs.OnPlayerSave (Ok player) ->
-            ( updatePlayer model player, Cmd.none )
+                _ ->
+                    ( model, Cmd.none )
 
-        Msgs.OnPlayerSave (Err error) ->
-            ( model, Cmd.none )
+        Msgs.OnBeginAssignmentComplete assignment_slug response ->
+            case ( model.assignmentSubmissions, response ) of
+                ( _, RemoteData.Failure error ) ->
+                    ( { model | pendingBeginAssignments = Dict.update assignment_slug (\_ -> Just (RemoteData.Failure error)) model.pendingBeginAssignments }, Cmd.none )
 
+                ( RemoteData.Success submissions, RemoteData.Success newSubmission ) ->
+                    -- Append this submission to the list of existing submissions
+                    ( { model | assignmentSubmissions = RemoteData.Success (submissions ++ [ newSubmission ]) }, Cmd.none )
 
-updatePlayer : Model -> Player -> Model
-updatePlayer model updatedPlayer =
-    let
-        pick currentPlayer =
-            if updatedPlayer.id == currentPlayer.id then
-                updatedPlayer
-            else
-                currentPlayer
-
-        updatePlayerList players =
-            List.map pick players
-
-        updatedPlayers =
-            RemoteData.map updatePlayerList model.players
-    in
-    { model | players = updatedPlayers }
+                ( _, _ ) ->
+                    -- In other cases do nothing
+                    ( model, Cmd.none )

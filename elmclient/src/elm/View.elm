@@ -8,10 +8,6 @@ import Html.Attributes exposing (href)
 import Meetings.Views
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Players.Edit
-import Players.List
-import Players.Model exposing (PlayerId)
-import RemoteData
 
 
 view : Model -> Html Msg
@@ -40,13 +36,7 @@ page model =
             Assignments.Views.listView model.assignments
 
         Models.AssignmentDetailRoute slug ->
-            Assignments.Views.detailView model.assignments slug
-
-        Models.PlayersRoute ->
-            Players.List.view model.players
-
-        Models.PlayerRoute id ->
-            playerEditPage model id
+            Assignments.Views.detailView model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
 
         Models.NotFoundRoute ->
             notFoundView
@@ -63,33 +53,6 @@ indexView model =
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard model.currentUser ]
         ]
-
-
-playerEditPage : Model -> PlayerId -> Html Msg
-playerEditPage model playerId =
-    case model.players of
-        RemoteData.NotAsked ->
-            text ""
-
-        RemoteData.Loading ->
-            text "Loading ..."
-
-        RemoteData.Success players ->
-            let
-                maybePlayer =
-                    players
-                        |> List.filter (\player -> player.id == playerId)
-                        |> List.head
-            in
-            case maybePlayer of
-                Just player ->
-                    Players.Edit.view player
-
-                Nothing ->
-                    notFoundView
-
-        RemoteData.Failure err ->
-            text (toString err)
 
 
 notFoundView : Html msg

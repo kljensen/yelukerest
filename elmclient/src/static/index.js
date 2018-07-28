@@ -4,8 +4,7 @@
 
 // eslint-disable-next-line import/no-unresolved
 require('ace-css/css/ace.css');
-// eslint-disable-next-line import/no-unresolved
-require('font-awesome/css/font-awesome.css');
+
 require('./styles/main.scss');
 
 
