@@ -93,7 +93,7 @@ meetingNotFoundView slug =
 
 dateTimeToString : Date.Date -> String
 dateTimeToString date =
-    DateFormat.format "%l:%M%p %A, %B %e" date
+    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
 
 
 
