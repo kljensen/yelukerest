@@ -49,9 +49,11 @@ BEGIN
             LEFT OUTER JOIN api.users u
             ON u.team_nickname = ass.team_nickname)
         WHERE (
+            -- It is the right assignment
             assignment_slug = NEW.assignment_slug
             AND
-            u.id = request.user_id()
+            -- It is theirs or their teams assignment submission
+            (u.id = request.user_id() OR user_id = request.user_id())
         );
     END IF;
     NEW.updated_at = current_timestamp;
