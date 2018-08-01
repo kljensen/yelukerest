@@ -1,5 +1,5 @@
 begin;
-select plan(18);
+select plan(22);
 
 SELECT view_owner_is(
     'api', 'assignment_field_submissions', 'api',
@@ -130,15 +130,31 @@ set local role student;
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1';
 
--- (assignment_submission_id,assignment_field_id,assignment_slug,body,submitter_user_id)
--- SELECT lives_ok(
---     'EXECUTE doinsert(4, 5, ''project-update-1'', ''http://github.com/kljensen/fakerepo'', 1)', 
---     'students can create assignment field submissions for their team'
--- );
-
 SELECT lives_ok(
     'INSERT INTO api.assignment_field_submissions (assignment_field_id, body) VALUES (5, ''http://github.com/kljensen/fakerepo'')',
-    'students can create assignment field submissions for their team'
+    'students can create an assignment field submissions for their team (only assignment_field_id provided)'
+);
+
+SELECT lives_ok(
+    'UPDATE api.assignment_field_submissions SET body=''FOO'' WHERE assignment_field_id=5', 
+    'students can update an assignment field submissions for their team (only assignment_field_id provided)'
+);
+
+SELECT results_eq(
+    'SELECT assignment_submission_id FROM api.assignment_field_submissions WHERE body=''FOO''',
+    ARRAY[4],
+    'students can update an assignment field submissions for their team (only assignment_field_id provided), PART II'
+);
+
+SELECT lives_ok(
+    'UPDATE api.assignment_field_submissions SET body=''BAR'' WHERE assignment_field_id=1', 
+    'students can update an assignment field submissions for themselves (only assignment_field_id provided)'
+);
+
+SELECT results_eq(
+    'SELECT assignment_submission_id FROM api.assignment_field_submissions WHERE body=''BAR''',
+    ARRAY[1],
+    'students can update an assignment field submissions for themselves (only assignment_field_id provided), PART II'
 );
 
 set request.jwt.claim.user_id = '3';
