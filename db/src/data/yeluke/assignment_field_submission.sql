@@ -61,9 +61,26 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+CREATE OR REPLACE FUNCTION fill_assignment_field_submission_update_defaults()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (request.user_id() IS NOT NULL) THEN
+        NEW.submitter_user_id = request.user_id();
+    END IF;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 DROP TRIGGER IF EXISTS tg_assignment_field_submission_default ON assignment_field_submission;
 CREATE TRIGGER tg_assignment_field_submission_default
     BEFORE INSERT OR UPDATE
             ON assignment_field_submission
     FOR EACH ROW
 EXECUTE PROCEDURE fill_assignment_field_submission_defaults();
+
+DROP TRIGGER IF EXISTS tg_assignment_field_submission_update_default ON assignment_field_submission;
+CREATE TRIGGER tg_assignment_field_submission_update_default
+    BEFORE INSERT OR UPDATE
+            ON assignment_field_submission
+    FOR EACH ROW
+EXECUTE PROCEDURE fill_assignment_field_submission_update_defaults();

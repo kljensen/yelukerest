@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(21);
 
 SELECT view_owner_is(
     'api', 'assignment_field_submissions', 'api',
@@ -128,34 +128,6 @@ DELETE FROM api.assignment_field_submissions WHERE assignment_submission_id = 4 
 UPDATE api.assignments SET closed_at = current_timestamp + '1 hour'::INTERVAL WHERE slug='team-selection';
 set local role student;
 set request.jwt.claim.role = 'student';
-set request.jwt.claim.user_id = '1';
-
-SELECT lives_ok(
-    'INSERT INTO api.assignment_field_submissions (assignment_field_id, body) VALUES (5, ''http://github.com/kljensen/fakerepo'')',
-    'students can create an assignment field submissions for their team (only assignment_field_id provided)'
-);
-
-SELECT lives_ok(
-    'UPDATE api.assignment_field_submissions SET body=''FOO'' WHERE assignment_field_id=5', 
-    'students can update an assignment field submissions for their team (only assignment_field_id provided)'
-);
-
-SELECT results_eq(
-    'SELECT assignment_submission_id FROM api.assignment_field_submissions WHERE body=''FOO''',
-    ARRAY[4],
-    'students can update an assignment field submissions for their team (only assignment_field_id provided), PART II'
-);
-
-SELECT lives_ok(
-    'UPDATE api.assignment_field_submissions SET body=''BAR'' WHERE assignment_field_id=1', 
-    'students can update an assignment field submissions for themselves (only assignment_field_id provided)'
-);
-
-SELECT results_eq(
-    'SELECT assignment_submission_id FROM api.assignment_field_submissions WHERE body=''BAR''',
-    ARRAY[1],
-    'students can update an assignment field submissions for themselves (only assignment_field_id provided), PART II'
-);
 
 set request.jwt.claim.user_id = '3';
 
@@ -164,18 +136,83 @@ SELECT lives_ok(
     'students can create assignment field submissions for their team'
 );
 
+set request.jwt.claim.user_id = '1';
+
+SELECT lives_ok(
+    'INSERT INTO api.assignment_field_submissions (assignment_field_id, body) VALUES (5, ''http://github.com/kljensen/fakerepo'')',
+    'students can create an assignment field submissions for their team (only assignment_field_id provided)'
+);
+
+select set_eq (
+  $$
+    with 
+    updated_rows as (
+      UPDATE api.assignment_field_submissions SET body='FOO' WHERE assignment_field_id=5
+      RETURNING assignment_field_id
+    )
+    select count(assignment_field_id) as total from updated_rows
+  $$,
+  $$
+    values(1)
+  $$,
+    'students can update an assignment field submissions for their team (only assignment_field_id provided)'
+);
+
+select set_eq (
+  $$
+    with 
+    updated_rows as (
+      UPDATE api.assignment_field_submissions SET body='FOOBAR' WHERE assignment_field_id=6
+      RETURNING assignment_field_id
+    )
+    select count(assignment_field_id) as total from updated_rows
+  $$,
+  $$
+    values(1)
+  $$,
+    'students can update an assignment field submissions for their team even when not the original submitter (only assignment_field_id provided)'
+);
+
+select set_eq (
+  $$
+    with 
+    updated_rows as (
+      UPDATE api.assignment_field_submissions SET body='FOO' WHERE assignment_field_id=1
+      RETURNING assignment_field_id
+    )
+    select count(assignment_field_id) as total from updated_rows
+  $$,
+  $$
+    values(1)
+  $$,
+    'students can update an assignment field submissions for themselves (only assignment_field_id provided)'
+);
+
+
+set request.jwt.claim.user_id = '3';
+
 SELECT lives_ok(
     'UPDATE api.assignment_field_submissions SET body=''http://woot'', submitter_user_id=3 WHERE assignment_submission_id=4 AND assignment_field_id=5', 
     'students can update assignment field submissions for their team, even if they did not create it'
 );
 
-set request.jwt.claim.user_id = '1';
+set request.jwt.claim.user_id = '2';
 
-SELECT throws_like(
-    'UPDATE api.assignment_field_submissions SET body=''http://woot'' WHERE assignment_submission_id=4 AND assignment_field_id=5', 
-    '%violates row-level security policy%',
+select set_eq (
+  $$
+    with 
+    updated_rows as (
+      UPDATE api.assignment_field_submissions SET body='FOO' WHERE assignment_submission_id=4
+      RETURNING assignment_field_id
+    )
+    select count(assignment_field_id) as total from updated_rows
+  $$,
+  $$
+    values(0)
+  $$,
     'students cannot update assignment field submissions for another team'
 );
+
 
 -- They should be able to...for team/individual
 -- insert/update/delete
