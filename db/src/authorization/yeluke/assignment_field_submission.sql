@@ -33,7 +33,7 @@ using (
                     api.users.id = request.user_id()
                     and
                     -- And this assignment submission
-                    ass_sub.id = assignment_field_submission.assignment_submission_id
+                    ass_sub.id = assignment_submission_id
                 )
             )
             -- In the RLS policy here, we're also depending upon the 
@@ -44,7 +44,7 @@ using (
     )
 
 	OR
-	-- faculty can see assignment_field_submission by all users
+	-- faculty can see by all users
 	(request.user_role() = 'faculty')
 ) WITH CHECK (
     (request.user_role() = 'faculty')
@@ -82,7 +82,7 @@ using (
                     AND
                     api.users.id = request.user_id()
                     AND
-                    ass_sub.id = assignment_field_submission.assignment_submission_id
+                    ass_sub.id = assignment_submission_id
                 )
             )
         )
