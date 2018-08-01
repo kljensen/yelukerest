@@ -61,3 +61,9 @@ update msg model =
                 ( _, _ ) ->
                     -- In other cases do nothing
                     ( model, Cmd.none )
+
+        Msgs.OnSubmitAssignmentFieldSubmissions ->
+            ( model, Cmd.none )
+
+        Msgs.OnUpdateAssignmentFieldSubmissionInput assignmentFieldId assignmentFieldValue ->
+            ( { model | assignmentFieldSubmissionInputs = Dict.update assignmentFieldId (\_ -> Just assignmentFieldValue) model.assignmentFieldSubmissionInputs }, Cmd.none )

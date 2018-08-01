@@ -1,6 +1,6 @@
 module Models exposing (..)
 
-import Assignments.Model exposing (Assignment, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments)
+import Assignments.Model exposing (Assignment, AssignmentFieldSubmissionInputs, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments, PendingSubmitAssignmentFields)
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
@@ -35,6 +35,14 @@ type alias Model =
     -- particular assignment, that is, to create an assignment submission
     -- for the current user.
     , pendingBeginAssignments : PendingBeginAssignments
+
+    -- A dictionary tracking the current value of <input> elements
+    -- that the user has edited for particular assignment field submissions.
+    , assignmentFieldSubmissionInputs : AssignmentFieldSubmissionInputs
+
+    -- A dictionary tracking POST requests to the server to save
+    -- assigment field submissions.
+    , pendingSubmitAssignmentFields : PendingSubmitAssignmentFields
     }
 
 
@@ -52,6 +60,8 @@ initialModel flags route =
         }
     , assignmentSubmissions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty
+    , assignmentFieldSubmissionInputs = Dict.empty
+    , pendingSubmitAssignmentFields = Dict.empty
     }
 
 

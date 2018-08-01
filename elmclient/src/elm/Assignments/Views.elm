@@ -9,6 +9,7 @@ import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
 import Html.Events as Events
+import Json.Decode as Decode
 import Markdown
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
@@ -197,7 +198,13 @@ submissionInstructions assignment submission =
 
 showSubmissionForm : Assignment -> Html.Html Msg
 showSubmissionForm assignment =
-    Html.form [] (List.map showFormField assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
+    Html.form
+        [ Events.onWithOptions
+            "submit"
+            { preventDefault = True, stopPropagation = False }
+            (Decode.succeed Msgs.OnSubmitAssignmentFieldSubmissions)
+        ]
+        (List.map showFormField assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
 
 showFormField : AssignmentField -> Html.Html Msg
@@ -217,6 +224,10 @@ showFormField assignmentField =
                     [ Attrs.class "textarea"
                     , Attrs.placeholder assignmentField.placeholder
                     , Attrs.name (toString assignmentField.id)
+                    , Events.onInput
+                        (Msgs.OnUpdateAssignmentFieldSubmissionInput
+                            assignmentField.id
+                        )
                     ]
                     []
 
@@ -227,6 +238,10 @@ showFormField assignmentField =
                     , Attrs.placeholder assignmentField.placeholder
                     , Attrs.title assignmentField.help
                     , Attrs.name (toString assignmentField.id)
+                    , Events.onInput
+                        (Msgs.OnUpdateAssignmentFieldSubmissionInput
+                            assignmentField.id
+                        )
                     ]
                     []
         ]

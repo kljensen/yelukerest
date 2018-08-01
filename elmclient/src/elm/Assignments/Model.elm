@@ -3,9 +3,11 @@ module Assignments.Model
         ( Assignment
         , AssignmentField
         , AssignmentFieldSubmission
+        , AssignmentFieldSubmissionInputs
         , AssignmentSlug
         , AssignmentSubmission
         , PendingBeginAssignments
+        , PendingSubmitAssignmentFields
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
@@ -73,6 +75,14 @@ type alias AssignmentFieldSubmission =
     , created_at : Date
     , updated_at : Date
     }
+
+
+type alias AssignmentFieldSubmissionInputs =
+    Dict Int String
+
+
+type alias PendingSubmitAssignmentFields =
+    Dict Int (WebData AssignmentSubmission)
 
 
 type alias PendingBeginAssignments =

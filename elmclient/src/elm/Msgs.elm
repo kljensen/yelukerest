@@ -19,3 +19,5 @@ type Msg
     | OnFetchQuizzes (WebData (List Quiz))
     | OnLocationChange Location
     | OnFetchDate Date
+    | OnSubmitAssignmentFieldSubmissions
+    | OnUpdateAssignmentFieldSubmissionInput Int String
