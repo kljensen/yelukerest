@@ -42,12 +42,17 @@ BEGIN
         WHERE id = NEW.assignment_field_id;
     END IF;
     -- Fill in the assignment_submission_id if it is null.
-    -- Here, we are relying on the RLS of the api.assignment_submissions
-    -- table.
     IF (NEW.assignment_submission_id IS NULL and NEW.assignment_slug IS NOT NULL and request.user_id() IS NOT NULL) THEN
-        SELECT id INTO NEW.assignment_submission_id
-        FROM api.assignment_submissions
-        WHERE assignment_slug = NEW.assignment_slug;
+        SELECT ass.id INTO NEW.assignment_submission_id
+        FROM
+            (api.assignment_submissions ass
+            LEFT OUTER JOIN api.users u
+            ON u.team_nickname = ass.team_nickname)
+        WHERE (
+            assignment_slug = NEW.assignment_slug
+            AND
+            u.id = request.user_id()
+        );
     END IF;
     NEW.updated_at = current_timestamp;
     RETURN NEW;
