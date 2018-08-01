@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(18);
 
 SELECT view_owner_is(
     'api', 'assignment_field_submissions', 'api',
@@ -131,8 +131,13 @@ set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1';
 
 -- (assignment_submission_id,assignment_field_id,assignment_slug,body,submitter_user_id)
+-- SELECT lives_ok(
+--     'EXECUTE doinsert(4, 5, ''project-update-1'', ''http://github.com/kljensen/fakerepo'', 1)', 
+--     'students can create assignment field submissions for their team'
+-- );
+
 SELECT lives_ok(
-    'EXECUTE doinsert(4, 5, ''project-update-1'', ''http://github.com/kljensen/fakerepo'', 1)', 
+    'INSERT INTO api.assignment_field_submissions (assignment_field_id, body) VALUES (5, ''http://github.com/kljensen/fakerepo'')',
     'students can create assignment field submissions for their team'
 );
 
