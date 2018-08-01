@@ -153,6 +153,14 @@ SELECT lives_ok(
     'students can update assignment field submissions for their team, even if they did not create it'
 );
 
+set request.jwt.claim.user_id = '1';
+
+SELECT throws_like(
+    'UPDATE api.assignment_field_submissions SET body=''http://woot'' WHERE assignment_submission_id=4 AND assignment_field_id=5', 
+    '%violates row-level security policy%',
+    'students cannot update assignment field submissions for another team'
+);
+
 -- They should be able to...for team/individual
 -- insert/update/delete
 -- Can't do these if not on team
