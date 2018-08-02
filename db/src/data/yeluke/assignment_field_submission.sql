@@ -64,6 +64,8 @@ $$ language 'plpgsql';
 CREATE OR REPLACE FUNCTION fill_assignment_field_submission_update_defaults()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- TODO: Should I only do this for people in
+    -- the 'student' role, or != 'faculty' role?
     IF (request.user_id() IS NOT NULL) THEN
         NEW.submitter_user_id = request.user_id();
     END IF;
