@@ -3,3 +3,4 @@ node_modules
 .env.*
 tmp
 .DS_Store
+elm-stuff
