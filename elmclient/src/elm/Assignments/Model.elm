@@ -6,8 +6,8 @@ module Assignments.Model
         , AssignmentFieldSubmissionInputs
         , AssignmentSlug
         , AssignmentSubmission
+        , PendingAssignmentFieldSubmissionRequests
         , PendingBeginAssignments
-        , PendingSubmitAssignmentFields
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
@@ -81,8 +81,8 @@ type alias AssignmentFieldSubmissionInputs =
     Dict Int String
 
 
-type alias PendingSubmitAssignmentFields =
-    Dict Int (WebData AssignmentSubmission)
+type alias PendingAssignmentFieldSubmissionRequests =
+    Dict AssignmentSlug (WebData (List AssignmentSubmission))
 
 
 type alias PendingBeginAssignments =

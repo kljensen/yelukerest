@@ -1,6 +1,6 @@
 module Models exposing (..)
 
-import Assignments.Model exposing (Assignment, AssignmentFieldSubmissionInputs, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments, PendingSubmitAssignmentFields)
+import Assignments.Model exposing (Assignment, AssignmentFieldSubmissionInputs, AssignmentSlug, AssignmentSubmission, PendingAssignmentFieldSubmissionRequests, PendingBeginAssignments)
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
@@ -42,7 +42,7 @@ type alias Model =
 
     -- A dictionary tracking POST requests to the server to save
     -- assigment field submissions.
-    , pendingSubmitAssignmentFields : PendingSubmitAssignmentFields
+    , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
     }
 
 
@@ -61,7 +61,7 @@ initialModel flags route =
     , assignmentSubmissions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
-    , pendingSubmitAssignmentFields = Dict.empty
+    , pendingAssignmentFieldSubmissionRequests = Dict.empty
     }
 
 

@@ -202,7 +202,7 @@ showSubmissionForm assignment =
         [ Events.onWithOptions
             "submit"
             { preventDefault = True, stopPropagation = False }
-            (Decode.succeed Msgs.OnSubmitAssignmentFieldSubmissions)
+            (Decode.succeed (Msgs.OnSubmitAssignmentFieldSubmissions assignment))
         ]
         (List.map showFormField assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
