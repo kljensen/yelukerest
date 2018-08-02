@@ -95,3 +95,28 @@ update msg model =
 
         Msgs.OnUpdateAssignmentFieldSubmissionInput assignmentFieldId assignmentFieldValue ->
             ( { model | assignmentFieldSubmissionInputs = Dict.update assignmentFieldId (\_ -> Just assignmentFieldValue) model.assignmentFieldSubmissionInputs }, Cmd.none )
+
+        Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug response ->
+            -- todo, update the model.assignmentSubmissions
+            case model.assignmentSubmissions of
+                RemoteData.Success submissions ->
+                    case response of
+                        RemoteData.Success newSubmissions ->
+                            let
+                                pfsrs =
+                                    Dict.remove assignmentSlug model.pendingAssignmentFieldSubmissionRequests
+
+                                cmd =
+                                    Cmd.batch [ fetchAssignmentSubmissions model.currentUser ]
+
+                                newModel =
+                                    { model | pendingAssignmentFieldSubmissionRequests = pfsrs, assignmentFieldSubmissionInputs = Dict.empty }
+                            in
+                            -- Lazy for right now - just re-fetch all assignment fiend submissions
+                            ( newModel, cmd )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )

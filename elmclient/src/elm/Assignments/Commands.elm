@@ -3,6 +3,7 @@ module Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmen
 import Assignments.Model
     exposing
         ( AssignmentSlug
+        , assignmentFieldSubmissionsDecoder
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
@@ -98,11 +99,11 @@ sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
                 , headers = headers
                 , url = "/rest/assignment_field_submissions"
                 , timeout = Nothing
-                , expect = Http.expectJson assignmentSubmissionDecoder
+                , expect = Http.expectJson assignmentFieldSubmissionsDecoder
                 , withCredentials = False
                 , body = Http.jsonBody (encodeAFSList valueTuples)
                 }
     in
     request
         |> RemoteData.sendRequest
-        |> Cmd.map (Msgs.OnBeginAssignmentComplete assignmentSlug)
+        |> Cmd.map (Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug)

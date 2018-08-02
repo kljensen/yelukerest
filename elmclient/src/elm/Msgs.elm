@@ -1,6 +1,6 @@
 module Msgs exposing (..)
 
-import Assignments.Model exposing (Assignment, AssignmentSlug, AssignmentSubmission)
+import Assignments.Model exposing (Assignment, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Meetings.Model exposing (Meeting)
@@ -20,4 +20,5 @@ type Msg
     | OnLocationChange Location
     | OnFetchDate Date
     | OnSubmitAssignmentFieldSubmissions Assignment
+    | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String

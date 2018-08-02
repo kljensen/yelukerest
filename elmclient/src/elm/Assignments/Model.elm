@@ -8,6 +8,7 @@ module Assignments.Model
         , AssignmentSubmission
         , PendingAssignmentFieldSubmissionRequests
         , PendingBeginAssignments
+        , assignmentFieldSubmissionsDecoder
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
