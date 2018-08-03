@@ -44,7 +44,14 @@ update msg model =
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            ( { model | currentUser = response }, Cmd.batch [ fetchAssignments response, fetchQuizzes response, fetchAssignmentSubmissions response ] )
+            case response of
+                RemoteData.Success user ->
+                    ( { model | currentUser = response }
+                    , Cmd.batch [ fetchAssignments user, fetchQuizzes user, fetchAssignmentSubmissions user ]
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
 
         Msgs.OnBeginAssignment assignmentSlug ->
             let
@@ -94,8 +101,8 @@ update msg model =
 
         Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug response ->
             -- todo, update the model.assignmentSubmissions
-            case model.assignmentSubmissions of
-                RemoteData.Success submissions ->
+            case ( model.currentUser, model.assignmentSubmissions ) of
+                ( RemoteData.Success user, RemoteData.Success submissions ) ->
                     case response of
                         RemoteData.Success newSubmissions ->
                             let
@@ -103,7 +110,7 @@ update msg model =
                                     Dict.remove assignmentSlug model.pendingAssignmentFieldSubmissionRequests
 
                                 cmd =
-                                    Cmd.batch [ fetchAssignmentSubmissions model.currentUser ]
+                                    Cmd.batch [ fetchAssignmentSubmissions user ]
 
                                 newModel =
                                     { model | pendingAssignmentFieldSubmissionRequests = pfsrs, assignmentFieldSubmissionInputs = Dict.empty }
@@ -114,5 +121,8 @@ update msg model =
                         _ ->
                             ( model, Cmd.none )
 
-                _ ->
+                ( _, _ ) ->
                     ( model, Cmd.none )
+
+        Msgs.OnFetchQuizSubmissions response ->
+            ( model, Cmd.none )

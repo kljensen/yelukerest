@@ -5,7 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
-import Quizzes.Model exposing (Quiz)
+import Quizzes.Model exposing (Quiz, QuizSubmission)
 import RemoteData exposing (WebData)
 
 
@@ -17,6 +17,7 @@ type Msg
     | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
+    | OnFetchQuizSubmissions (WebData (List QuizSubmission))
     | OnLocationChange Location
     | OnFetchDate Date
     | OnSubmitAssignmentFieldSubmissions Assignment

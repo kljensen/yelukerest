@@ -5,7 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
 import Meetings.Model exposing (Meeting, MeetingSlug)
-import Quizzes.Model exposing (Quiz)
+import Quizzes.Model exposing (Quiz, QuizSubmission)
 import RemoteData exposing (WebData)
 
 
@@ -28,6 +28,7 @@ type alias Model =
     , currentUser : WebData CurrentUser
     , assignments : WebData (List Assignment)
     , quizzes : WebData (List Quiz)
+    , quizSubmissions : WebData (List QuizSubmission)
     , uiElements : UIElements
     , assignmentSubmissions : WebData (List AssignmentSubmission)
 
@@ -54,6 +55,7 @@ initialModel flags route =
     , currentUser = RemoteData.Loading
     , assignments = RemoteData.NotAsked
     , quizzes = RemoteData.NotAsked
+    , quizSubmissions = RemoteData.NotAsked
     , uiElements =
         { courseTitle = flags.courseTitle
         , piazzaURL = flags.piazzaURL

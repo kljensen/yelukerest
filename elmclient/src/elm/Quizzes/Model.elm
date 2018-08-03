@@ -1,4 +1,4 @@
-module Quizzes.Model exposing (Quiz, QuizSubmission, quizSubmissionDecoder, quizzesDecoder)
+module Quizzes.Model exposing (Quiz, QuizSubmission, quizSubmissionDecoder, quizSubmissionsDecoder, quizzesDecoder)
 
 import Date exposing (Date)
 import Json.Decode as Decode

@@ -17,7 +17,7 @@ import RemoteData exposing (WebData)
 import Tuple
 
 
-fetchAssignments : WebData CurrentUser -> Cmd Msg
+fetchAssignments : CurrentUser -> Cmd Msg
 fetchAssignments currentUser =
     fetchForCurrentUser currentUser fetchAssignmentsUrl assignmentsDecoder Msgs.OnFetchAssignments
 
@@ -27,13 +27,13 @@ fetchAssignmentsUrl =
     "/rest/assignments?order=closed_at&select=*,fields:assignment_fields(*)"
 
 
-fetchAssignmentSubmissions : WebData CurrentUser -> Cmd Msg
+fetchAssignmentSubmissions : CurrentUser -> Cmd Msg
 fetchAssignmentSubmissions currentUser =
-    fetchForCurrentUser currentUser fetchAssignmentSubmissionsUrl assignmentSubmissionsDecoder Msgs.OnFetchAssignmentSubmissions
+    fetchForCurrentUser currentUser (fetchAssignmentSubmissionsUrl currentUser.id) assignmentSubmissionsDecoder Msgs.OnFetchAssignmentSubmissions
 
 
-fetchAssignmentSubmissionsUrl : String
-fetchAssignmentSubmissionsUrl =
+fetchAssignmentSubmissionsUrl : Int -> String
+fetchAssignmentSubmissionsUrl userID =
     "/rest/assignment_submissions?select=*,fields:assignment_field_submissions(*)"
 
 

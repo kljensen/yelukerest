@@ -19,14 +19,9 @@ fetchCurrentUserUrl =
     "/auth/me"
 
 
-fetchForCurrentUser : WebData CurrentUser -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
+fetchForCurrentUser : CurrentUser -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
 fetchForCurrentUser currentUser url decoder data2msg =
-    case currentUser of
-        RemoteData.Success currentUser ->
-            sendRequestWithJWT currentUser.jwt url decoder data2msg
-
-        _ ->
-            Cmd.none
+    sendRequestWithJWT currentUser.jwt url decoder data2msg
 
 
 sendRequestWithJWT : JWT -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
