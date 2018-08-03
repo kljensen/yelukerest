@@ -1,4 +1,4 @@
-module Quizzes.Commands exposing (fetchQuizzes)
+module Quizzes.Commands exposing (fetchQuizSubmissions, fetchQuizzes)
 
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser)
@@ -18,9 +18,9 @@ fetchQuizzesUrl =
 
 fetchQuizSubmissions : CurrentUser -> Cmd Msg
 fetchQuizSubmissions currentUser =
-    fetchForCurrentUser currentUser fetchQuizSubmissionsUrl quizSubmissionsDecoder Msgs.OnFetchQuizSubmissions
+    fetchForCurrentUser currentUser (fetchQuizSubmissionsUrl currentUser.id) quizSubmissionsDecoder Msgs.OnFetchQuizSubmissions
 
 
-fetchQuizSubmissionsUrl : String
-fetchQuizSubmissionsUrl =
-    "/rest/quiz_submissions?user_id="
+fetchQuizSubmissionsUrl : Int -> String
+fetchQuizSubmissionsUrl userID =
+    "/rest/quiz_submissions?user_id=eq." ++ toString userID

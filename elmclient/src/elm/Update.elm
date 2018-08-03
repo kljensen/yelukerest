@@ -4,7 +4,7 @@ import Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmen
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Quizzes.Commands exposing (fetchQuizzes)
+import Quizzes.Commands exposing (fetchQuizSubmissions, fetchQuizzes)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 
@@ -47,7 +47,12 @@ update msg model =
             case response of
                 RemoteData.Success user ->
                     ( { model | currentUser = response }
-                    , Cmd.batch [ fetchAssignments user, fetchQuizzes user, fetchAssignmentSubmissions user ]
+                    , Cmd.batch
+                        [ fetchAssignments user
+                        , fetchQuizzes user
+                        , fetchAssignmentSubmissions user
+                        , fetchQuizSubmissions user
+                        ]
                     )
 
                 _ ->
@@ -125,4 +130,4 @@ update msg model =
                     ( model, Cmd.none )
 
         Msgs.OnFetchQuizSubmissions response ->
-            ( model, Cmd.none )
+            ( { model | quizSubmissions = response }, Cmd.none )
