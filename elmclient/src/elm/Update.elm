@@ -82,9 +82,6 @@ update msg model =
 
                 values =
                     valuesFromDict model.assignmentFieldSubmissionInputs fieldIDs
-
-                x =
-                    log "values" values
             in
             case model.currentUser of
                 RemoteData.Success user ->
