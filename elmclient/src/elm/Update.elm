@@ -1,7 +1,6 @@
 module Update exposing (..)
 
 import Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments, sendAssignmentFieldSubmissions)
-import Debug exposing (log)
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
