@@ -23,3 +23,4 @@ type Msg
     | OnSubmitAssignmentFieldSubmissions Assignment
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String
+    | OnBeginQuiz Int

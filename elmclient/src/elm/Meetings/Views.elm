@@ -4,6 +4,8 @@ import Common.Views
 import Date
 import Date.Format as DateFormat
 import Html exposing (Html)
+import Html.Attributes as Attrs
+import Html.Events as Events
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg)
@@ -100,7 +102,7 @@ detailViewForJustMeeting meeting wdQuizzes wdQuizSubmissions =
         ]
 
 
-showQuizStatus : Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html msg
+showQuizStatus : Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html Msg
 showQuizStatus meetingID wdQuizzes wdQuizSubmissions =
     case wdQuizzes of
         RemoteData.Success quizzes ->
@@ -130,7 +132,7 @@ showQuizStatus meetingID wdQuizzes wdQuizSubmissions =
             Html.text "Failed to load quizzes!"
 
 
-showQuizSubmissionStatus : Int -> WebData (List QuizSubmission) -> Html.Html msg
+showQuizSubmissionStatus : Int -> WebData (List QuizSubmission) -> Html.Html Msg
 showQuizSubmissionStatus quizID wdQuizSubmissions =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
@@ -142,10 +144,31 @@ showQuizSubmissionStatus quizID wdQuizSubmissions =
             in
             case maybeSubmission of
                 Just submission ->
-                    Html.div [] [ Html.text "You already started the quiz." ]
+                    Html.div []
+                        [ Html.text "You already started the quiz."
+                        , Html.div []
+                            [ Html.a [ Attrs.href "quiz-url-goes-here" ]
+                                [ Html.button
+                                    [ Attrs.class "btn btn-primary"
+                                    ]
+                                    [ Html.text "Re-start quiz"
+                                    ]
+                                ]
+                            ]
+                        ]
 
                 Nothing ->
-                    Html.div [] [ Html.text "You did not yet start the quiz." ]
+                    Html.div []
+                        [ Html.text "You did not yet start the quiz."
+                        , Html.div []
+                            [ Html.button
+                                [ Attrs.class "btn btn-primary"
+                                , Events.onClick (Msgs.OnBeginQuiz quizID)
+                                ]
+                                [ Html.text "Begin quiz"
+                                ]
+                            ]
+                        ]
 
         RemoteData.NotAsked ->
             Html.text "Quiz submissions not yet loaded. Unclear if you started this quiz."
@@ -187,7 +210,3 @@ listMeetings meetings =
             List.map (\m -> { date = m.begins_at, title = m.title, href = "#meetings/" ++ m.slug }) meetings
     in
     Html.div [] (List.map Common.Views.dateTitleHrefRow meetingDetails)
-
-
-
--- listDateTitleLinkView

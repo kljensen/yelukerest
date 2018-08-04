@@ -131,3 +131,6 @@ update msg model =
 
         Msgs.OnFetchQuizSubmissions response ->
             ( { model | quizSubmissions = response }, Cmd.none )
+
+        Msgs.OnBeginQuiz quizID ->
+            ( model, Cmd.none )

@@ -24,3 +24,13 @@ fetchQuizSubmissions currentUser =
 fetchQuizSubmissionsUrl : Int -> String
 fetchQuizSubmissionsUrl userID =
     "/rest/quiz_submissions?user_id=eq." ++ toString userID
+
+
+fetchQuizAnswers : CurrentUser -> Cmd Msg
+fetchQuizAnswers currentUser =
+    fetchForCurrentUser currentUser (fetchQuizAnswerUrl currentUser.id) quizSubmissionsDecoder Msgs.OnFetchQuizSubmissions
+
+
+fetchQuizAnswerUrl : Int -> String
+fetchQuizAnswerUrl userID =
+    "/rest/quiz_answers?user_id=eq." ++ toString userID
