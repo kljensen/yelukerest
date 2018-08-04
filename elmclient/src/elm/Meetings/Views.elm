@@ -32,16 +32,6 @@ getQuizForMeetingID meetingID quizzes =
             Nothing
 
 
-webDataToMaybe : WebData a -> Maybe a
-webDataToMaybe wdval =
-    case wdval of
-        RemoteData.Success val ->
-            Just val
-
-        _ ->
-            Nothing
-
-
 getQuizSubmissionForQuizID : Int -> WebData (List QuizSubmission) -> Maybe QuizSubmission
 getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
     case wdQuizSubmissionList of
@@ -106,29 +96,65 @@ detailViewForJustMeeting meeting wdQuizzes wdQuizSubmissions =
             [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
             ]
         , Markdown.toHtml [] meeting.description
-        , showQuizStatus maybeQuiz
-        , showQuizSubmissionStatus maybeQuizSubmission
+        , showQuizStatus meeting.id wdQuizzes wdQuizSubmissions
         ]
 
 
-showQuizStatus : Maybe Quiz -> Html.Html msg
-showQuizStatus maybeQuiz =
-    case maybeQuiz of
-        Just quiz ->
-            Html.div [] [ Html.text "There is a quiz for this meeting." ]
+showQuizStatus : Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html msg
+showQuizStatus meetingID wdQuizzes wdQuizSubmissions =
+    case wdQuizzes of
+        RemoteData.Success quizzes ->
+            let
+                maybeQuiz =
+                    quizzes
+                        |> List.filter (\quiz -> quiz.meeting_id == meetingID)
+                        |> List.head
+            in
+            case maybeQuiz of
+                Just quiz ->
+                    Html.div []
+                        [ Html.text "There is a quiz for this meeting."
+                        , showQuizSubmissionStatus quiz.id wdQuizSubmissions
+                        ]
 
-        Nothing ->
-            Html.div [] [ Html.text "There is no quiz for this meeting." ]
+                Nothing ->
+                    Html.div [] [ Html.text "There is no quiz for this meeting." ]
+
+        RemoteData.NotAsked ->
+            Html.text "Quizzes not yet loaded. Unclear if there is a quiz for this meeting."
+
+        RemoteData.Loading ->
+            Html.text "Loading quizzes."
+
+        RemoteData.Failure error ->
+            Html.text "Failed to load quizzes!"
 
 
-showQuizSubmissionStatus : Maybe QuizSubmission -> Html.Html msg
-showQuizSubmissionStatus maybeQuizSubmission =
-    case maybeQuizSubmission of
-        Just qs ->
-            Html.div [] [ Html.text "There is already a submission for this quiz." ]
+showQuizSubmissionStatus : Int -> WebData (List QuizSubmission) -> Html.Html msg
+showQuizSubmissionStatus quizID wdQuizSubmissions =
+    case wdQuizSubmissions of
+        RemoteData.Success submissions ->
+            let
+                maybeSubmission =
+                    submissions
+                        |> List.filter (\qs -> qs.quiz_id == quizID)
+                        |> List.head
+            in
+            case maybeSubmission of
+                Just submission ->
+                    Html.div [] [ Html.text "You already started the quiz." ]
 
-        Nothing ->
-            Html.div [] [ Html.text "There NO submission for this quiz." ]
+                Nothing ->
+                    Html.div [] [ Html.text "You did not yet start the quiz." ]
+
+        RemoteData.NotAsked ->
+            Html.text "Quiz submissions not yet loaded. Unclear if you started this quiz."
+
+        RemoteData.Loading ->
+            Html.text "Loading quiz submissions."
+
+        RemoteData.Failure error ->
+            Html.text "Failed to load quiz submissions!"
 
 
 meetingNotFoundView : String -> Html msg
