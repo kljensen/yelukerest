@@ -7,7 +7,7 @@ import Html exposing (Html)
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg)
-import Quizzes.Model exposing (Quiz)
+import Quizzes.Model exposing (Quiz, QuizSubmission)
 import RemoteData exposing (WebData)
 
 
@@ -20,20 +20,42 @@ listView meetings =
 -- getQuizForMeeting
 
 
-getQuizForMeetingID : WebData (List Quiz) -> Int -> Maybe Quiz
-getQuizForMeetingID quizzes meeting_id =
+getQuizForMeetingID : Int -> WebData (List Quiz) -> Maybe Quiz
+getQuizForMeetingID meetingID quizzes =
     case quizzes of
         RemoteData.Success quizzes ->
             quizzes
-                |> List.filter (\quiz -> quiz.meeting_id == meeting_id)
+                |> List.filter (\quiz -> quiz.meeting_id == meetingID)
                 |> List.head
 
         _ ->
             Nothing
 
 
-detailView : WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> Html.Html Msg
-detailView meetings slug quizzes =
+webDataToMaybe : WebData a -> Maybe a
+webDataToMaybe wdval =
+    case wdval of
+        RemoteData.Success val ->
+            Just val
+
+        _ ->
+            Nothing
+
+
+getQuizSubmissionForQuizID : Int -> WebData (List QuizSubmission) -> Maybe QuizSubmission
+getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
+    case wdQuizSubmissionList of
+        RemoteData.Success submissions ->
+            submissions
+                |> List.filter (\qs -> qs.quiz_id == quizID)
+                |> List.head
+
+        _ ->
+            Nothing
+
+
+detailView : WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html Msg
+detailView meetings slug quizzes quizSubmissions =
     case meetings of
         RemoteData.NotAsked ->
             Html.text ""
@@ -50,7 +72,7 @@ detailView meetings slug quizzes =
             in
             case maybeMeeting of
                 Just meeting ->
-                    detailViewForJustMeeting meeting
+                    detailViewForJustMeeting meeting quizzes quizSubmissions
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -69,15 +91,44 @@ shortDateToString date =
     DateFormat.format "%a %d%b" date
 
 
-detailViewForJustMeeting : Meeting -> Html.Html Msg
-detailViewForJustMeeting meeting =
+detailViewForJustMeeting : Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html Msg
+detailViewForJustMeeting meeting wdQuizzes wdQuizSubmissions =
+    let
+        maybeQuiz =
+            getQuizForMeetingID meeting.id wdQuizzes
+
+        maybeQuizSubmission =
+            getQuizSubmissionForQuizID meeting.id wdQuizSubmissions
+    in
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
         , Html.div []
             [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
             ]
         , Markdown.toHtml [] meeting.description
+        , showQuizStatus maybeQuiz
+        , showQuizSubmissionStatus maybeQuizSubmission
         ]
+
+
+showQuizStatus : Maybe Quiz -> Html.Html msg
+showQuizStatus maybeQuiz =
+    case maybeQuiz of
+        Just quiz ->
+            Html.div [] [ Html.text "There is a quiz for this meeting." ]
+
+        Nothing ->
+            Html.div [] [ Html.text "There is no quiz for this meeting." ]
+
+
+showQuizSubmissionStatus : Maybe QuizSubmission -> Html.Html msg
+showQuizSubmissionStatus maybeQuizSubmission =
+    case maybeQuizSubmission of
+        Just qs ->
+            Html.div [] [ Html.text "There is already a submission for this quiz." ]
+
+        Nothing ->
+            Html.div [] [ Html.text "There NO submission for this quiz." ]
 
 
 meetingNotFoundView : String -> Html msg
