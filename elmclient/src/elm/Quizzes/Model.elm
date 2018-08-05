@@ -1,4 +1,13 @@
-module Quizzes.Model exposing (Quiz, QuizSubmission, quizSubmissionDecoder, quizSubmissionsDecoder, quizzesDecoder)
+module Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizQuestion
+        , QuizSubmission
+        , quizQuestionsDecoder
+        , quizSubmissionDecoder
+        , quizSubmissionsDecoder
+        , quizzesDecoder
+        )
 
 import Date exposing (Date)
 import Json.Decode as Decode
@@ -70,3 +79,41 @@ quizSubmissionDecoder =
 
 
 -- Encoder not yet needed
+
+
+type alias QuizQuestion =
+    { id : Int
+    , body : String
+    , options : List QuizQuestionOption
+    }
+
+
+type alias QuizQuestionOption =
+    { id : Int
+    , body : String
+    }
+
+
+quizQuestionDecoder : Decode.Decoder QuizQuestion
+quizQuestionDecoder =
+    decode QuizQuestion
+        |> required "id" Decode.int
+        |> required "body" Decode.string
+        |> required "options" quizQuestionOptionsDecoder
+
+
+quizQuestionsDecoder : Decode.Decoder (List QuizQuestion)
+quizQuestionsDecoder =
+    Decode.list quizQuestionDecoder
+
+
+quizQuestionOptionDecoder : Decode.Decoder QuizQuestionOption
+quizQuestionOptionDecoder =
+    decode QuizQuestionOption
+        |> required "id" Decode.int
+        |> required "body" Decode.string
+
+
+quizQuestionOptionsDecoder : Decode.Decoder (List QuizQuestionOption)
+quizQuestionOptionsDecoder =
+    Decode.list quizQuestionOptionDecoder

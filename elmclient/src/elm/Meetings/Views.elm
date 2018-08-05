@@ -1,8 +1,10 @@
 module Meetings.Views exposing (detailView, listView)
 
+import Auth.Model exposing (CurrentUser)
 import Common.Views
 import Date
 import Date.Format as DateFormat
+import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Html.Events as Events
@@ -46,8 +48,8 @@ getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
             Nothing
 
 
-detailView : WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html Msg
-detailView meetings slug quizzes quizSubmissions =
+detailView : WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData QuizSubmission) -> Html.Html Msg
+detailView currentUser meetings slug quizzes quizSubmissions pendingBeginQuizzes =
     case meetings of
         RemoteData.NotAsked ->
             Html.text ""
@@ -64,7 +66,7 @@ detailView meetings slug quizzes quizSubmissions =
             in
             case maybeMeeting of
                 Just meeting ->
-                    detailViewForJustMeeting meeting quizzes quizSubmissions
+                    detailViewForJustMeeting currentUser meeting quizzes quizSubmissions pendingBeginQuizzes
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -75,7 +77,7 @@ detailView meetings slug quizzes quizSubmissions =
 
 dateToString : Date.Date -> String
 dateToString date =
-    DateFormat.format "%l%p %A, %B %e" date
+    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
 
 
 shortDateToString : Date.Date -> String
@@ -83,14 +85,22 @@ shortDateToString date =
     DateFormat.format "%a %d%b" date
 
 
-detailViewForJustMeeting : Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html Msg
-detailViewForJustMeeting meeting wdQuizzes wdQuizSubmissions =
+detailViewForJustMeeting : WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData QuizSubmission) -> Html.Html Msg
+detailViewForJustMeeting currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
     let
         maybeQuiz =
             getQuizForMeetingID meeting.id wdQuizzes
 
         maybeQuizSubmission =
             getQuizSubmissionForQuizID meeting.id wdQuizSubmissions
+
+        maybePendingBeginQuiz =
+            case maybeQuiz of
+                Just quiz ->
+                    Dict.get quiz.id pendingBeginQuizzes
+
+                _ ->
+                    Nothing
     in
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
@@ -98,12 +108,17 @@ detailViewForJustMeeting meeting wdQuizzes wdQuizSubmissions =
             [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
             ]
         , Markdown.toHtml [] meeting.description
-        , showQuizStatus meeting.id wdQuizzes wdQuizSubmissions
+        , case currentUser of
+            RemoteData.Success user ->
+                showQuizStatus meeting.id wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
+
+            _ ->
+                Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
         ]
 
 
-showQuizStatus : Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Html.Html Msg
-showQuizStatus meetingID wdQuizzes wdQuizSubmissions =
+showQuizStatus : Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData QuizSubmission) -> Html.Html Msg
+showQuizStatus meetingID wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             let
@@ -114,9 +129,18 @@ showQuizStatus meetingID wdQuizzes wdQuizSubmissions =
             in
             case maybeQuiz of
                 Just quiz ->
+                    let
+                        quizMsg =
+                            case quiz.is_open of
+                                True ->
+                                    "There is a quiz for this meeting and it is open for submission until" ++ dateToString quiz.closed_at
+
+                                False ->
+                                    "There is a quiz for this meeting but it is not open for submission. You must submit it between" ++ dateToString quiz.open_at ++ " and " ++ dateToString quiz.closed_at ++ "."
+                    in
                     Html.div []
-                        [ Html.text "There is a quiz for this meeting."
-                        , showQuizSubmissionStatus quiz.id wdQuizSubmissions
+                        [ Html.text quizMsg
+                        , showQuizSubmissionStatus quiz wdQuizSubmissions maybePendingBeginQuiz
                         ]
 
                 Nothing ->
@@ -132,18 +156,18 @@ showQuizStatus meetingID wdQuizzes wdQuizSubmissions =
             Html.text "Failed to load quizzes!"
 
 
-showQuizSubmissionStatus : Int -> WebData (List QuizSubmission) -> Html.Html Msg
-showQuizSubmissionStatus quizID wdQuizSubmissions =
+showQuizSubmissionStatus : Quiz -> WebData (List QuizSubmission) -> Maybe (WebData QuizSubmission) -> Html.Html Msg
+showQuizSubmissionStatus quiz wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
             let
                 maybeSubmission =
                     submissions
-                        |> List.filter (\qs -> qs.quiz_id == quizID)
+                        |> List.filter (\qs -> qs.quiz_id == quiz.id)
                         |> List.head
             in
-            case maybeSubmission of
-                Just submission ->
+            case ( quiz.is_open, maybeSubmission ) of
+                ( True, Just submission ) ->
                     Html.div []
                         [ Html.text "You already started the quiz."
                         , Html.div []
@@ -157,17 +181,37 @@ showQuizSubmissionStatus quizID wdQuizSubmissions =
                             ]
                         ]
 
-                Nothing ->
+                ( True, Nothing ) ->
+                    let
+                        defaultAttrs =
+                            [ Attrs.class "btn btn-primary" ]
+
+                        ( btnText, btnAttrs ) =
+                            case maybePendingBeginQuiz of
+                                Nothing ->
+                                    ( "Begin quiz", defaultAttrs ++ [ Events.onClick (Msgs.OnBeginQuiz quiz.id) ] )
+
+                                _ ->
+                                    ( "Begin quiz", defaultAttrs ++ [ Attrs.disabled True ] )
+                    in
                     Html.div []
                         [ Html.text "You did not yet start the quiz."
                         , Html.div []
                             [ Html.button
-                                [ Attrs.class "btn btn-primary"
-                                , Events.onClick (Msgs.OnBeginQuiz quizID)
-                                ]
-                                [ Html.text "Begin quiz"
+                                btnAttrs
+                                [ Html.text btnText
                                 ]
                             ]
+                        ]
+
+                ( False, Just submission ) ->
+                    Html.div []
+                        [ Html.text "You already submitted this quiz."
+                        ]
+
+                ( False, Nothing ) ->
+                    Html.div []
+                        [ Html.text "You have not submitted this quiz."
                         ]
 
         RemoteData.NotAsked ->

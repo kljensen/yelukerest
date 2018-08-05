@@ -44,6 +44,10 @@ type alias Model =
     -- A dictionary tracking POST requests to the server to save
     -- assigment field submissions.
     , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
+
+    -- A dictionary tracking POST requests to the server to create
+    -- new quiz submissions.
+    , pendingBeginQuizzes : Dict Int (WebData QuizSubmission)
     }
 
 
@@ -62,6 +66,7 @@ initialModel flags route =
         }
     , assignmentSubmissions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty
+    , pendingBeginQuizzes = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
     }

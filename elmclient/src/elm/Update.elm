@@ -4,7 +4,8 @@ import Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmen
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Quizzes.Commands exposing (fetchQuizSubmissions, fetchQuizzes)
+import Navigation exposing (load)
+import Quizzes.Commands exposing (createQuizSubmission, fetchQuizSubmissions, fetchQuizzes)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 
@@ -133,4 +134,54 @@ update msg model =
             ( { model | quizSubmissions = response }, Cmd.none )
 
         Msgs.OnBeginQuiz quizID ->
+            let
+                newModel =
+                    { model | pendingBeginQuizzes = Dict.insert quizID RemoteData.Loading model.pendingBeginQuizzes }
+
+                cmds =
+                    case model.currentUser of
+                        RemoteData.Success user ->
+                            Cmd.batch [ createQuizSubmission user.jwt quizID ]
+
+                        _ ->
+                            Cmd.none
+            in
+            -- todo, POST to create quiz submission. Add to pendingBeginQuizzes,
+            -- show that status as greyed-out button. After that
+            -- succeeds, redirect to page or failure
+            ( newModel, cmds )
+
+        Msgs.OnBeginQuizComplete quizID response ->
+            let
+                newModel =
+                    case response of
+                        RemoteData.Success quizSubmission ->
+                            let
+                                newPBQs =
+                                    Dict.remove quizID model.pendingBeginQuizzes
+
+                                newQSubs =
+                                    case model.quizSubmissions of
+                                        RemoteData.Success subs ->
+                                            RemoteData.Success (subs ++ [ quizSubmission ])
+
+                                        _ ->
+                                            model.quizSubmissions
+                            in
+                            { model | pendingBeginQuizzes = newPBQs, quizSubmissions = newQSubs }
+
+                        _ ->
+                            { model | pendingBeginQuizzes = Dict.insert quizID response model.pendingBeginQuizzes }
+
+                cmds =
+                    case response of
+                        RemoteData.Success quizSubmission ->
+                            Cmd.batch [ load "test" ]
+
+                        _ ->
+                            Cmd.none
+            in
+            ( newModel, cmds )
+
+        Msgs.OnFetchQuizQuestions quizID response ->
             ( model, Cmd.none )
