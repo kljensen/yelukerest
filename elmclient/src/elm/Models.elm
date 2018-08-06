@@ -5,7 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
 import Meetings.Model exposing (Meeting, MeetingSlug)
-import Quizzes.Model exposing (Quiz, QuizAnswer, QuizSubmission)
+import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
 
 
@@ -49,6 +49,7 @@ type alias Model =
     -- new quiz submissions.
     , pendingBeginQuizzes : Dict Int (WebData QuizSubmission)
     , quizAnswers : WebData (List QuizAnswer)
+    , quizQuestions : Dict Int (WebData (List QuizQuestion))
     }
 
 
@@ -71,6 +72,7 @@ initialModel flags route =
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
     , quizAnswers = RemoteData.NotAsked
+    , quizQuestions = Dict.empty
     }
 
 
