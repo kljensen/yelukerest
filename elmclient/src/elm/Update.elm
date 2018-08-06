@@ -158,36 +158,25 @@ update msg model =
             ( newModel, cmds )
 
         Msgs.OnBeginQuizComplete quizID response ->
-            let
-                newModel =
-                    case response of
-                        RemoteData.Success quizSubmission ->
-                            let
-                                newPBQs =
-                                    Dict.remove quizID model.pendingBeginQuizzes
+            case response of
+                RemoteData.Success quizSubmission ->
+                    let
+                        newPBQs =
+                            Dict.remove quizID model.pendingBeginQuizzes
 
-                                newQSubs =
-                                    case model.quizSubmissions of
-                                        RemoteData.Success subs ->
-                                            RemoteData.Success (subs ++ [ quizSubmission ])
+                        newQSubs =
+                            case model.quizSubmissions of
+                                RemoteData.Success subs ->
+                                    RemoteData.Success (subs ++ [ quizSubmission ])
 
-                                        _ ->
-                                            model.quizSubmissions
-                            in
-                            { model | pendingBeginQuizzes = newPBQs, quizSubmissions = newQSubs }
+                                _ ->
+                                    model.quizSubmissions
+                    in
+                    { model | pendingBeginQuizzes = newPBQs, quizSubmissions = newQSubs }
+                        |> update (Msgs.TakeQuiz quizID)
 
-                        _ ->
-                            { model | pendingBeginQuizzes = Dict.insert quizID response model.pendingBeginQuizzes }
-
-                cmds =
-                    case response of
-                        RemoteData.Success quizSubmission ->
-                            Cmd.batch [ load ("#quiz-submissions/" ++ toString quizSubmission.quiz_id) ]
-
-                        _ ->
-                            Cmd.none
-            in
-            ( newModel, cmds )
+                _ ->
+                    ( model, Cmd.none )
 
         Msgs.TakeQuiz quizID ->
             let
