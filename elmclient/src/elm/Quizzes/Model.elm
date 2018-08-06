@@ -1,8 +1,10 @@
 module Quizzes.Model
     exposing
         ( Quiz
+        , QuizAnswer
         , QuizQuestion
         , QuizSubmission
+        , quizAnswersDecoder
         , quizQuestionsDecoder
         , quizSubmissionDecoder
         , quizSubmissionsDecoder
@@ -92,6 +94,26 @@ type alias QuizQuestionOption =
     { id : Int
     , body : String
     }
+
+
+type alias QuizAnswer =
+    { user_id : Int
+    , quiz_question_option_id : Int
+    , quiz_id : Int
+    }
+
+
+quizAnswerDecoder : Decode.Decoder QuizAnswer
+quizAnswerDecoder =
+    decode QuizAnswer
+        |> required "user_id" Decode.int
+        |> required "quiz_question_option_id" Decode.int
+        |> required "quiz_id" Decode.int
+
+
+quizAnswersDecoder : Decode.Decoder (List QuizAnswer)
+quizAnswersDecoder =
+    Decode.list quizAnswerDecoder
 
 
 quizQuestionDecoder : Decode.Decoder QuizQuestion

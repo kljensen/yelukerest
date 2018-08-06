@@ -5,7 +5,7 @@ import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Navigation exposing (load)
-import Quizzes.Commands exposing (createQuizSubmission, fetchQuizSubmissions, fetchQuizzes)
+import Quizzes.Commands exposing (createQuizSubmission, fetchQuizAnswers, fetchQuizQuestions, fetchQuizSubmissions, fetchQuizzes)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 
@@ -17,6 +17,12 @@ valuesFromDict theDict theList =
     theDict
         |> Dict.filter (\k -> \_ -> List.member k theList)
         |> Dict.toList
+
+
+listToDict : (a -> comparable) -> List a -> Dict.Dict comparable a
+listToDict getKey values =
+    -- https://gist.github.com/Warry/b4382a5b4373de57f5ba
+    Dict.fromList (List.map (\v -> ( getKey v, v )) values)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -176,12 +182,29 @@ update msg model =
                 cmds =
                     case response of
                         RemoteData.Success quizSubmission ->
-                            Cmd.batch [ load "test" ]
+                            Cmd.batch [ load ("#quiz-submissions/" ++ toString quizSubmission.quiz_id) ]
 
                         _ ->
                             Cmd.none
             in
             ( newModel, cmds )
 
+        Msgs.TakeQuiz quizID ->
+            let
+                extraCmds =
+                    case model.currentUser of
+                        RemoteData.Success user ->
+                            [ fetchQuizQuestions quizID user
+                            , fetchQuizAnswers user
+                            ]
+
+                        _ ->
+                            []
+            in
+            ( model, Cmd.batch ([ load ("#quiz-submissions/" ++ toString quizID) ] ++ extraCmds) )
+
         Msgs.OnFetchQuizQuestions quizID response ->
             ( model, Cmd.none )
+
+        Msgs.OnFetchQuizAnswers response ->
+            ( { model | quizAnswers = response }, Cmd.none )

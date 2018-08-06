@@ -171,12 +171,11 @@ showQuizSubmissionStatus quiz wdQuizSubmissions maybePendingBeginQuiz =
                     Html.div []
                         [ Html.text "You already started the quiz."
                         , Html.div []
-                            [ Html.a [ Attrs.href "quiz-url-goes-here" ]
-                                [ Html.button
-                                    [ Attrs.class "btn btn-primary"
-                                    ]
-                                    [ Html.text "Re-start quiz"
-                                    ]
+                            [ Html.button
+                                [ Attrs.class "btn btn-primary"
+                                , Events.onClick (Msgs.TakeQuiz quiz.id)
+                                ]
+                                [ Html.text "Re-start quiz"
                                 ]
                             ]
                         ]

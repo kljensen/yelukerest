@@ -2,7 +2,7 @@ module Routing exposing (..)
 
 import Models exposing (Route(..))
 import Navigation exposing (Location)
-import UrlParser exposing ((</>), Parser, map, oneOf, parseHash, s, string, top)
+import UrlParser exposing ((</>), Parser, map, oneOf, parseHash, s, string, top, int)
 
 
 matchers : Parser (Route -> a) a
@@ -14,6 +14,7 @@ matchers =
         , map MeetingDetailRoute (s "meetings" </> string)
         , map AssignmentListRoute (s "assignments")
         , map AssignmentDetailRoute (s "assignments" </> string)
+        , map TakeQuizRoute (s "quiz-submissions" </> int)
         ]
 
 

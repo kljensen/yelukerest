@@ -5,7 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
-import Quizzes.Model exposing (Quiz, QuizQuestion, QuizSubmission)
+import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
 
 
@@ -26,3 +26,5 @@ type Msg
     | OnBeginQuiz Int
     | OnBeginQuizComplete Int (WebData QuizSubmission)
     | OnFetchQuizQuestions Int (WebData (List QuizQuestion))
+    | TakeQuiz Int
+    | OnFetchQuizAnswers (WebData (List QuizAnswer))

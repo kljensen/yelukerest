@@ -5,7 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
 import Meetings.Model exposing (Meeting, MeetingSlug)
-import Quizzes.Model exposing (Quiz, QuizSubmission)
+import Quizzes.Model exposing (Quiz, QuizAnswer, QuizSubmission)
 import RemoteData exposing (WebData)
 
 
@@ -48,6 +48,7 @@ type alias Model =
     -- A dictionary tracking POST requests to the server to create
     -- new quiz submissions.
     , pendingBeginQuizzes : Dict Int (WebData QuizSubmission)
+    , quizAnswers : WebData (List QuizAnswer)
     }
 
 
@@ -69,6 +70,7 @@ initialModel flags route =
     , pendingBeginQuizzes = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
+    , quizAnswers = RemoteData.NotAsked
     }
 
 
@@ -79,4 +81,5 @@ type Route
     | MeetingDetailRoute MeetingSlug
     | AssignmentListRoute
     | AssignmentDetailRoute AssignmentSlug
+    | TakeQuizRoute Int
     | NotFoundRoute

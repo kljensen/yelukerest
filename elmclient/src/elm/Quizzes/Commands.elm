@@ -1,11 +1,20 @@
-module Quizzes.Commands exposing (createQuizSubmission, fetchQuizSubmissions, fetchQuizzes)
+module Quizzes.Commands exposing (createQuizSubmission, fetchQuizAnswers, fetchQuizQuestions, fetchQuizSubmissions, fetchQuizzes)
 
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http
 import Json.Encode as Encode
 import Msgs exposing (Msg)
-import Quizzes.Model exposing (Quiz, QuizSubmission, quizQuestionsDecoder, quizSubmissionDecoder, quizSubmissionsDecoder, quizzesDecoder)
+import Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizSubmission
+        , quizAnswersDecoder
+        , quizQuestionsDecoder
+        , quizSubmissionDecoder
+        , quizSubmissionsDecoder
+        , quizzesDecoder
+        )
 import RemoteData exposing (WebData)
 
 
@@ -31,7 +40,7 @@ fetchQuizSubmissionsUrl userID =
 
 fetchQuizAnswers : CurrentUser -> Cmd Msg
 fetchQuizAnswers currentUser =
-    fetchForCurrentUser currentUser (fetchQuizAnswerUrl currentUser.id) quizSubmissionsDecoder Msgs.OnFetchQuizSubmissions
+    fetchForCurrentUser currentUser (fetchQuizAnswerUrl currentUser.id) quizAnswersDecoder Msgs.OnFetchQuizAnswers
 
 
 fetchQuizAnswerUrl : Int -> String
