@@ -14,5 +14,5 @@ grant api to current_user; -- this is a workaround for RDS where the master user
 -- \ir ../libs/auth/api/all.sql
 
 -- our endpoints
-\ir todos.sql
+-- \ir todos.sql
 \ir yeluke.sql
