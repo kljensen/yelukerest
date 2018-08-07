@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS quiz_question_option (
     id SERIAL PRIMARY KEY,
-    quiz_question_id INT NOT NULL,
+    quiz_question_id INT REFERENCES quiz_question(id)
+        ON UPDATE CASCADE ON DELETE CASCADE NOT NULL,
     -- Note that we're going to carry around the quiz_id
     -- so that we can ensure referential integrity. See the
     -- quiz_answer model for an explaination. 

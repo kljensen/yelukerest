@@ -26,7 +26,7 @@ set request.jwt.claim.role = 'faculty';
 
 SELECT set_eq(
     'SELECT id FROM api.quiz_questions ORDER BY (id)',
-    ARRAY[1, 2, 3],
+    ARRAY[1, 2, 3, 4],
     'faculty should be able to see all quiz questions'
 );
 
