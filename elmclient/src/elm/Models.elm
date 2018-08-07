@@ -48,7 +48,7 @@ type alias Model =
     -- A dictionary tracking POST requests to the server to create
     -- new quiz submissions.
     , pendingBeginQuizzes : Dict Int (WebData QuizSubmission)
-    , quizAnswers : WebData (List QuizAnswer)
+    , quizAnswers : Dict Int (WebData (List QuizAnswer))
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
     }
 
@@ -71,7 +71,7 @@ initialModel flags route =
     , pendingBeginQuizzes = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
-    , quizAnswers = RemoteData.NotAsked
+    , quizAnswers = Dict.empty
     , quizQuestions = Dict.empty
     }
 

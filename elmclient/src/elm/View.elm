@@ -39,8 +39,8 @@ page model =
         Models.AssignmentDetailRoute slug ->
             Assignments.Views.detailView model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
 
-        Models.TakeQuizRoute quizSubmissionID ->
-            Quizzes.Views.takeQuizView quizSubmissionID model.quizSubmissions model.quizzes
+        Models.TakeQuizRoute quizID ->
+            Quizzes.Views.takeQuizView quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers
 
         Models.NotFoundRoute ->
             notFoundView

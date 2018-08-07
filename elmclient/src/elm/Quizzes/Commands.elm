@@ -38,19 +38,19 @@ fetchQuizSubmissionsUrl userID =
     "/rest/quiz_submissions?user_id=eq." ++ toString userID
 
 
-fetchQuizAnswers : CurrentUser -> Cmd Msg
-fetchQuizAnswers currentUser =
-    fetchForCurrentUser currentUser (fetchQuizAnswerUrl currentUser.id) quizAnswersDecoder Msgs.OnFetchQuizAnswers
+fetchQuizAnswers : Int -> CurrentUser -> Cmd Msg
+fetchQuizAnswers quizID currentUser =
+    fetchForCurrentUser currentUser (fetchQuizAnswerUrl currentUser.id quizID) quizAnswersDecoder (Msgs.OnFetchQuizAnswers quizID)
 
 
-fetchQuizAnswerUrl : Int -> String
-fetchQuizAnswerUrl userID =
-    "/rest/quiz_answers?user_id=eq." ++ toString userID
+fetchQuizAnswerUrl : Int -> Int -> String
+fetchQuizAnswerUrl userID quizID =
+    "/rest/quiz_answers?user_id=eq." ++ toString userID ++ "&quiz_id=eq." ++ toString quizID
 
 
 fetchQuizQuestionsUrl : Int -> String
 fetchQuizQuestionsUrl quizID =
-    "/rest/quiz_questions?select=id,body,quiz_question_options(id,body)&quiz_id=eq." ++ toString quizID
+    "/rest/quiz_questions?select=id,body,options:quiz_question_options(id,body)&quiz_id=eq." ++ toString quizID
 
 
 fetchQuizQuestions : Int -> CurrentUser -> Cmd Msg

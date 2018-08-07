@@ -27,4 +27,4 @@ type Msg
     | OnBeginQuizComplete Int (WebData QuizSubmission)
     | OnFetchQuizQuestions Int (WebData (List QuizQuestion))
     | TakeQuiz Int
-    | OnFetchQuizAnswers (WebData (List QuizAnswer))
+    | OnFetchQuizAnswers Int (WebData (List QuizAnswer))

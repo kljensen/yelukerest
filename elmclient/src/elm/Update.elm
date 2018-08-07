@@ -184,16 +184,22 @@ update msg model =
                     case model.currentUser of
                         RemoteData.Success user ->
                             [ fetchQuizQuestions quizID user
-                            , fetchQuizAnswers user
+                            , fetchQuizAnswers quizID user
                             ]
 
                         _ ->
                             []
+
+                newModel =
+                    { model
+                        | quizQuestions = Dict.insert quizID RemoteData.Loading model.quizQuestions
+                        , quizAnswers = Dict.insert quizID RemoteData.Loading model.quizAnswers
+                    }
             in
-            ( model, Cmd.batch ([ load ("#quiz-submissions/" ++ toString quizID) ] ++ extraCmds) )
+            ( newModel, Cmd.batch ([ load ("#quiz-submissions/" ++ toString quizID) ] ++ extraCmds) )
 
         Msgs.OnFetchQuizQuestions quizID response ->
-            ( model, Cmd.none )
+            ( { model | quizQuestions = Dict.insert quizID response model.quizQuestions }, Cmd.none )
 
-        Msgs.OnFetchQuizAnswers response ->
-            ( { model | quizAnswers = response }, Cmd.none )
+        Msgs.OnFetchQuizAnswers quizID response ->
+            ( { model | quizAnswers = Dict.insert quizID response model.quizAnswers }, Cmd.none )
