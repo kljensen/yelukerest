@@ -28,3 +28,5 @@ type Msg
     | OnFetchQuizQuestions Int (WebData (List QuizQuestion))
     | TakeQuiz Int
     | OnFetchQuizAnswers Int (WebData (List QuizAnswer))
+    | OnSubmitQuizAnswers Int
+    | OnToggleQuizQuestionOption Int Bool

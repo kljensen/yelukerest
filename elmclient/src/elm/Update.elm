@@ -8,6 +8,7 @@ import Navigation exposing (load)
 import Quizzes.Commands exposing (createQuizSubmission, fetchQuizAnswers, fetchQuizQuestions, fetchQuizSubmissions, fetchQuizzes)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
+import Set exposing (Set)
 
 
 valuesFromDict : Dict comparable b -> List comparable -> List ( comparable, b )
@@ -203,3 +204,18 @@ update msg model =
 
         Msgs.OnFetchQuizAnswers quizID response ->
             ( { model | quizAnswers = Dict.insert quizID response model.quizAnswers }, Cmd.none )
+
+        Msgs.OnSubmitQuizAnswers quizID ->
+            ( model, Cmd.none )
+
+        Msgs.OnToggleQuizQuestionOption optionID checked ->
+            let
+                newQOIs =
+                    case checked of
+                        True ->
+                            Set.insert optionID model.quizQuestionOptionInputs
+
+                        False ->
+                            Set.remove optionID model.quizQuestionOptionInputs
+            in
+            ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )

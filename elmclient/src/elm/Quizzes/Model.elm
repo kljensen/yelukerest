@@ -3,6 +3,7 @@ module Quizzes.Model
         ( Quiz
         , QuizAnswer
         , QuizQuestion
+        , QuizQuestionOption
         , QuizSubmission
         , quizAnswersDecoder
         , quizQuestionsDecoder

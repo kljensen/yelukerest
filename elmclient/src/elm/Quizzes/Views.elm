@@ -4,17 +4,28 @@ module Quizzes.Views exposing (takeQuizView)
 
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
+import Html.Attributes as Attrs
+import Html.Events as Events
+import Json.Decode as Decode
+import Markdown
 import Msgs exposing (Msg)
-import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
+import Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizAnswer
+        , QuizQuestion
+        , QuizQuestionOption
+        , QuizSubmission
+        )
 import RemoteData exposing (WebData)
 
 
 merge4 :
-    RemoteData.RemoteData e a
-    -> RemoteData.RemoteData e b
-    -> RemoteData.RemoteData e c
-    -> RemoteData.RemoteData e d
-    -> RemoteData.RemoteData e ( a, b, c, d )
+    WebData a
+    -> WebData b
+    -> WebData c
+    -> WebData d
+    -> WebData ( a, b, c, d )
 merge4 a b c d =
     RemoteData.map (,,,) a
         |> RemoteData.andMap b
@@ -82,4 +93,50 @@ takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers =
 
 showQuizForm : Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> Html.Html Msg
 showQuizForm quizID quizSubmission quiz quizQuestions quizAnswers =
-    Html.div [] [ Html.text "Going to show quiz form here!" ]
+    Html.form
+        [ Events.onWithOptions
+            "submit"
+            { preventDefault = True, stopPropagation = False }
+            (Decode.succeed (Msgs.OnSubmitQuizAnswers quizID))
+        ]
+        (List.map (showQuestion quizAnswers) quizQuestions
+            ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ]
+        )
+
+
+showQuestion : List QuizAnswer -> QuizQuestion -> Html.Html Msg
+showQuestion quizAnswers quizQuestion =
+    Html.fieldset []
+        ([ Markdown.toHtml [] quizQuestion.body ]
+            ++ List.map showQuestionOption quizQuestion.options
+        )
+
+
+showQuestionOption : QuizQuestionOption -> Html.Html Msg
+showQuestionOption option =
+    Html.div []
+        [ Html.input
+            [ Attrs.name (toString option.id)
+            , Attrs.id ("option-" ++ toString option.id)
+            , Attrs.type_ "checkbox"
+            , Events.onCheck (Msgs.OnToggleQuizQuestionOption option.id)
+            ]
+            []
+        , Html.label
+            [ Attrs.for ("option-" ++ toString option.id)
+            ]
+            [ Html.text option.body ]
+
+        -- , Html.text ""
+        ]
+
+
+
+-- Html.div []
+--     [ Html.input
+--         [ Attrs.name (toString option.id)
+--         , Attrs.type_ "checkbox"
+--         ]
+--         []
+--     , Html.label [] [ Html.text option.body ]
+--     ]

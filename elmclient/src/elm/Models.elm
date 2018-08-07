@@ -7,6 +7,7 @@ import Dict exposing (Dict)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
+import Set exposing (Set)
 
 
 type alias Flags =
@@ -50,6 +51,7 @@ type alias Model =
     , pendingBeginQuizzes : Dict Int (WebData QuizSubmission)
     , quizAnswers : Dict Int (WebData (List QuizAnswer))
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
+    , quizQuestionOptionInputs : Set Int
     }
 
 
@@ -73,6 +75,7 @@ initialModel flags route =
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
     , quizAnswers = Dict.empty
     , quizQuestions = Dict.empty
+    , quizQuestionOptionInputs = Set.empty
     }
 
 
