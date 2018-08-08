@@ -50,14 +50,17 @@ filterGet x f =
         |> List.head
 
 
-takeQuizView : Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
-takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers =
+takeQuizView : Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
+takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSubmitQuizzes =
     let
         theseQuizQuestions =
             getOrNotAsked quizID quizQuestions
 
         theseQuizAnswers =
             getOrNotAsked quizID quizAnswers
+
+        thisPendingSubmitQuiz =
+            getOrNotAsked quizID pendingSubmitQuizzes
 
         data =
             merge4 quizSubmissions quizzes theseQuizQuestions theseQuizAnswers
@@ -79,7 +82,7 @@ takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers =
             in
             case ( sub, quiz ) of
                 ( Just daSub, Just daQuiz ) ->
-                    showQuizForm quizID daSub daQuiz qq qa
+                    showQuizForm quizID daSub daQuiz qq qa thisPendingSubmitQuiz
 
                 ( _, Nothing ) ->
                     Html.div [] [ Html.text "Error - you've not yet started this quiz." ]
@@ -91,16 +94,52 @@ takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers =
             Html.div [] [ Html.text "Need to load data to view this page!" ]
 
 
-showQuizForm : Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> Html.Html Msg
-showQuizForm quizID quizSubmission quiz quizQuestions quizAnswers =
+isLoading : WebData a -> Bool
+isLoading x =
+    case x of
+        RemoteData.Loading ->
+            True
+
+        _ ->
+            False
+
+
+showSubmitError : WebData a -> Html.Html Msg
+showSubmitError x =
+    case x of
+        RemoteData.Failure e ->
+            let
+                errorMessage =
+                    toString e
+            in
+            Html.div [ Attrs.class "red" ] [ Html.text ("Error submitting the quiz! " ++ errorMessage) ]
+
+        _ ->
+            Html.text ""
+
+
+showQuizForm : Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData a -> Html.Html Msg
+showQuizForm quizID quizSubmission quiz quizQuestions quizAnswers pendingSubmit =
+    let
+        quizQuestionOptionIds =
+            quizQuestions
+                |> List.concatMap .options
+                |> List.map .id
+    in
     Html.form
         [ Events.onWithOptions
             "submit"
             { preventDefault = True, stopPropagation = False }
-            (Decode.succeed (Msgs.OnSubmitQuizAnswers quizID))
+            (Decode.succeed (Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds))
         ]
         (List.map (showQuestion quizAnswers) quizQuestions
-            ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ]
+            ++ [ Html.button
+                    [ Attrs.class "btn btn-primary"
+                    , Attrs.disabled (isLoading pendingSubmit)
+                    ]
+                    [ Html.text "Save Answers" ]
+               , showSubmitError pendingSubmit
+               ]
         )
 
 

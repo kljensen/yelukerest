@@ -1,4 +1,12 @@
-module Quizzes.Commands exposing (createQuizSubmission, fetchQuizAnswers, fetchQuizQuestions, fetchQuizSubmissions, fetchQuizzes)
+module Quizzes.Commands
+    exposing
+        ( createQuizSubmission
+        , fetchQuizAnswers
+        , fetchQuizQuestions
+        , fetchQuizSubmissions
+        , fetchQuizzes
+        , submitQuizAnswers
+        )
 
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
@@ -81,3 +89,37 @@ createQuizSubmission jwt quizID =
     request
         |> RemoteData.sendRequest
         |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
+
+
+submitQuizAnswers : JWT -> Int -> List Int -> Cmd Msg
+submitQuizAnswers jwt quizID quizQuestionOptionIds =
+    let
+        headers =
+            [ Http.header "Authorization" ("Bearer " ++ jwt)
+            , Http.header "Prefer" "return=representation"
+            ]
+
+        request =
+            Http.request
+                { method = "POST"
+                , headers = headers
+                , url = "/rest/rpc/save_quiz"
+                , timeout = Nothing
+                , expect = Http.expectJson quizAnswersDecoder
+                , withCredentials = False
+                , body =
+                    Http.jsonBody
+                        (Encode.object
+                            [ ( "quiz_id", Encode.int quizID )
+                            , ( "quiz_question_option_ids"
+                              , quizQuestionOptionIds
+                                    |> List.map Encode.int
+                                    |> Encode.list
+                              )
+                            ]
+                        )
+                }
+    in
+    request
+        |> RemoteData.sendRequest
+        |> Cmd.map (Msgs.OnSubmitQuizAnswersComplete quizID)

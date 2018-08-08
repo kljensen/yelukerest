@@ -1,11 +1,29 @@
 module Update exposing (..)
 
-import Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments, sendAssignmentFieldSubmissions)
+import Assignments.Commands
+    exposing
+        ( createAssignmentSubmission
+        , fetchAssignmentSubmissions
+        , fetchAssignments
+        , sendAssignmentFieldSubmissions
+        )
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Navigation exposing (load)
-import Quizzes.Commands exposing (createQuizSubmission, fetchQuizAnswers, fetchQuizQuestions, fetchQuizSubmissions, fetchQuizzes)
+import Quizzes.Commands
+    exposing
+        ( createQuizSubmission
+        , fetchQuizAnswers
+        , fetchQuizQuestions
+        , fetchQuizSubmissions
+        , fetchQuizzes
+        )
+import Quizzes.Updates
+    exposing
+        ( onSubmitQuizAnswers
+        , onSubmitQuizAnswersComplete
+        )
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 import Set exposing (Set)
@@ -205,8 +223,11 @@ update msg model =
         Msgs.OnFetchQuizAnswers quizID response ->
             ( { model | quizAnswers = Dict.insert quizID response model.quizAnswers }, Cmd.none )
 
-        Msgs.OnSubmitQuizAnswers quizID ->
-            ( model, Cmd.none )
+        Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds ->
+            onSubmitQuizAnswers model quizID quizQuestionOptionIds
+
+        Msgs.OnSubmitQuizAnswersComplete quizID response ->
+            onSubmitQuizAnswersComplete model quizID response
 
         Msgs.OnToggleQuizQuestionOption optionID checked ->
             let
