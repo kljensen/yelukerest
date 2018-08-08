@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(19);
 
 SELECT view_owner_is(
     'api', 'quiz_answers', 'api',
@@ -90,6 +90,31 @@ SELECT lives_ok(
     'the quiz_id and user_id are automatically filled by triggers'
 );
 
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+SELECT throws_ilike(
+    $$
+        SELECT api.save_quiz(1, ARRAY[1,2])
+    $$,
+    '%row-level security%',
+    'the save_quiz function adheres to RLS (quiz 1 is closed)'
+);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+UPDATE api.quizzes SET closed_at = current_timestamp + '10 minutes'::INTERVAL WHERE id=1;
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+SELECT results_eq(
+    $$
+        SELECT quiz_question_option_id FROM api.save_quiz(1, ARRAY[1,2])
+    $$,
+    ARRAY[1,2],
+    'the save_quiz function allows students to overwrite all quiz answers in bulk'
+);
+
 -- Make this student's quiz submission look like it was started 1000 years ago
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
@@ -105,6 +130,7 @@ SELECT throws_like(
     '%row-level security%',
     'students cannot submit quiz answers after the quiz duration passes'
 );
+
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
@@ -148,6 +174,7 @@ SELECT results_eq(
     ARRAY[]::integer[],
     'deleting a user cascade deletes all their quiz answers'
 );
+
 
 select * from finish();
 rollback;
