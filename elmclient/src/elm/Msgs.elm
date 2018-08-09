@@ -2,11 +2,11 @@ module Msgs exposing (..)
 
 import Assignments.Model exposing (Assignment, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
 import Auth.Model exposing (CurrentUser)
-import Date exposing (Date)
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
 import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
+import Time exposing (Time)
 
 
 type Msg
@@ -19,7 +19,7 @@ type Msg
     | OnFetchQuizzes (WebData (List Quiz))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
     | OnLocationChange Location
-    | OnFetchDate Date
+    | Tick Time
     | OnSubmitAssignmentFieldSubmissions Assignment
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String

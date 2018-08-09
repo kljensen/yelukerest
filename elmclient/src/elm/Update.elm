@@ -7,6 +7,7 @@ import Assignments.Commands
         , fetchAssignments
         , sendAssignmentFieldSubmissions
         )
+import Date
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
@@ -54,8 +55,8 @@ update msg model =
             in
             ( { model | route = newRoute }, Cmd.none )
 
-        Msgs.OnFetchDate d ->
-            ( { model | current_date = Just d }, Cmd.none )
+        Msgs.Tick theTime ->
+            ( { model | current_date = Just (Date.fromTime theTime) }, Cmd.none )
 
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )

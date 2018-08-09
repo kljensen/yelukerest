@@ -1,12 +1,12 @@
 module Main exposing (..)
 
 import Auth.Commands exposing (fetchCurrentUser)
-import Common.Commands exposing (fetchDate)
 import Meetings.Commands exposing (fetchMeetings)
 import Models exposing (Flags, Model, initialModel)
 import Msgs exposing (Msg)
 import Navigation exposing (Location)
 import Routing
+import Subscriptions exposing (subscriptions)
 import Update exposing (update)
 import View exposing (view)
 
@@ -17,12 +17,7 @@ init flags location =
         currentRoute =
             Routing.parseLocation location
     in
-    ( initialModel flags currentRoute, Cmd.batch [ fetchMeetings, fetchCurrentUser, fetchDate ] )
-
-
-subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.none
+    ( initialModel flags currentRoute, Cmd.batch [ fetchMeetings, fetchCurrentUser ] )
 
 
 
