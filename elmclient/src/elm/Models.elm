@@ -48,7 +48,7 @@ type alias Model =
 
     -- A dictionary tracking POST requests to the server to create
     -- new quiz submissions.
-    , pendingBeginQuizzes : Dict Int (WebData QuizSubmission)
+    , pendingBeginQuizzes : Dict Int (WebData (List QuizSubmission))
     , pendingSubmitQuizzes : Dict Int (WebData (List QuizAnswer))
     , quizAnswers : Dict Int (WebData (List QuizAnswer))
     , quizQuestions : Dict Int (WebData (List QuizQuestion))

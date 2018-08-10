@@ -7,4 +7,4 @@ import Time exposing (Time, second)
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    Time.every second Msgs.Tick
+    Time.every (5 * second) Msgs.Tick

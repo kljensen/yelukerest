@@ -11,6 +11,7 @@ module Quizzes.Commands
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http
+import Json.Decode as Decode
 import Json.Encode as Encode
 import Msgs exposing (Msg)
 import Quizzes.Model
@@ -24,6 +25,7 @@ import Quizzes.Model
         , quizzesDecoder
         )
 import RemoteData exposing (WebData)
+import Task
 
 
 fetchQuizzes : CurrentUser -> Cmd Msg
@@ -43,7 +45,7 @@ fetchQuizSubmissions currentUser =
 
 fetchQuizSubmissionsUrl : Int -> String
 fetchQuizSubmissionsUrl userID =
-    "/rest/quiz_submissions?user_id=eq." ++ toString userID
+    "/rest/quiz_submissions_info?user_id=eq." ++ toString userID
 
 
 fetchQuizAnswers : Int -> CurrentUser -> Cmd Msg
@@ -66,28 +68,45 @@ fetchQuizQuestions quizID currentUser =
     fetchForCurrentUser currentUser (fetchQuizQuestionsUrl quizID) quizQuestionsDecoder (Msgs.OnFetchQuizQuestions quizID)
 
 
+
+-- |> RemoteData.sendRequest
+-- |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
+
+
 createQuizSubmission : JWT -> Int -> Cmd Msg
 createQuizSubmission jwt quizID =
     let
-        headers =
+        headers1 =
             [ Http.header "Authorization" ("Bearer " ++ jwt)
             , Http.header "Prefer" "return=representation"
             , Http.header "Accept" "application/vnd.pgrst.object+json"
             ]
 
-        request =
+        insertSubmissionRequest =
             Http.request
                 { method = "POST"
-                , headers = headers
+                , headers = headers1
                 , url = "/rest/quiz_submissions"
                 , timeout = Nothing
-                , expect = Http.expectJson quizSubmissionDecoder
+                , expect = Http.expectJson (Decode.succeed quizID)
                 , withCredentials = False
                 , body = Http.jsonBody (Encode.object [ ( "quiz_id", Encode.int quizID ) ])
                 }
+
+        fetchSubmissionsRequest =
+            Http.request
+                { method = "GET"
+                , headers = [ Http.header "Authorization" ("Bearer " ++ jwt) ]
+                , url = "/rest/quiz_submissions_info"
+                , timeout = Nothing
+                , expect = Http.expectJson quizSubmissionsDecoder
+                , withCredentials = False
+                , body = Http.emptyBody
+                }
     in
-    request
-        |> RemoteData.sendRequest
+    Http.toTask insertSubmissionRequest
+        |> Task.andThen (\x -> Http.toTask fetchSubmissionsRequest)
+        |> Task.attempt RemoteData.fromResult
         |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
 
 

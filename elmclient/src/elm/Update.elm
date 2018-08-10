@@ -22,8 +22,12 @@ import Quizzes.Commands
         )
 import Quizzes.Updates
     exposing
-        ( onSubmitQuizAnswers
+        ( onBeginQuiz
+        , onBeginQuizComplete
+        , onFetchQuizSubmissions
+        , onSubmitQuizAnswers
         , onSubmitQuizAnswersComplete
+        , takeQuiz
         )
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
@@ -157,66 +161,16 @@ update msg model =
                     ( model, Cmd.none )
 
         Msgs.OnFetchQuizSubmissions response ->
-            ( { model | quizSubmissions = response }, Cmd.none )
+            onFetchQuizSubmissions model response
 
         Msgs.OnBeginQuiz quizID ->
-            let
-                newModel =
-                    { model | pendingBeginQuizzes = Dict.insert quizID RemoteData.Loading model.pendingBeginQuizzes }
-
-                cmds =
-                    case model.currentUser of
-                        RemoteData.Success user ->
-                            Cmd.batch [ createQuizSubmission user.jwt quizID ]
-
-                        _ ->
-                            Cmd.none
-            in
-            -- todo, POST to create quiz submission. Add to pendingBeginQuizzes,
-            -- show that status as greyed-out button. After that
-            -- succeeds, redirect to page or failure
-            ( newModel, cmds )
+            onBeginQuiz model quizID
 
         Msgs.OnBeginQuizComplete quizID response ->
-            case response of
-                RemoteData.Success quizSubmission ->
-                    let
-                        newPBQs =
-                            Dict.remove quizID model.pendingBeginQuizzes
-
-                        newQSubs =
-                            case model.quizSubmissions of
-                                RemoteData.Success subs ->
-                                    RemoteData.Success (subs ++ [ quizSubmission ])
-
-                                _ ->
-                                    model.quizSubmissions
-                    in
-                    { model | pendingBeginQuizzes = newPBQs, quizSubmissions = newQSubs }
-                        |> update (Msgs.TakeQuiz quizID)
-
-                _ ->
-                    ( model, Cmd.none )
+            onBeginQuizComplete model quizID response
 
         Msgs.TakeQuiz quizID ->
-            let
-                extraCmds =
-                    case model.currentUser of
-                        RemoteData.Success user ->
-                            [ fetchQuizQuestions quizID user
-                            , fetchQuizAnswers quizID user
-                            ]
-
-                        _ ->
-                            []
-
-                newModel =
-                    { model
-                        | quizQuestions = Dict.insert quizID RemoteData.Loading model.quizQuestions
-                        , quizAnswers = Dict.insert quizID RemoteData.Loading model.quizAnswers
-                    }
-            in
-            ( newModel, Cmd.batch ([ load ("#quiz-submissions/" ++ toString quizID) ] ++ extraCmds) )
+            takeQuiz model quizID
 
         Msgs.OnFetchQuizQuestions quizID response ->
             ( { model | quizQuestions = Dict.insert quizID response model.quizQuestions }, Cmd.none )

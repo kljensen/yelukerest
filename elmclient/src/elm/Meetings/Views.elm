@@ -11,7 +11,14 @@ import Html.Events as Events
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg)
-import Quizzes.Model exposing (Quiz, QuizSubmission)
+import Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizOpenState(..)
+        , QuizSubmission
+        , SubmissionEditableState(..)
+        , quizSubmitability
+        )
 import RemoteData exposing (WebData)
 
 
@@ -48,31 +55,36 @@ getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
             Nothing
 
 
-detailView : WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData QuizSubmission) -> Html.Html Msg
-detailView currentUser meetings slug quizzes quizSubmissions pendingBeginQuizzes =
-    case meetings of
-        RemoteData.NotAsked ->
-            Html.text ""
+detailView : Maybe Date.Date -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailView maybeCurrentDate currentUser meetings slug quizzes quizSubmissions pendingBeginQuizzes =
+    case maybeCurrentDate of
+        Nothing ->
+            Html.text "Loding..."
 
-        RemoteData.Loading ->
-            Html.text "Loading ..."
+        Just currentDate ->
+            case meetings of
+                RemoteData.NotAsked ->
+                    Html.text ""
 
-        RemoteData.Success meetings ->
-            let
-                maybeMeeting =
-                    meetings
-                        |> List.filter (\meeting -> meeting.slug == slug)
-                        |> List.head
-            in
-            case maybeMeeting of
-                Just meeting ->
-                    detailViewForJustMeeting currentUser meeting quizzes quizSubmissions pendingBeginQuizzes
+                RemoteData.Loading ->
+                    Html.text "Loading ..."
 
-                Nothing ->
-                    meetingNotFoundView slug
+                RemoteData.Success meetings ->
+                    let
+                        maybeMeeting =
+                            meetings
+                                |> List.filter (\meeting -> meeting.slug == slug)
+                                |> List.head
+                    in
+                    case maybeMeeting of
+                        Just meeting ->
+                            detailViewForJustMeeting currentDate currentUser meeting quizzes quizSubmissions pendingBeginQuizzes
 
-        RemoteData.Failure err ->
-            Html.text (toString err)
+                        Nothing ->
+                            meetingNotFoundView slug
+
+                RemoteData.Failure err ->
+                    Html.text (toString err)
 
 
 dateToString : Date.Date -> String
@@ -85,8 +97,8 @@ shortDateToString date =
     DateFormat.format "%a %d%b" date
 
 
-detailViewForJustMeeting : WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData QuizSubmission) -> Html.Html Msg
-detailViewForJustMeeting currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
+detailViewForJustMeeting : Date.Date -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
     let
         maybeQuiz =
             getQuizForMeetingID meeting.id wdQuizzes
@@ -110,15 +122,15 @@ detailViewForJustMeeting currentUser meeting wdQuizzes wdQuizSubmissions pending
         , Markdown.toHtml [] meeting.description
         , case currentUser of
             RemoteData.Success user ->
-                showQuizStatus meeting.id wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
+                showQuizStatus currentDate meeting.id wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
         ]
 
 
-showQuizStatus : Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData QuizSubmission) -> Html.Html Msg
-showQuizStatus meetingID wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
+showQuizStatus : Date.Date -> Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             let
@@ -140,7 +152,7 @@ showQuizStatus meetingID wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
                     in
                     Html.div []
                         [ Html.text quizMsg
-                        , showQuizSubmissionStatus quiz wdQuizSubmissions maybePendingBeginQuiz
+                        , showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz
                         ]
 
                 Nothing ->
@@ -156,8 +168,8 @@ showQuizStatus meetingID wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
             Html.text "Failed to load quizzes!"
 
 
-showQuizSubmissionStatus : Quiz -> WebData (List QuizSubmission) -> Maybe (WebData QuizSubmission) -> Html.Html Msg
-showQuizSubmissionStatus quiz wdQuizSubmissions maybePendingBeginQuiz =
+showQuizSubmissionStatus : Date.Date -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
             let
@@ -165,6 +177,9 @@ showQuizSubmissionStatus quiz wdQuizSubmissions maybePendingBeginQuiz =
                     submissions
                         |> List.filter (\qs -> qs.quiz_id == quiz.id)
                         |> List.head
+
+                submitablity =
+                    quizSubmitability currentDate quiz maybeSubmission
             in
             case ( quiz.is_open, maybeSubmission ) of
                 ( True, Just submission ) ->

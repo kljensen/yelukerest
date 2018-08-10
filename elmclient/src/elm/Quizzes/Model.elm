@@ -2,13 +2,16 @@ module Quizzes.Model
     exposing
         ( Quiz
         , QuizAnswer
+        , QuizOpenState(..)
         , QuizQuestion
         , QuizQuestionOption
         , QuizSubmission
+        , SubmissionEditableState(..)
         , quizAnswersDecoder
         , quizQuestionsDecoder
         , quizSubmissionDecoder
         , quizSubmissionsDecoder
+        , quizSubmitability
         , quizzesDecoder
         )
 
@@ -58,9 +61,51 @@ quizDecoder =
 -- ----------------
 
 
+type QuizOpenState
+    = BeforeQuizOpen
+    | QuizOpen
+    | AfterQuizClosed
+
+
+type SubmissionEditableState
+    = EditableSubmission QuizSubmission
+    | NotEditableSubmission
+
+
+dateIsLessThan : Date -> Date -> Bool
+dateIsLessThan a b =
+    case Basics.compare (Date.toTime a) (Date.toTime b) of
+        LT ->
+            True
+
+        _ ->
+            False
+
+
+quizSubmitability : Date -> Quiz -> Maybe QuizSubmission -> ( QuizOpenState, SubmissionEditableState )
+quizSubmitability currentDate quiz maybeQuizSubmission =
+    let
+        quizOpenState =
+            if dateIsLessThan currentDate quiz.open_at then
+                BeforeQuizOpen
+            else if dateIsLessThan quiz.closed_at currentDate then
+                AfterQuizClosed
+            else
+                QuizOpen
+    in
+    case maybeQuizSubmission of
+        Just quizSubmission ->
+            ( quizOpenState, EditableSubmission quizSubmission )
+
+        Nothing ->
+            ( quizOpenState, NotEditableSubmission )
+
+
 type alias QuizSubmission =
     { quiz_id : Int
     , user_id : Int
+    , closed_at : Date
+    , is_open : Bool
     , created_at : Date
     , updated_at : Date
     }
@@ -76,6 +121,8 @@ quizSubmissionDecoder =
     decode QuizSubmission
         |> required "quiz_id" Decode.int
         |> required "user_id" Decode.int
+        |> required "closed_at" Json.Decode.Extra.date
+        |> required "is_open" Decode.bool
         |> required "created_at" Json.Decode.Extra.date
         |> required "updated_at" Json.Decode.Extra.date
 
