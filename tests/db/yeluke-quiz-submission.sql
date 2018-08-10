@@ -1,9 +1,14 @@
 begin;
-select plan(15);
+select plan(19);
 
 SELECT view_owner_is(
     'api', 'quiz_submissions', 'api',
     'api.quiz_submissions view should be owned by the api role'
+);
+
+SELECT view_owner_is(
+    'api', 'quiz_submissions_info', 'api',
+    'api.quiz_submissions_info view should be owned by the api role'
 );
 
 SELECT table_privs_are(
@@ -15,7 +20,15 @@ SELECT table_privs_are(
     'api', 'quiz_submissions', 'faculty', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
     'faculty should only be granted select, insert, update, delete on view "api.quiz_submissions"'
 );
+SELECT table_privs_are(
+    'api', 'quiz_submissions_info', 'student', ARRAY['SELECT'],
+    'student should only be granted SELECT on view "api.quiz_submissions_info"'
+);
 
+SELECT table_privs_are(
+    'api', 'quiz_submissions_info', 'faculty', ARRAY['SELECT'],
+    'faculty should only be granted select on view "api.quiz_submissions_info"'
+);
 SELECT table_privs_are(
     'data', 'quiz', 'faculty', ARRAY[]::text[],
     'faculty should only be granted nothing on "data.quiz_question"'
@@ -38,6 +51,11 @@ SELECT set_eq(
     'SELECT quiz_id FROM api.quiz_submissions ORDER BY (quiz_id)',
     ARRAY[1],
     'students shoud only be able to see their own quiz submissions (user 1)'
+);
+SELECT set_eq(
+    'SELECT quiz_id FROM api.quiz_submissions_info ORDER BY (quiz_id)',
+    ARRAY[1],
+    'students shoud only be able to see their own quiz submissions (user 1) in the quiz_submissions_info_view'
 );
 
 set request.jwt.claim.user_id = '3';

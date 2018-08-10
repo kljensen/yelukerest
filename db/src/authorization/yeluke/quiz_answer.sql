@@ -29,15 +29,13 @@ using (
         -- and the quiz is open for submission. 
         EXISTS(
             SELECT * 
-            FROM api.quizzes as q
-            JOIN api.quiz_submissions as qs
-            ON (q.id = qs.quiz_id)
+            FROM api.quiz_submissions_info as qsi
             WHERE (
-                q.id = quiz_id and q.is_open
-                and
-                qs.created_at + q.duration > current_timestamp
-                and
-                qs.user_id = user_id
+                qsi.quiz_id = quiz_id
+                AND
+                qsi.is_open 
+                AND
+                qsi.user_id = user_id
             )
 		)
 	)
