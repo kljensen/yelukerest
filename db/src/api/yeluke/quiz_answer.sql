@@ -5,11 +5,6 @@ create or replace view quiz_answers as
 -- It is important to set the correct owner so the RLS policy kicks in.
 alter view quiz_answers owner to api;
 
-CREATE FUNCTION add_them(a integer, b integer)
-RETURNS integer AS $$
- SELECT $1 + $2;
-$$ LANGUAGE SQL IMMUTABLE STRICT;
-
 CREATE OR REPLACE FUNCTION save_quiz (quiz_id INT, quiz_question_option_ids INT[]) 
  RETURNS SETOF data.quiz_answer AS $$
 BEGIN
