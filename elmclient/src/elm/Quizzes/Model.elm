@@ -69,7 +69,8 @@ type QuizOpenState
 
 type SubmissionEditableState
     = EditableSubmission QuizSubmission
-    | NotEditableSubmission
+    | NotEditableSubmission QuizSubmission
+    | NoSubmission
 
 
 dateIsLessThan : Date -> Date -> Bool
@@ -92,13 +93,21 @@ quizSubmitability currentDate quiz maybeQuizSubmission =
                 AfterQuizClosed
             else
                 QuizOpen
-    in
-    case maybeQuizSubmission of
-        Just quizSubmission ->
-            ( quizOpenState, EditableSubmission quizSubmission )
 
-        Nothing ->
-            ( quizOpenState, NotEditableSubmission )
+        submissionEditableState =
+            case maybeQuizSubmission of
+                Just quizSubmission ->
+                    case dateIsLessThan currentDate quizSubmission.closed_at of
+                        True ->
+                            EditableSubmission quizSubmission
+
+                        False ->
+                            NotEditableSubmission quizSubmission
+
+                Nothing ->
+                    NoSubmission
+    in
+    ( quizOpenState, submissionEditableState )
 
 
 type alias QuizSubmission =

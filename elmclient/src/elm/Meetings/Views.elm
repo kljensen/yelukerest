@@ -145,7 +145,7 @@ showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeg
                         quizMsg =
                             case quiz.is_open of
                                 True ->
-                                    "There is a quiz for this meeting and it is open for submission until" ++ dateToString quiz.closed_at
+                                    "There is a quiz for this meeting and it is open for submission until" ++ dateToString quiz.closed_at ++ "."
 
                                 False ->
                                     "There is a quiz for this meeting but it is not open for submission. You must submit it between" ++ dateToString quiz.open_at ++ " and " ++ dateToString quiz.closed_at ++ "."
@@ -181,8 +181,8 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                 submitablity =
                     quizSubmitability currentDate quiz maybeSubmission
             in
-            case ( quiz.is_open, maybeSubmission ) of
-                ( True, Just submission ) ->
+            case submitablity of
+                ( QuizOpen, EditableSubmission submission ) ->
                     Html.div []
                         [ Html.text "You already started the quiz."
                         , Html.div []
@@ -195,7 +195,7 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                             ]
                         ]
 
-                ( True, Nothing ) ->
+                ( QuizOpen, NoSubmission ) ->
                     let
                         defaultAttrs =
                             [ Attrs.class "btn btn-primary" ]
@@ -218,14 +218,19 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                             ]
                         ]
 
-                ( False, Just submission ) ->
+                ( _, NotEditableSubmission submission ) ->
                     Html.div []
                         [ Html.text "You already submitted this quiz."
                         ]
 
-                ( False, Nothing ) ->
+                ( AfterQuizClosed, _ ) ->
                     Html.div []
-                        [ Html.text "You have not submitted this quiz."
+                        [ Html.text ("This quiz is now closed. It was due by " ++ dateToString quiz.closed_at ++ ".")
+                        ]
+
+                ( BeforeQuizOpen, _ ) ->
+                    Html.div []
+                        [ Html.text ("This quiz is not yet open for submissions. It opens at " ++ dateToString quiz.open_at ++ ".")
                         ]
 
         RemoteData.NotAsked ->
