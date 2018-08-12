@@ -11,7 +11,6 @@ import Date
 import Dict exposing (Dict)
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Navigation exposing (load)
 import Quizzes.Commands
     exposing
         ( createQuizSubmission
