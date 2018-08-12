@@ -2,6 +2,7 @@ module Quizzes.Views exposing (takeQuizView)
 
 -- import Html.Attributes as Attrs
 
+import Date
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
@@ -13,9 +14,12 @@ import Quizzes.Model
     exposing
         ( Quiz
         , QuizAnswer
+        , QuizOpenState(..)
         , QuizQuestion
         , QuizQuestionOption
         , QuizSubmission
+        , SubmissionEditableState(..)
+        , quizSubmitability
         )
 import RemoteData exposing (WebData)
 
@@ -50,8 +54,8 @@ filterGet x f =
         |> List.head
 
 
-takeQuizView : Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
-takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSubmitQuizzes =
+takeQuizView : Maybe Date.Date -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
+takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSubmitQuizzes =
     let
         theseQuizQuestions =
             getOrNotAsked quizID quizQuestions
@@ -65,33 +69,38 @@ takeQuizView quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSub
         data =
             merge4 quizSubmissions quizzes theseQuizQuestions theseQuizAnswers
     in
-    case data of
-        RemoteData.Failure error ->
-            Html.div [] [ Html.text (toString error) ]
-
-        RemoteData.Loading ->
+    case maybeDate of
+        Nothing ->
             Html.div [] [ Html.text "Loading..." ]
 
-        RemoteData.Success ( qs, q, qq, qa ) ->
-            let
-                sub =
-                    filterGet qs (\a -> a.quiz_id == quizID)
+        Just currentDate ->
+            case data of
+                RemoteData.Failure error ->
+                    Html.div [] [ Html.text (toString error) ]
 
-                quiz =
-                    filterGet q (\a -> a.id == quizID)
-            in
-            case ( sub, quiz ) of
-                ( Just daSub, Just daQuiz ) ->
-                    showQuizForm quizID daSub daQuiz qq qa thisPendingSubmitQuiz
+                RemoteData.Loading ->
+                    Html.div [] [ Html.text "Loading..." ]
 
-                ( _, Nothing ) ->
-                    Html.div [] [ Html.text "Error - you've not yet started this quiz." ]
+                RemoteData.Success ( qs, q, qq, qa ) ->
+                    let
+                        sub =
+                            filterGet qs (\a -> a.quiz_id == quizID)
 
-                ( Nothing, _ ) ->
-                    Html.div [] [ Html.text "Error - no such quiz." ]
+                        quiz =
+                            filterGet q (\a -> a.id == quizID)
+                    in
+                    case ( sub, quiz ) of
+                        ( Just daSub, Just daQuiz ) ->
+                            showQuizForm currentDate quizID daSub daQuiz qq qa thisPendingSubmitQuiz
 
-        RemoteData.NotAsked ->
-            Html.div [] [ Html.text "Need to load data to view this page!" ]
+                        ( _, Nothing ) ->
+                            Html.div [] [ Html.text "Error - you've not yet started this quiz." ]
+
+                        ( Nothing, _ ) ->
+                            Html.div [] [ Html.text "Error - no such quiz." ]
+
+                RemoteData.NotAsked ->
+                    Html.div [] [ Html.text "Need to load data to view this page!" ]
 
 
 isLoading : WebData a -> Bool
@@ -118,8 +127,8 @@ showSubmitError x =
             Html.text ""
 
 
-showQuizForm : Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData a -> Html.Html Msg
-showQuizForm quizID quizSubmission quiz quizQuestions quizAnswers pendingSubmit =
+showQuizForm : Date.Date -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData a -> Html.Html Msg
+showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pendingSubmit =
     let
         quizQuestionOptionIds =
             quizQuestions
@@ -133,14 +142,33 @@ showQuizForm quizID quizSubmission quiz quizQuestions quizAnswers pendingSubmit 
             (Decode.succeed (Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds))
         ]
         (List.map (showQuestion quizAnswers) quizQuestions
-            ++ [ Html.button
+            ++ [ showSubmitButton currentDate quiz quizSubmission pendingSubmit
+               ]
+        )
+
+
+showSubmitButton : Date.Date -> Quiz -> QuizSubmission -> WebData a -> Html.Html Msg
+showSubmitButton currentDate quiz quizSubmission pendingSubmit =
+    let
+        submitablity =
+            quizSubmitability currentDate quiz (Just quizSubmission)
+    in
+    case submitablity of
+        ( BeforeQuizOpen, _ ) ->
+            Html.div [] [ Html.text "This quiz is not open yet." ]
+
+        ( QuizOpen, EditableSubmission submission ) ->
+            Html.div []
+                [ Html.button
                     [ Attrs.class "btn btn-primary"
                     , Attrs.disabled (isLoading pendingSubmit)
                     ]
                     [ Html.text "Save Answers" ]
-               , showSubmitError pendingSubmit
-               ]
-        )
+                , showSubmitError pendingSubmit
+                ]
+
+        ( _, _ ) ->
+            Html.div [] [ Html.text "This quiz is now closed and can no longer be submitted." ]
 
 
 showQuestion : List QuizAnswer -> QuizQuestion -> Html.Html Msg
