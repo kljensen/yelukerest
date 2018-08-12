@@ -1,7 +1,7 @@
 module Meetings.Views exposing (detailView, listView)
 
 import Auth.Model exposing (CurrentUser)
-import Common.Views
+import Common.Views exposing (dateToString)
 import Date
 import Date.Format as DateFormat
 import Dict exposing (Dict)
@@ -85,16 +85,6 @@ detailView maybeCurrentDate currentUser meetings slug quizzes quizSubmissions pe
 
                 RemoteData.Failure err ->
                     Html.text (toString err)
-
-
-dateToString : Date.Date -> String
-dateToString date =
-    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
-
-
-shortDateToString : Date.Date -> String
-shortDateToString date =
-    DateFormat.format "%a %d%b" date
 
 
 detailViewForJustMeeting : Date.Date -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg

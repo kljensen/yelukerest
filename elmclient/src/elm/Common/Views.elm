@@ -1,4 +1,12 @@
-module Common.Views exposing (DateTitleHrefRecord, dateTitleHrefRow, piazzaLink, showDraftStatus)
+module Common.Views
+    exposing
+        ( DateTitleHrefRecord
+        , dateTitleHrefRow
+        , dateToString
+        , piazzaLink
+        , shortDateToString
+        , showDraftStatus
+        )
 
 import Date exposing (Date)
 import Date.Format as DateFormat
@@ -48,3 +56,13 @@ piazzaLink piazzaURL =
 
         Nothing ->
             Html.text ""
+
+
+dateToString : Date.Date -> String
+dateToString date =
+    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
+
+
+shortDateToString : Date.Date -> String
+shortDateToString date =
+    DateFormat.format "%a %d%b" date

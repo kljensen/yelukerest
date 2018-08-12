@@ -164,6 +164,17 @@ showSubmitButton currentDate quiz quizSubmission pendingSubmit =
                     , Attrs.disabled (isLoading pendingSubmit)
                     ]
                     [ Html.text "Save Answers" ]
+                , Html.div []
+                    [ Html.text
+                        ("This quiz has a duration of "
+                            ++ quiz.duration
+                            ++ " and a close date of "
+                            ++ toString quiz.closed_at
+                            ++ ".  You have roughly "
+                            ++ dateDeltaToString (dateDelta submission.closed_at currentDate)
+                            ++ " left."
+                        )
+                    ]
                 , showSubmitError pendingSubmit
                 ]
 
@@ -193,17 +204,62 @@ showQuestionOption option =
             [ Attrs.for ("option-" ++ toString option.id)
             ]
             [ Html.text option.body ]
-
-        -- , Html.text ""
         ]
 
 
+dateDelta : Date.Date -> Date.Date -> Float
+dateDelta d2 d1 =
+    Date.toTime d2 - Date.toTime d1
 
--- Html.div []
---     [ Html.input
---         [ Attrs.name (toString option.id)
---         , Attrs.type_ "checkbox"
---         ]
---         []
---     , Html.label [] [ Html.text option.body ]
---     ]
+
+dateDeltaToString : Float -> String
+dateDeltaToString d =
+    let
+        msInSecond =
+            1000
+
+        msInMinute =
+            60 * msInSecond
+
+        msInHour =
+            60 * msInMinute
+
+        msInDay =
+            24 * msInHour
+
+        d1 =
+            Basics.floor d
+
+        days =
+            d1 // msInDay
+
+        d2 =
+            d1 - (days * msInDay)
+
+        hours =
+            d2 // msInHour
+
+        d3 =
+            d2 - (hours * msInHour)
+
+        minutes =
+            d3 // msInMinute
+
+        d4 =
+            d3 - (minutes * msInMinute)
+
+        seconds =
+            d4 // msInSecond
+    in
+    case days > 0 of
+        True ->
+            toString days
+                ++ " days and "
+                ++ toString hours
+                ++ " hours"
+
+        False ->
+            [ hours, minutes, seconds ]
+                |> List.map toString
+                |> List.map (String.padLeft 2 '0')
+                |> String.join ":"
