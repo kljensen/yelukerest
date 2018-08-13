@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS assignment_submission (
     id SERIAL PRIMARY KEY,
     assignment_slug VARCHAR(100),
     is_team BOOLEAN,
-    FOREIGN KEY (assignment_slug, is_team) REFERENCES assignment(slug, is_team),
+    FOREIGN KEY (assignment_slug, is_team) REFERENCES assignment(slug, is_team)
+        ON DELETE CASCADE ON UPDATE CASCADE,
     user_id INT REFERENCES "user"(id)
         ON DELETE CASCADE
         ON UPDATE CASCADE,

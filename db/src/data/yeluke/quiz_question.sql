@@ -1,7 +1,8 @@
 
 CREATE TABLE IF NOT EXISTS quiz_question (
     id SERIAL PRIMARY KEY,
-    quiz_id INT REFERENCES quiz(id) ON DELETE CASCADE NOT NULL,
+    quiz_id INT REFERENCES quiz(id)
+        ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     is_markdown BOOLEAN DEFAULT false,
     body text NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE

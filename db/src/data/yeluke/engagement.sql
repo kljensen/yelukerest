@@ -1,8 +1,10 @@
 CREATE TYPE participation_enum AS ENUM('absent', 'attended', 'contributed', 'led');
 
 CREATE TABLE IF NOT EXISTS engagement (
-    user_id INT REFERENCES "user"(id) ON DELETE CASCADE,
-    meeting_id INT REFERENCES meeting(id) ON DELETE CASCADE, 
+    user_id INT REFERENCES "user"(id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    meeting_id INT REFERENCES meeting(id)
+        ON DELETE CASCADE ON UPDATE CASCADE, 
     participation participation_enum NOT NULL,
     -- We are not going to have a constraint that the 
     -- `created_at` be after the `meeting_id.begins_at` because

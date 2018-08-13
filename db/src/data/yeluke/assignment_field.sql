@@ -1,7 +1,10 @@
 
 CREATE TABLE IF NOT EXISTS assignment_field (
     id SERIAL PRIMARY KEY,
-    assignment_slug VARCHAR(100) REFERENCES assignment(slug) NOT NULL,
+    assignment_slug VARCHAR(100)
+        REFERENCES assignment(slug)
+        ON DELETE CASCADE ON UPDATE CASCADE
+        NOT NULL,
     label VARCHAR(100) NOT NULL,
     help VARCHAR(200) NOT NULL,
     placeholder VARCHAR(100) NOT NULL,
