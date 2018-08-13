@@ -6,10 +6,6 @@ DROP TYPE _time_trial_type;
 
 SET search_path = api, pg_catalog;
 
-DROP VIEW assignments;
-
-DROP VIEW quizzes;
-
 CREATE OR REPLACE FUNCTION save_quiz(quiz_id integer, quiz_question_option_ids integer[]) RETURNS SETOF data.quiz_answer
     LANGUAGE plpgsql
     AS $_$
@@ -24,7 +20,7 @@ BEGIN
         SELECT * FROM api.quiz_answers qa WHERE qa.quiz_id = $1;
 END; $_$;
 
-CREATE VIEW assignments AS
+CREATE OR REPLACE VIEW assignments AS
 	SELECT assignment.slug,
     assignment.points_possible,
     assignment.is_draft,
@@ -42,7 +38,7 @@ GRANT SELECT ON TABLE assignments TO student;
 REVOKE ALL ON TABLE assignments FROM faculty;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE assignments TO faculty;
 
-CREATE VIEW quizzes AS
+CREATE OR REPLACE VIEW quizzes AS
 	SELECT quiz.id,
     quiz.meeting_id,
     quiz.points_possible,
