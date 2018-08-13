@@ -3,7 +3,6 @@ module Meetings.Views exposing (detailView, listView)
 import Auth.Model exposing (CurrentUser)
 import Common.Views exposing (dateToString)
 import Date
-import Date.Format as DateFormat
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attrs
