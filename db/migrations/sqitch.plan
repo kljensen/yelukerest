@@ -9,3 +9,4 @@
 0000000006-data 2018-01-29T21:31:31Z root <root@linuxkit-025000000001> # Add quiz_grade table
 0000000007-data 2018-01-30T16:05:35Z root <root@linuxkit-025000000001> # Add assignment_grade table
 0000000008-data 2018-03-28T20:24:21Z root <root@linuxkit-025000000001> # Fill in team_nickname automatically when creating assignment_submission
+0000000009-fall2018 2018-08-13T14:42:58Z root <root@linuxkit-025000000001> # Update for 2018 fall tag
