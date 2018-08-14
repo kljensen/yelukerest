@@ -1,7 +1,10 @@
 
 CREATE TABLE IF NOT EXISTS quiz (
     id SERIAL PRIMARY KEY,
-    meeting_id INT REFERENCES meeting(id) ON DELETE CASCADE UNIQUE NOT NULL,
+    meeting_id INT REFERENCES meeting(id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+        UNIQUE NOT NULL,
     -- Number of points possible on this quiz.
     points_possible smallint NOT NULL
         CHECK (points_possible >= 0),
@@ -9,7 +12,7 @@ CREATE TABLE IF NOT EXISTS quiz (
     is_draft BOOLEAN NOT NULL DEFAULT true NOT NULL,
     -- The duration of time students have to finish
     -- a quiz once it is begun
-    duration INTERVAL NOT NULL,
+    duration INTERVAL NOT NULL DEFAULT '15 minutes'::INTERVAL,
     -- The time after which students may take
     -- the quiz.
     open_at TIMESTAMP WITH TIME ZONE NOT NULL,
