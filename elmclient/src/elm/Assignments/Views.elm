@@ -164,7 +164,6 @@ beginSubmission assignment maybeBeginAssignment =
                 , Attrs.disabled True
                 ]
                 [ Html.text "Begin assignment"
-                , spinner
                 ]
 
         Just (RemoteData.Failure error) ->
