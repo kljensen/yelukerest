@@ -5,7 +5,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const autoprefixer = require('autoprefixer');
 const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-
+const CompressionPlugin = require('compression-webpack-plugin');
 
 const prod = 'production';
 const dev = 'development';
@@ -137,6 +137,11 @@ if (isProd === true) {
                     warnings: false,
                 },
                 // mangle:  true
+            }),
+            new webpack.optimize.AggressiveMergingPlugin(),
+            // Make a .gz copy of each asset
+            new CompressionPlugin({
+                test: /\.js$|\.css$|\.html$/,
             }),
         ],
     });
