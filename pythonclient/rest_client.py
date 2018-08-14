@@ -105,7 +105,8 @@ def load_meeting(base_url, jwt, meetings, slug):
             try:
                 click.echo(
                     'Trying to INSERT new meeting for slug: {0}'.format(meeting["slug"]))
-                response = requests.post(url, headers=headers, json=meeting)
+                data = json.dumps(nonchild(meeting), cls=DateTimeEncoder)
+                response = requests.post(url, headers=headers, data=data)
                 response.raise_for_status()
             except requests.exceptions.RequestException as err:
                 # Catch all exceptions
@@ -117,9 +118,10 @@ def load_meeting(base_url, jwt, meetings, slug):
             # its values.
             try:
                 click.echo(
-                    'Trying to UPDATE new meeting for slug: {0}'.format(meeting["slug"]))
+                    'Trying to UPDATE meeting for slug: {0}'.format(meeting["slug"]))
+                data = json.dumps(nonchild(meeting), cls=DateTimeEncoder)
                 response = requests.patch(
-                    url, headers=headers, json=meeting, params=query_params)
+                    url, headers=headers, data=data, params=query_params)
                 response.raise_for_status()
             except requests.exceptions.RequestException as err:
                 # Catch all exceptions
@@ -339,7 +341,7 @@ def nukeload_assignment_field(base_url, jwt, slug, field_data):
 
 
 
-def load_assignment(base_url, jwt, ass_data):
+def load_assignment(base_url, jwt, meeting):
     """ Load an assignment's data using either post or patch
     """
 
@@ -385,6 +387,6 @@ def nukeload_assignments(ctx, yaml_file):
     for assignment in  assignments:
         load_assignment(base_url, jwt, assignment)
 
-cli = click.CommandCollection(sources=[rest])
+# cli = click.CommandCollection(sources=[rest])
 if __name__ == "__main__":
-    cli(obj={})
+    rest(obj={})

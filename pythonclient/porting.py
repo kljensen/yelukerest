@@ -84,6 +84,52 @@ def get_quizzes_from_mongo(db):
     lectures = list(db.lectures.find({}))
     return [lecture_to_quiz(lecture) for lecture in lectures]
 
+def reading_to_markdown(reading):
+    """ Converts a reading, which is an object, to markdown format
+        returning a string.
+    """
+    link = "\n*\t[{0}]({1})".format(reading.get("title"), reading.get("url"))
+    get = lambda x: reading.get(x, None)
+    output = ". ".join(field for field in [link, get("pages"), get("author"), get("source")] if field)
+    if not output.endswith("."):
+        output += "."
+    note = get("note")
+    if note:
+        output += "  (" + note + ")"
+    return output
+
+def lecture2lecture(lecture):
+    """ Converts a old format lecture, an object, to 
+        a new format lecture
+    """
+    new_lecture = {
+        "slug": lecture["slug"],
+        "begins_at": lecture["date"],
+        "is_draft": True,
+        "duration": "80 minutes",
+        "description": lecture["description"],
+    }
+    readings = lecture.get('readings', [])
+    if readings: 
+        reading_text = "\nReadings&#58;\n" + "".join(map(reading_to_markdown, readings))
+        new_lecture["description"] += reading_text
+    return new_lecture
+
+def get_lectures_from_mongo(db):
+    """ Return a list of lecture objects, which are dictionaries.
+        Takes a mongodb database object.
+    """
+    lectures = [lecture2lecture(l) for l in db.lectures.find({})]
+    return lectures
+
+def yaml_dump(obj, filename, yaml=None):
+    """ Dump an object to a file in YAML format
+    """
+    if yaml is None:
+        yaml = ruamel_yaml.YAML()
+    ruamel_yaml.scalarstring.walk_tree(obj)
+    with open(filename, encoding="utf-8", mode="w") as fh:
+        yaml.dump(obj, fh)
 
 @local.command()
 @click.argument("mongo_url")
@@ -96,11 +142,23 @@ def dump_quizzes(mongo_url, database, outfile_prefix):
     """
     db = get_mongo_db(mongo_url, database)
     quizzes = get_quizzes_from_mongo(db)
-    yaml = ruamel_yaml.YAML()
     for quiz in quizzes:
         filename = "{0}-{1}.yaml".format(outfile_prefix, quiz[quiz_meeting_slug_key])
-        with open(filename, encoding="utf-8", mode="w") as fh:
-            yaml.dump(quiz, fh)
+        yaml_dump(quiz, filename)
+
+@local.command()
+@click.argument("mongo_url")
+@click.argument("database")
+@click.argument("output_file")
+def dump_lectures(mongo_url, database, output_file):
+    """ Dump lectures from the old Yeluke mongodb database
+        into YAML format. Transform the keys appropriately
+        for import into Yelukerest.
+    """
+    db = get_mongo_db(mongo_url, database)
+    lectures = get_lectures_from_mongo(db)
+    yaml_dump(lectures, output_file)
+    
 
 cli = click.CommandCollection(sources=[local])
 if __name__ == "__main__":
