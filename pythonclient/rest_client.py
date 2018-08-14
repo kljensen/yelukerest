@@ -9,14 +9,13 @@ from urllib.parse import urlunsplit, urljoin
 import click
 import ruamel.yaml as ruamel_yaml
 import requests
-# from ruamel_yaml.yaml import YAML
 
 
 
 class DateTimeEncoder(json.JSONEncoder):
     """ Handles encoding DateTime objects
     """
-    def default(self, o):
+    def default(self, o): # pylint: disable=E0202
         """ Checks if something is a datetime and handles output if so,
             otherwise defers to default JSON encoder.
         """
@@ -386,21 +385,6 @@ def nukeload_assignments(ctx, yaml_file):
     for assignment in  assignments:
         load_assignment(base_url, jwt, assignment)
 
-@click.group()
-def local():
-    pass
-
-@local.command()
-@click.argument("infile", type=click.File('r'))
-@click.argument("outfile", type=click.File('w'))
-def json_to_yaml(infile, outfile):
-    """ Converts JSON to YAML
-    """
-    data = json.load(infile)
-    yaml = ruamel_yaml.YAML()
-    yaml.dump(data, outfile)
-
-
-cli = click.CommandCollection(sources=[rest, local])
+cli = click.CommandCollection(sources=[rest])
 if __name__ == "__main__":
     cli(obj={})
