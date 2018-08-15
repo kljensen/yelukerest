@@ -341,7 +341,7 @@ def nukeload_assignment_field(base_url, jwt, slug, field_data):
 
 
 
-def load_assignment(base_url, jwt, meeting):
+def load_assignment(base_url, jwt, ass_data):
     """ Load an assignment's data using either post or patch
     """
 
