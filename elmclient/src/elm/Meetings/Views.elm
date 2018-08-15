@@ -105,7 +105,7 @@ detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmiss
     in
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
-        , Html.div []
+        , Html.p []
             [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
             ]
         , Markdown.toHtml [] meeting.description
@@ -139,13 +139,13 @@ showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeg
                                 False ->
                                     "There is a quiz for this meeting but it is not open for submission. You must submit it between" ++ dateToString quiz.open_at ++ " and " ++ dateToString quiz.closed_at ++ "."
                     in
-                    Html.div []
+                    Html.p []
                         [ Html.text quizMsg
                         , showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz
                         ]
 
                 Nothing ->
-                    Html.div [] [ Html.text "There is no quiz for this meeting." ]
+                    Html.p [] [ Html.text "There is no quiz for this meeting." ]
 
         RemoteData.NotAsked ->
             Html.text "Quizzes not yet loaded. Unclear if there is a quiz for this meeting."
@@ -156,6 +156,9 @@ showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeg
         RemoteData.Failure error ->
             Html.text "Failed to load quizzes!"
 
+pText : String -> Html.Html Msg
+pText theString =
+    Html.p [] [Html.text theString]
 
 showQuizSubmissionStatus : Date.Date -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
 showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz =
@@ -173,15 +176,13 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
             case submitablity of
                 ( QuizOpen, EditableSubmission submission ) ->
                     Html.div []
-                        [ Html.text "You already started the quiz."
-                        , Html.div []
-                            [ Html.button
-                                [ Attrs.class "btn btn-primary"
-                                , Events.onClick (Msgs.TakeQuiz quiz.id)
-                                ]
-                                [ Html.text "Re-start quiz"
-                                ]
+                        [ Html.p [] [Html.text "You already started the quiz."]
+                        , Html.p [] [Html.button
+                            [ Attrs.class "btn btn-primary"
+                            , Events.onClick (Msgs.TakeQuiz quiz.id)
                             ]
+                            [ Html.text "Re-start quiz"]
+                        ]
                         ]
 
                 ( QuizOpen, NoSubmission ) ->
@@ -198,38 +199,30 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                                     ( "Begin quiz", defaultAttrs ++ [ Attrs.disabled True ] )
                     in
                     Html.div []
-                        [ Html.text "You did not yet start the quiz."
-                        , Html.div []
-                            [ Html.button
-                                btnAttrs
-                                [ Html.text btnText
-                                ]
-                            ]
+                        [ Html.p [] [Html.text "You did not yet start the quiz."]
+                        ,  Html.p [] [Html.button btnAttrs [ Html.text btnText ]]
                         ]
 
                 ( _, NotEditableSubmission submission ) ->
-                    Html.div []
+                    Html.p []
                         [ Html.text "You already submitted this quiz."
                         ]
 
                 ( AfterQuizClosed, _ ) ->
-                    Html.div []
-                        [ Html.text ("This quiz is now closed. It was due by " ++ dateToString quiz.closed_at ++ ".")
-                        ]
+                    pText ("This quiz is now closed. It was due by " ++ dateToString quiz.closed_at ++ ".")
 
                 ( BeforeQuizOpen, _ ) ->
-                    Html.div []
-                        [ Html.text ("This quiz is not yet open for submissions. It opens at " ++ dateToString quiz.open_at ++ ".")
-                        ]
+                    pText ("This quiz is not yet open for submissions. It opens at " ++ dateToString quiz.open_at ++ ".")
+                        
 
         RemoteData.NotAsked ->
-            Html.text "Quiz submissions not yet loaded. Unclear if you started this quiz."
+            pText "Quiz submissions not yet loaded. Unclear if you started this quiz."
 
         RemoteData.Loading ->
-            Html.text "Loading quiz submissions."
+            pText "Loading quiz submissions."
 
         RemoteData.Failure error ->
-            Html.text "Failed to load quiz submissions!"
+            pText "Failed to load quiz submissions!"
 
 
 meetingNotFoundView : String -> Html msg

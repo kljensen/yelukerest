@@ -159,11 +159,12 @@ showSubmitButton currentDate quiz quizSubmission pendingSubmit =
 
         ( QuizOpen, EditableSubmission submission ) ->
             Html.div []
-                [ Html.button
+                [ Html.p [] [Html.button
                     [ Attrs.class "btn btn-primary"
                     , Attrs.disabled (isLoading pendingSubmit)
                     ]
                     [ Html.text "Save Answers" ]
+                ]
                 , Html.div []
                     [ Html.text
                         ("This quiz has a duration of "
