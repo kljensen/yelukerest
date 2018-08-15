@@ -74,19 +74,36 @@ def get_typical_headers(jwt):
     }
     return headers
 
+def parse_timedelta(td):
+    h, m = map(int, td.split(":"))
+    return datetime.timedelta(hours=h, minutes=m)
 
-def load_meeting(base_url, jwt, meetings, slug):
-    """ Upserts meetings into base_url
+def load_meeting(base_url, jwt, meetings, slug, timedelta):
+    """ Upserts meetings into the yelukerest app. The `timedelta`
+        option is included in order to make it easy to upload 
+        meeting data to two different sections of class that have
+        identical content but meet at different times.
+    
+    Arguments:
+        base_url {String} -- Base URL for the app
+        jwt {String} -- JWT for authentication
+        meetings {List} -- Meetings to upsert
+        slug {String} -- Limits upserted meetings to this slug
+        timedelta {String} -- Timedelta to add to class begins_at. Should be hh:mm format.
     """
     headers = get_typical_headers(jwt)
-    for meeting in meetings:
-        if slug and meeting["slug"] != slug:
-            continue
-        query_params = {'slug': 'eq.{0}'.format(meeting["slug"])}
+    meetings_to_save = list(
+        nonchild(m) for m in meetings
+        if (not slug or m["slug"] == slug)
+    )
+    if timedelta:
+        td = parse_timedelta(timedelta)
+        for m in meetings_to_save:
+            m["begins_at"] += td
 
-        click.echo(
-            "Checking if meeting exists for slug: {0}".format(meeting["slug"]))
+    for meeting in meetings_to_save:
         url = get_api_path(base_url, "meetings")
+        query_params = {'slug': 'eq.{0}'.format(meeting["slug"])}
         try:
             response = requests.get(url, headers=headers, params=query_params)
             response.raise_for_status()
@@ -129,18 +146,18 @@ def load_meeting(base_url, jwt, meetings, slug):
                 click.echo(response.json())
                 raise
 
-    return
 
 
 @rest.command()
 @click.pass_context
 @click.argument('yaml_file', type=click.File('r'))
 @click.option('--slug')
-def update_meetings(ctx, yaml_file, slug):
+@click.option('--timedelta')
+def update_meetings(ctx, yaml_file, slug, timedelta):
     """ Reads meetings from a YAML file and uploads them
     """
     meetings = read_yaml(yaml_file)
-    load_meeting(ctx.obj["base_url"], ctx.obj["jwt"], meetings, slug)
+    load_meeting(ctx.obj["base_url"], ctx.obj["jwt"], meetings, slug, timedelta)
 
 
 def fill_quiz_replace_fields(base_url, quiz):
