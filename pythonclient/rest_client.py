@@ -387,6 +387,5 @@ def nukeload_assignments(ctx, yaml_file):
     for assignment in  assignments:
         load_assignment(base_url, jwt, assignment)
 
-# cli = click.CommandCollection(sources=[rest])
 if __name__ == "__main__":
-    rest(obj={})
+    rest(obj={}) # pylint: disable=E1123,E1120
