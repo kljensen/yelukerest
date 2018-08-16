@@ -9,7 +9,7 @@ services:
   db:
     image: ${PG_DOCKER_IMAGE}
     ports:
-      - "5432:${DB_PORT}"
+      - "127.0.0.1:5432:${DB_PORT}"
     environment:
       # env vars specific to postgres image used on first boot
       - POSTGRES_USER=${SUPER_USER}
@@ -38,7 +38,7 @@ services:
     # Map port 8081 on our host to port 4000 inside the container.
     # Our node app should then run on port 4000 inside the container.
     ports:
-      - "${MOCKCAS_HOST_PORT}:${MOCKCAS_PORT}"
+      - "127.0.0.1:${MOCKCAS_HOST_PORT}:${MOCKCAS_PORT}"
     environment:
       - DEVELOPMENT=${DEVELOPMENT}
       - PORT=${MOCKCAS_PORT}
@@ -57,7 +57,7 @@ services:
     # Map port 8081 on our host to port 4000 inside the container.
     # Our node app should then run on port 4000 inside the container.
     ports:
-      - "8081:${AUTHAPP_PORT}"
+      - "127.0.0.1:8081:${AUTHAPP_PORT}"
     # Link this app to the `db` app so that we can talk to postgres
     # when we need to do so. We might also want to talk to the rest
     # API directly, and we'll need to add that if so.

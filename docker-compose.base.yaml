@@ -51,6 +51,7 @@ services:
     links:
       - postgrest:postgrest
       - authapp:authapp
+      - sse:sse
     entrypoint: /entrypoint.sh
     environment:
       - JWT_SECRET=${JWT_SECRET}
@@ -72,6 +73,8 @@ services:
       - SWAGGER_JWT=${SWAGGER_JWT}
       - SWAGGER_INFO_TITLE=${SWAGGER_INFO_TITLE}
       - SWAGGER_INFO_DESCRIPTION=${SWAGGER_INFO_DESCRIPTION}
+      - SSE_HOST=${SSE_HOST}
+      - SSE_PORT=${SSE_PORT}
     volumes:
       - elmclient-build:/var/elmclient/
       - "./openresty/entrypoint.sh:/entrypoint.sh"
@@ -107,3 +110,13 @@ services:
     image: redis:4
     ports:
       - "127.0.0.1:6379:6379"
+  sse:
+    build: sse
+    ports:
+      - "127.0.0.1:${SSE_HOST_PORT}:${SSE_PORT}"
+    links:
+      - db
+      - rabbitmq
+    environment:
+      - DEVELOPMENT=${DEVELOPMENT}
+      - PORT=${SSE_PORT}

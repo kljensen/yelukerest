@@ -25,10 +25,10 @@ class DateTimeEncoder(json.JSONEncoder):
 
 @click.group()
 @click.pass_context
-@click.option('--hostname', default="localhost", show_default=True)
-@click.option('--protocol', default="http", show_default=True)
-@click.option('--port', default="", show_default=True)
-@click.option('--path', default="/rest/", show_default=True)
+@click.option('--hostname', default="localhost", show_default=True, envvar="YELUKEREST_CLIENT_HOSTNAME")
+@click.option('--protocol', default="http", show_default=True, envvar="YELUKEREST_CLIENT_PROTOCOL")
+@click.option('--port', default="", show_default=True, envvar="YELUKEREST_CLIENT_PORT")
+@click.option('--path', default="/rest/", show_default=True, envvar="YELUKEREST_CLIENT_PATH")
 @click.option("--jwt", show_default=True, envvar="YELUKEREST_CLIENT_JWT")
 def rest(ctx, hostname, protocol, port, path, jwt):
     """ A function that groups together various commands that need to know about where
@@ -40,6 +40,7 @@ def rest(ctx, hostname, protocol, port, path, jwt):
     ctx.obj['port'] = port
     ctx.obj['path'] = path
     ctx.obj['base_url'] = build_url(protocol, hostname, port, path)
+    print(ctx.obj)
 
 
 def read_yaml(filehandle):
