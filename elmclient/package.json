@@ -23,6 +23,7 @@
         "css-loader": "^0.27.3",
         "elm": "^0.18.0",
         "elm-format": "^0.7.0-exp",
+        "elm-github-install": "^1.6.1",
         "elm-webpack-loader": "^4.4.0",
         "extract-text-webpack-plugin": "^2.1.2",
         "file-loader": "^0.10.1",
