@@ -1,4 +1,4 @@
-module Msgs exposing (..)
+module Msgs exposing (SSEMsg, SSEMsg(..), Msg, Msg(..))
 
 import Assignments.Model exposing (Assignment, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
 import Auth.Model exposing (CurrentUser)
@@ -8,6 +8,9 @@ import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
 import Time exposing (Time)
 
+type SSEMsg
+    = Noop
+    | SSEMessage (Result String String)
 
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
@@ -31,3 +34,4 @@ type Msg
     | OnSubmitQuizAnswers Int (List Int)
     | OnSubmitQuizAnswersComplete Int (WebData (List QuizAnswer))
     | OnToggleQuizQuestionOption Int Bool
+    | OnSSE SSEMsg

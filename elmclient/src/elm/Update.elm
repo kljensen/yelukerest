@@ -31,7 +31,8 @@ import Quizzes.Updates
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 import Set exposing (Set)
-
+import SSE exposing (SseAccess, withListener)
+import Json.Decode exposing (decodeString, string)
 
 valuesFromDict : Dict comparable b -> List comparable -> List ( comparable, b )
 valuesFromDict theDict theList =
@@ -74,19 +75,25 @@ update msg model =
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
+            let
+                (newModel, newCmd) = 
+                    setSseAndDo model (withListener "message" sseMessageDecoder)
+            in
+                
             case response of
                 RemoteData.Success user ->
-                    ( { model | currentUser = response }
+                    ( { newModel | currentUser = response }
                     , Cmd.batch
                         [ fetchAssignments user
                         , fetchQuizzes user
                         , fetchAssignmentSubmissions user
                         , fetchQuizSubmissions user
+                        , newCmd
                         ]
                     )
 
                 _ ->
-                    ( model, Cmd.none )
+                    ( newModel, newCmd )
 
         Msgs.OnBeginAssignment assignmentSlug ->
             let
@@ -194,3 +201,28 @@ update msg model =
                             Set.remove optionID model.quizQuestionOptionInputs
             in
             ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
+        
+        Msgs.OnSSE sseMsgType ->
+            case sseMsgType of
+                Msgs.Noop ->
+                    (model, Cmd.none)
+                    
+            
+                Msgs.SSEMessage result ->                    
+                    ({model|latestMessage=result}, Cmd.none)
+
+
+setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )
+setSseAndDo model f =
+    let
+        ( sse, cmd ) =
+            f model.sse
+    in
+        ( { model | sse = sse }
+        , cmd
+        )
+
+sseMessageDecoder : SSE.SsEvent -> Msg
+sseMessageDecoder event =
+    Msgs.OnSSE (Msgs.SSEMessage (decodeString string event.data))
+    

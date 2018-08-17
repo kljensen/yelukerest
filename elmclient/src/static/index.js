@@ -11,8 +11,11 @@ require('./styles/main.scss');
 // Inject bundled Elm app into div#main
 // eslint-disable-next-line import/no-unresolved
 const Elm = require('../elm/Main');
+const initElmPorts = require('./elm-ports.js')
+    .default;
 
-Elm.Main.embed(document.getElementById('main'), {
+const app = Elm.Main.embed(document.getElementById('main'), {
     courseTitle: COURSE_TITLE,
     piazzaURL: PIAZZA_URL,
 });
+initElmPorts(app);

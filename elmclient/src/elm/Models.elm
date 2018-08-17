@@ -8,7 +8,8 @@ import Meetings.Model exposing (Meeting, MeetingSlug)
 import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
 import Set exposing (Set)
-
+import SSE exposing (SseAccess)
+import Msgs exposing (Msg, SSEMsg(..))
 
 type alias Flags =
     { courseTitle : String
@@ -53,6 +54,8 @@ type alias Model =
     , quizAnswers : Dict Int (WebData (List QuizAnswer))
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
     , quizQuestionOptionInputs : Set Int
+    , sse: SseAccess Msgs.Msg
+    , latestMessage: Result String String
     }
 
 
@@ -78,6 +81,8 @@ initialModel flags route =
     , quizAnswers = Dict.empty
     , quizQuestions = Dict.empty
     , quizQuestionOptionInputs = Set.empty
+    , sse = SSE.create "/events/events/" (Msgs.OnSSE Msgs.Noop)
+    , latestMessage = Ok "nothing"
     }
 
 

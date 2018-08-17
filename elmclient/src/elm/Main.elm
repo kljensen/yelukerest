@@ -11,7 +11,6 @@ import Subscriptions exposing (subscriptions)
 import Update exposing (update)
 import View exposing (view)
 
-
 init : Flags -> Location -> ( Model, Cmd Msg )
 init flags location =
     let
@@ -20,9 +19,6 @@ init flags location =
     in
     ( initialModel flags currentRoute, Cmd.batch [ fetchMeetings, fetchCurrentUser, updateDate ] )
 
-
-
--- MAIN
 
 
 main : Program Flags Model Msg
