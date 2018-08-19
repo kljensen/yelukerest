@@ -77,7 +77,7 @@ update msg model =
         Msgs.OnFetchCurrentUser response ->
             let
                 (newModel, newCmd) = 
-                    setSseAndDo model (withListener "message" sseMessageDecoder)
+                    setSseAndDo model (withListener "tablechange" sseMessageDecoder)
             in
                 
             case response of

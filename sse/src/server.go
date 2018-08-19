@@ -166,7 +166,8 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Write to the ResponseWriter, `w`.
-		fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+		fmt.Fprint(w, "event: tablechange\n")
+		fmt.Fprintf(w, "data: \"%s\"\n\n", msg)
 
 		// Flush the response.  This is only possible if
 		// the repsonse supports streaming.

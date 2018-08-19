@@ -29,6 +29,7 @@ exports.default = function initElmPorts(app) {
     var sources = {};
 
     function sendEventToElm(event) {
+        // console.log(event);
         app.ports.ssEventsJS.send({
             data: event.data, // Can't be null according to spec
             eventType: event.type, // Can't be because we listen for this event type
