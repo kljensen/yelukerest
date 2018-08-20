@@ -28,3 +28,7 @@ CREATE TRIGGER tg_engagement_update_timestamps
     ON engagement
     FOR EACH ROW
 EXECUTE PROCEDURE update_updated_at_column();
+
+create trigger engagement_rabbitmq_tg
+after insert or update or delete on engagement
+for each row execute procedure rabbitmq.on_row_change();

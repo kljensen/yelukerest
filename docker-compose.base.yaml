@@ -86,11 +86,12 @@ services:
   # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
   # to RabbitMQ based on the BRIDGE_CHANNELS configuration
   pg_amqp_bridge:
-    image: subzerocloud/pg-amqp-bridge
+    image: subzerocloud/pg-amqp-bridge:0.0.6
     links:
       - db
       - rabbitmq
     environment:
+      - RUST_LOG=info # output forwarded messages
       - POSTGRESQL_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
       - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
       - BRIDGE_CHANNELS=events:amq.topic
@@ -120,3 +121,4 @@ services:
     environment:
       - DEVELOPMENT=${DEVELOPMENT}
       - PORT=${SSE_PORT}
+      - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
