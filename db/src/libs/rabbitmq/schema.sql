@@ -18,7 +18,6 @@ create or replace function rabbitmq.on_row_change() returns trigger as $$
     routing_key text;
     row record;
   begin
-    raise notice 'Sending message to rabbitmq: %', routing_key;
     routing_key := 'row_change'
                    '.table-'::text || TG_TABLE_NAME::text || 
                    '.event-'::text || TG_OP::text;
