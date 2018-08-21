@@ -11,7 +11,7 @@ create policy assignment_submission_access_policy on data.assignment_submission 
 using (
 	( 
         -- If the role is student
-        request.user_role() = 'student'
+        request.user_role() = ANY('{student,ta}'::text[])
         -- They can see rows in the assignment_submissions table if
         and (
             -- It is an individual assignment and it has their user_id
@@ -40,7 +40,7 @@ using (
     OR
     ( 
         -- If the role is student
-        request.user_role() = 'student'
+        request.user_role() = ANY('{student,ta}'::text[])
         -- They can write rows in the assignment_submissions table if
         and
             -- The assignment is open
@@ -74,8 +74,8 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own assignment_submissions.
-grant select, insert on api.assignment_submissions to student;
+grant select, insert on api.assignment_submissions to student, ta;
 
 -- faculty have CRUD privileges
-grant usage on data.assignment_submission_id_seq to faculty, student;
+grant usage on data.assignment_submission_id_seq to faculty, ta, student;
 grant select, insert, update, delete on api.assignment_submissions to faculty;

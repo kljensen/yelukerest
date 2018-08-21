@@ -9,7 +9,7 @@ grant usage on data.meeting_id_seq to student;
 -- are the rights of our application user in regard to this api view.
 
 -- anonymous and authenticated users can select from this view
-grant select on api.meetings to student, anonymous;
+grant select on api.meetings to student, ta, anonymous;
 
 -- faculty have CRUD privileges
 grant usage on data.meeting_id_seq to faculty;

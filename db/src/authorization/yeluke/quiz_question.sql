@@ -21,8 +21,8 @@ using (
         -- are applied, try and teference only tables from data in
         -- your rls". However, when I change `api` below to `data`
         -- I find that permission is denied.
-        request.user_role() = 'student' and
-        EXISTS(
+        request.user_role() = ANY('{student,ta}'::text[])
+        AND EXISTS(
             SELECT * FROM api.quiz_submissions AS qs
             WHERE
                 -- It is the current user
@@ -39,8 +39,8 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own quiz_questions.
-grant select on api.quiz_questions to student;
+grant select on api.quiz_questions to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_questions to faculty;
-grant usage on data.quiz_question_id_seq to student, faculty;
+grant usage on data.quiz_question_id_seq to student, ta, faculty;

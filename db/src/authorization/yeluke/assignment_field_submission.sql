@@ -11,7 +11,7 @@ create policy assignment_field_submission_access_policy on data.assignment_field
 using (
 	( 
         -- If the role is student
-        request.user_role() = 'student'
+        request.user_role() = ANY('{student,ta}'::text[])
         AND
         (
             -- It was submitted by them
@@ -62,7 +62,8 @@ using (
         -- write.
 
         -- If the role is student
-        request.user_role() = 'student' and (
+        request.user_role() = ANY('{student,ta}'::text[])
+        AND (
             -- They can only submit fields as themselves
             submitter_user_id = request.user_id()
             AND
@@ -91,7 +92,7 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own assignment_field_submissions.
-grant select, insert, update on api.assignment_field_submissions to student;
+grant select, insert, update on api.assignment_field_submissions to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.assignment_field_submissions to faculty;

@@ -15,8 +15,8 @@ using (
 	(request.user_role() = 'student' and request.user_id() = user_id)
 
 	or
-	-- faculty can see engagement by all users
-	(request.user_role() = 'faculty')
+	-- faculty and TAs can read/write engagement by all users
+	(request.user_role() = ANY('{faculty,ta}'::text[]))
 );
 
 -- student users can select from this view. The RLS will
@@ -24,4 +24,4 @@ using (
 grant select on api.engagements to student;
 
 -- faculty have CRUD privileges
-grant select, insert, update, delete on api.engagements to faculty;
+grant select, insert, update, delete on api.engagements to faculty, ta;

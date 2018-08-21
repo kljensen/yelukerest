@@ -5,7 +5,7 @@ grant select, insert, update, delete on data.assignment_field to api;
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own assignment_fields.
-grant select on api.assignment_fields to student;
+grant select on api.assignment_fields to student, ta;
 
 -- faculty have CRUD privileges
 grant usage on data.assignment_field_id_seq to faculty;

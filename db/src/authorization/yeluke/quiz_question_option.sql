@@ -14,8 +14,8 @@ using (
         -- TODO: REDUCE the code duplication here. This policy
         -- is the exact same as the quiz_question policy. We
         -- shoud find some way to refactor this into a function.
-        request.user_role() = 'student' and
-        EXISTS(
+        request.user_role() = ANY('{student,ta}'::text[])
+        AND EXISTS(
             SELECT * FROM api.quiz_submissions AS qs
             WHERE
                 -- It is the current user
@@ -35,8 +35,8 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own quiz_question_options.
-grant select (id,quiz_question_id,quiz_id,body,is_markdown,created_at,updated_at) on api.quiz_question_options to student;
+grant select (id,quiz_question_id,quiz_id,body,is_markdown,created_at,updated_at) on api.quiz_question_options to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_question_options to faculty;
-grant usage on data.quiz_question_option_id_seq to student, faculty;
+grant usage on data.quiz_question_option_id_seq to student, ta, faculty;

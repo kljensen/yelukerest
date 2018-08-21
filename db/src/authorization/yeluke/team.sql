@@ -16,7 +16,7 @@ using (
 	-- for assignmentsubmissions, so I am working on it
 	-- now here. References:
 	-- https://stackoverflow.com/questions/42571569/row-level-security-in-postgres-on-normalized-tables
-	(request.user_role() = 'student' and (
+	(request.user_role() = ANY('{student,ta}'::text[]) AND (
 		-- Below, we are asking the question, does the current row's
 		-- nickname match the nickname of the user making this request.
 		-- That user's `id` is in `request.user_id()` from the JWT.
@@ -33,7 +33,7 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own teams.
-grant select on api.teams to student;
+grant select on api.teams to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.teams to faculty;

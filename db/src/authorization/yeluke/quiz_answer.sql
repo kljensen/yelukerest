@@ -10,7 +10,7 @@ alter table data.quiz_answer enable row level security;
 create policy quiz_answer_access_policy on data.quiz_answer to api 
 using (
 	-- The student users can see all her/his answers.
-	(request.user_role() = 'student' and request.user_id() = user_id)
+	(request.user_role() = ANY('{student,ta}'::text[]) and request.user_id() = user_id)
 
 	or
 	-- Faculty can see quiz answers by all users.
@@ -21,7 +21,7 @@ using (
 	or
 	(
 		-- Students may only edit a quiz answer
-        request.user_role() = 'student'
+        request.user_role() = ANY('{student,ta}'::text[])
         and
         -- if it is for themselves
         request.user_id() = user_id
@@ -43,7 +43,7 @@ using (
 );
 
 -- student users need to edit their answers
-grant select, insert, delete on api.quiz_answers to student;
+grant select, insert, delete on api.quiz_answers to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_answers to faculty;

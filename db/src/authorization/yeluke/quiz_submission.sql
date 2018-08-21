@@ -10,9 +10,7 @@ alter table data.quiz_submission enable row level security;
 create policy quiz_submission_access_policy on data.quiz_submission to api 
 using (
 	-- The student users can see all her/his quiz_submission items.
-	-- Notice how the rule changes based on the current user_id
-	-- which is specific to each individual request
-	(request.user_role() = 'student' and request.user_id() = user_id)
+	(request.user_role() = ANY('{student,ta}'::text[]) and request.user_id() = user_id)
 
 	or
 	-- faculty can see quiz_submission by all users
@@ -24,7 +22,8 @@ using (
 		-- Students may only submit a quiz under three conditions:
 		-- the user_id refers to themselves
 		-- the quiz is open for submission (after open, before close, and not draft)
-		request.user_role() = 'student' and (
+		request.user_role() = ANY('{student,ta}'::text[])
+		AND (
 			request.user_id() = user_id
 			and
 			EXISTS(
@@ -41,11 +40,10 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own quiz_submissions.
-grant select, insert on api.quiz_submissions to student;
+grant select, insert on api.quiz_submissions to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_submissions to faculty;
 
 -- The quiz_submissions_info view is read-only
-grant select on api.quiz_submissions_info to student;
-grant select on api.quiz_submissions_info to faculty;
+grant select on api.quiz_submissions_info to student, ta, faculty;
