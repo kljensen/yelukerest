@@ -131,7 +131,7 @@ async function getYelukeUserInfo(pool, netid) {
     // pool back to the pool after the query is completed.
     // See https://github.com/brianc/node-pg-pool
     try {
-        const result = await pool.query('SELECT id,netid,nickname,role FROM api.users WHERE netid = $1', [netid]);
+        const result = await pool.query('SELECT id,netid,nickname,role,team_nickname FROM api.users WHERE netid = $1', [netid]);
         userInfo.error = false;
         if (result.rows.length !== 1) {
             return userInfo;
@@ -139,6 +139,8 @@ async function getYelukeUserInfo(pool, netid) {
         userInfo.id = result.rows[0].id;
         userInfo.netid = result.rows[0].netid;
         userInfo.role = result.rows[0].role;
+        userInfo.nickname = result.rows[0].nickname;
+        userInfo.team_nickname = result.rows[0].team_nickname;
     } catch (error) {
         // Catch the promise rejection
         userInfo.error = true;
@@ -324,7 +326,7 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
         error,
     } = jwtForRequest(req);
     if (error) {
-        return;
+        return res.send(httpstatus.INTERNAL_SERVER_ERROR);
     }
 
 
@@ -363,7 +365,7 @@ router.get('/jwt', validateYelukeUser, (req, res) => {
 
 
 // Return user info, including jwt.
-router.get('/me', validateYelukeUser, async(req, res) => {
+router.get('/me', validateYelukeUser, async (req, res) => {
     // Should already have session variables here.
     // But, belts and suspenders.
     if (!req.session.yeluke) {
@@ -391,6 +393,9 @@ router.get('/me', validateYelukeUser, async(req, res) => {
         netid: userInfo.netid,
         id: userInfo.id,
         jwt,
+        role: userInfo.role,
+        nickname: userInfo.nickname,
+        team_nickname: userInfo.team_nickname,
     };
 
     res.format({

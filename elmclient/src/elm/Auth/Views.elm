@@ -51,17 +51,18 @@ showDashboard currentUser =
     Html.table
         []
         [ Html.tbody []
-            [ Html.tr []
-                [ Html.td [] [ Html.text "id" ]
-                , Html.td [] [ Html.text (toString currentUser.id) ]
-                ]
-            , Html.tr []
-                [ Html.td [] [ Html.text "netid" ]
-                , Html.td [] [ Html.text currentUser.netid ]
-                ]
-            , Html.tr []
-                [ Html.td [] [ Html.text "jwt" ]
-                , Html.td [] [ Html.text currentUser.jwt ]
-                ]
+            [   dashboardRow "id" (toString currentUser.id)
+            , dashboardRow "netid" currentUser.netid
+            , dashboardRow "role" currentUser.role
+            , dashboardRow "nickname" currentUser.nickname
+            , dashboardRow "team_nickname" (Maybe.withDefault "none" currentUser.team_nickname )
+            , dashboardRow "jwt" currentUser.jwt
             ]
+        ]
+
+dashboardRow : String -> String -> Html.Html Msg
+dashboardRow label value =
+    Html.tr []
+        [ Html.td [] [ Html.text label ]
+        , Html.td [] [ Html.text value ]
         ]
