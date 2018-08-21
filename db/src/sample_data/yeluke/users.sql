@@ -8,7 +8,7 @@ COPY data."user" (id,email,netid,"name",known_as,nickname,"role",created_at,upda
 2	bob@yale.edu	bde456	Robert Foo	Bob	silly-seahorse	student	2017-12-27 19:13:36	2017-12-27 19:14:36
 5	charlotte@yale.edu	crt43	Charlotte Baz	Char	delighted-bear	observer	2017-12-27 19:13:36	2017-12-27 19:14:36
 3	kyle.jensen@yale.edu	klj39	Kyle Jensen	Kyle	shiny-turd	faculty	2017-12-27 19:13:36	2017-12-27 19:14:36
-4	jacob.bendicksen@yale.edu	jlb325	Jacob Bendicksen	Jacob	live-wire	faculty	2017-12-27 19:13:36	2017-12-27 19:14:36
+4	jacob.ben@yale.edu	jlb325	Jacob Ben	Jacob	live-wire	ta	2017-12-27 19:13:36	2017-12-27 19:14:36
 \.
 
 -- restart sequences
