@@ -1,7 +1,7 @@
-module Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
+module Auth.Model exposing (CurrentUser, JWT, currentUserDecoder, isFacultyOrTA)
 
 import Json.Decode as Decode
-import Json.Decode.Pipeline exposing (decode, required, optional)
+import Json.Decode.Pipeline exposing (decode, optional, required)
 
 
 type alias JWT =
@@ -12,9 +12,9 @@ type alias CurrentUser =
     { id : Int
     , netid : String
     , jwt : JWT
-    , role: String
-    , nickname: String
-    , team_nickname: Maybe String
+    , role : String
+    , nickname : String
+    , team_nickname : Maybe String
     }
 
 
@@ -28,3 +28,7 @@ currentUserDecoder =
         |> required "nickname" Decode.string
         |> required "team_nickname" (Decode.nullable Decode.string)
 
+
+isFacultyOrTA : String -> Bool
+isFacultyOrTA role =
+    List.member role [ "ta", "faculty" ]

@@ -3,6 +3,7 @@ module Common.Views
         ( DateTitleHrefRecord
         , dateTitleHrefRow
         , dateToString
+        , merge4
         , piazzaLink
         , shortDateToString
         , showDraftStatus
@@ -13,6 +14,7 @@ import Date.Format as DateFormat
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Msgs exposing (Msg)
+import RemoteData exposing (WebData)
 
 
 type alias DateTitleHrefRecord =
@@ -20,6 +22,19 @@ type alias DateTitleHrefRecord =
     , title : String
     , href : String
     }
+
+
+merge4 :
+    WebData a
+    -> WebData b
+    -> WebData c
+    -> WebData d
+    -> WebData ( a, b, c, d )
+merge4 a b c d =
+    RemoteData.map (,,,) a
+        |> RemoteData.andMap b
+        |> RemoteData.andMap c
+        |> RemoteData.andMap d
 
 
 showDraftStatus : Bool -> Html.Html Msg

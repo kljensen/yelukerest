@@ -3,6 +3,7 @@ module View exposing (..)
 import Assignments.Views
 import Auth.Views
 import Common.Views exposing (piazzaLink)
+import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
 import Meetings.Views
@@ -41,6 +42,9 @@ page model =
 
         Models.TakeQuizRoute quizID ->
             Quizzes.Views.takeQuizView model.current_date quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.pendingSubmitQuizzes
+
+        Models.EditEngagementsRoute meetingID ->
+            maybeEditEngagements model.currentUser model.users model.engagements model.meetings meetingID
 
         Models.NotFoundRoute ->
             notFoundView

@@ -7,8 +7,11 @@ import Assignments.Commands
         , fetchAssignments
         , sendAssignmentFieldSubmissions
         )
+import Auth.Model exposing (isFacultyOrTA)
 import Date
 import Dict exposing (Dict)
+import Engagements.Commands exposing (fetchEngagements)
+import Json.Decode exposing (decodeString, string)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import Quizzes.Commands
@@ -30,10 +33,10 @@ import Quizzes.Updates
         )
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
-import Set exposing (Set)
 import SSE exposing (SseAccess, withListener)
-import Json.Decode exposing (decodeString, string)
-import Engagements.Commands exposing (fetchEngagements)
+import Set exposing (Set)
+import Users.Commands exposing (fetchUsers)
+
 
 valuesFromDict : Dict comparable b -> List comparable -> List ( comparable, b )
 valuesFromDict theDict theList =
@@ -79,21 +82,32 @@ update msg model =
             case response of
                 RemoteData.Success user ->
                     let
-                        newUserModel = { model | currentUser = response }
-                        newUserCmds = Cmd.batch
+                        newUserModel =
+                            { model | currentUser = response }
+
+                        newUserCmds =
+                            Cmd.batch
                                 [ fetchAssignments user
                                 , fetchQuizzes user
                                 , fetchAssignmentSubmissions user
                                 , fetchQuizSubmissions user
                                 ]
-                        (sseUserModel, sseCmd) = 
-                            setSseAndDo newUserModel (withListener "tablechange" sseMessageDecoder)                        
+
+                        ( sseUserModel, sseCmd ) =
+                            setSseAndDo newUserModel (withListener "tablechange" sseMessageDecoder)
                     in
-                        
-                    if List.member user.role ["ta", "faculty"] then
-                        (sseUserModel, Cmd.batch[newUserCmds, sseCmd, fetchEngagements user])
+                    if isFacultyOrTA user.role then
+                        ( sseUserModel
+                        , Cmd.batch
+                            [ newUserCmds
+                            , sseCmd
+                            , fetchEngagements user
+                            , fetchUsers user
+                            ]
+                        )
                     else
-                        (newUserModel, newUserCmds)
+                        ( newUserModel, newUserCmds )
+
                 _ ->
                     ( model, Cmd.none )
 
@@ -203,18 +217,20 @@ update msg model =
                             Set.remove optionID model.quizQuestionOptionInputs
             in
             ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
-        
+
         Msgs.OnSSE sseMsgType ->
             case sseMsgType of
                 Msgs.Noop ->
-                    (model, Cmd.none)
-                    
-            
-                Msgs.SSEMessage result ->                    
-                    ({model|latestMessage=result}, Cmd.none)
-        
+                    ( model, Cmd.none )
+
+                Msgs.SSEMessage result ->
+                    ( { model | latestMessage = result }, Cmd.none )
+
         Msgs.OnFetchEngagements response ->
-            ({model|engagements = response}, Cmd.none)
+            ( { model | engagements = response }, Cmd.none )
+
+        Msgs.OnFetchUsers response ->
+            ( { model | users = response }, Cmd.none )
 
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )
@@ -223,11 +239,11 @@ setSseAndDo model f =
         ( sse, cmd ) =
             f model.sse
     in
-        ( { model | sse = sse }
-        , cmd
-        )
+    ( { model | sse = sse }
+    , cmd
+    )
+
 
 sseMessageDecoder : SSE.SsEvent -> Msg
 sseMessageDecoder event =
     Msgs.OnSSE (Msgs.SSEMessage (decodeString string event.data))
-    

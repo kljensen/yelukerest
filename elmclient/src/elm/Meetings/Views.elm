@@ -156,9 +156,11 @@ showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeg
         RemoteData.Failure error ->
             Html.text "Failed to load quizzes!"
 
+
 pText : String -> Html.Html Msg
 pText theString =
-    Html.p [] [Html.text theString]
+    Html.p [] [ Html.text theString ]
+
 
 showQuizSubmissionStatus : Date.Date -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
 showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz =
@@ -176,13 +178,14 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
             case submitablity of
                 ( QuizOpen, EditableSubmission submission ) ->
                     Html.div []
-                        [ Html.p [] [Html.text "You already started the quiz."]
-                        , Html.p [] [Html.button
-                            [ Attrs.class "btn btn-primary"
-                            , Events.onClick (Msgs.TakeQuiz quiz.id)
+                        [ Html.p [] [ Html.text "You already started the quiz." ]
+                        , Html.p []
+                            [ Html.button
+                                [ Attrs.class "btn btn-primary"
+                                , Events.onClick (Msgs.TakeQuiz quiz.id)
+                                ]
+                                [ Html.text "Re-start quiz" ]
                             ]
-                            [ Html.text "Re-start quiz"]
-                        ]
                         ]
 
                 ( QuizOpen, NoSubmission ) ->
@@ -199,8 +202,8 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                                     ( "Begin quiz", defaultAttrs ++ [ Attrs.disabled True ] )
                     in
                     Html.div []
-                        [ Html.p [] [Html.text "You did not yet start the quiz."]
-                        ,  Html.p [] [Html.button btnAttrs [ Html.text btnText ]]
+                        [ Html.p [] [ Html.text "You did not yet start the quiz." ]
+                        , Html.p [] [ Html.button btnAttrs [ Html.text btnText ] ]
                         ]
 
                 ( _, NotEditableSubmission submission ) ->
@@ -213,7 +216,6 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
 
                 ( BeforeQuizOpen, _ ) ->
                     pText ("This quiz is not yet open for submissions. It opens at " ++ dateToString quiz.open_at ++ ".")
-                        
 
         RemoteData.NotAsked ->
             pText "Quiz submissions not yet loaded. Unclear if you started this quiz."

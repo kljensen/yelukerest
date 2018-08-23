@@ -4,13 +4,15 @@ import Assignments.Model exposing (Assignment, AssignmentFieldSubmissionInputs, 
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
+import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting, MeetingSlug)
+import Msgs exposing (Msg, SSEMsg(..))
 import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
-import Set exposing (Set)
 import SSE exposing (SseAccess)
-import Msgs exposing (Msg, SSEMsg(..))
-import Engagements.Model exposing (Engagement)
+import Set exposing (Set)
+import Users.Model exposing (User)
+
 
 type alias Flags =
     { courseTitle : String
@@ -55,9 +57,10 @@ type alias Model =
     , quizAnswers : Dict Int (WebData (List QuizAnswer))
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
     , quizQuestionOptionInputs : Set Int
-    , sse: SseAccess Msgs.Msg
-    , latestMessage: Result String String
-    , engagements: WebData (List Engagement)
+    , sse : SseAccess Msgs.Msg
+    , latestMessage : Result String String
+    , engagements : WebData (List Engagement)
+    , users : WebData (List User)
     }
 
 
@@ -86,6 +89,7 @@ initialModel flags route =
     , sse = SSE.create "/events/events/" (Msgs.OnSSE Msgs.Noop)
     , latestMessage = Ok "nothing"
     , engagements = RemoteData.NotAsked
+    , users = RemoteData.NotAsked
     }
 
 
@@ -96,5 +100,6 @@ type Route
     | MeetingDetailRoute MeetingSlug
     | AssignmentListRoute
     | AssignmentDetailRoute AssignmentSlug
+    | EditEngagementsRoute Int
     | TakeQuizRoute Int
     | NotFoundRoute

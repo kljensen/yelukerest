@@ -1,8 +1,10 @@
-module Engagements.Model exposing (Engagement, engagementsDecoder)
+module Engagements.Model exposing (Engagement, engagementsDecoder, participationEnum)
+
 import Date exposing (Date)
 import Json.Decode as Decode
 import Json.Decode.Extra exposing (date)
 import Json.Decode.Pipeline exposing (decode, required)
+
 
 type alias Engagement =
     { user_id : Int
@@ -11,6 +13,11 @@ type alias Engagement =
     , created_at : Date
     , updated_at : Date
     }
+
+
+participationEnum : List String
+participationEnum =
+    [ "absent", "attended", "contributed", "led" ]
 
 
 engagementsDecoder : Decode.Decoder (List Engagement)

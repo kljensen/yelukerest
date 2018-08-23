@@ -2,6 +2,7 @@ module Quizzes.Views exposing (takeQuizView)
 
 -- import Html.Attributes as Attrs
 
+import Common.Views exposing (merge4)
 import Date
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
@@ -22,19 +23,6 @@ import Quizzes.Model
         , quizSubmitability
         )
 import RemoteData exposing (WebData)
-
-
-merge4 :
-    WebData a
-    -> WebData b
-    -> WebData c
-    -> WebData d
-    -> WebData ( a, b, c, d )
-merge4 a b c d =
-    RemoteData.map (,,,) a
-        |> RemoteData.andMap b
-        |> RemoteData.andMap c
-        |> RemoteData.andMap d
 
 
 getOrNotAsked : comparable -> Dict comparable (WebData b) -> WebData b
@@ -159,12 +147,13 @@ showSubmitButton currentDate quiz quizSubmission pendingSubmit =
 
         ( QuizOpen, EditableSubmission submission ) ->
             Html.div []
-                [ Html.p [] [Html.button
-                    [ Attrs.class "btn btn-primary"
-                    , Attrs.disabled (isLoading pendingSubmit)
+                [ Html.p []
+                    [ Html.button
+                        [ Attrs.class "btn btn-primary"
+                        , Attrs.disabled (isLoading pendingSubmit)
+                        ]
+                        [ Html.text "Save Answers" ]
                     ]
-                    [ Html.text "Save Answers" ]
-                ]
                 , Html.div []
                     [ Html.text
                         ("This quiz has a duration of "
