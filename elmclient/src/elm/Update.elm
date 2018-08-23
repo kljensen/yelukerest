@@ -33,6 +33,7 @@ import Routing exposing (parseLocation)
 import Set exposing (Set)
 import SSE exposing (SseAccess, withListener)
 import Json.Decode exposing (decodeString, string)
+import Engagements.Commands exposing (fetchEngagements)
 
 valuesFromDict : Dict comparable b -> List comparable -> List ( comparable, b )
 valuesFromDict theDict theList =
@@ -75,25 +76,26 @@ update msg model =
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            let
-                (newModel, newCmd) = 
-                    setSseAndDo model (withListener "tablechange" sseMessageDecoder)
-            in
-                
             case response of
                 RemoteData.Success user ->
-                    ( { newModel | currentUser = response }
-                    , Cmd.batch
-                        [ fetchAssignments user
-                        , fetchQuizzes user
-                        , fetchAssignmentSubmissions user
-                        , fetchQuizSubmissions user
-                        , newCmd
-                        ]
-                    )
-
+                    let
+                        newUserModel = { model | currentUser = response }
+                        newUserCmds = Cmd.batch
+                                [ fetchAssignments user
+                                , fetchQuizzes user
+                                , fetchAssignmentSubmissions user
+                                , fetchQuizSubmissions user
+                                ]
+                        (sseUserModel, sseCmd) = 
+                            setSseAndDo newUserModel (withListener "tablechange" sseMessageDecoder)                        
+                    in
+                        
+                    if List.member user.role ["ta", "faculty"] then
+                        (sseUserModel, Cmd.batch[newUserCmds, sseCmd, fetchEngagements user])
+                    else
+                        (newUserModel, newUserCmds)
                 _ ->
-                    ( newModel, newCmd )
+                    ( model, Cmd.none )
 
         Msgs.OnBeginAssignment assignmentSlug ->
             let
@@ -210,6 +212,9 @@ update msg model =
             
                 Msgs.SSEMessage result ->                    
                     ({model|latestMessage=result}, Cmd.none)
+        
+        Msgs.OnFetchEngagements response ->
+            ({model|engagements = response}, Cmd.none)
 
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )

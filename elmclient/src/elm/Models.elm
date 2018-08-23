@@ -10,6 +10,7 @@ import RemoteData exposing (WebData)
 import Set exposing (Set)
 import SSE exposing (SseAccess)
 import Msgs exposing (Msg, SSEMsg(..))
+import Engagements.Model exposing (Engagement)
 
 type alias Flags =
     { courseTitle : String
@@ -56,6 +57,7 @@ type alias Model =
     , quizQuestionOptionInputs : Set Int
     , sse: SseAccess Msgs.Msg
     , latestMessage: Result String String
+    , engagements: WebData (List Engagement)
     }
 
 
@@ -83,6 +85,7 @@ initialModel flags route =
     , quizQuestionOptionInputs = Set.empty
     , sse = SSE.create "/events/events/" (Msgs.OnSSE Msgs.Noop)
     , latestMessage = Ok "nothing"
+    , engagements = RemoteData.NotAsked
     }
 
 

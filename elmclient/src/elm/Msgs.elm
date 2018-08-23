@@ -7,6 +7,7 @@ import Navigation exposing (Location)
 import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
 import Time exposing (Time)
+import Engagements.Model exposing (Engagement)
 
 type SSEMsg
     = Noop
@@ -35,3 +36,4 @@ type Msg
     | OnSubmitQuizAnswersComplete Int (WebData (List QuizAnswer))
     | OnToggleQuizQuestionOption Int Bool
     | OnSSE SSEMsg
+    | OnFetchEngagements (WebData (List Engagement))
