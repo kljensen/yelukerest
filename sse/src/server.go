@@ -74,10 +74,10 @@ func main() {
 
 	// Make a new broker instance
 	b := &broker{
-		make(map[chan string]bool),
-		make(chan (chan string)),
-		make(chan (chan string)),
-		make(chan string),
+		make(map[chan msg]bool),
+		make(chan (chan msg)),
+		make(chan (chan msg)),
+		make(chan msg),
 	}
 
 	// Start processing events
@@ -93,11 +93,11 @@ func main() {
 	// into the broker's messages channel and are then broadcast
 	// out to any clients that are attached.
 	go func() {
-		for i := 0; ; i++ {
+		for {
 			log.Println("Connecting to RabbitMQ")
 
 			// Send messages to attached clients
-			getMessages(amqpURL, "amq.topic", "row_change.#", b.messages)
+			getMessages(amqpURL, "amq.topic", "row_change.#", "tablechange", b.messages)
 
 			// Print a nice log message and sleep for 5s.
 			// log.Printf("Sent message %d ", i)

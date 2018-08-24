@@ -4,7 +4,7 @@ import (
 	"github.com/streadway/amqp"
 )
 
-func getMessages(rabbitMQURL string, exchangeName string, routingKey string, destinationChan chan string) error {
+func getMessages(rabbitMQURL string, exchangeName string, routingKey string, eventName string, destinationChan chan msg) error {
 	// user := os.Getenv("USER")
 	// pass := os.Getenv("PASS")
 	// conn, err := amqp.Dial("amqp://" + user + ":" + pass + "@localhost:5672/")
@@ -72,7 +72,7 @@ func getMessages(rabbitMQURL string, exchangeName string, routingKey string, des
 	for d := range msgs {
 		// When we change this to send bodies, we'll
 		// want d.Body. For now, send routing key.
-		destinationChan <- d.RoutingKey
+		destinationChan <- msg{eventName, d.RoutingKey}
 	}
 	return nil
 }

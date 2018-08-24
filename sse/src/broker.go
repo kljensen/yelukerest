@@ -4,7 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 )
+
+type msg struct {
+	eventType string
+	data      string
+}
 
 // A single broker will be created in this program. It is responsible
 // for keeping a list of which clients (browsers) are currently attached
@@ -16,20 +23,29 @@ type broker struct {
 	// over which we can push messages to attached clients.  (The values
 	// are just booleans and are meaningless.)
 	//
-	clients map[chan string]bool
+	clients map[chan msg]bool
 
 	// Channel into which new clients can be pushed
 	//
-	newClients chan chan string
+	newClients chan chan msg
 
 	// Channel into which disconnected clients should be pushed
 	//
-	defunctClients chan chan string
+	defunctClients chan chan msg
 
 	// Channel into which messages are pushed to be broadcast out
 	// to attahed clients.
 	//
-	messages chan string
+	messages chan msg
+}
+
+func (b *broker) SendMessage(message msg) int {
+	i := 0
+	for s := range b.clients {
+		s <- message
+		i++
+	}
+	return i
 }
 
 // This broker method starts a new goroutine.  It handles
@@ -45,6 +61,7 @@ func (b *broker) Start() {
 		// Loop endlessly
 		//
 		for {
+			numTicks := 0
 
 			// Block until we receive from one of the
 			// three following channels.
@@ -66,18 +83,25 @@ func (b *broker) Start() {
 
 				log.Println("Removed client")
 
-			case msg := <-b.messages:
+			case <-time.After(10 * time.Second):
+				// This tick is sent in order to keep the SSE
+				// connection "alive". Some browsers and proxies
+				// will otherwise terminate the connection.
+				numClients := b.SendMessage(msg{"tick", strconv.Itoa(numTicks)})
+				numTicks++
+				log.Printf("Sent tick message to %d clients\n", numClients)
+
+			case thisMsg := <-b.messages:
 
 				// There is a new message to send.  For each
 				// attached client, push the new message
 				// into the client's message channel.
-				for s := range b.clients {
-					s <- msg
-				}
-				log.Printf("Broadcast message to %d clients", len(b.clients))
+				numClients := b.SendMessage(thisMsg)
+				log.Printf("Sent %s message to %d clients\n", thisMsg.data, numClients)
 			}
 		}
 	}()
+
 }
 
 // This broker method handles and HTTP request at the "/events/" URL.
@@ -94,7 +118,7 @@ func (b *broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Create a new channel, over which the broker can
 	// send this client messages.
-	messageChan := make(chan string)
+	messageChan := make(chan msg)
 
 	// Add this client to the map of those that should
 	// receive updates
@@ -112,6 +136,7 @@ func (b *broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Set the headers related to event streaming.
 	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
@@ -128,8 +153,9 @@ func (b *broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Write to the ResponseWriter, `w`.
-		fmt.Fprint(w, "event: tablechange\n")
-		fmt.Fprintf(w, "data: \"%s\"\n\n", msg)
+		fmt.Fprintf(w, "event: %s\n", msg.eventType)
+		fmt.Fprintf(w, "data: \"%s\"\n\n", msg.data)
+		log.Printf("Sending message of type %s\n", msg.eventType)
 
 		// Flush the response.  This is only possible if
 		// the repsonse supports streaming.

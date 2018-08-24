@@ -30,7 +30,7 @@ exports.default = function initElmPorts(app) {
     /**
      * sendEventToElm
      * @param  {sseevent} event The event received
-     * @returns {null} null
+     * @returns {And eventsource object} null
      */
     function sendEventToElm(event) {
         // console.log(event);
@@ -67,37 +67,59 @@ exports.default = function initElmPorts(app) {
 
         return sources[address];
     }
+    /**
+     * addEventHandlers
+     * @param  {string} eventType - The type of event
+     * @param  {eventSource} eventSource - The event source
+     * @returns {null} null
+     */
+    function addEventHandlers(eventType, eventSource) {
+        if (eventType) {
+            eventSource.addEventListener(eventType, sendEventToElm);
+        } else {
+            eventSource.onmessage = sendUntypedEventToElm; // eslint-disable-line no-param-reassign
+        }
+        eventSource.onerror = (err) => { // eslint-disable-line no-param-reassign
+            console.log('Encountered an error:', err); // eslint-disable-line
+        };
+    }
+    /**
+     * @param  {string} address The server address
+     * @param  {string} eventType Type of event
+     * @param  {boolean} doCreate=false Should we create new event source?
+     * @returns {eventSource} And eventsource object
+     */
+    function doAddListener(address, eventType, doCreate = false) {
+        let eventSource;
+        if (doCreate) {
+            eventSource = createNewEventSource(address);
+        } else {
+            eventSource = sources[address];
+        }
+        addEventHandlers(eventType, eventSource);
+        return eventSource;
+    }
 
     app.ports.createEventSourceJS.subscribe(createNewEventSource);
 
     app.ports.addListenerJS.subscribe((addressAndEventType) => {
         const address = addressAndEventType[0];
         const eventType = addressAndEventType[1];
-
-        const eventSource = sources[address]; // we only call if it exists
-        if (eventType) {
-            eventSource.addEventListener(eventType, sendEventToElm);
-        } else {
-            eventSource.onmessage = sendUntypedEventToElm;
-        }
+        const eventSource = doAddListener(address, eventType, false);
+        eventSource.onerror = (err) => { // eslint-disable-line no-param-reassign
+            console.log('Encountered an error:', err); // eslint-disable-line
+        };
     });
 
     app.ports.createEventSourceAndAddListenerJS.subscribe((addressAndEventType) => {
         const address = addressAndEventType[0];
         const eventType = addressAndEventType[1];
-
-        const eventSource = createNewEventSource(address);
-        if (eventType) {
-            eventSource.addEventListener(eventType, sendEventToElm);
-        } else {
-            eventSource.onmessage = sendUntypedEventToElm;
-        }
+        doAddListener(address, eventType, true);
     });
 
     app.ports.removeListenerJS.subscribe((addressAndEventType) => {
         const address = addressAndEventType[0];
         const eventType = addressAndEventType[1];
-
         const eventSource = sources[address]; // we only call if it exists
         eventSource.removeEventListener(eventType, sendEventToElm);
     });
