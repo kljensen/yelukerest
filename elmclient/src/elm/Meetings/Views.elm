@@ -1,6 +1,6 @@
 module Meetings.Views exposing (detailView, listView)
 
-import Auth.Model exposing (CurrentUser)
+import Auth.Model exposing (CurrentUser, isLoggedInFacultyOrTA)
 import Common.Views exposing (dateToString)
 import Date
 import Dict exposing (Dict)
@@ -115,7 +115,22 @@ detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmiss
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
+        , recordEngagementButton meeting.id currentUser
         ]
+
+
+recordEngagementButton : Int -> WebData CurrentUser -> Html.Html Msg
+recordEngagementButton meetingID currentUser =
+    case isLoggedInFacultyOrTA currentUser of
+        Ok _ ->
+            Html.a [ Attrs.href ("#/engagements/" ++ toString meetingID) ]
+                [ Html.button
+                    [ Attrs.class "btn btn-primary" ]
+                    [ Html.text "Take attendance" ]
+                ]
+
+        _ ->
+            Html.text ""
 
 
 showQuizStatus : Date.Date -> Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
