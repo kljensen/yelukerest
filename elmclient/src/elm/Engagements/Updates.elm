@@ -1,7 +1,6 @@
 module Engagements.Updates exposing (onSSETableChange)
 
 import Auth.Model exposing (isLoggedInFacultyOrTA)
-import Debug exposing (log)
 import Engagements.Commands exposing (fetchEngagements)
 import Models exposing (Model)
 import Msgs exposing (Msg)
