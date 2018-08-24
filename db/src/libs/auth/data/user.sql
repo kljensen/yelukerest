@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS "user" (
     netid VARCHAR(10) UNIQUE NOT NULL
         CHECK (netid ~ '^[a-z]+[0-9]+$'),
     name VARCHAR(100),
-    lastName VARCHAR(100),
+    lastname VARCHAR(100),
     organization VARCHAR(200),
     known_as VARCHAR(50),
     nickname VARCHAR(50) UNIQUE NOT NULL
