@@ -65,17 +65,18 @@ def getuserldap(ctx):
     for netid in netids:
         result = do_ldap_search(netid)
         if result:
+            print(result)
             known_as = ldapget(result, 'knownAs')
             if not known_as:
                 known_as = ldapget(result, "givenName")
             name = ldapget(result, 'cn')
+            last_name = ldapget(result, 'sn')
             email = ldapget(result, 'mail')
-            print(known_as)
-            print(name)
-            print(email)
+            organization = ldapget(result, 'o')
+            print(", ".join(str(s) for s in [name, known_as, last_name, email, organization]))
             cur = conn.cursor()
-            statement = 'UPDATE data.user SET known_as = %s, name = %s, email = %s WHERE netid = %s'
-            cur.execute(statement, (known_as, name, email, netid))
+            statement = 'UPDATE data.user SET known_as = %s, name = %s, email = %s, lastname = %s, organization = %s WHERE netid = %s'
+            cur.execute(statement, (known_as, name, email, last_name, organization, netid))
             conn.commit()
 
 
