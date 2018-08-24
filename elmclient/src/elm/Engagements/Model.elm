@@ -1,4 +1,4 @@
-module Engagements.Model exposing (Engagement, engagementsDecoder, participationEnum)
+module Engagements.Model exposing (Engagement, engagementDecoder, engagementsDecoder, participationEnum)
 
 import Date exposing (Date)
 import Json.Decode as Decode

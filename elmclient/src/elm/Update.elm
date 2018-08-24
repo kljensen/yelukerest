@@ -10,7 +10,11 @@ import Assignments.Commands
 import Auth.Model exposing (isFacultyOrTA)
 import Date
 import Dict exposing (Dict)
-import Engagements.Commands exposing (fetchEngagements)
+import Engagements.Commands
+    exposing
+        ( fetchEngagements
+        , submitEngagement
+        )
 import Json.Decode exposing (decodeString, string)
 import Models exposing (Model)
 import Msgs exposing (Msg)
@@ -231,6 +235,33 @@ update msg model =
 
         Msgs.OnFetchUsers response ->
             ( { model | users = response }, Cmd.none )
+
+        Msgs.OnChangeEngagement meetingID userID level ->
+            let
+                npses =
+                    Dict.insert ( meetingID, userID ) RemoteData.Loading model.pendingSubmitEngagements
+
+                newModel =
+                    { model | pendingSubmitEngagements = npses }
+            in
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( newModel, submitEngagement user.jwt meetingID userID level )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnSubmitEngagementResponse meetingID userID response ->
+            let
+                pses =
+                    case response of
+                        RemoteData.Success _ ->
+                            Dict.remove ( meetingID, userID ) model.pendingSubmitEngagements
+
+                        _ ->
+                            Dict.insert ( meetingID, userID ) response model.pendingSubmitEngagements
+            in
+            ( { model | pendingSubmitEngagements = pses }, Cmd.none )
 
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )

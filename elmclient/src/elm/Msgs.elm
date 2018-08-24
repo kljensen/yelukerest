@@ -1,18 +1,20 @@
-module Msgs exposing (SSEMsg, SSEMsg(..), Msg, Msg(..))
+module Msgs exposing (Msg(..), SSEMsg(..))
 
 import Assignments.Model exposing (Assignment, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
 import Auth.Model exposing (CurrentUser)
+import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
 import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
 import RemoteData exposing (WebData)
 import Time exposing (Time)
-import Engagements.Model exposing (Engagement)
 import Users.Model exposing (User)
+
 
 type SSEMsg
     = Noop
     | SSEMessage (Result String String)
+
 
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
@@ -39,3 +41,5 @@ type Msg
     | OnSSE SSEMsg
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))
+    | OnChangeEngagement Int Int String
+    | OnSubmitEngagementResponse Int Int (WebData Engagement)

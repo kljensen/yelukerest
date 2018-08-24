@@ -5,6 +5,7 @@ import Common.Views exposing (merge4)
 import Engagements.Model exposing (Engagement, participationEnum)
 import Html exposing (Html)
 import Html.Attributes as Attrs
+import Html.Events as Events
 import Meetings.Model exposing (Meeting)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
@@ -72,10 +73,15 @@ userEngagementSelect meetingID engagements user =
 
         renderOptions =
             participationSelectOption maybeEngagement
+
+        onInputHandler =
+            Msgs.OnChangeEngagement meetingID user.id
     in
     Html.p []
         [ Html.label [ Attrs.for user.nickname ] [ Html.text user.nickname ]
-        , Html.select [] (List.map renderOptions participationEnum)
+        , Html.select
+            [ Events.onInput onInputHandler ]
+            (List.map renderOptions participationEnum)
         ]
 
 

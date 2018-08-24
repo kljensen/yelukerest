@@ -61,6 +61,7 @@ type alias Model =
     , latestMessage : Result String String
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
+    , pendingSubmitEngagements : Dict ( Int, Int ) (WebData Engagement)
     }
 
 
@@ -90,6 +91,7 @@ initialModel flags route =
     , latestMessage = Ok "nothing"
     , engagements = RemoteData.NotAsked
     , users = RemoteData.NotAsked
+    , pendingSubmitEngagements = Dict.empty
     }
 
 
