@@ -1,31 +1,5 @@
 START TRANSACTION;
 
-SET search_path = api, pg_catalog;
-
-DROP VIEW users;
-
-CREATE VIEW users AS
-	SELECT "user".id,
-    "user".email,
-    "user".netid,
-    "user".name,
-    "user".lastname,
-    "user".organization,
-    "user".known_as,
-    "user".nickname,
-    "user".role,
-    "user".created_at,
-    "user".updated_at,
-    "user".team_nickname
-   FROM data."user";
-REVOKE ALL ON TABLE users FROM student;
-GRANT SELECT ON TABLE users TO student;
-REVOKE ALL ON TABLE users FROM ta;
-GRANT SELECT ON TABLE users TO ta;
-REVOKE ALL ON TABLE users FROM authapp;
-GRANT SELECT ON TABLE users TO authapp;
-REVOKE ALL ON TABLE users FROM faculty;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO faculty;
 
 SET search_path = data, pg_catalog;
 
@@ -46,8 +20,6 @@ USING (
     users.email,
     users.netid,
     users.name,
-    users.lastname,
-    users.organization,
     users.known_as,
     users.nickname,
     users.role,
@@ -71,8 +43,6 @@ WITH CHECK (
     users.email,
     users.netid,
     users.name,
-    users.lastname,
-    users.organization,
     users.known_as,
     users.nickname,
     users.role,
@@ -101,8 +71,6 @@ USING (
     u.email,
     u.netid,
     u.name,
-    u.lastname,
-    u.organization,
     u.known_as,
     u.nickname,
     u.role,
@@ -129,8 +97,6 @@ WITH CHECK (
     u.email,
     u.netid,
     u.name,
-    u.lastname,
-    u.organization,
     u.known_as,
     u.nickname,
     u.role,
@@ -140,5 +106,30 @@ WITH CHECK (
    FROM api.users u
   WHERE ((u.id = request.user_id()) AND ((u.team_nickname)::text = (assignment_submission.team_nickname)::text))))))))
 );
+
+SET search_path = api, pg_catalog;
+
+CREATE OR REPLACE VIEW users AS
+	SELECT "user".id,
+    "user".email,
+    "user".netid,
+    "user".name,
+    "user".known_as,
+    "user".nickname,
+    "user".role,
+    "user".created_at,
+    "user".updated_at,
+    "user".team_nickname,
+    "user".lastname,
+    "user".organization
+   FROM data."user";
+REVOKE ALL ON TABLE users FROM student;
+GRANT SELECT ON TABLE users TO student;
+REVOKE ALL ON TABLE users FROM ta;
+GRANT SELECT ON TABLE users TO ta;
+REVOKE ALL ON TABLE users FROM authapp;
+GRANT SELECT ON TABLE users TO authapp;
+REVOKE ALL ON TABLE users FROM faculty;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO faculty;
 
 COMMIT TRANSACTION;
