@@ -66,6 +66,7 @@ REVOKE ALL ON TABLE users FROM ta;
 GRANT SELECT ON TABLE users TO ta;
 
 
+SET search_path = data, pg_catalog;
 
 ALTER POLICY quiz_answer_access_policy ON quiz_answer TO api
 USING (
@@ -266,7 +267,6 @@ USING (
 );
 
 
-SET search_path = data, pg_catalog;
 
 CREATE TRIGGER engagement_rabbitmq_tg
 	AFTER INSERT OR UPDATE OR DELETE ON engagement
