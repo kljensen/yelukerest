@@ -82,7 +82,7 @@ userEngagementSelect meetingID engagements user =
     Html.p []
         [ Html.label [ Attrs.for (toString user.id) ] [ Html.text (niceName user) ]
         , Html.select
-            [ Events.onInput onInputHandler ]
+            [ Events.onInput onInputHandler, Attrs.name (toString user.id), Attrs.class "engagement" ]
             (List.map renderOptions participationEnum)
         ]
 
