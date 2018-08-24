@@ -83,7 +83,7 @@ func (b *broker) Start() {
 
 				log.Println("Removed client")
 
-			case <-time.After(10 * time.Second):
+			case <-time.After(30 * time.Second):
 				// This tick is sent in order to keep the SSE
 				// connection "alive". Some browsers and proxies
 				// will otherwise terminate the connection.
@@ -155,7 +155,6 @@ func (b *broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Write to the ResponseWriter, `w`.
 		fmt.Fprintf(w, "event: %s\n", msg.eventType)
 		fmt.Fprintf(w, "data: \"%s\"\n\n", msg.data)
-		log.Printf("Sending message of type %s\n", msg.eventType)
 
 		// Flush the response.  This is only possible if
 		// the repsonse supports streaming.
