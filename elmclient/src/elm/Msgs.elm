@@ -13,7 +13,7 @@ import Users.Model exposing (User)
 
 type SSEMsg
     = Noop
-    | SSEMessage (Result String String)
+    | SSETableChange (Result String String)
 
 
 type Msg

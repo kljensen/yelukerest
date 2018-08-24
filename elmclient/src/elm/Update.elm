@@ -15,6 +15,7 @@ import Engagements.Commands
         ( fetchEngagements
         , submitEngagement
         )
+import Engagements.Updates exposing (onSSETableChange)
 import Json.Decode exposing (decodeString, string)
 import Models exposing (Model)
 import Msgs exposing (Msg)
@@ -227,8 +228,17 @@ update msg model =
                 Msgs.Noop ->
                     ( model, Cmd.none )
 
-                Msgs.SSEMessage result ->
-                    ( { model | latestMessage = result }, Cmd.none )
+                Msgs.SSETableChange result ->
+                    let
+                        x =
+                            Debug.log "in sseeTablechange" "woot"
+                    in
+                    case result of
+                        Ok routingKey ->
+                            onSSETableChange routingKey ( { model | latestMessage = result }, Cmd.none )
+
+                        _ ->
+                            ( model, Cmd.none )
 
         Msgs.OnFetchEngagements response ->
             ( { model | engagements = response }, Cmd.none )
@@ -277,4 +287,4 @@ setSseAndDo model f =
 
 sseMessageDecoder : SSE.SsEvent -> Msg
 sseMessageDecoder event =
-    Msgs.OnSSE (Msgs.SSEMessage (decodeString string event.data))
+    Msgs.OnSSE (Msgs.SSETableChange (decodeString string event.data))

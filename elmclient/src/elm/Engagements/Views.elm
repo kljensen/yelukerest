@@ -66,9 +66,11 @@ editEngagementsForMeeting currentUser users engagements meeting =
 userEngagementSelect : Int -> List Engagement -> User -> Html.Html Msg
 userEngagementSelect meetingID engagements user =
     let
+        -- x =
+        --     Debug.log "meetingID, userID" ( meetingID, user.id )
         maybeEngagement =
             engagements
-                |> List.filter (\e -> e.user_id == user.id)
+                |> List.filter (\e -> e.user_id == user.id && e.meeting_id == meetingID)
                 |> List.head
 
         renderOptions =
@@ -94,10 +96,10 @@ participationSelectOption maybeEngagement optionValue =
                     False
 
                 Just engagement ->
-                    if engagement.participation == optionValue then
-                        True
-                    else
-                        False
+                    engagement.participation == optionValue
+
+        -- x =
+        --     Debug.log "(value, isSelected)" ( optionValue, isSelected )
     in
     Html.option
         [ Attrs.value optionValue
