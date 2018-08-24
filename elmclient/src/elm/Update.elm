@@ -229,10 +229,6 @@ update msg model =
                     ( model, Cmd.none )
 
                 Msgs.SSETableChange result ->
-                    let
-                        x =
-                            Debug.log "in sseeTablechange" "woot"
-                    in
                     case result of
                         Ok routingKey ->
                             onSSETableChange routingKey ( { model | latestMessage = result }, Cmd.none )
