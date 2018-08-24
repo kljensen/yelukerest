@@ -1,9 +1,6 @@
 START TRANSACTION;
 
-SET search_path = public, pg_catalog;
-
-DROP ROLE IF EXISTS ta;
-CREATE ROLE ta;
+SET search_path = api, public, pg_catalog;
 
 REVOKE ALL ON TABLE assignment_field_submissions FROM ta;
 GRANT SELECT, INSERT, UPDATE ON TABLE assignment_field_submissions TO ta;
@@ -68,23 +65,7 @@ GRANT SELECT ON TABLE ui_elements TO ta;
 REVOKE ALL ON TABLE users FROM ta;
 GRANT SELECT ON TABLE users TO ta;
 
-REVOKE ALL ON SEQUENCE assignment_submission_id_seq FROM ta;
-GRANT USAGE ON SEQUENCE assignment_submission_id_seq TO ta;
 
-REVOKE ALL ON SEQUENCE quiz_id_seq FROM student;
-
-REVOKE ALL ON SEQUENCE quiz_question_id_seq FROM ta;
-GRANT USAGE ON SEQUENCE quiz_question_id_seq TO ta;
-
-REVOKE ALL ON SEQUENCE quiz_question_option_id_seq FROM ta;
-GRANT USAGE ON SEQUENCE quiz_question_option_id_seq TO ta;
-
-SET search_path = data, pg_catalog;
-
-CREATE TRIGGER engagement_rabbitmq_tg
-	AFTER INSERT OR UPDATE OR DELETE ON engagement
-	FOR EACH ROW
-	EXECUTE PROCEDURE rabbitmq.on_row_change();
 
 ALTER POLICY quiz_answer_access_policy ON quiz_answer TO api
 USING (
@@ -283,5 +264,25 @@ ALTER POLICY user_access_policy ON "user" TO api
 USING (
   (((request.user_role() = 'student'::text) AND (request.user_id() = id)) OR ((request.user_role() = ANY ('{faculty,ta}'::text[])) OR (CURRENT_USER = 'authapp'::name)))
 );
+
+
+SET search_path = data, pg_catalog;
+
+CREATE TRIGGER engagement_rabbitmq_tg
+	AFTER INSERT OR UPDATE OR DELETE ON engagement
+	FOR EACH ROW
+	EXECUTE PROCEDURE rabbitmq.on_row_change();
+
+
+REVOKE ALL ON SEQUENCE assignment_submission_id_seq FROM ta;
+GRANT USAGE ON SEQUENCE assignment_submission_id_seq TO ta;
+
+REVOKE ALL ON SEQUENCE quiz_id_seq FROM student;
+
+REVOKE ALL ON SEQUENCE quiz_question_id_seq FROM ta;
+GRANT USAGE ON SEQUENCE quiz_question_id_seq TO ta;
+
+REVOKE ALL ON SEQUENCE quiz_question_option_id_seq FROM ta;
+GRANT USAGE ON SEQUENCE quiz_question_option_id_seq TO ta;
 
 COMMIT TRANSACTION;
