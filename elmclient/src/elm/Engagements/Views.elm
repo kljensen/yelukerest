@@ -9,7 +9,7 @@ import Html.Events as Events
 import Meetings.Model exposing (Meeting)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
-import Users.Model exposing (User)
+import Users.Model exposing (User, niceName)
 
 
 maybeEditEngagements : WebData CurrentUser -> WebData (List User) -> WebData (List Engagement) -> WebData (List Meeting) -> Int -> Html.Html Msg
@@ -80,7 +80,7 @@ userEngagementSelect meetingID engagements user =
             Msgs.OnChangeEngagement meetingID user.id
     in
     Html.p []
-        [ Html.label [ Attrs.for user.nickname ] [ Html.text user.nickname ]
+        [ Html.label [ Attrs.for (toString user.id) ] [ Html.text (niceName user) ]
         , Html.select
             [ Events.onInput onInputHandler ]
             (List.map renderOptions participationEnum)
