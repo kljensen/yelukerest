@@ -49,7 +49,7 @@ niceName : User -> String
 niceName user =
     let
         noNameDefault =
-            "User id#" ++ toString user.id
+            "User id#" ++ toString user.id ++ " (netid =" ++ user.netid ++ ")"
 
         prefix =
             case user.name of
