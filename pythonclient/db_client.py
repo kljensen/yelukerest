@@ -50,6 +50,15 @@ def ldapget(result, key):
         return None
 
 
+def known_as_is_redundant(known_as, name):
+    if not known_as:
+        return False
+    if known_as.lower() in set([x.lower() for x in name.split()]):
+        return True
+    if " " in known_as and known_as in name:
+        return True
+    return False
+
 @database.command()
 @click.pass_context
 def getuserldap(ctx):
@@ -63,13 +72,14 @@ def getuserldap(ctx):
     conn.commit()
 
     for netid in netids:
+        print('------------------' + netid)
         result = do_ldap_search(netid)
         if result:
             print(result)
             known_as = ldapget(result, 'knownAs')
-            if not known_as:
-                known_as = ldapget(result, "givenName")
             name = ldapget(result, 'cn')
+            if known_as_is_redundant(known_as, name):
+                known_as = None
             last_name = ldapget(result, 'sn')
             email = ldapget(result, 'mail')
             organization = ldapget(result, 'o')
