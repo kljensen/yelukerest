@@ -111,7 +111,7 @@ detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmiss
         , Markdown.toHtml [] meeting.description
         , case currentUser of
             RemoteData.Success user ->
-                showQuizStatus currentDate meeting.id wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
+                showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
@@ -133,14 +133,14 @@ recordEngagementButton meetingID currentUser =
             Html.text ""
 
 
-showQuizStatus : Date.Date -> Int -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
+showQuizStatus : Date.Date -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             let
                 maybeQuiz =
                     quizzes
-                        |> List.filter (\quiz -> quiz.meeting_id == meetingID)
+                        |> List.filter (\quiz -> quiz.meeting_id == meeting.id)
                         |> List.head
             in
             case maybeQuiz of
@@ -160,7 +160,10 @@ showQuizStatus currentDate meetingID wdQuizzes wdQuizSubmissions maybePendingBeg
                         ]
 
                 Nothing ->
-                    Html.p [] [ Html.text "There is no quiz for this meeting." ]
+                    if meeting.is_draft then
+                        Html.p [] [ Html.text "Unless this is a \"special\" class, like an exam, there will likely be a quiz. The class is still labeled \"draft\" and the quiz information cannot be loaded at this time." ]
+                    else
+                        Html.p [] [ Html.text "There is no quiz for this meeting." ]
 
         RemoteData.NotAsked ->
             Html.text "Quizzes not yet loaded. Unclear if there is a quiz for this meeting."
