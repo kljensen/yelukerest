@@ -359,7 +359,7 @@ def nukeload_assignment_field(base_url, jwt, slug, field_data):
 
 
 
-def load_assignment(base_url, jwt, ass_data):
+def load_assignment(base_url, jwt, ass_data, update_only=False):
     """ Load an assignment's data using either post or patch
     """
 
@@ -380,6 +380,9 @@ def load_assignment(base_url, jwt, ass_data):
     headers['Content-Type'] = 'application/json'
     response = http_call(url, headers=headers, data=data, params=query_params)
 
+    if update_only:
+        return
+
     # Delete the fields for this assignment
     fields = ass_data.get('child:assignment_fields', [])
     if fields:
@@ -395,15 +398,16 @@ def load_assignment(base_url, jwt, ass_data):
 
 @rest.command()
 @click.pass_context
+@click.option('--update/--no-update', default=False)
 @click.argument('yaml_file', type=click.File('r'))
-def nukeload_assignments(ctx, yaml_file):
+def nukeload_assignments(ctx, update, yaml_file):
     """ Nukes existing assignments and loads new ones
     """
     base_url = ctx.obj["base_url"]
     jwt = ctx.obj["jwt"]
     assignments = read_yaml(yaml_file)
     for assignment in  assignments:
-        load_assignment(base_url, jwt, assignment)
+        load_assignment(base_url, jwt, assignment, update)
 
 if __name__ == "__main__":
     rest(obj={}) # pylint: disable=E1123,E1120
