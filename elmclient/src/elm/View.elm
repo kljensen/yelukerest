@@ -57,6 +57,7 @@ indexView model =
         , div [] [ a [ href model.uiElements.aboutURL ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
+        , div [] [ Html.a [ href model.uiElements.canvasURL ] [ Html.text "Canvas" ] ]
         , piazzaLink model.uiElements.piazzaURL
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard model.currentUser ]

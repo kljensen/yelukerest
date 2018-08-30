@@ -18,6 +18,7 @@ type alias Flags =
     { courseTitle : String
     , piazzaURL : Maybe String
     , aboutURL : String
+    , canvasURL : String
     }
 
 
@@ -25,6 +26,7 @@ type alias UIElements =
     { courseTitle : String
     , piazzaURL : Maybe String
     , aboutURL : String
+    , canvasURL : String
     }
 
 
@@ -80,6 +82,7 @@ initialModel flags route =
         { courseTitle = flags.courseTitle
         , piazzaURL = flags.piazzaURL
         , aboutURL = flags.aboutURL
+        , canvasURL = flags.canvasURL
         }
     , assignmentSubmissions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty
