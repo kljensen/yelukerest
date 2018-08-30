@@ -145,18 +145,8 @@ showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBegin
             in
             case maybeQuiz of
                 Just quiz ->
-                    let
-                        quizMsg =
-                            case quiz.is_open of
-                                True ->
-                                    "There is a quiz for this meeting and it is open for submission until" ++ dateToString quiz.closed_at ++ "."
-
-                                False ->
-                                    "There is a quiz for this meeting but it is not open for submission. You must submit it between" ++ dateToString quiz.open_at ++ " and " ++ dateToString quiz.closed_at ++ "."
-                    in
                     Html.p []
-                        [ Html.text quizMsg
-                        , showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz
+                        [ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz
                         ]
 
                 Nothing ->
