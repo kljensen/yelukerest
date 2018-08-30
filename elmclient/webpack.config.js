@@ -56,6 +56,7 @@ const commonConfig = {
             // of through the environment. (?)
             COURSE_TITLE: JSON.stringify(process.env.COURSE_TITLE),
             PIAZZA_URL: JSON.stringify(process.env.PIAZZA_URL),
+            ABOUT_URL: JSON.stringify(process.env.ABOUT_URL),
         }),
     ],
 };

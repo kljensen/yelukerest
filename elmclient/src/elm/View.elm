@@ -54,7 +54,7 @@ indexView : Model -> Html Msg
 indexView model =
     div []
         [ h1 [] [ text model.uiElements.courseTitle ]
-        , div [] [ a [ href "https://github.com/yale-cpsc-213-spring-2018/about-this-class" ] [ text "About" ] ]
+        , div [] [ a [ href model.uiElements.aboutURL ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
         , piazzaLink model.uiElements.piazzaURL

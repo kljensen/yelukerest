@@ -17,12 +17,14 @@ import Users.Model exposing (User)
 type alias Flags =
     { courseTitle : String
     , piazzaURL : Maybe String
+    , aboutURL : String
     }
 
 
 type alias UIElements =
     { courseTitle : String
     , piazzaURL : Maybe String
+    , aboutURL : String
     }
 
 
@@ -77,6 +79,7 @@ initialModel flags route =
     , uiElements =
         { courseTitle = flags.courseTitle
         , piazzaURL = flags.piazzaURL
+        , aboutURL = flags.aboutURL
         }
     , assignmentSubmissions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty

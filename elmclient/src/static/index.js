@@ -1,5 +1,5 @@
 /* eslint-env browser */
-/* global PIAZZA_URL COURSE_TITLE */
+/* global PIAZZA_URL COURSE_TITLE ABOUT_URL */
 // pull in desired CSS/SASS files
 
 // eslint-disable-next-line import/no-unresolved
@@ -17,5 +17,6 @@ const initElmPorts = require('./elm-ports.js')
 const app = Elm.Main.embed(document.getElementById('main'), {
     courseTitle: COURSE_TITLE,
     piazzaURL: PIAZZA_URL,
+    aboutURL: ABOUT_URL,
 });
 initElmPorts(app);

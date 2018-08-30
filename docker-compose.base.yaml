@@ -12,6 +12,7 @@ services:
     environment:
       - DEVELOPMENT=${DEVELOPMENT}
       - PIAZZA_URL=${ELMCLIENT_PIAZZA_URL}
+      - ABOUT_URL=${ELMCLIENT_ABOUT_URL}
       - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
     volumes:
       # Note that the package.json-like files were moved into the
