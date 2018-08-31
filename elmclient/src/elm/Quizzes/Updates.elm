@@ -41,7 +41,7 @@ onSubmitQuizAnswers model quizID quizQuestionOptionIds =
                                 |> Set.intersect (Set.fromList quizQuestionOptionIds)
                                 |> Set.toList
                     in
-                    submitQuizAnswers user.jwt quizID selectedOptionIds
+                    submitQuizAnswers user quizID selectedOptionIds
 
                 _ ->
                     Cmd.none
@@ -60,15 +60,22 @@ onSubmitQuizAnswers model quizID quizQuestionOptionIds =
 onSubmitQuizAnswersComplete : Model -> Int -> WebData (List QuizAnswer) -> ( Model, Cmd Msg )
 onSubmitQuizAnswersComplete model quizID response =
     let
-        newModel =
+        psqs =
             case response of
                 RemoteData.Success quizAnswers ->
-                    { model | pendingSubmitQuizzes = Dict.remove quizID model.pendingSubmitQuizzes }
+                    Dict.remove quizID model.pendingSubmitQuizzes
 
                 _ ->
-                    { model | pendingSubmitQuizzes = Dict.insert quizID response model.pendingSubmitQuizzes }
+                    Dict.insert quizID response model.pendingSubmitQuizzes
     in
-    ( newModel, Cmd.none )
+    -- Update the pending submit quizzes and the quiz answers, which
+    -- we just received back in the response. (See the save_quiz RPC.)
+    ( { model
+        | pendingSubmitQuizzes = psqs
+        , quizAnswers = Dict.insert quizID response model.quizAnswers
+      }
+    , Cmd.none
+    )
 
 
 onFetchQuizSubmissions : Model -> WebData (List QuizSubmission) -> ( Model, Cmd Msg )

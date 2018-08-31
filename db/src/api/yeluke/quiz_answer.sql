@@ -15,6 +15,6 @@ BEGIN
     INSERT INTO api.quiz_answers(quiz_question_option_id, user_id, quiz_id) select unnest($2), request.user_id(), $1;
     -- Return all quiz answers for this quiz_id.
     RETURN QUERY
-        SELECT * FROM api.quiz_answers qa WHERE qa.quiz_id = $1;
+        SELECT * FROM api.quiz_answers qa WHERE qa.quiz_id = $1 AND qa.user_id=request.user_id();
 END; $$ 
 LANGUAGE 'plpgsql';

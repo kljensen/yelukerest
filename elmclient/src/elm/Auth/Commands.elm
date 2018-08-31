@@ -21,11 +21,23 @@ fetchCurrentUserUrl =
 
 fetchForCurrentUser : CurrentUser -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
 fetchForCurrentUser currentUser url decoder data2msg =
-    sendRequestWithJWT currentUser.jwt url decoder data2msg
+    fetchForJWT currentUser.jwt url decoder data2msg
+
+
+fetchForJWT : String -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
+fetchForJWT jwt url decoder data2msg =
+    sendRequestWithJWT jwt url decoder data2msg
 
 
 sendRequestWithJWT : JWT -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
 sendRequestWithJWT jwt url decoder data2msg =
+    requestForJWT jwt url decoder
+        |> RemoteData.sendRequest
+        |> Cmd.map data2msg
+
+
+requestForJWT : JWT -> String -> Decode.Decoder a -> Http.Request a
+requestForJWT jwt url decoder =
     let
         headers =
             [ Http.header "Authorization" ("Bearer " ++ jwt)
@@ -43,8 +55,6 @@ sendRequestWithJWT jwt url decoder data2msg =
                 }
     in
     request
-        |> RemoteData.sendRequest
-        |> Cmd.map data2msg
 
 
 

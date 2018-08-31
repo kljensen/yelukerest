@@ -23,6 +23,7 @@ import Quizzes.Model
         , quizSubmitability
         )
 import RemoteData exposing (WebData)
+import Set
 
 
 getOrNotAsked : comparable -> Dict comparable (WebData b) -> WebData b
@@ -122,6 +123,11 @@ showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pe
             quizQuestions
                 |> List.concatMap .options
                 |> List.map .id
+
+        quizAnswerSet =
+            quizAnswers
+                |> List.map .quiz_question_option_id
+                |> Set.fromList
     in
     Html.form
         [ Events.onWithOptions
@@ -129,7 +135,7 @@ showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pe
             { preventDefault = True, stopPropagation = False }
             (Decode.succeed (Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds))
         ]
-        (List.map (showQuestion quizAnswers) quizQuestions
+        (List.map (showQuestion quizAnswerSet) quizQuestions
             ++ [ showSubmitButton currentDate quiz quizSubmission pendingSubmit
                ]
         )
@@ -172,16 +178,23 @@ showSubmitButton currentDate quiz quizSubmission pendingSubmit =
             Html.div [] [ Html.text "This quiz is now closed and can no longer be submitted." ]
 
 
-showQuestion : List QuizAnswer -> QuizQuestion -> Html.Html Msg
-showQuestion quizAnswers quizQuestion =
+showQuestion : Set.Set Int -> QuizQuestion -> Html.Html Msg
+showQuestion selectedAnswers quizQuestion =
     Html.fieldset []
         ([ Markdown.toHtml [] quizQuestion.body ]
-            ++ List.map showQuestionOption quizQuestion.options
+            ++ List.map (showQuestionOption selectedAnswers) quizQuestion.options
         )
 
 
-showQuestionOption : QuizQuestionOption -> Html.Html Msg
-showQuestionOption option =
+showQuestionOption : Set.Set Int -> QuizQuestionOption -> Html.Html Msg
+showQuestionOption selectedAnswers option =
+    let
+        selectionIndicator =
+            if Set.member option.id selectedAnswers then
+                Html.span [ Attrs.class "saved-quiz-option" ] [ Html.text "SAVED" ]
+            else
+                Html.text ""
+    in
     Html.div []
         [ Html.input
             [ Attrs.name (toString option.id)
@@ -193,7 +206,9 @@ showQuestionOption option =
         , Html.label
             [ Attrs.for ("option-" ++ toString option.id)
             ]
-            [ Html.text option.body ]
+            [ Html.text option.body
+            , selectionIndicator
+            ]
         ]
 
 

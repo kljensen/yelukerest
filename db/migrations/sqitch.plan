@@ -14,3 +14,4 @@
 0000000011-add-ta-role 2018-08-24T19:36:05Z root <root@linuxkit-025000000001> # Add TA role
 0000000012-sse-engagements 2018-08-24T19:36:05Z root <root@linuxkit-025000000001> # Engagements over sse
 0000000013-user-last-name 2018-08-24T20:41:09Z root <root@linuxkit-025000000001> # Add last name and org fields to user
+0000000014-save-quiz-fix 2018-08-31T20:54:57Z root <root@linuxkit-025000000001> # fix save_quiz rpc

@@ -8,7 +8,7 @@ module Quizzes.Commands
         , submitQuizAnswers
         )
 
-import Auth.Commands exposing (fetchForCurrentUser)
+import Auth.Commands exposing (fetchForCurrentUser, requestForJWT)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http
 import Json.Decode as Decode
@@ -51,6 +51,12 @@ fetchQuizSubmissionsUrl userID =
 fetchQuizAnswers : Int -> CurrentUser -> Cmd Msg
 fetchQuizAnswers quizID currentUser =
     fetchForCurrentUser currentUser (fetchQuizAnswerUrl currentUser.id quizID) quizAnswersDecoder (Msgs.OnFetchQuizAnswers quizID)
+
+
+
+-- fetchQuizAnswersForJWT : Int -> String -> Cmd Msg
+-- fetchQuizAnswersForJWT quizID jwt =
+--     fetchForJWT jwt (fetchQuizAnswerUrl currentUser.id quizID) quizAnswersDecoder (Msgs.OnFetchQuizAnswers quizID)
 
 
 fetchQuizAnswerUrl : Int -> Int -> String
@@ -110,15 +116,15 @@ createQuizSubmission jwt quizID =
         |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
 
 
-submitQuizAnswers : JWT -> Int -> List Int -> Cmd Msg
-submitQuizAnswers jwt quizID quizQuestionOptionIds =
+submitQuizAnswers : CurrentUser -> Int -> List Int -> Cmd Msg
+submitQuizAnswers currentUser quizID quizQuestionOptionIds =
     let
         headers =
-            [ Http.header "Authorization" ("Bearer " ++ jwt)
+            [ Http.header "Authorization" ("Bearer " ++ currentUser.jwt)
             , Http.header "Prefer" "return=representation"
             ]
 
-        request =
+        saveRequest =
             Http.request
                 { method = "POST"
                 , headers = headers
@@ -139,6 +145,6 @@ submitQuizAnswers jwt quizID quizQuestionOptionIds =
                         )
                 }
     in
-    request
+    saveRequest
         |> RemoteData.sendRequest
         |> Cmd.map (Msgs.OnSubmitQuizAnswersComplete quizID)
