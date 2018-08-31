@@ -1,6 +1,17 @@
 module Assignments.Views exposing (detailView, listView)
 
-import Assignments.Model exposing (Assignment, AssignmentField, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission, PendingBeginAssignments)
+import Assignments.Model
+    exposing
+        ( Assignment
+        , AssignmentField
+        , AssignmentFieldSubmission
+        , AssignmentSlug
+        , AssignmentSubmission
+        , NotSubmissibleReason(..)
+        , PendingBeginAssignments
+        , SubmissibleState(..)
+        , isSubmissible
+        )
 import Auth.Views
 import Common.Views
 import Date exposing (Date)
@@ -58,8 +69,8 @@ getSubmissionForSlug submissions slug =
         |> List.head
 
 
-detailView : WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
-detailView assignments assignmentSubmissions pendingBeginAssignments slug current_date =
+detailView : Maybe Date.Date -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
+detailView maybeDate assignments assignmentSubmissions pendingBeginAssignments slug current_date =
     case ( assignments, assignmentSubmissions ) of
         ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
@@ -74,11 +85,14 @@ detailView assignments assignmentSubmissions pendingBeginAssignments slug curren
                 maybePendingBegin =
                     Dict.get slug pendingBeginAssignments
             in
-            case maybeAssignment of
-                Just assignment ->
-                    detailViewForJustAssignment assignment maybeSubmission maybePendingBegin current_date
+            case ( maybeDate, maybeAssignment ) of
+                ( Just currentDate, Just assignment ) ->
+                    detailViewForJustAssignment currentDate assignment maybeSubmission maybePendingBegin current_date
 
-                Nothing ->
+                ( Nothing, _ ) ->
+                    Html.div [] [ Html.text "Loading..." ]
+
+                ( _, Nothing ) ->
                     meetingNotFoundView slug
 
         ( _, _ ) ->
@@ -101,8 +115,8 @@ dateTimeToString date =
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Date -> Html.Html Msg
-detailViewForJustAssignment assignment maybeSubmission maybeBeginAssignment current_date =
+detailViewForJustAssignment : Date.Date -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Date -> Html.Html Msg
+detailViewForJustAssignment currentDate assignment maybeSubmission maybeBeginAssignment current_date =
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
@@ -117,16 +131,11 @@ detailViewForJustAssignment assignment maybeSubmission maybeBeginAssignment curr
                     [ showPreviousAssignment assignment submission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
-                    , submissionInstructions assignment submission
+                    , submissionInstructions currentDate assignment submission
                     ]
 
             Nothing ->
-                case assignment.is_draft of
-                    True ->
-                        Html.em [] [ text "This assignment is still in draft mode." ]
-
-                    False ->
-                        beginSubmission assignment maybeBeginAssignment
+                beginSubmission currentDate assignment maybeBeginAssignment
         ]
 
 
@@ -147,8 +156,27 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-beginSubmission assignment maybeBeginAssignment =
+beginSubmission : Date.Date -> Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+beginSubmission currentDate assignment maybeBeginAssignment =
+    case isSubmissible currentDate assignment of
+        Submissible assignment ->
+            showBeginAssignmentButton assignment maybeBeginAssignment
+
+        NotSubmissible reason ->
+            let
+                message =
+                    case reason of
+                        IsAfterClosed ->
+                            "This assignment is now closed for submissions."
+
+                        IsDraft ->
+                            "This assignment is still in draft mode and cannot yet be submitted."
+            in
+            Common.Views.divWithText message
+
+
+showBeginAssignmentButton : Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+showBeginAssignmentButton assignment maybeBeginAssignment =
     case maybeBeginAssignment of
         Nothing ->
             Html.button
@@ -180,19 +208,23 @@ spinner =
         ]
 
 
-submissionInstructions : Assignment -> AssignmentSubmission -> Html.Html Msg
-submissionInstructions assignment submission =
-    case assignment.is_open of
-        True ->
+submissionInstructions : Date.Date -> Assignment -> AssignmentSubmission -> Html.Html Msg
+submissionInstructions currentDate assignment submission =
+    case isSubmissible currentDate assignment of
+        Submissible assignment ->
             showSubmissionForm assignment
 
-        False ->
-            case assignment.is_draft of
-                True ->
-                    Html.div [] [ Html.text "This assignment is in draft mode and cannot yet be submitted." ]
+        NotSubmissible reason ->
+            let
+                message =
+                    case reason of
+                        IsAfterClosed ->
+                            "This assignment is now closed for submissions."
 
-                False ->
-                    Html.div [] [ Html.text "This assignment will not accept new submissions because it is past due." ]
+                        IsDraft ->
+                            "This assignment is still in draft mode and cannot yet be submitted."
+            in
+            Common.Views.divWithText message
 
 
 showSubmissionForm : Assignment -> Html.Html Msg

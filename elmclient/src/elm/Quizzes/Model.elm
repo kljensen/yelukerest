@@ -15,6 +15,7 @@ module Quizzes.Model
         , quizzesDecoder
         )
 
+import Common.Comparisons exposing (dateIsLessThan)
 import Date exposing (Date)
 import Json.Decode as Decode
 import Json.Decode.Extra exposing (date)
@@ -71,16 +72,6 @@ type SubmissionEditableState
     = EditableSubmission QuizSubmission
     | NotEditableSubmission QuizSubmission
     | NoSubmission
-
-
-dateIsLessThan : Date -> Date -> Bool
-dateIsLessThan a b =
-    case Basics.compare (Date.toTime a) (Date.toTime b) of
-        LT ->
-            True
-
-        _ ->
-            False
 
 
 quizSubmitability : Date -> Quiz -> Maybe QuizSubmission -> ( QuizOpenState, SubmissionEditableState )

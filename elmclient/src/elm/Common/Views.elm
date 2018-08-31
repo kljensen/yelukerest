@@ -3,6 +3,7 @@ module Common.Views
         ( DateTitleHrefRecord
         , dateTitleHrefRow
         , dateToString
+        , divWithText
         , merge4
         , piazzaLink
         , shortDateToString
@@ -61,6 +62,11 @@ dateTitleHrefRow dth =
                 [ Html.text dth.title ]
             ]
         ]
+
+
+divWithText : String -> Html Msg
+divWithText theText =
+    Html.div [] [ Html.text theText ]
 
 
 piazzaLink : Maybe String -> Html Msg

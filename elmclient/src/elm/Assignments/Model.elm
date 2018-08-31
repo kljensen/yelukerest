@@ -6,14 +6,18 @@ module Assignments.Model
         , AssignmentFieldSubmissionInputs
         , AssignmentSlug
         , AssignmentSubmission
+        , NotSubmissibleReason(..)
         , PendingAssignmentFieldSubmissionRequests
         , PendingBeginAssignments
+        , SubmissibleState(..)
         , assignmentFieldSubmissionsDecoder
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
+        , isSubmissible
         )
 
+import Common.Comparisons exposing (dateIsLessThan)
 import Date exposing (Date)
 import Dict exposing (Dict)
 import Json.Decode as Decode
@@ -169,3 +173,25 @@ assignmentFieldSubmissionDecoder =
         |> required "submitter_user_id" Decode.int
         |> required "created_at" Json.Decode.Extra.date
         |> required "updated_at" Json.Decode.Extra.date
+
+
+type NotSubmissibleReason
+    = IsDraft
+    | IsAfterClosed
+
+
+type SubmissibleState
+    = Submissible Assignment
+    | NotSubmissible NotSubmissibleReason
+
+
+isSubmissible : Date.Date -> Assignment -> SubmissibleState
+isSubmissible currentDate assignment =
+    if assignment.is_draft then
+        NotSubmissible IsDraft
+    else if assignment.is_open == False then
+        NotSubmissible IsAfterClosed
+    else if dateIsLessThan currentDate assignment.closed_at then
+        Submissible assignment
+    else
+        NotSubmissible IsAfterClosed
