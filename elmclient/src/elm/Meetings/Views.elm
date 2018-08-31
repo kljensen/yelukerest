@@ -222,6 +222,9 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                 ( AfterQuizClosed, _ ) ->
                     pText ("This quiz is now closed. It was due by " ++ dateToString quiz.closed_at ++ ".")
 
+                ( QuizIsDraft, _ ) ->
+                    pText "This quiz is still in draft mode. The instructor needs to finize the quiz."
+
                 ( BeforeQuizOpen, _ ) ->
                     pText ("This quiz is not yet open for submissions. It opens at " ++ dateToString quiz.open_at ++ ".")
 

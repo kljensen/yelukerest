@@ -65,6 +65,7 @@ quizDecoder =
 type QuizOpenState
     = BeforeQuizOpen
     | QuizOpen
+    | QuizIsDraft
     | AfterQuizClosed
 
 
@@ -82,6 +83,8 @@ quizSubmitability currentDate quiz maybeQuizSubmission =
                 BeforeQuizOpen
             else if dateIsLessThan quiz.closed_at currentDate then
                 AfterQuizClosed
+            else if quiz.is_draft then
+                QuizIsDraft
             else
                 QuizOpen
 
