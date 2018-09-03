@@ -113,10 +113,33 @@ def adduser(ctx, netid, role, nickname):
 def addstudents(ctx, infile):
     """ Add students from a list of netids
 
-        Run like `honcho run python ./db_client.py adduser klj39 faculty short-owl`
+        Run like `honcho run python ./db_client.py addstudents filename`
     """
     users = [line.strip() for line in infile]
     conn = ctx.obj['conn']
+    return addlistofstudents(conn, users)
+
+
+@database.command()
+@click.pass_context
+@click.argument('student')
+def addstudent(ctx, student):
+    """ Add a student by netid
+        Run like `honcho run python ./db_client.py addstudent klj12`
+    """
+    users = [student.strip()]
+    conn = ctx.obj['conn']
+    return addlistofstudents(conn, users)
+
+
+def addlistofstudents(conn, students):
+    """ Add a list of students
+    
+    Arguments:
+        conn {sql connection} -- connection to the postgres database
+        students {list} -- list of student netids, each of which a string
+    """
+
     cur = conn.cursor()
     statement = 'SELECT nickname FROM data.user'
     cur.execute(statement)
@@ -129,7 +152,7 @@ def addstudents(ctx, infile):
     existing_netids = set([row[0] for row in cur.fetchall()])
     conn.commit()
 
-    for netid in users:
+    for netid in students:
         if netid in existing_netids:
             continue
         tries = 0
@@ -138,7 +161,6 @@ def addstudents(ctx, infile):
             new_nickname = get_student_nickname()
             tries += 1
 
-        conn = ctx.obj['conn']
         cur = conn.cursor()
         statement = 'INSERT INTO data.user (netid, role, nickname) VALUES (%s, %s, %s)'
         cur.execute(statement, (netid, "student", new_nickname))
