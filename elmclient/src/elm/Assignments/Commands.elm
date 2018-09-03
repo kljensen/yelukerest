@@ -34,7 +34,7 @@ fetchAssignmentSubmissions currentUser =
 
 fetchAssignmentSubmissionsUrl : Int -> String
 fetchAssignmentSubmissionsUrl userID =
-    "/rest/assignment_submissions?user_id=eq." ++ toString userID ++ ",select=*,fields:assignment_field_submissions(*)"
+    "/rest/assignment_submissions?user_id=eq." ++ toString userID ++ "&select=*,fields:assignment_field_submissions(*)"
 
 
 createAssignmentSubmission : JWT -> AssignmentSlug -> Cmd Msg
