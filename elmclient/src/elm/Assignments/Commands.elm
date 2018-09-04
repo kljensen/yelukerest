@@ -29,12 +29,40 @@ fetchAssignmentsUrl =
 
 fetchAssignmentSubmissions : CurrentUser -> Cmd Msg
 fetchAssignmentSubmissions currentUser =
-    fetchForCurrentUser currentUser (fetchAssignmentSubmissionsUrl currentUser.id) assignmentSubmissionsDecoder Msgs.OnFetchAssignmentSubmissions
+    fetchForCurrentUser currentUser (fetchAssignmentSubmissionsUrl currentUser) assignmentSubmissionsDecoder Msgs.OnFetchAssignmentSubmissions
 
 
-fetchAssignmentSubmissionsUrl : Int -> String
-fetchAssignmentSubmissionsUrl userID =
-    "/rest/assignment_submissions?user_id=eq." ++ toString userID ++ "&select=*,fields:assignment_field_submissions(*)"
+fetchAssignmentSubmissionsUrl : CurrentUser -> String
+fetchAssignmentSubmissionsUrl currentUser =
+    let
+        base =
+            "/rest/assignment_submissions"
+
+        select =
+            "select=*,fields:assignment_field_submissions(*)"
+
+        defaultQuery =
+            base
+                ++ "?user_id=eq."
+                ++ toString currentUser.id
+                ++ "&"
+                ++ select
+    in
+    case currentUser.team_nickname of
+        Just nickname ->
+            if nickname == "" then
+                defaultQuery
+            else
+                base
+                    ++ "?or=(user_id.eq."
+                    ++ toString currentUser.id
+                    ++ ",team_nickname.eq."
+                    ++ nickname
+                    ++ ")&"
+                    ++ select
+
+        Nothing ->
+            defaultQuery
 
 
 createAssignmentSubmission : JWT -> AssignmentSlug -> Cmd Msg
