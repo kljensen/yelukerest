@@ -12,6 +12,7 @@ import Assignments.Model
         , SubmissibleState(..)
         , isSubmissible
         )
+import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Common.Views
 import Date exposing (Date)
@@ -62,15 +63,39 @@ listAssignments assignments =
     Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
 
 
-getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> Maybe AssignmentSubmission
-getSubmissionForSlug submissions slug =
-    submissions
-        |> List.filter (\submission -> submission.assignment_slug == slug)
-        |> List.head
+{-| Test if an assignment submission belongs to the user. That is,
+the submission has the user's user_id or user's team_nickname.
+By design, only one of the these fields will exist for the
+submission---the other will be Nothing.
+-}
+submissionBelongsToUser : CurrentUser -> AssignmentSubmission -> Bool
+submissionBelongsToUser u sub =
+    case ( sub.user_id, u.team_nickname, sub.team_nickname ) of
+        ( Just user_id, _, _ ) ->
+            user_id == u.id
+
+        ( _, Just nick1, Just nick2 ) ->
+            nick1 == nick2
+
+        ( _, _, _ ) ->
+            False
 
 
-detailView : Maybe Date.Date -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
-detailView maybeDate assignments assignmentSubmissions pendingBeginAssignments slug current_date =
+getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> WebData CurrentUser -> Maybe AssignmentSubmission
+getSubmissionForSlug submissions slug wdCurrentUser =
+    case wdCurrentUser of
+        RemoteData.Success u ->
+            submissions
+                |> List.filter (\s -> s.assignment_slug == slug)
+                |> List.filter (submissionBelongsToUser u)
+                |> List.head
+
+        _ ->
+            Nothing
+
+
+detailView : WebData CurrentUser -> Maybe Date.Date -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
+detailView wdCurrentUser maybeDate assignments assignmentSubmissions pendingBeginAssignments slug current_date =
     case ( assignments, assignmentSubmissions ) of
         ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
@@ -80,7 +105,7 @@ detailView maybeDate assignments assignmentSubmissions pendingBeginAssignments s
                         |> List.head
 
                 maybeSubmission =
-                    getSubmissionForSlug submissions slug
+                    getSubmissionForSlug submissions slug wdCurrentUser
 
                 maybePendingBegin =
                     Dict.get slug pendingBeginAssignments
