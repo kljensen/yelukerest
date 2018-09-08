@@ -8,7 +8,7 @@ select * from check_test(
         'quiz_question_options', 'quiz_answers', 'ui_elements',
         'assignments', 'assignment_fields', 'assignment_submissions',
         'assignment_field_submissions', 'quiz_grades', 'assignment_grades',
-        'quiz_grade_stats', 'assignment_grade_stats'], 'tables present'),
+        'quiz_grade_distributions', 'assignment_grade_distributions'], 'tables present'),
     true,
     'all views are present in api schema',
     'tables present',

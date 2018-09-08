@@ -1,5 +1,5 @@
 
-CREATE OR REPLACE VIEW assignment_grade_stats AS
+CREATE OR REPLACE VIEW assignment_grade_distributions AS
     SELECT
         sub.assignment_slug,
         COUNT(sub.id), -- Any field fine here. "*" is a PITA with migrations
@@ -18,28 +18,28 @@ CREATE OR REPLACE VIEW assignment_grade_stats AS
     WHERE role='student'
     GROUP BY sub.assignment_slug;
 
-COMMENT ON VIEW assignment_grade_stats IS
+COMMENT ON VIEW assignment_grade_distributions IS
     'Statics on the grades received by students for each assignment';
-COMMENT ON COLUMN assignment_grade_stats.assignment_slug IS
+COMMENT ON COLUMN assignment_grade_distributions.assignment_slug IS
     'The slug for the assignment to which these statistics correspond';
-COMMENT ON COLUMN assignment_grade_stats.count IS
+COMMENT ON COLUMN assignment_grade_distributions.count IS
     'The number of students with grades for this assignment';
-COMMENT ON COLUMN assignment_grade_stats.average IS
+COMMENT ON COLUMN assignment_grade_distributions.average IS
     'The average grade among students for this assignment';
-COMMENT ON COLUMN assignment_grade_stats.min IS
+COMMENT ON COLUMN assignment_grade_distributions.min IS
     'The minmum grade among students for this assignment';
-COMMENT ON COLUMN assignment_grade_stats.max IS
+COMMENT ON COLUMN assignment_grade_distributions.max IS
     'The maximum grade among students for this assignment';
-COMMENT ON COLUMN assignment_grade_stats.points_possible IS
+COMMENT ON COLUMN assignment_grade_distributions.points_possible IS
     'The number of points possible for this assignment';
-COMMENT ON COLUMN assignment_grade_stats.stddev IS
+COMMENT ON COLUMN assignment_grade_distributions.stddev IS
     'The standard deviation of student grades for this assignment';
-COMMENT ON COLUMN assignment_grade_stats.grades IS
+COMMENT ON COLUMN assignment_grade_distributions.grades IS
     'The grades received by students for this assignment in ascending order';
 
 -- NOTICE We do *NOT* alter the owner to API because
--- we will not have an RLS for assignment_grade_stats. This is
+-- we will not have an RLS for assignment_grade_distributions. This is
 -- because then users would not be able to see accurate
 -- stats because the RLS would flow through to the assignment_grade
 -- table.
--- alter view assignment_grade_stats owner to api;
+-- alter view assignment_grade_distributions owner to api;

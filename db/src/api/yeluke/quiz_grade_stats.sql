@@ -1,5 +1,5 @@
 
-CREATE OR REPLACE VIEW quiz_grade_stats AS
+CREATE OR REPLACE VIEW quiz_grade_distributions AS
     SELECT
         quiz_id,
         COUNT(user_id), -- Best to not use * here, using user_id instead
@@ -18,29 +18,29 @@ CREATE OR REPLACE VIEW quiz_grade_stats AS
     GROUP BY quiz_id;
 
 
-COMMENT ON VIEW quiz_grade_stats IS
+COMMENT ON VIEW quiz_grade_distributions IS
     'Statics on the grades received by students for each quiz';
-COMMENT ON COLUMN quiz_grade_stats.quiz_id IS
+COMMENT ON COLUMN quiz_grade_distributions.quiz_id IS
     'The slug for the quiz to which these statistics correspond';
-COMMENT ON COLUMN quiz_grade_stats.count IS
+COMMENT ON COLUMN quiz_grade_distributions.count IS
     'The number of students with grades for this quiz';
-COMMENT ON COLUMN quiz_grade_stats.average IS
+COMMENT ON COLUMN quiz_grade_distributions.average IS
     'The average grade among students for this quiz';
-COMMENT ON COLUMN quiz_grade_stats.min IS
+COMMENT ON COLUMN quiz_grade_distributions.min IS
     'The minmum grade among students for this quiz';
-COMMENT ON COLUMN quiz_grade_stats.max IS
+COMMENT ON COLUMN quiz_grade_distributions.max IS
     'The maximum grade among students for this quiz';
-COMMENT ON COLUMN quiz_grade_stats.points_possible IS
+COMMENT ON COLUMN quiz_grade_distributions.points_possible IS
     'The number of points possible for this quiz';
-COMMENT ON COLUMN quiz_grade_stats.stddev IS
+COMMENT ON COLUMN quiz_grade_distributions.stddev IS
     'The standard deviation of student grades for this quiz';
-COMMENT ON COLUMN quiz_grade_stats.grades IS
+COMMENT ON COLUMN quiz_grade_distributions.grades IS
     'The grades received by students for this quiz in ascending order';
 
 
 -- NOTICE We do *NOT* alter the owner to API because
--- we will not have an RLS for quiz_grade_stats. This is
+-- we will not have an RLS for quiz_grade_distributions. This is
 -- because then users would not be able to see accurate
 -- stats because the RLS would flow through to the quiz_grade
 -- table.
--- alter view quiz_grade_stats owner to api;
+-- alter view quiz_grade_distributions owner to api;
