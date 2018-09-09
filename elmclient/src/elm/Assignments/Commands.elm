@@ -1,9 +1,21 @@
-module Assignments.Commands exposing (createAssignmentSubmission, fetchAssignmentSubmissions, fetchAssignments, sendAssignmentFieldSubmissions)
+module Assignments.Commands
+    exposing
+        ( createAssignmentSubmission
+        , fetchAssignmentGradeDistributions
+        , fetchAssignmentGrades
+        , fetchAssignmentSubmissions
+        , fetchAssignments
+        , sendAssignmentFieldSubmissions
+        )
 
 import Assignments.Model
     exposing
-        ( AssignmentSlug
+        ( AssignmentGrade
+        , AssignmentGradeDistribution
+        , AssignmentSlug
         , assignmentFieldSubmissionsDecoder
+        , assignmentGradeDistributionsDecoder
+        , assignmentGradesDecoder
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
@@ -135,3 +147,29 @@ sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
     request
         |> RemoteData.sendRequest
         |> Cmd.map (Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug)
+
+
+{-| Notice that there is no way to restrict this
+set of returned grades to only those owned by the
+current user via the API. So, for user with the
+'faculty' role, more assignment grades will come
+back than are owned by the user.
+-}
+fetchAssignmentGrades : CurrentUser -> Cmd Msg
+fetchAssignmentGrades currentUser =
+    fetchForCurrentUser currentUser fetchAssignmentGradesUrl assignmentGradesDecoder Msgs.OnFetchAssignmentGrades
+
+
+fetchAssignmentGradesUrl : String
+fetchAssignmentGradesUrl =
+    "/rest/assignment_grades"
+
+
+fetchAssignmentGradeDistributions : CurrentUser -> Cmd Msg
+fetchAssignmentGradeDistributions currentUser =
+    fetchForCurrentUser currentUser fetchAssignmentGradeDistributionsUrl assignmentGradeDistributionsDecoder Msgs.OnFetchAssignmentGradeDistributions
+
+
+fetchAssignmentGradeDistributionsUrl : String
+fetchAssignmentGradeDistributionsUrl =
+    "/rest/assignment_grade_distributions"

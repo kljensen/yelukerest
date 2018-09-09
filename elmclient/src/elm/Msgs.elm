@@ -1,6 +1,14 @@
 module Msgs exposing (Msg(..), SSEMsg(..))
 
-import Assignments.Model exposing (Assignment, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
+import Assignments.Model
+    exposing
+        ( Assignment
+        , AssignmentFieldSubmission
+        , AssignmentGrade
+        , AssignmentGradeDistribution
+        , AssignmentSlug
+        , AssignmentSubmission
+        )
 import Auth.Model exposing (CurrentUser)
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
@@ -27,6 +35,8 @@ type SSEMsg
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
     | OnFetchAssignments (WebData (List Assignment))
+    | OnFetchAssignmentGrades (WebData (List AssignmentGrade))
+    | OnFetchAssignmentGradeDistributions (WebData (List AssignmentGradeDistribution))
     | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))
     | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)

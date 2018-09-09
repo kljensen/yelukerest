@@ -1,6 +1,16 @@
 module Models exposing (..)
 
-import Assignments.Model exposing (Assignment, AssignmentFieldSubmissionInputs, AssignmentSlug, AssignmentSubmission, PendingAssignmentFieldSubmissionRequests, PendingBeginAssignments)
+import Assignments.Model
+    exposing
+        ( Assignment
+        , AssignmentFieldSubmissionInputs
+        , AssignmentGrade
+        , AssignmentGradeDistribution
+        , AssignmentSlug
+        , AssignmentSubmission
+        , PendingAssignmentFieldSubmissionRequests
+        , PendingBeginAssignments
+        )
 import Auth.Model exposing (CurrentUser)
 import Date exposing (Date)
 import Dict exposing (Dict)
@@ -50,6 +60,8 @@ type alias Model =
     , quizGradeDistributions : WebData (List QuizGradeDistribution)
     , uiElements : UIElements
     , assignmentSubmissions : WebData (List AssignmentSubmission)
+    , assignmentGrades : WebData (List AssignmentGrade)
+    , assignmentGradeDistributions : WebData (List AssignmentGradeDistribution)
 
     -- A dictionary that tracks requests initiated to begin a
     -- particular assignment, that is, to create an assignment submission
@@ -97,6 +109,8 @@ initialModel flags route =
         , canvasURL = flags.canvasURL
         }
     , assignmentSubmissions = RemoteData.NotAsked
+    , assignmentGrades = RemoteData.NotAsked
+    , assignmentGradeDistributions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty
     , pendingBeginQuizzes = Dict.empty
     , pendingSubmitQuizzes = Dict.empty
