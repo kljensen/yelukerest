@@ -7,7 +7,15 @@ import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg, SSEMsg(..))
-import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
+import Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizAnswer
+        , QuizGrade
+        , QuizGradeDistribution
+        , QuizQuestion
+        , QuizSubmission
+        )
 import RemoteData exposing (WebData)
 import SSE exposing (SseAccess)
 import Set exposing (Set)
@@ -38,6 +46,8 @@ type alias Model =
     , assignments : WebData (List Assignment)
     , quizzes : WebData (List Quiz)
     , quizSubmissions : WebData (List QuizSubmission)
+    , quizGrades : WebData (List QuizGrade)
+    , quizGradeDistributions : WebData (List QuizGradeDistribution)
     , uiElements : UIElements
     , assignmentSubmissions : WebData (List AssignmentSubmission)
 
@@ -78,6 +88,8 @@ initialModel flags route =
     , assignments = RemoteData.NotAsked
     , quizzes = RemoteData.NotAsked
     , quizSubmissions = RemoteData.NotAsked
+    , quizGrades = RemoteData.NotAsked
+    , quizGradeDistributions = RemoteData.NotAsked
     , uiElements =
         { courseTitle = flags.courseTitle
         , piazzaURL = flags.piazzaURL

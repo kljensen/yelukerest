@@ -23,6 +23,8 @@ import Quizzes.Commands
     exposing
         ( createQuizSubmission
         , fetchQuizAnswers
+        , fetchQuizGradeDistributions
+        , fetchQuizGrades
         , fetchQuizQuestions
         , fetchQuizSubmissions
         , fetchQuizzes
@@ -31,6 +33,8 @@ import Quizzes.Updates
     exposing
         ( onBeginQuiz
         , onBeginQuizComplete
+        , onFetchQuizGradeDistributions
+        , onFetchQuizGrades
         , onFetchQuizSubmissions
         , onSubmitQuizAnswers
         , onSubmitQuizAnswersComplete
@@ -96,6 +100,8 @@ update msg model =
                                 , fetchQuizzes user
                                 , fetchAssignmentSubmissions user
                                 , fetchQuizSubmissions user
+                                , fetchQuizGrades user
+                                , fetchQuizGradeDistributions user
                                 ]
 
                         ( sseUserModel, sseCmd ) =
@@ -189,6 +195,12 @@ update msg model =
 
         Msgs.OnFetchQuizSubmissions response ->
             onFetchQuizSubmissions model response
+
+        Msgs.OnFetchQuizGrades response ->
+            onFetchQuizGrades model response
+
+        Msgs.OnFetchQuizGradeDistributions response ->
+            onFetchQuizGradeDistributions model response
 
         Msgs.OnBeginQuiz quizID ->
             onBeginQuiz model quizID

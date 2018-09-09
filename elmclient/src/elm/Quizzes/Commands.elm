@@ -2,6 +2,8 @@ module Quizzes.Commands
     exposing
         ( createQuizSubmission
         , fetchQuizAnswers
+        , fetchQuizGradeDistributions
+        , fetchQuizGrades
         , fetchQuizQuestions
         , fetchQuizSubmissions
         , fetchQuizzes
@@ -17,8 +19,12 @@ import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
         ( Quiz
+        , QuizGrade
+        , QuizGradeDistribution
         , QuizSubmission
         , quizAnswersDecoder
+        , quizGradeDistributionsDecoder
+        , quizGradesDecoder
         , quizQuestionsDecoder
         , quizSubmissionDecoder
         , quizSubmissionsDecoder
@@ -72,6 +78,26 @@ fetchQuizQuestionsUrl quizID =
 fetchQuizQuestions : Int -> CurrentUser -> Cmd Msg
 fetchQuizQuestions quizID currentUser =
     fetchForCurrentUser currentUser (fetchQuizQuestionsUrl quizID) quizQuestionsDecoder (Msgs.OnFetchQuizQuestions quizID)
+
+
+fetchQuizGrades : CurrentUser -> Cmd Msg
+fetchQuizGrades currentUser =
+    fetchForCurrentUser currentUser (fetchQuizGradesUrl currentUser.id) quizGradesDecoder Msgs.OnFetchQuizGrades
+
+
+fetchQuizGradesUrl : Int -> String
+fetchQuizGradesUrl userID =
+    "/rest/quiz_grades?user_id=eq." ++ toString userID
+
+
+fetchQuizGradeDistributions : CurrentUser -> Cmd Msg
+fetchQuizGradeDistributions currentUser =
+    fetchForCurrentUser currentUser fetchQuizGradeDistributionsUrl quizGradeDistributionsDecoder Msgs.OnFetchQuizGradeDistributions
+
+
+fetchQuizGradeDistributionsUrl : String
+fetchQuizGradeDistributionsUrl =
+    "/rest/quiz_grade_distributions"
 
 
 

@@ -2,6 +2,8 @@ module Quizzes.Updates
     exposing
         ( onBeginQuiz
         , onBeginQuizComplete
+        , onFetchQuizGradeDistributions
+        , onFetchQuizGrades
         , onFetchQuizSubmissions
         , onSubmitQuizAnswers
         , onSubmitQuizAnswersComplete
@@ -21,7 +23,13 @@ import Quizzes.Commands
         , fetchQuizzes
         , submitQuizAnswers
         )
-import Quizzes.Model exposing (QuizAnswer, QuizSubmission)
+import Quizzes.Model
+    exposing
+        ( QuizAnswer
+        , QuizGrade
+        , QuizGradeDistribution
+        , QuizSubmission
+        )
 import RemoteData exposing (WebData)
 import Set
 
@@ -140,3 +148,13 @@ takeQuiz model quizID =
             }
     in
     ( newModel, Cmd.batch ([ load ("#quiz-submissions/" ++ toString quizID) ] ++ extraCmds) )
+
+
+onFetchQuizGrades : Model -> WebData (List QuizGrade) -> ( Model, Cmd Msg )
+onFetchQuizGrades model response =
+    ( { model | quizGrades = response }, Cmd.none )
+
+
+onFetchQuizGradeDistributions : Model -> WebData (List QuizGradeDistribution) -> ( Model, Cmd Msg )
+onFetchQuizGradeDistributions model response =
+    ( { model | quizGradeDistributions = response }, Cmd.none )

@@ -2,12 +2,16 @@ module Quizzes.Model
     exposing
         ( Quiz
         , QuizAnswer
+        , QuizGrade
+        , QuizGradeDistribution
         , QuizOpenState(..)
         , QuizQuestion
         , QuizQuestionOption
         , QuizSubmission
         , SubmissionEditableState(..)
         , quizAnswersDecoder
+        , quizGradeDistributionsDecoder
+        , quizGradesDecoder
         , quizQuestionsDecoder
         , quizSubmissionDecoder
         , quizSubmissionsDecoder
@@ -190,3 +194,59 @@ quizQuestionOptionDecoder =
 quizQuestionOptionsDecoder : Decode.Decoder (List QuizQuestionOption)
 quizQuestionOptionsDecoder =
     Decode.list quizQuestionOptionDecoder
+
+
+type alias QuizGrade =
+    { quiz_id : Int
+    , points : Float
+    , points_possible : Int
+    , user_id : Int
+    , created_at : Date
+    , updated_at : Date
+    }
+
+
+quizGradeDecoder : Decode.Decoder QuizGrade
+quizGradeDecoder =
+    decode QuizGrade
+        |> required "quiz_id" Decode.int
+        |> required "points" Decode.float
+        |> required "points_possible" Decode.int
+        |> required "user_id" Decode.int
+        |> required "created_at" Json.Decode.Extra.date
+        |> required "updated_at" Json.Decode.Extra.date
+
+
+quizGradesDecoder : Decode.Decoder (List QuizGrade)
+quizGradesDecoder =
+    Decode.list quizGradeDecoder
+
+
+type alias QuizGradeDistribution =
+    { quiz_id : Int
+    , count : Int
+    , average : Float
+    , min : Float
+    , max : Float
+    , points_possible : Int
+    , stddev : Float
+    , grades : List Float
+    }
+
+
+quizGradeDistributionDecoder : Decode.Decoder QuizGradeDistribution
+quizGradeDistributionDecoder =
+    decode QuizGradeDistribution
+        |> required "quiz_id" Decode.int
+        |> required "count" Decode.int
+        |> required "average" Decode.float
+        |> required "min" Decode.float
+        |> required "max" Decode.float
+        |> required "points_possible" Decode.int
+        |> required "stddev" Decode.float
+        |> required "grades" (Decode.list Decode.float)
+
+
+quizGradeDistributionsDecoder : Decode.Decoder (List QuizGradeDistribution)
+quizGradeDistributionsDecoder =
+    Decode.list quizGradeDistributionDecoder

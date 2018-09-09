@@ -5,7 +5,15 @@ import Auth.Model exposing (CurrentUser)
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
-import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
+import Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizAnswer
+        , QuizGrade
+        , QuizGradeDistribution
+        , QuizQuestion
+        , QuizSubmission
+        )
 import RemoteData exposing (WebData)
 import Time exposing (Time)
 import Users.Model exposing (User)
@@ -24,6 +32,8 @@ type Msg
     | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
+    | OnFetchQuizGrades (WebData (List QuizGrade))
+    | OnFetchQuizGradeDistributions (WebData (List QuizGradeDistribution))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
     | OnLocationChange Location
     | Tick Time
