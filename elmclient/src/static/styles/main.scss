@@ -8,7 +8,7 @@ html {
 
 body {
     font-family: Source Code Pro, fixed;
-    padding-bottom:2rem;
+    padding-bottom: 2rem;
 }
 
 .meeting-draft {
@@ -24,12 +24,18 @@ select.engagement {
     margin-left: 1rem;
 }
 
-span.saved-quiz-option{
+span.saved-quiz-option {
     background-color: #999;
     margin-left: 1rem;
     color: #fff;
     padding: 0 0.25rem;
     font-size: small;
+}
+
+table.dashboard {
+    table-layout: auto;
+    border-spacing: 5px 1rem;
+    vertical-align: top;
 }
 
 // .classdate {
@@ -40,6 +46,7 @@ span.saved-quiz-option{
     h1 {
         font-size: 1.25rem;
     }
+
     ul {
         padding-left: 1rem;
     }

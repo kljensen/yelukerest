@@ -5,6 +5,7 @@ module Common.Views
         , dateToString
         , divWithText
         , merge4
+        , merge8
         , piazzaLink
         , shortDateToString
         , showDraftStatus
@@ -36,6 +37,27 @@ merge4 a b c d =
         |> RemoteData.andMap b
         |> RemoteData.andMap c
         |> RemoteData.andMap d
+
+
+merge8 :
+    WebData a
+    -> WebData b
+    -> WebData c
+    -> WebData d
+    -> WebData e
+    -> WebData f
+    -> WebData g
+    -> WebData h
+    -> WebData ( a, b, c, d, e, f, g, h )
+merge8 a b c d e f g h =
+    RemoteData.map (,,,,,,,) a
+        |> RemoteData.andMap b
+        |> RemoteData.andMap c
+        |> RemoteData.andMap d
+        |> RemoteData.andMap e
+        |> RemoteData.andMap f
+        |> RemoteData.andMap g
+        |> RemoteData.andMap h
 
 
 showDraftStatus : Bool -> Html.Html Msg

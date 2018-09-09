@@ -3,6 +3,7 @@ module View exposing (..)
 import Assignments.Views
 import Auth.Views
 import Common.Views exposing (piazzaLink)
+import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
@@ -26,7 +27,7 @@ page model =
             indexView model
 
         Models.CurrentUserDashboardRoute ->
-            Auth.Views.dashboard model.currentUser
+            Dashboard.Views.dashboard model.currentUser model.meetings model.assignments model.assignmentGrades model.assignmentGradeDistributions model.quizzes model.quizGrades model.quizGradeDistributions
 
         Models.MeetingListRoute ->
             Meetings.Views.listView model.meetings
