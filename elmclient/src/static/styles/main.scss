@@ -34,8 +34,20 @@ span.saved-quiz-option {
 
 table.dashboard {
     table-layout: auto;
-    border-spacing: 5px 1rem;
+    // border-spacing: 1rem 0.5rem;
     vertical-align: top;
+    text-align: left;
+    border-collapse: collapse;
+
+    tbody tr:nth-child(odd) {
+        background-color: #f6f6f6;
+    }
+
+    td,
+    th {
+        padding: 0.25rem 0.25rem 0 1rem
+    }
+
 }
 
 // .classdate {

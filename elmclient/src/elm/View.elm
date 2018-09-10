@@ -27,7 +27,7 @@ page model =
             indexView model
 
         Models.CurrentUserDashboardRoute ->
-            Dashboard.Views.dashboard model.currentUser model.meetings model.assignments model.assignmentGrades model.assignmentGradeDistributions model.quizzes model.quizGrades model.quizGradeDistributions
+            Dashboard.Views.dashboard model
 
         Models.MeetingListRoute ->
             Meetings.Views.listView model.meetings
