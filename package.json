@@ -3,24 +3,24 @@
   "dependencies": {
     "chai": "^4.1.2",
     "chai-as-promised": "^7.1.1",
-    "chai-string": "^1.4.0",
+    "chai-string": "^1.5.0",
     "elm-format": "^0.7.0-exp",
-    "eslint": "^4.14.0",
+    "eslint": "^4.19.1",
     "eslint-config-airbnb-base": "^12.1.0",
-    "eslint-plugin-import": "^2.8.0",
+    "eslint-plugin-import": "^2.14.0",
     "expect-cookies": "^0.1.2",
-    "lodash": "^4.17.4",
+    "lodash": "^4.17.10",
     "npm": "^5.10.0",
     "subzero-cli": "^0.1.23"
   },
   "devDependencies": {
-    "babel-core": "^6.24.0",
+    "babel-core": "^6.26.3",
     "babel-preset-latest": "^6.24.1",
     "dirty-chai": "^2.0.1",
     "dotenv": "4.0.0",
     "mocha": "^3.2.0",
     "should": "^11.2.0",
-    "supertest": "^3.0.0"
+    "supertest": "^3.3.0"
   },
   "scripts": {
     "test_rest": "mocha --recursive ./tests/rest/",
