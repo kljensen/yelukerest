@@ -17,6 +17,7 @@ import Html exposing (Html)
 import Html.Attributes as Attrs
 import Meetings.Model exposing (Meeting)
 import Msgs exposing (Msg)
+import Round
 import Quizzes.Model
     exposing
         ( Quiz
@@ -233,6 +234,7 @@ quizGradeTableHeader =
             , th "Meeting"
             , th "Status"
             , th "Grade"
+            , th "Points Possible"
             , th "Class Average"
             , th "Class Stddev"
             ]
@@ -284,7 +286,7 @@ showGradeForQuiz gd quiz meeting =
             gd.quizGrades
                 |> List.filter matchesQuizAndUser
                 |> List.head
-                |> maybeToStringWithDefault "Not graded" (\x -> toString x.points)
+                |> maybeToStringWithDefault "Not graded" (\x -> prettyFloat x.points)
 
         maybeGdist =
             gd.quizGradeDistributions
@@ -294,7 +296,7 @@ showGradeForQuiz gd quiz meeting =
         ( average, stddev ) =
             case maybeGdist of
                 Just gdist ->
-                    ( toString gdist.average, toString gdist.stddev )
+                    ( prettyFloat gdist.average, prettyFloat gdist.stddev )
 
                 Nothing ->
                     ( "n/a", "n/a" )
@@ -304,6 +306,7 @@ showGradeForQuiz gd quiz meeting =
         , td meeting.title
         , td qs
         , td grade
+        , td (toString quiz.points_possible)
         , td average
         , td stddev
         ]
@@ -365,10 +368,15 @@ assignmentGradeTableHeader =
             , th "Assignment"
             , th "Status"
             , th "Grade"
+            , th "Points Possible"
             , th "Class Average"
             , th "Class Stddev"
             ]
         ]
+
+prettyFloat: Float -> String
+prettyFloat x =
+    Round.round 2 x
 
 
 showGradeForAssignment : AssignmentGradeData a -> Assignment -> Html.Html Msg
@@ -386,11 +394,14 @@ showGradeForAssignment gd assignment =
         subInfo =
             maybeToStringWithDefault "Not submitted" (\x -> "Submitted") maybeSub
 
+        {- Have to be careful because users in the 'faculty' role
+           will have more assignmentSubmissions than just their own
+        -}
         matchesMaybeSubmission =
-            \maybeSub quizGrade ->
+            \maybeSub assignmentGrade ->
                 case maybeSub of
                     Just sub ->
-                        quizGrade.assignment_submission_id == sub.id
+                        assignmentGrade.assignment_submission_id == sub.id
 
                     Nothing ->
                         False
@@ -399,17 +410,18 @@ showGradeForAssignment gd assignment =
             gd.assignmentGrades
                 |> List.filter (matchesMaybeSubmission maybeSub)
                 |> List.head
-                |> maybeToStringWithDefault "Not graded" (\x -> toString x.points)
+                |> maybeToStringWithDefault "Not graded" (\x -> prettyFloat x.points)
 
         maybeGdist =
             gd.assignmentGradeDistributions
                 |> List.filter (\x -> x.assignment_slug == assignment.slug)
                 |> List.head
 
+
         ( average, stddev ) =
             case maybeGdist of
                 Just gdist ->
-                    ( toString gdist.average, toString gdist.stddev )
+                    ( prettyFloat gdist.average, prettyFloat gdist.stddev )
 
                 Nothing ->
                     ( "n/a", "n/a" )
@@ -419,6 +431,7 @@ showGradeForAssignment gd assignment =
         , td assignment.title
         , td subInfo
         , td grade
+        , td (toString assignment.points_possible)
         , td average
         , td stddev
         ]
