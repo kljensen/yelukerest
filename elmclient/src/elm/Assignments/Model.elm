@@ -4,6 +4,8 @@ module Assignments.Model
         , AssignmentField
         , AssignmentFieldSubmission
         , AssignmentFieldSubmissionInputs
+        , AssignmentGrade
+        , AssignmentGradeDistribution
         , AssignmentSlug
         , AssignmentSubmission
         , NotSubmissibleReason(..)
@@ -11,12 +13,16 @@ module Assignments.Model
         , PendingBeginAssignments
         , SubmissibleState(..)
         , assignmentFieldSubmissionsDecoder
+        , assignmentGradeDistributionsDecoder
+        , assignmentGradesDecoder
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
         , isSubmissible
+        , submissionBelongsToUser
         )
 
+import Auth.Model exposing (CurrentUser)
 import Common.Comparisons exposing (dateIsLessThan)
 import Date exposing (Date)
 import Dict exposing (Dict)
@@ -163,6 +169,24 @@ assignmentFieldSubmissionsDecoder =
     Decode.list assignmentFieldSubmissionDecoder
 
 
+{-| Test if an assignment submission belongs to the user. That is,
+the submission has the user's user_id or user's team_nickname.
+By design, only one of the these fields will exist for the
+submission---the other will be Nothing.
+-}
+submissionBelongsToUser : CurrentUser -> AssignmentSubmission -> Bool
+submissionBelongsToUser u sub =
+    case ( sub.user_id, u.team_nickname, sub.team_nickname ) of
+        ( Just user_id, _, _ ) ->
+            user_id == u.id
+
+        ( _, Just nick1, Just nick2 ) ->
+            nick1 == nick2
+
+        ( _, _, _ ) ->
+            False
+
+
 assignmentFieldSubmissionDecoder : Decode.Decoder AssignmentFieldSubmission
 assignmentFieldSubmissionDecoder =
     decode AssignmentFieldSubmission
@@ -195,3 +219,59 @@ isSubmissible currentDate assignment =
         Submissible assignment
     else
         NotSubmissible IsAfterClosed
+
+
+type alias AssignmentGrade =
+    { assignment_slug : String
+    , assignment_submission_id : Int
+    , points : Float
+    , points_possible : Int
+    , created_at : Date
+    , updated_at : Date
+    }
+
+
+assignmentGradeDecoder : Decode.Decoder AssignmentGrade
+assignmentGradeDecoder =
+    decode AssignmentGrade
+        |> required "assignment_slug" Decode.string
+        |> required "assignment_submission_id" Decode.int
+        |> required "points" Decode.float
+        |> required "points_possible" Decode.int
+        |> required "created_at" Json.Decode.Extra.date
+        |> required "updated_at" Json.Decode.Extra.date
+
+
+assignmentGradesDecoder : Decode.Decoder (List AssignmentGrade)
+assignmentGradesDecoder =
+    Decode.list assignmentGradeDecoder
+
+
+type alias AssignmentGradeDistribution =
+    { assignment_slug : String
+    , count : Int
+    , average : Float
+    , min : Float
+    , max : Float
+    , points_possible : Int
+    , stddev : Float
+    , grades : List Float
+    }
+
+
+assignmentGradeDistributionDecoder : Decode.Decoder AssignmentGradeDistribution
+assignmentGradeDistributionDecoder =
+    decode AssignmentGradeDistribution
+        |> required "assignment_slug" Decode.string
+        |> required "count" Decode.int
+        |> required "average" Decode.float
+        |> required "min" Decode.float
+        |> required "max" Decode.float
+        |> required "points_possible" Decode.int
+        |> required "stddev" Decode.float
+        |> required "grades" (Decode.list Decode.float)
+
+
+assignmentGradeDistributionsDecoder : Decode.Decoder (List AssignmentGradeDistribution)
+assignmentGradeDistributionsDecoder =
+    Decode.list assignmentGradeDistributionDecoder

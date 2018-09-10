@@ -11,6 +11,7 @@ import Assignments.Model
         , PendingBeginAssignments
         , SubmissibleState(..)
         , isSubmissible
+        , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
@@ -61,24 +62,6 @@ listAssignments assignments =
             List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug }) assignments
     in
     Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
-
-
-{-| Test if an assignment submission belongs to the user. That is,
-the submission has the user's user_id or user's team_nickname.
-By design, only one of the these fields will exist for the
-submission---the other will be Nothing.
--}
-submissionBelongsToUser : CurrentUser -> AssignmentSubmission -> Bool
-submissionBelongsToUser u sub =
-    case ( sub.user_id, u.team_nickname, sub.team_nickname ) of
-        ( Just user_id, _, _ ) ->
-            user_id == u.id
-
-        ( _, Just nick1, Just nick2 ) ->
-            nick1 == nick2
-
-        ( _, _, _ ) ->
-            False
 
 
 getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> WebData CurrentUser -> Maybe AssignmentSubmission

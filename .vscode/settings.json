@@ -1,4 +1,6 @@
 {
     "elm.formatOnSave": true,
-    "elm.formatCommand": "./node_modules/.bin/elm-format"
+    "elm.formatCommand": "./node_modules/.bin/elm-format",
+    "elm.makeCommand": "elm-make",
+    "json.formatOnSave": false,
 }

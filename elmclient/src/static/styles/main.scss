@@ -8,7 +8,7 @@ html {
 
 body {
     font-family: Source Code Pro, fixed;
-    padding-bottom:2rem;
+    padding-bottom: 2rem;
 }
 
 .meeting-draft {
@@ -24,12 +24,30 @@ select.engagement {
     margin-left: 1rem;
 }
 
-span.saved-quiz-option{
+span.saved-quiz-option {
     background-color: #999;
     margin-left: 1rem;
     color: #fff;
     padding: 0 0.25rem;
     font-size: small;
+}
+
+table.dashboard {
+    table-layout: auto;
+    // border-spacing: 1rem 0.5rem;
+    vertical-align: top;
+    text-align: left;
+    border-collapse: collapse;
+
+    tbody tr:nth-child(odd) {
+        background-color: #f6f6f6;
+    }
+
+    td,
+    th {
+        padding: 0.25rem 0.25rem 0 1rem
+    }
+
 }
 
 // .classdate {
@@ -40,6 +58,7 @@ span.saved-quiz-option{
     h1 {
         font-size: 1.25rem;
     }
+
     ul {
         padding-left: 1rem;
     }

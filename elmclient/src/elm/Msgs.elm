@@ -1,11 +1,27 @@
 module Msgs exposing (Msg(..), SSEMsg(..))
 
-import Assignments.Model exposing (Assignment, AssignmentFieldSubmission, AssignmentSlug, AssignmentSubmission)
+import Assignments.Model
+    exposing
+        ( Assignment
+        , AssignmentFieldSubmission
+        , AssignmentGrade
+        , AssignmentGradeDistribution
+        , AssignmentSlug
+        , AssignmentSubmission
+        )
 import Auth.Model exposing (CurrentUser)
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
 import Navigation exposing (Location)
-import Quizzes.Model exposing (Quiz, QuizAnswer, QuizQuestion, QuizSubmission)
+import Quizzes.Model
+    exposing
+        ( Quiz
+        , QuizAnswer
+        , QuizGrade
+        , QuizGradeDistribution
+        , QuizQuestion
+        , QuizSubmission
+        )
 import RemoteData exposing (WebData)
 import Time exposing (Time)
 import Users.Model exposing (User)
@@ -19,11 +35,15 @@ type SSEMsg
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
     | OnFetchAssignments (WebData (List Assignment))
+    | OnFetchAssignmentGrades (WebData (List AssignmentGrade))
+    | OnFetchAssignmentGradeDistributions (WebData (List AssignmentGradeDistribution))
     | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))
     | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
+    | OnFetchQuizGrades (WebData (List QuizGrade))
+    | OnFetchQuizGradeDistributions (WebData (List QuizGradeDistribution))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
     | OnLocationChange Location
     | Tick Time
