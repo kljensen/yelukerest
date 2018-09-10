@@ -4,6 +4,16 @@ from operator import attrgetter
 from itertools import groupby
 from psycopg2.extras import NamedTupleCursor
 
+def get_gradable_quiz_ids(conn):
+    """ Get the ids of quizzes that can be graded
+    
+    Arguments:
+        conn {psycopg2 Connection} -- The connection to the database
+    """
+    query = 'SELECT id from data.quiz where closed_at < current_timestamp AND is_draft=false'
+    quizzes = do_execute(conn, query, None)
+    return [q.id for q in quizzes]
+
 
 def get_nt_cursor(conn):
     """ Get a database cursor that will allow us to get

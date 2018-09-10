@@ -175,6 +175,16 @@ def grade_quiz(ctx, quiz_id):
     conn = ctx.obj['conn']
     quiz.grade(conn, quiz_id)
 
+@database.command()
+@click.pass_context
+def grade_quizzes(ctx):
+    """ Grades all quizzes that are closed and not draft
+    """
+    conn = ctx.obj['conn']
+    gradable_quiz_ids = quiz.get_gradable_quiz_ids(conn)
+    for quiz_id in gradable_quiz_ids:
+        quiz.grade(conn, quiz_id)
+
 
 if __name__ == "__main__":
      #pylint: disable=unexpected-keyword-arg, no-value-for-parameter
