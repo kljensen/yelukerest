@@ -380,6 +380,7 @@ showGradeForAssignment gd assignment =
         maybeSub =
             gd.assignmentSubmissions
                 |> List.filter (submissionBelongsToUser gd.currentUser)
+                |> List.filter (\x -> x.assignment_slug == assignment.slug)
                 |> List.head
 
         subInfo =
