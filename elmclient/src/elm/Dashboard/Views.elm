@@ -17,7 +17,6 @@ import Html exposing (Html)
 import Html.Attributes as Attrs
 import Meetings.Model exposing (Meeting)
 import Msgs exposing (Msg)
-import Round
 import Quizzes.Model
     exposing
         ( Quiz
@@ -26,6 +25,7 @@ import Quizzes.Model
         , QuizSubmission
         )
 import RemoteData exposing (WebData)
+import Round
 
 
 type alias WebDataGradeData a =
@@ -146,26 +146,30 @@ dashboard webDataGradeData =
 
 showDashboard : CurrentUser -> Html.Html Msg
 showDashboard currentUser =
+    let
+        row =
+            dashboardRow []
+    in
     Html.div []
         [ Html.h2 [] [ Html.text "Your account info" ]
         , Html.table [ Attrs.class "dashboard" ]
             [ Html.tbody []
-                [ dashboardRow "id" (toString currentUser.id)
-                , dashboardRow "netid" currentUser.netid
-                , dashboardRow "role" currentUser.role
-                , dashboardRow "nickname" currentUser.nickname
-                , dashboardRow "team_nickname" (Maybe.withDefault "none" currentUser.team_nickname)
-                , dashboardRow "jwt" currentUser.jwt
+                [ row "id" (toString currentUser.id)
+                , row "netid" currentUser.netid
+                , row "role" currentUser.role
+                , row "nickname" currentUser.nickname
+                , row "team_nickname" (Maybe.withDefault "none" currentUser.team_nickname)
+                , dashboardRow [ Attrs.class "secondary" ] "jwt" currentUser.jwt
                 ]
             ]
         ]
 
 
-dashboardRow : String -> String -> Html.Html Msg
-dashboardRow label value =
+dashboardRow : List (Html.Attribute Msg) -> String -> String -> Html.Html Msg
+dashboardRow attrs label value =
     Html.tr []
-        [ Html.td [] [ Html.text label ]
-        , Html.td [] [ Html.text value ]
+        [ Html.td attrs [ Html.text label ]
+        , Html.td attrs [ Html.text value ]
         ]
 
 
@@ -224,19 +228,15 @@ quizGradeTableBodyContents gd =
 
 quizGradeTableHeader : Html.Html Msg
 quizGradeTableHeader =
-    let
-        th =
-            \x -> Html.th [] [ Html.text x ]
-    in
     Html.thead []
         [ Html.tr []
             [ th "Date"
-            , th "Meeting"
-            , th "Status"
+            , th2 "Meeting"
+            , th2 "Status"
             , th "Grade"
-            , th "Points Possible"
+            , th2 "Points Possible"
             , th "Class Average"
-            , th "Class Stddev"
+            , th2 "Class Stddev"
             ]
         ]
 
@@ -267,12 +267,29 @@ shortDate d =
     DateFormat.format "%d %b" d
 
 
+td : String -> Html.Html Msg
+td x =
+    Html.td [] [ Html.text x ]
+
+
+td2 : String -> Html.Html Msg
+td2 x =
+    Html.td [ Attrs.class "secondary" ] [ Html.text x ]
+
+
+th : String -> Html.Html Msg
+th x =
+    Html.th [] [ Html.text x ]
+
+
+th2 : String -> Html.Html Msg
+th2 x =
+    Html.th [ Attrs.class "secondary" ] [ Html.text x ]
+
+
 showGradeForQuiz : QuizGradeData a -> Quiz -> Meeting -> Html.Html Msg
 showGradeForQuiz gd quiz meeting =
     let
-        td =
-            \x -> Html.td [] [ Html.text x ]
-
         matchesQuizAndUser =
             \x -> x.quiz_id == quiz.id && x.user_id == gd.currentUser.id
 
@@ -303,12 +320,12 @@ showGradeForQuiz gd quiz meeting =
     in
     Html.tr []
         [ td (shortDate meeting.begins_at)
-        , td meeting.title
-        , td qs
+        , td2 meeting.title
+        , td2 qs
         , td grade
-        , td (toString quiz.points_possible)
+        , td2 (toString quiz.points_possible)
         , td average
-        , td stddev
+        , td2 stddev
         ]
 
 
@@ -358,23 +375,20 @@ assignmentGradeTableBodyContents gd =
 
 assignmentGradeTableHeader : Html.Html Msg
 assignmentGradeTableHeader =
-    let
-        th =
-            \x -> Html.th [] [ Html.text x ]
-    in
     Html.thead []
         [ Html.tr []
-            [ th "Date"
+            [ th2 "Date"
             , th "Assignment"
-            , th "Status"
+            , th2 "Status"
             , th "Grade"
-            , th "Points Possible"
+            , th2 "Points Possible"
             , th "Class Average"
-            , th "Class Stddev"
+            , th2 "Class Stddev"
             ]
         ]
 
-prettyFloat: Float -> String
+
+prettyFloat : Float -> String
 prettyFloat x =
     Round.round 2 x
 
@@ -382,9 +396,6 @@ prettyFloat x =
 showGradeForAssignment : AssignmentGradeData a -> Assignment -> Html.Html Msg
 showGradeForAssignment gd assignment =
     let
-        td =
-            \x -> Html.td [] [ Html.text x ]
-
         maybeSub =
             gd.assignmentSubmissions
                 |> List.filter (submissionBelongsToUser gd.currentUser)
@@ -417,7 +428,6 @@ showGradeForAssignment gd assignment =
                 |> List.filter (\x -> x.assignment_slug == assignment.slug)
                 |> List.head
 
-
         ( average, stddev ) =
             case maybeGdist of
                 Just gdist ->
@@ -427,11 +437,11 @@ showGradeForAssignment gd assignment =
                     ( "n/a", "n/a" )
     in
     Html.tr []
-        [ td (shortDate assignment.closed_at)
+        [ td2 (shortDate assignment.closed_at)
         , td assignment.title
-        , td subInfo
+        , td2 subInfo
         , td grade
-        , td (toString assignment.points_possible)
+        , td2 (toString assignment.points_possible)
         , td average
-        , td stddev
+        , td2 stddev
         ]

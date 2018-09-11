@@ -2,6 +2,8 @@
 // @import '~bootstrap-sass/assets/stylesheets/bootstrap/_mixins.scss';
 // @import '~bootstrap-sass/assets/stylesheets/_bootstrap.scss';
 // can add Boostrap overrides, additional Sass/CSS below...
+$small-break: 600px;
+
 html {
     max-width: 900px;
 }
@@ -48,13 +50,21 @@ table.dashboard {
         padding: 0.25rem 0.25rem 0 1rem
     }
 
+    @media only screen and (max-width: $small-break) {
+
+        th.secondary,
+        td.secondary {
+            display: none;
+        }
+    }
+
 }
 
 // .classdate {
 //     background-color: #000;
 //     color: #fff;
 // }
-@media only screen and (max-width: 600px) {
+@media only screen and (max-width: $small-break) {
     h1 {
         font-size: 1.25rem;
     }
