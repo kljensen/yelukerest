@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS grade_exception (
     -- This can be used to extend deadline for
     -- an assignment or quiz.
     closed_at TIMESTAMP WITH TIME ZONE,
-    fractional_credit DECIMAL DEFAULT 1
-        CHECK (fractional_credit >= 0 AND fractional_credit <= 1),
+    fractional_credit DECIMAL
+        CHECK (fractional_credit IS NULL OR (fractional_credit >= 0 AND fractional_credit <= 1)),
 
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
