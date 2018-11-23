@@ -18,6 +18,7 @@
 \ir ./yeluke/assignment_grade.sql
 \ir ./yeluke/quiz_grade_distributions.sql
 \ir ./yeluke/assignment_grade_distributions.sql
+\ir ./yeluke/grade_exception.sql
 
 -- Remove api's ability to execute functions in public schema.
 ALTER DEFAULT PRIVILEGES FOR ROLE api REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
