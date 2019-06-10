@@ -8,4 +8,5 @@ RUN mkdir -p /opt/app
 ADD package.json /opt/app/package.json
 ADD package-lock.json /opt/app/package-lock.json
 ADD elm-package.json /opt/app/elm-package.json
+ADD postcss.config.js /opt/app/postcss.config.js
 RUN cd /opt/app && npm run reinstall

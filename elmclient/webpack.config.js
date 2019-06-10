@@ -3,7 +3,8 @@ const webpack = require('webpack');
 const merge = require('webpack-merge');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const autoprefixer = require('autoprefixer');
-const ExtractTextPlugin = require('extract-text-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+// const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const CompressionPlugin = require('compression-webpack-plugin');
 
@@ -23,8 +24,16 @@ const outputFilename = isProd ? '[name]-[hash].js' : '[name].js';
 // eslint-disable-next-line no-console
 console.log(`WEBPACK GO! Building for ${TARGET_ENV}`);
 
+const miniCssLoader = {
+    loader: MiniCssExtractPlugin.loader,
+    options: {
+        hmr: process.env.NODE_ENV === 'development',
+    },
+};
+
 // common webpack config (valid for dev and prod)
 const commonConfig = {
+    mode: isDev ? 'development' : 'production',
     output: {
         path: outputPath,
         filename: `static/js/${outputFilename}`,
@@ -38,6 +47,15 @@ const commonConfig = {
         rules: [{
             test: /\.(eot|ttf|woff|woff2|svg)$/,
             use: 'file-loader?publicPath=../../&name=static/css/[hash].[ext]',
+        }, {
+            test: /\.(sa|sc|c)ss$/,
+            use: [
+                'style-loader',
+                miniCssLoader,
+                'css-loader',
+                'postcss-loader',
+                'sass-loader',
+            ],
         }],
     },
     plugins: [
@@ -58,6 +76,12 @@ const commonConfig = {
             PIAZZA_URL: JSON.stringify(process.env.PIAZZA_URL),
             ABOUT_URL: JSON.stringify(process.env.ABOUT_URL),
             CANVAS_URL: JSON.stringify(process.env.CANVAS_URL),
+        }),
+        new MiniCssExtractPlugin({
+            // Options similar to the same options in webpackOptions.output
+            // both options are optional
+            filename: isDev ? '[name].css' : '[name]-[hash].css',
+            chunkFilename: isDev ? '[id].css' : '[id]-[hash].css',
         }),
     ],
 };
@@ -85,12 +109,6 @@ if (isDev === true) {
                         debug: true,
                     },
                 }],
-            }, {
-                test: /\.css$/,
-                use: ['style-loader', 'css-loader', 'postcss-loader'],
-            }, {
-                test: /\.sc?ss$/,
-                use: ['style-loader', 'css-loader', 'postcss-loader', 'sass-loader'],
             }],
         },
     });
@@ -105,25 +123,9 @@ if (isProd === true) {
                 test: /\.elm$/,
                 exclude: [/elm-stuff/, /node_modules/],
                 use: 'elm-webpack-loader',
-            }, {
-                test: /\.css$/,
-                use: ExtractTextPlugin.extract({
-                    fallback: 'style-loader',
-                    use: ['css-loader', 'postcss-loader'],
-                }),
-            }, {
-                test: /\.sc?ss$/,
-                use: ExtractTextPlugin.extract({
-                    fallback: 'style-loader',
-                    use: ['css-loader', 'postcss-loader', 'sass-loader'],
-                }),
             }],
         },
         plugins: [
-            new ExtractTextPlugin({
-                filename: 'static/css/[name]-[hash].css',
-                allChunks: true,
-            }),
             new CopyWebpackPlugin([{
                 from: 'src/static/img/',
                 to: 'static/img/',
@@ -133,13 +135,13 @@ if (isProd === true) {
 
             // extract CSS into a separate file
             // minify & mangle JS/CSS
-            new webpack.optimize.UglifyJsPlugin({
-                minimize: true,
-                compressor: {
-                    warnings: false,
-                },
-                // mangle:  true
-            }),
+            // new webpack.optimize.minimize({
+            //     minimize: true,
+            //     compressor: {
+            //         warnings: false,
+            //     },
+            //     // mangle:  true
+            // }),
             new webpack.optimize.AggressiveMergingPlugin(),
             // Make a .gz copy of each asset
             new CompressionPlugin({
