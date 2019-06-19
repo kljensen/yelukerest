@@ -1,8 +1,7 @@
-module Common.Comparisons
-    exposing
-        ( dateIsLessThan
-        , sortByDate
-        )
+module Common.Comparisons exposing
+    ( dateIsLessThan
+    , sortByDate
+    )
 
 import Date exposing (Date)
 

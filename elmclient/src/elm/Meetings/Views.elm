@@ -152,6 +152,7 @@ showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBegin
                 Nothing ->
                     if meeting.is_draft then
                         Html.p [] [ Html.text "Unless this is a \"special\" class, like an exam, there will likely be a quiz. The class is still labeled \"draft\" and the quiz information cannot be loaded at this time." ]
+
                     else
                         Html.p [] [ Html.text "There is no quiz for this meeting." ]
 

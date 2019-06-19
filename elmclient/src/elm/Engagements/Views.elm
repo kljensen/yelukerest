@@ -22,6 +22,7 @@ maybeEditEngagements wdCurrentUser wdUsers wdEngagements wdMeetings meetingID =
         RemoteData.Success ( currentUser, users, engagements, meetings ) ->
             if isFacultyOrTA currentUser.role then
                 editEngagements currentUser users engagements meetings meetingID
+
             else
                 Html.text "forbidden"
 

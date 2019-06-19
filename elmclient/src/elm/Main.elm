@@ -1,4 +1,4 @@
-module Main exposing (..)
+module Main exposing (init, main)
 
 import Auth.Commands exposing (fetchCurrentUser)
 import Common.Commands exposing (updateDate)
@@ -11,6 +11,7 @@ import Subscriptions exposing (subscriptions)
 import Update exposing (update)
 import View exposing (view)
 
+
 init : Flags -> Location -> ( Model, Cmd Msg )
 init flags location =
     let
@@ -18,7 +19,6 @@ init flags location =
             Routing.parseLocation location
     in
     ( initialModel flags currentRoute, Cmd.batch [ fetchMeetings, fetchCurrentUser, updateDate ] )
-
 
 
 main : Program Flags Model Msg

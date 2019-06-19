@@ -1,4 +1,4 @@
-module Meetings.Commands exposing (..)
+module Meetings.Commands exposing (fetchMeetings, fetchMeetingsUrl)
 
 import Http
 import Meetings.Model exposing (Meeting, meetingsDecoder)

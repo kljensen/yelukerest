@@ -192,6 +192,7 @@ showQuestionOption selectedAnswers option =
         selectionIndicator =
             if Set.member option.id selectedAnswers then
                 Html.span [ Attrs.class "saved-quiz-option" ] [ Html.text "SAVED" ]
+
             else
                 Html.text ""
     in

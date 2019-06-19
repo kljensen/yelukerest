@@ -12,7 +12,6 @@ import Auth.Model exposing (CurrentUser)
 import Auth.Views exposing (loginLink)
 import Common.Comparisons exposing (sortByDate)
 import Date exposing (Date)
-import Date.Format as DateFormat
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Meetings.Model exposing (Meeting)
@@ -264,7 +263,8 @@ maybeToStringWithDefault default f x =
 shortDate : Date -> String
 shortDate d =
     -- The space in here is nonbreaking unicode \x00A0
-    DateFormat.format "%d %b" d
+    -- DateFormat.format "%d\u{00A0}%b" d
+    "foo"
 
 
 td : String -> Html.Html Msg

@@ -1,14 +1,13 @@
-module Quizzes.Updates
-    exposing
-        ( onBeginQuiz
-        , onBeginQuizComplete
-        , onFetchQuizGradeDistributions
-        , onFetchQuizGrades
-        , onFetchQuizSubmissions
-        , onSubmitQuizAnswers
-        , onSubmitQuizAnswersComplete
-        , takeQuiz
-        )
+module Quizzes.Updates exposing
+    ( onBeginQuiz
+    , onBeginQuizComplete
+    , onFetchQuizGradeDistributions
+    , onFetchQuizGrades
+    , onFetchQuizSubmissions
+    , onSubmitQuizAnswers
+    , onSubmitQuizAnswersComplete
+    , takeQuiz
+    )
 
 import Dict
 import Models exposing (Model)

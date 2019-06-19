@@ -1,10 +1,9 @@
-module Users.Model
-    exposing
-        ( JWT
-        , User
-        , niceName
-        , usersDecoder
-        )
+module Users.Model exposing
+    ( JWT
+    , User
+    , niceName
+    , usersDecoder
+    )
 
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (decode, optional, required)
@@ -56,6 +55,7 @@ niceName user =
                 Just name ->
                     if isEmpty name then
                         noNameDefault
+
                     else
                         name
 
@@ -67,6 +67,7 @@ niceName user =
                 Just known_as ->
                     if isEmpty known_as then
                         ""
+
                     else
                         " (" ++ known_as ++ ")"
 

@@ -17,7 +17,6 @@ import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Common.Views
 import Date exposing (Date)
-import Date.Format as DateFormat
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
@@ -116,10 +115,11 @@ meetingNotFoundView slug =
 
 dateTimeToString : Date.Date -> String
 dateTimeToString date =
-    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
+    "foo"
 
 
 
+-- DateFormat.format "%l:%M%p %A, %B %e, %Y" date
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
@@ -252,6 +252,7 @@ showFormField assignmentField =
         fieldType =
             if assignmentField.is_url then
                 "url"
+
             else
                 "text"
     in
@@ -308,6 +309,7 @@ showPreviousSubmissionField fieldSubmissions field =
         fieldType =
             if field.is_url then
                 "url"
+
             else
                 "text"
     in

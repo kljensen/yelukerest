@@ -1,4 +1,4 @@
-module Update exposing (..)
+module Update exposing (listToDict, setSseAndDo, sseMessageDecoder, update, valuesFromDict)
 
 import Assignments.Commands
     exposing
@@ -125,6 +125,7 @@ update msg model =
                             , fetchUsers user
                             ]
                         )
+
                     else
                         ( newUserModel, newUserCmds )
 

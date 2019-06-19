@@ -1,14 +1,13 @@
-module Quizzes.Commands
-    exposing
-        ( createQuizSubmission
-        , fetchQuizAnswers
-        , fetchQuizGradeDistributions
-        , fetchQuizGrades
-        , fetchQuizQuestions
-        , fetchQuizSubmissions
-        , fetchQuizzes
-        , submitQuizAnswers
-        )
+module Quizzes.Commands exposing
+    ( createQuizSubmission
+    , fetchQuizAnswers
+    , fetchQuizGradeDistributions
+    , fetchQuizGrades
+    , fetchQuizQuestions
+    , fetchQuizSubmissions
+    , fetchQuizzes
+    , submitQuizAnswers
+    )
 
 import Auth.Commands exposing (fetchForCurrentUser, requestForJWT)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)

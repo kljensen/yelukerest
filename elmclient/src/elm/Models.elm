@@ -1,4 +1,4 @@
-module Models exposing (..)
+module Models exposing (Flags, Model, Route(..), UIElements, initialModel)
 
 import Assignments.Model
     exposing

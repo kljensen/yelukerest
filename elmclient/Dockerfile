@@ -7,6 +7,6 @@ FROM node:10.16.0-stretch
 RUN mkdir -p /opt/app
 ADD package.json /opt/app/package.json
 ADD package-lock.json /opt/app/package-lock.json
-ADD elm-package.json /opt/app/elm-package.json
+ADD elm.json /opt/app/elm.json
 ADD postcss.config.js /opt/app/postcss.config.js
 RUN cd /opt/app && npm run reinstall

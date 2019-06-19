@@ -1,18 +1,16 @@
-module Common.Views
-    exposing
-        ( DateTitleHrefRecord
-        , dateTitleHrefRow
-        , dateToString
-        , divWithText
-        , merge4
-        , merge8
-        , piazzaLink
-        , shortDateToString
-        , showDraftStatus
-        )
+module Common.Views exposing
+    ( DateTitleHrefRecord
+    , dateTitleHrefRow
+    , dateToString
+    , divWithText
+    , merge4
+    , merge8
+    , piazzaLink
+    , shortDateToString
+    , showDraftStatus
+    )
 
 import Date exposing (Date)
-import Date.Format as DateFormat
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Msgs exposing (Msg)
@@ -33,7 +31,7 @@ merge4 :
     -> WebData d
     -> WebData ( a, b, c, d )
 merge4 a b c d =
-    RemoteData.map (,,,) a
+    RemoteData.map (\a b c d -> ( a, b, c, d )) a
         |> RemoteData.andMap b
         |> RemoteData.andMap c
         |> RemoteData.andMap d
@@ -50,7 +48,7 @@ merge8 :
     -> WebData h
     -> WebData ( a, b, c, d, e, f, g, h )
 merge8 a b c d e f g h =
-    RemoteData.map (,,,,,,,) a
+    RemoteData.map (\a b c d e f g h -> ( a, b, c, d, e, f, g, h )) a
         |> RemoteData.andMap b
         |> RemoteData.andMap c
         |> RemoteData.andMap d
@@ -75,8 +73,11 @@ dateTitleHrefRow : DateTitleHrefRecord -> Html Msg
 dateTitleHrefRow dth =
     Html.div [ Attrs.class "clearfix mb2" ]
         [ Html.time [ Attrs.class "left p1 mr1 classdate" ]
-            [ Html.div [] [ Html.text (DateFormat.format "%a" dth.date) ]
-            , Html.div [] [ Html.text (DateFormat.format "%d%b" dth.date) ]
+            -- [ Html.div [] [ Html.text (DateFormat.format "%a" dth.date) ]
+            -- , Html.div [] [ Html.text (DateFormat.format "%d%b" dth.date) ]
+            -- ]
+            [ Html.div [] [ Html.text ("foo") ]
+            , Html.div [] [ Html.text ("foo") ]
             ]
         , Html.div [ Attrs.class "overflow-hidden p1" ]
             [ Html.a
@@ -103,9 +104,11 @@ piazzaLink piazzaURL =
 
 dateToString : Date.Date -> String
 dateToString date =
-    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
+    -- DateFormat.format "%l:%M%p %A, %B %e, %Y" date
+    "foo"
 
 
 shortDateToString : Date.Date -> String
 shortDateToString date =
-    DateFormat.format "%a %d%b" date
+    -- DateFormat.format "%a %d%b" date
+    "foo"

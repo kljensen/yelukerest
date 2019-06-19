@@ -1,4 +1,4 @@
-module View exposing (..)
+module View exposing (indexView, notFoundView, page, view)
 
 import Assignments.Views
 import Auth.Views

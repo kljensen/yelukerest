@@ -1,12 +1,11 @@
-module Assignments.Commands
-    exposing
-        ( createAssignmentSubmission
-        , fetchAssignmentGradeDistributions
-        , fetchAssignmentGrades
-        , fetchAssignmentSubmissions
-        , fetchAssignments
-        , sendAssignmentFieldSubmissions
-        )
+module Assignments.Commands exposing
+    ( createAssignmentSubmission
+    , fetchAssignmentGradeDistributions
+    , fetchAssignmentGrades
+    , fetchAssignmentSubmissions
+    , fetchAssignments
+    , sendAssignmentFieldSubmissions
+    )
 
 import Assignments.Model
     exposing
@@ -64,6 +63,7 @@ fetchAssignmentSubmissionsUrl currentUser =
         Just nickname ->
             if nickname == "" then
                 defaultQuery
+
             else
                 base
                     ++ "?or=(user_id.eq."

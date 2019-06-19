@@ -1,4 +1,4 @@
-module Auth.Commands exposing (..)
+module Auth.Commands exposing (fetchCurrentUser, fetchCurrentUserUrl, fetchForCurrentUser, fetchForJWT, requestForJWT, sendRequestWithJWT)
 
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http

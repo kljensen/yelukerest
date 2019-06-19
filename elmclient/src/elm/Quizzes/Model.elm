@@ -1,23 +1,22 @@
-module Quizzes.Model
-    exposing
-        ( Quiz
-        , QuizAnswer
-        , QuizGrade
-        , QuizGradeDistribution
-        , QuizOpenState(..)
-        , QuizQuestion
-        , QuizQuestionOption
-        , QuizSubmission
-        , SubmissionEditableState(..)
-        , quizAnswersDecoder
-        , quizGradeDistributionsDecoder
-        , quizGradesDecoder
-        , quizQuestionsDecoder
-        , quizSubmissionDecoder
-        , quizSubmissionsDecoder
-        , quizSubmitability
-        , quizzesDecoder
-        )
+module Quizzes.Model exposing
+    ( Quiz
+    , QuizAnswer
+    , QuizGrade
+    , QuizGradeDistribution
+    , QuizOpenState(..)
+    , QuizQuestion
+    , QuizQuestionOption
+    , QuizSubmission
+    , SubmissionEditableState(..)
+    , quizAnswersDecoder
+    , quizGradeDistributionsDecoder
+    , quizGradesDecoder
+    , quizQuestionsDecoder
+    , quizSubmissionDecoder
+    , quizSubmissionsDecoder
+    , quizSubmitability
+    , quizzesDecoder
+    )
 
 import Common.Comparisons exposing (dateIsLessThan)
 import Date exposing (Date)
@@ -85,10 +84,13 @@ quizSubmitability currentDate quiz maybeQuizSubmission =
         quizOpenState =
             if dateIsLessThan currentDate quiz.open_at then
                 BeforeQuizOpen
+
             else if dateIsLessThan quiz.closed_at currentDate then
                 AfterQuizClosed
+
             else if quiz.is_draft then
                 QuizIsDraft
+
             else
                 QuizOpen
 

@@ -1,4 +1,4 @@
-module Engagements.Commands exposing (..)
+module Engagements.Commands exposing (encodeEngagement, fetchEngagements, fetchEngagementsUrl, submitEngagement)
 
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser, JWT)
