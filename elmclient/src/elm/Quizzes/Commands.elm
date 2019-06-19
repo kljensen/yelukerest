@@ -1,16 +1,15 @@
-module Quizzes.Commands
-    exposing
-        ( createQuizSubmission
-        , fetchQuizAnswers
-        , fetchQuizGradeDistributions
-        , fetchQuizGrades
-        , fetchQuizQuestions
-        , fetchQuizSubmissions
-        , fetchQuizzes
-        , submitQuizAnswers
-        )
+module Quizzes.Commands exposing
+    ( createQuizSubmission
+    , fetchQuizAnswers
+    , fetchQuizGradeDistributions
+    , fetchQuizGrades
+    , fetchQuizQuestions
+    , fetchQuizSubmissions
+    , fetchQuizzes
+    , submitQuizAnswers
+    )
 
-import Auth.Commands exposing (fetchForCurrentUser, requestForJWT)
+import Auth.Commands exposing (fetchForCurrentUser, handleJsonResponse, requestForJWT)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http
 import Json.Decode as Decode
@@ -31,6 +30,7 @@ import Quizzes.Model
         , quizzesDecoder
         )
 import RemoteData exposing (WebData)
+import String
 import Task
 
 
@@ -51,7 +51,7 @@ fetchQuizSubmissions currentUser =
 
 fetchQuizSubmissionsUrl : Int -> String
 fetchQuizSubmissionsUrl userID =
-    "/rest/quiz_submissions_info?user_id=eq." ++ toString userID
+    "/rest/quiz_submissions_info?user_id=eq." ++ String.fromInt userID
 
 
 fetchQuizAnswers : Int -> CurrentUser -> Cmd Msg
@@ -67,12 +67,12 @@ fetchQuizAnswers quizID currentUser =
 
 fetchQuizAnswerUrl : Int -> Int -> String
 fetchQuizAnswerUrl userID quizID =
-    "/rest/quiz_answers?user_id=eq." ++ toString userID ++ "&quiz_id=eq." ++ toString quizID
+    "/rest/quiz_answers?user_id=eq." ++ String.fromInt userID ++ "&quiz_id=eq." ++ String.fromInt quizID
 
 
 fetchQuizQuestionsUrl : Int -> String
 fetchQuizQuestionsUrl quizID =
-    "/rest/quiz_questions?select=id,body,options:quiz_question_options(id,body)&quiz_id=eq." ++ toString quizID
+    "/rest/quiz_questions?select=id,body,options:quiz_question_options(id,body)&quiz_id=eq." ++ String.fromInt quizID
 
 
 fetchQuizQuestions : Int -> CurrentUser -> Cmd Msg
@@ -87,7 +87,7 @@ fetchQuizGrades currentUser =
 
 fetchQuizGradesUrl : Int -> String
 fetchQuizGradesUrl userID =
-    "/rest/quiz_grades?user_id=eq." ++ toString userID
+    "/rest/quiz_grades?user_id=eq." ++ String.fromInt userID
 
 
 fetchQuizGradeDistributions : CurrentUser -> Cmd Msg
@@ -114,30 +114,34 @@ createQuizSubmission jwt quizID =
             , Http.header "Accept" "application/vnd.pgrst.object+json"
             ]
 
+        insertResponseResolver =
+            Http.stringResolver <| handleJsonResponse <| Decode.succeed quizID
+
         insertSubmissionRequest =
-            Http.request
+            Http.task
                 { method = "POST"
                 , headers = headers1
                 , url = "/rest/quiz_submissions"
                 , timeout = Nothing
-                , expect = Http.expectJson (Decode.succeed quizID)
-                , withCredentials = False
+                , resolver = insertResponseResolver
                 , body = Http.jsonBody (Encode.object [ ( "quiz_id", Encode.int quizID ) ])
                 }
 
+        fetchResponseResolver =
+            Http.stringResolver <| handleJsonResponse <| quizSubmissionsDecoder
+
         fetchSubmissionsRequest =
-            Http.request
+            Http.task
                 { method = "GET"
                 , headers = [ Http.header "Authorization" ("Bearer " ++ jwt) ]
                 , url = "/rest/quiz_submissions_info"
                 , timeout = Nothing
-                , expect = Http.expectJson quizSubmissionsDecoder
-                , withCredentials = False
+                , resolver = fetchResponseResolver
                 , body = Http.emptyBody
                 }
     in
-    Http.toTask insertSubmissionRequest
-        |> Task.andThen (\x -> Http.toTask fetchSubmissionsRequest)
+    insertSubmissionRequest
+        |> Task.andThen (\x -> fetchSubmissionsRequest)
         |> Task.attempt RemoteData.fromResult
         |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
 
@@ -156,21 +160,18 @@ submitQuizAnswers currentUser quizID quizQuestionOptionIds =
                 , headers = headers
                 , url = "/rest/rpc/save_quiz"
                 , timeout = Nothing
-                , expect = Http.expectJson quizAnswersDecoder
-                , withCredentials = False
+                , expect = Http.expectJson (RemoteData.fromResult >> Msgs.OnSubmitQuizAnswersComplete quizID) quizAnswersDecoder
+                , tracker = Nothing
                 , body =
                     Http.jsonBody
                         (Encode.object
                             [ ( "quiz_id", Encode.int quizID )
                             , ( "quiz_question_option_ids"
                               , quizQuestionOptionIds
-                                    |> List.map Encode.int
-                                    |> Encode.list
+                                    |> Encode.list Encode.int
                               )
                             ]
                         )
                 }
     in
     saveRequest
-        |> RemoteData.sendRequest
-        |> Cmd.map (Msgs.OnSubmitQuizAnswersComplete quizID)

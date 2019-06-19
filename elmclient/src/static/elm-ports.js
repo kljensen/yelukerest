@@ -87,7 +87,7 @@ exports.default = function initElmPorts(app) {
      * @param  {string} address The server address
      * @param  {string} eventType Type of event
      * @param  {boolean} doCreate=false Should we create new event source?
-     * @returns {eventSource} And eventsource object
+     * @returns {eventSource} An eventsource object
      */
     function doAddListener(address, eventType, doCreate = false) {
         let eventSource;
@@ -100,7 +100,8 @@ exports.default = function initElmPorts(app) {
         return eventSource;
     }
 
-    app.ports.createEventSourceJS.subscribe(createNewEventSource);
+    // Currently unused and therefore pruned
+    // app.ports.createEventSourceJS.subscribe(createNewEventSource);
 
     app.ports.addListenerJS.subscribe((addressAndEventType) => {
         const address = addressAndEventType[0];
@@ -117,15 +118,17 @@ exports.default = function initElmPorts(app) {
         doAddListener(address, eventType, true);
     });
 
-    app.ports.removeListenerJS.subscribe((addressAndEventType) => {
-        const address = addressAndEventType[0];
-        const eventType = addressAndEventType[1];
-        const eventSource = sources[address]; // we only call if it exists
-        eventSource.removeEventListener(eventType, sendEventToElm);
-    });
+    // Currently unused and therefore pruned
+    // app.ports.removeListenerJS.subscribe((addressAndEventType) => {
+    //     const address = addressAndEventType[0];
+    //     const eventType = addressAndEventType[1];
+    //     const eventSource = sources[address]; // we only call if it exists
+    //     eventSource.removeEventListener(eventType, sendEventToElm);
+    // });
 
-    app.ports.deleteEventSourceJS.subscribe((address) => {
-        sources[address].close(); // we only call if it exists
-        delete sources[address]; // we only call if it exists
-    });
+    // Currently unused and therefore pruned
+    // app.ports.deleteEventSourceJS.subscribe((address) => {
+    //     sources[address].close(); // we only call if it exists
+    //     delete sources[address]; // we only call if it exists
+    // });
 };

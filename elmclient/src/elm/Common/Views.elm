@@ -1,63 +1,27 @@
-module Common.Views
-    exposing
-        ( DateTitleHrefRecord
-        , dateTitleHrefRow
-        , dateToString
-        , divWithText
-        , merge4
-        , merge8
-        , piazzaLink
-        , shortDateToString
-        , showDraftStatus
-        )
+module Common.Views exposing
+    ( DateTitleHrefRecord
+    , dateTitleHrefRow
+    , divWithText
+    , longDateToString
+    , piazzaLink
+    , shortDateToString
+    , showDraftStatus
+    )
 
-import Date exposing (Date)
-import Date.Format as DateFormat
+import DateFormat
 import Html exposing (Html)
 import Html.Attributes as Attrs
+import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
+import Time exposing (Posix, Zone, ZoneName(..))
 
 
 type alias DateTitleHrefRecord =
-    { date : Date
+    { date : Posix
     , title : String
     , href : String
     }
-
-
-merge4 :
-    WebData a
-    -> WebData b
-    -> WebData c
-    -> WebData d
-    -> WebData ( a, b, c, d )
-merge4 a b c d =
-    RemoteData.map (,,,) a
-        |> RemoteData.andMap b
-        |> RemoteData.andMap c
-        |> RemoteData.andMap d
-
-
-merge8 :
-    WebData a
-    -> WebData b
-    -> WebData c
-    -> WebData d
-    -> WebData e
-    -> WebData f
-    -> WebData g
-    -> WebData h
-    -> WebData ( a, b, c, d, e, f, g, h )
-merge8 a b c d e f g h =
-    RemoteData.map (,,,,,,,) a
-        |> RemoteData.andMap b
-        |> RemoteData.andMap c
-        |> RemoteData.andMap d
-        |> RemoteData.andMap e
-        |> RemoteData.andMap f
-        |> RemoteData.andMap g
-        |> RemoteData.andMap h
 
 
 showDraftStatus : Bool -> Html.Html Msg
@@ -71,12 +35,12 @@ showDraftStatus is_draft =
             Html.text ""
 
 
-dateTitleHrefRow : DateTitleHrefRecord -> Html Msg
-dateTitleHrefRow dth =
+dateTitleHrefRow : TimeZone -> DateTitleHrefRecord -> Html Msg
+dateTitleHrefRow timeZone dth =
     Html.div [ Attrs.class "clearfix mb2" ]
         [ Html.time [ Attrs.class "left p1 mr1 classdate" ]
-            [ Html.div [] [ Html.text (DateFormat.format "%a" dth.date) ]
-            , Html.div [] [ Html.text (DateFormat.format "%d%b" dth.date) ]
+            [ Html.div [] [ Html.text (shortDayOfWeek dth.date timeZone.zone) ]
+            , Html.div [] [ Html.text (shortDateMonth dth.date timeZone.zone) ]
             ]
         , Html.div [ Attrs.class "overflow-hidden p1" ]
             [ Html.a
@@ -101,11 +65,106 @@ piazzaLink piazzaURL =
             Html.text ""
 
 
-dateToString : Date.Date -> String
-dateToString date =
-    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
+shortDayOfWeek : Posix -> Zone -> String
+shortDayOfWeek t z =
+    DateFormat.format [ DateFormat.dayOfWeekNameAbbreviated ] z t
 
 
-shortDateToString : Date.Date -> String
-shortDateToString date =
-    DateFormat.format "%a %d%b" date
+shortDateMonth : Posix -> Zone -> String
+shortDateMonth t z =
+    DateFormat.format [ DateFormat.dayOfMonthFixed, DateFormat.monthNameAbbreviated ] z t
+
+
+longDateFormatter : TimeZone -> Posix -> String
+longDateFormatter timeZone =
+    let
+        name =
+            case timeZone.zoneName of
+                Name theName ->
+                    theName
+
+                Offset offset ->
+                    "an offset"
+    in
+    DateFormat.format
+        [ DateFormat.hourFixed
+        , DateFormat.text ":"
+        , DateFormat.minuteFixed
+        , DateFormat.amPmLowercase
+        , DateFormat.text " "
+        , DateFormat.dayOfWeekNameFull
+        , DateFormat.text (" (" ++ name ++ "), ")
+        , DateFormat.monthNameFull
+        , DateFormat.text " "
+        , DateFormat.dayOfMonthNumber
+        , DateFormat.text ", "
+        , DateFormat.yearNumber
+        ]
+        timeZone.zone
+
+
+{-| Format a date like Wed 09May
+-}
+shortDateFormatter : Zone -> Posix -> String
+shortDateFormatter =
+    DateFormat.format
+        [ DateFormat.dayOfWeekNameAbbreviated
+        , DateFormat.text " "
+        , DateFormat.dayOfMonthFixed
+        , DateFormat.monthNameAbbreviated
+        ]
+
+
+{-| Format a Posix time like "2018-05-20T19:18:24.911Z"
+-}
+longDateToString : Posix -> TimeZone -> String
+longDateToString t z =
+    longDateFormatter z t
+
+
+shortDateToString : Posix -> TimeZone -> String
+shortDateToString t z =
+    -- DateFormat.format "%a %d%b" date
+    shortDateFormatter z.zone t
+
+
+{-| Format the time zone name. See
+<https://discourse.elm-lang.org/t/how-to-get-a-zone-name-from-the-time-package/2180/4>
+-}
+formatZoneName : Time.ZoneName -> String
+formatZoneName zoneName =
+    case zoneName of
+        Time.Name n ->
+            n
+
+        Time.Offset 0 ->
+            "UTC"
+
+        Time.Offset o ->
+            let
+                sign =
+                    case o > 0 of
+                        True ->
+                            "+"
+
+                        False ->
+                            "-"
+
+                numMinutes =
+                    abs o
+
+                hours =
+                    String.fromInt (numMinutes // 60)
+
+                minutes =
+                    modBy 60 numMinutes
+
+                minSuffix =
+                    case minutes == 0 of
+                        True ->
+                            ""
+
+                        False ->
+                            ":" ++ String.fromInt minutes
+            in
+            "UTC " ++ sign ++ hours ++ minSuffix

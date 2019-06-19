@@ -15,22 +15,22 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
-import Common.Views
-import Date exposing (Date)
-import Date.Format as DateFormat
+import Common.Views exposing (longDateToString)
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Json.Decode as Decode
 import Markdown
+import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
+import Time exposing (Posix)
 
 
-listView : WebData (List Assignment) -> Html Msg
-listView assignments =
-    case assignments of
+listView : TimeZone -> WebData (List Assignment) -> Html Msg
+listView timeZone wdAssignments =
+    case wdAssignments of
         RemoteData.NotAsked ->
             loginToViewAssignments
 
@@ -38,7 +38,7 @@ listView assignments =
             Html.text "Loading..."
 
         RemoteData.Success assignments ->
-            listAssignments assignments
+            listAssignments timeZone assignments
 
         RemoteData.Failure error ->
             loginToViewAssignments
@@ -55,13 +55,13 @@ loginToViewAssignments =
         ]
 
 
-listAssignments : List Assignment -> Html Msg
-listAssignments assignments =
+listAssignments : TimeZone -> List Assignment -> Html Msg
+listAssignments timeZone assignments =
     let
         assignmentDetails =
             List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug }) assignments
     in
-    Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
+    Html.div [] (List.map (Common.Views.dateTitleHrefRow timeZone) assignmentDetails)
 
 
 getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> WebData CurrentUser -> Maybe AssignmentSubmission
@@ -77,9 +77,9 @@ getSubmissionForSlug submissions slug wdCurrentUser =
             Nothing
 
 
-detailView : WebData CurrentUser -> Maybe Date.Date -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
-detailView wdCurrentUser maybeDate assignments assignmentSubmissions pendingBeginAssignments slug current_date =
-    case ( assignments, assignmentSubmissions ) of
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions pendingBeginAssignments slug current_date =
+    case ( wdAssignments, assignmentSubmissions ) of
         ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
                 maybeAssignment =
@@ -95,7 +95,7 @@ detailView wdCurrentUser maybeDate assignments assignmentSubmissions pendingBegi
             in
             case ( maybeDate, maybeAssignment ) of
                 ( Just currentDate, Just assignment ) ->
-                    detailViewForJustAssignment currentDate assignment maybeSubmission maybePendingBegin current_date
+                    detailViewForJustAssignment currentDate timeZone assignment maybeSubmission maybePendingBegin current_date
 
                 ( Nothing, _ ) ->
                     Html.div [] [ Html.text "Loading..." ]
@@ -114,22 +114,18 @@ meetingNotFoundView slug =
         ]
 
 
-dateTimeToString : Date.Date -> String
-dateTimeToString date =
-    DateFormat.format "%l:%M%p %A, %B %e, %Y" date
 
-
-
+-- DateFormat.format "%l:%M%p %A, %B %e, %Y" date
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Date.Date -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Date -> Html.Html Msg
-detailViewForJustAssignment currentDate assignment maybeSubmission maybeBeginAssignment current_date =
+detailViewForJustAssignment : Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Posix -> Html.Html Msg
+detailViewForJustAssignment currentDate timeZone assignment maybeSubmission maybeBeginAssignment current_date =
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
             [ Html.text "Due: "
-            , Html.time [] [ Html.text (dateTimeToString assignment.closed_at) ]
+            , Html.time [] [ Html.text (longDateToString assignment.closed_at timeZone) ]
             ]
         , Markdown.toHtml [] assignment.body
         , Html.hr [] []
@@ -164,11 +160,11 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : Date.Date -> Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+beginSubmission : Posix -> Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
 beginSubmission currentDate assignment maybeBeginAssignment =
     case isSubmissible currentDate assignment of
-        Submissible assignment ->
-            showBeginAssignmentButton assignment maybeBeginAssignment
+        Submissible assignment2 ->
+            showBeginAssignmentButton assignment2 maybeBeginAssignment
 
         NotSubmissible reason ->
             let
@@ -203,7 +199,7 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
                 ]
 
         Just (RemoteData.Failure error) ->
-            Html.div [ Attrs.class "red" ] [ Html.text (toString error) ]
+            Html.div [ Attrs.class "red" ] [ Html.text "HTTP error!" ]
 
         _ ->
             Html.text "other error"
@@ -216,11 +212,11 @@ spinner =
         ]
 
 
-submissionInstructions : Date.Date -> Assignment -> AssignmentSubmission -> Html.Html Msg
+submissionInstructions : Posix -> Assignment -> AssignmentSubmission -> Html.Html Msg
 submissionInstructions currentDate assignment submission =
     case isSubmissible currentDate assignment of
-        Submissible assignment ->
-            showSubmissionForm assignment
+        Submissible assignment2 ->
+            showSubmissionForm assignment2
 
         NotSubmissible reason ->
             let
@@ -238,10 +234,14 @@ submissionInstructions currentDate assignment submission =
 showSubmissionForm : Assignment -> Html.Html Msg
 showSubmissionForm assignment =
     Html.form
-        [ Events.onWithOptions
+        [ Events.custom
             "submit"
-            { preventDefault = True, stopPropagation = False }
-            (Decode.succeed (Msgs.OnSubmitAssignmentFieldSubmissions assignment))
+            (Decode.succeed
+                { preventDefault = True
+                , stopPropagation = False
+                , message = Msgs.OnSubmitAssignmentFieldSubmissions assignment
+                }
+            )
         ]
         (List.map showFormField assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
@@ -252,6 +252,7 @@ showFormField assignmentField =
         fieldType =
             if assignmentField.is_url then
                 "url"
+
             else
                 "text"
     in
@@ -262,7 +263,7 @@ showFormField assignmentField =
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder assignmentField.placeholder
-                    , Attrs.name (toString assignmentField.id)
+                    , Attrs.name (String.fromInt assignmentField.id)
                     , Events.onInput
                         (Msgs.OnUpdateAssignmentFieldSubmissionInput
                             assignmentField.id
@@ -276,7 +277,7 @@ showFormField assignmentField =
                     , Attrs.class "input field"
                     , Attrs.placeholder assignmentField.placeholder
                     , Attrs.title assignmentField.help
-                    , Attrs.name (toString assignmentField.id)
+                    , Attrs.name (String.fromInt assignmentField.id)
                     , Events.onInput
                         (Msgs.OnUpdateAssignmentFieldSubmissionInput
                             assignmentField.id
@@ -308,6 +309,7 @@ showPreviousSubmissionField fieldSubmissions field =
         fieldType =
             if field.is_url then
                 "url"
+
             else
                 "text"
     in
@@ -318,7 +320,7 @@ showPreviousSubmissionField fieldSubmissions field =
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder field.placeholder
-                    , Attrs.name (toString field.id)
+                    , Attrs.name (String.fromInt field.id)
                     , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
                     , Attrs.disabled True
                     ]
@@ -330,7 +332,7 @@ showPreviousSubmissionField fieldSubmissions field =
                     , Attrs.class "input field"
                     , Attrs.placeholder field.placeholder
                     , Attrs.title field.help
-                    , Attrs.name (toString field.id)
+                    , Attrs.name (String.fromInt field.id)
                     , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
                     , Attrs.disabled True
                     ]

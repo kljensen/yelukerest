@@ -1,29 +1,28 @@
-module Quizzes.Model
-    exposing
-        ( Quiz
-        , QuizAnswer
-        , QuizGrade
-        , QuizGradeDistribution
-        , QuizOpenState(..)
-        , QuizQuestion
-        , QuizQuestionOption
-        , QuizSubmission
-        , SubmissionEditableState(..)
-        , quizAnswersDecoder
-        , quizGradeDistributionsDecoder
-        , quizGradesDecoder
-        , quizQuestionsDecoder
-        , quizSubmissionDecoder
-        , quizSubmissionsDecoder
-        , quizSubmitability
-        , quizzesDecoder
-        )
+module Quizzes.Model exposing
+    ( Quiz
+    , QuizAnswer
+    , QuizGrade
+    , QuizGradeDistribution
+    , QuizOpenState(..)
+    , QuizQuestion
+    , QuizQuestionOption
+    , QuizSubmission
+    , SubmissionEditableState(..)
+    , quizAnswersDecoder
+    , quizGradeDistributionsDecoder
+    , quizGradesDecoder
+    , quizQuestionsDecoder
+    , quizSubmissionDecoder
+    , quizSubmissionsDecoder
+    , quizSubmitability
+    , quizzesDecoder
+    )
 
 import Common.Comparisons exposing (dateIsLessThan)
-import Date exposing (Date)
-import Json.Decode as Decode
-import Json.Decode.Extra exposing (date)
-import Json.Decode.Pipeline exposing (decode, required)
+import Json.Decode as Decode exposing (Decoder)
+import Json.Decode.Extra exposing (datetime)
+import Json.Decode.Pipeline exposing (required)
+import Time exposing (Posix)
 
 
 type alias Quiz =
@@ -32,11 +31,11 @@ type alias Quiz =
     , points_possible : Int
     , is_draft : Bool
     , duration : String
-    , open_at : Date
-    , closed_at : Date
+    , open_at : Posix
+    , closed_at : Posix
     , is_open : Bool
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
@@ -45,19 +44,19 @@ quizzesDecoder =
     Decode.list quizDecoder
 
 
-quizDecoder : Decode.Decoder Quiz
+quizDecoder : Decoder Quiz
 quizDecoder =
-    decode Quiz
+    Decode.succeed Quiz
         |> required "id" Decode.int
         |> required "meeting_id" Decode.int
         |> required "points_possible" Decode.int
         |> required "is_draft" Decode.bool
         |> required "duration" Decode.string
-        |> required "open_at" Json.Decode.Extra.date
-        |> required "closed_at" Json.Decode.Extra.date
+        |> required "open_at" Json.Decode.Extra.datetime
+        |> required "closed_at" Json.Decode.Extra.datetime
         |> required "is_open" Decode.bool
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
 
 
 
@@ -79,16 +78,19 @@ type SubmissionEditableState
     | NoSubmission
 
 
-quizSubmitability : Date -> Quiz -> Maybe QuizSubmission -> ( QuizOpenState, SubmissionEditableState )
+quizSubmitability : Posix -> Quiz -> Maybe QuizSubmission -> ( QuizOpenState, SubmissionEditableState )
 quizSubmitability currentDate quiz maybeQuizSubmission =
     let
         quizOpenState =
             if dateIsLessThan currentDate quiz.open_at then
                 BeforeQuizOpen
+
             else if dateIsLessThan quiz.closed_at currentDate then
                 AfterQuizClosed
+
             else if quiz.is_draft then
                 QuizIsDraft
+
             else
                 QuizOpen
 
@@ -111,10 +113,10 @@ quizSubmitability currentDate quiz maybeQuizSubmission =
 type alias QuizSubmission =
     { quiz_id : Int
     , user_id : Int
-    , closed_at : Date
+    , closed_at : Posix
     , is_open : Bool
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
@@ -125,13 +127,13 @@ quizSubmissionsDecoder =
 
 quizSubmissionDecoder : Decode.Decoder QuizSubmission
 quizSubmissionDecoder =
-    decode QuizSubmission
+    Decode.succeed QuizSubmission
         |> required "quiz_id" Decode.int
         |> required "user_id" Decode.int
-        |> required "closed_at" Json.Decode.Extra.date
+        |> required "closed_at" Json.Decode.Extra.datetime
         |> required "is_open" Decode.bool
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
 
 
 
@@ -160,7 +162,7 @@ type alias QuizAnswer =
 
 quizAnswerDecoder : Decode.Decoder QuizAnswer
 quizAnswerDecoder =
-    decode QuizAnswer
+    Decode.succeed QuizAnswer
         |> required "user_id" Decode.int
         |> required "quiz_question_option_id" Decode.int
         |> required "quiz_id" Decode.int
@@ -173,7 +175,7 @@ quizAnswersDecoder =
 
 quizQuestionDecoder : Decode.Decoder QuizQuestion
 quizQuestionDecoder =
-    decode QuizQuestion
+    Decode.succeed QuizQuestion
         |> required "id" Decode.int
         |> required "body" Decode.string
         |> required "options" quizQuestionOptionsDecoder
@@ -186,7 +188,7 @@ quizQuestionsDecoder =
 
 quizQuestionOptionDecoder : Decode.Decoder QuizQuestionOption
 quizQuestionOptionDecoder =
-    decode QuizQuestionOption
+    Decode.succeed QuizQuestionOption
         |> required "id" Decode.int
         |> required "body" Decode.string
 
@@ -201,20 +203,20 @@ type alias QuizGrade =
     , points : Float
     , points_possible : Int
     , user_id : Int
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
 quizGradeDecoder : Decode.Decoder QuizGrade
 quizGradeDecoder =
-    decode QuizGrade
+    Decode.succeed QuizGrade
         |> required "quiz_id" Decode.int
         |> required "points" Decode.float
         |> required "points_possible" Decode.int
         |> required "user_id" Decode.int
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
 
 
 quizGradesDecoder : Decode.Decoder (List QuizGrade)
@@ -236,7 +238,7 @@ type alias QuizGradeDistribution =
 
 quizGradeDistributionDecoder : Decode.Decoder QuizGradeDistribution
 quizGradeDistributionDecoder =
-    decode QuizGradeDistribution
+    Decode.succeed QuizGradeDistribution
         |> required "quiz_id" Decode.int
         |> required "count" Decode.int
         |> required "average" Decode.float

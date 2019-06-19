@@ -1,4 +1,4 @@
-module Update exposing (..)
+module Update exposing (listToDict, setSseAndDo, sseMessageDecoder, update, valuesFromDict)
 
 import Assignments.Commands
     exposing
@@ -15,7 +15,8 @@ import Assignments.Updates
         , onFetchAssignmentGrades
         )
 import Auth.Model exposing (isFacultyOrTA)
-import Date
+import Browser exposing (UrlRequest(..))
+import Browser.Navigation exposing (load, pushUrl)
 import Dict exposing (Dict)
 import Engagements.Commands
     exposing
@@ -24,8 +25,8 @@ import Engagements.Commands
         )
 import Engagements.Updates exposing (onSSETableChange)
 import Json.Decode exposing (decodeString, string)
-import Models exposing (Model)
-import Msgs exposing (Msg)
+import Models exposing (Model, Route(..))
+import Msgs exposing (BrowserLocation(..), Msg)
 import Quizzes.Commands
     exposing
         ( createQuizSubmission
@@ -51,6 +52,8 @@ import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 import SSE exposing (SseAccess, withListener)
 import Set exposing (Set)
+import Time exposing (Posix)
+import Url
 import Users.Commands exposing (fetchUsers)
 
 
@@ -72,6 +75,19 @@ listToDict getKey values =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        Msgs.LinkClicked urlRequest ->
+            case urlRequest of
+                Internal url ->
+                    case parseLocation (UrlLocation url) of
+                        NotFoundRoute ->
+                            ( model, load (Url.toString url) )
+
+                        _ ->
+                            ( model, pushUrl model.navKey (Url.toString url) )
+
+                External href ->
+                    ( model, load href )
+
         Msgs.OnLocationChange location ->
             let
                 newRoute =
@@ -80,7 +96,7 @@ update msg model =
             ( { model | route = newRoute }, Cmd.none )
 
         Msgs.Tick theTime ->
-            ( { model | current_date = Just (Date.fromTime theTime) }, Cmd.none )
+            ( { model | current_date = Just theTime }, Cmd.none )
 
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )
@@ -125,6 +141,7 @@ update msg model =
                             , fetchUsers user
                             ]
                         )
+
                     else
                         ( newUserModel, newUserCmds )
 
@@ -295,6 +312,26 @@ update msg model =
                             Dict.insert ( meetingID, userID ) response model.pendingSubmitEngagements
             in
             ( { model | pendingSubmitEngagements = pses }, Cmd.none )
+
+        Msgs.OnFetchTimeZone z ->
+            let
+                tz1 =
+                    model.timeZone
+
+                tz2 =
+                    { tz1 | zone = z }
+            in
+            ( { model | timeZone = tz2 }, Cmd.none )
+
+        Msgs.OnFetchTimeZoneName zoneName ->
+            let
+                tz1 =
+                    model.timeZone
+
+                tz2 =
+                    { tz1 | zoneName = zoneName }
+            in
+            ( { model | timeZone = tz2 }, Cmd.none )
 
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )

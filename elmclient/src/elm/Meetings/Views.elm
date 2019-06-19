@@ -1,14 +1,14 @@
 module Meetings.Views exposing (detailView, listView)
 
 import Auth.Model exposing (CurrentUser, isLoggedInFacultyOrTA)
-import Common.Views exposing (dateToString)
-import Date
+import Common.Views exposing (longDateToString)
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Markdown
 import Meetings.Model exposing (Meeting, MeetingSlug)
+import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
@@ -19,11 +19,12 @@ import Quizzes.Model
         , quizSubmitability
         )
 import RemoteData exposing (WebData)
+import Time exposing (Posix)
 
 
-listView : WebData (List Meeting) -> Html Msg
-listView meetings =
-    Html.div [] [ listOrStatus meetings ]
+listView : TimeZone -> WebData (List Meeting) -> Html Msg
+listView timeZone meetings =
+    Html.div [] [ listOrStatus timeZone meetings ]
 
 
 
@@ -31,8 +32,8 @@ listView meetings =
 
 
 getQuizForMeetingID : Int -> WebData (List Quiz) -> Maybe Quiz
-getQuizForMeetingID meetingID quizzes =
-    case quizzes of
+getQuizForMeetingID meetingID wdQuizzes =
+    case wdQuizzes of
         RemoteData.Success quizzes ->
             quizzes
                 |> List.filter (\quiz -> quiz.meeting_id == meetingID)
@@ -54,14 +55,14 @@ getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
             Nothing
 
 
-detailView : Maybe Date.Date -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailView maybeCurrentDate currentUser meetings slug quizzes quizSubmissions pendingBeginQuizzes =
+detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions pendingBeginQuizzes =
     case maybeCurrentDate of
         Nothing ->
             Html.text "Loding..."
 
         Just currentDate ->
-            case meetings of
+            case wdMeetings of
                 RemoteData.NotAsked ->
                     Html.text ""
 
@@ -77,17 +78,17 @@ detailView maybeCurrentDate currentUser meetings slug quizzes quizSubmissions pe
                     in
                     case maybeMeeting of
                         Just meeting ->
-                            detailViewForJustMeeting currentDate currentUser meeting quizzes quizSubmissions pendingBeginQuizzes
+                            detailViewForJustMeeting currentDate timeZone currentUser meeting quizzes quizSubmissions pendingBeginQuizzes
 
                         Nothing ->
                             meetingNotFoundView slug
 
                 RemoteData.Failure err ->
-                    Html.text (toString err)
+                    Html.text "Error loading meetings!"
 
 
-detailViewForJustMeeting : Date.Date -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
+detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
     let
         maybeQuiz =
             getQuizForMeetingID meeting.id wdQuizzes
@@ -106,12 +107,12 @@ detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmiss
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
         , Html.p []
-            [ Html.time [] [ Html.text (dateToString meeting.begins_at) ]
+            [ Html.time [] [ Html.text (longDateToString meeting.begins_at timeZone) ]
             ]
         , Markdown.toHtml [] meeting.description
         , case currentUser of
             RemoteData.Success user ->
-                showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
+                showQuizStatus currentDate timeZone meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
@@ -123,7 +124,7 @@ recordEngagementButton : Int -> WebData CurrentUser -> Html.Html Msg
 recordEngagementButton meetingID currentUser =
     case isLoggedInFacultyOrTA currentUser of
         Ok _ ->
-            Html.a [ Attrs.href ("#/engagements/" ++ toString meetingID) ]
+            Html.a [ Attrs.href ("#/engagements/" ++ String.fromInt meetingID) ]
                 [ Html.button
                     [ Attrs.class "btn btn-primary" ]
                     [ Html.text "Take attendance" ]
@@ -133,8 +134,8 @@ recordEngagementButton meetingID currentUser =
             Html.text ""
 
 
-showQuizStatus : Date.Date -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
+showQuizStatus : Posix -> TimeZone -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizStatus currentDate timeZone meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             let
@@ -146,12 +147,13 @@ showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBegin
             case maybeQuiz of
                 Just quiz ->
                     Html.p []
-                        [ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz
+                        [ showQuizSubmissionStatus currentDate timeZone quiz wdQuizSubmissions maybePendingBeginQuiz
                         ]
 
                 Nothing ->
                     if meeting.is_draft then
                         Html.p [] [ Html.text "Unless this is a \"special\" class, like an exam, there will likely be a quiz. The class is still labeled \"draft\" and the quiz information cannot be loaded at this time." ]
+
                     else
                         Html.p [] [ Html.text "There is no quiz for this meeting." ]
 
@@ -170,8 +172,8 @@ pText theString =
     Html.p [] [ Html.text theString ]
 
 
-showQuizSubmissionStatus : Date.Date -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz =
+showQuizSubmissionStatus : Posix -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizSubmissionStatus currentDate timeZone quiz wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
             let
@@ -220,13 +222,13 @@ showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQui
                         ]
 
                 ( AfterQuizClosed, _ ) ->
-                    pText ("This quiz is now closed. It was due by " ++ dateToString quiz.closed_at ++ ".")
+                    pText ("This quiz is now closed. It was due by " ++ longDateToString quiz.closed_at timeZone ++ ".")
 
                 ( QuizIsDraft, _ ) ->
                     pText "This quiz is still in draft mode. The instructor needs to finize the quiz."
 
                 ( BeforeQuizOpen, _ ) ->
-                    pText ("This quiz is not yet open for submissions. It opens at " ++ dateToString quiz.open_at ++ ".")
+                    pText ("This quiz is not yet open for submissions. It opens at " ++ longDateToString quiz.open_at timeZone ++ ".")
 
         RemoteData.NotAsked ->
             pText "Quiz submissions not yet loaded. Unclear if you started this quiz."
@@ -245,9 +247,9 @@ meetingNotFoundView slug =
         ]
 
 
-listOrStatus : WebData (List Meeting) -> Html Msg
-listOrStatus meetings =
-    case meetings of
+listOrStatus : TimeZone -> WebData (List Meeting) -> Html Msg
+listOrStatus timeZone wdMeetings =
+    case wdMeetings of
         RemoteData.NotAsked ->
             Html.text ""
 
@@ -255,16 +257,16 @@ listOrStatus meetings =
             Html.text "Loading..."
 
         RemoteData.Success meetings ->
-            listMeetings meetings
+            listMeetings timeZone meetings
 
         RemoteData.Failure error ->
-            Html.text (toString error)
+            Html.text "HTTP Error!"
 
 
-listMeetings : List Meeting -> Html Msg
-listMeetings meetings =
+listMeetings : TimeZone -> List Meeting -> Html Msg
+listMeetings timeZone meetings =
     let
         meetingDetails =
             List.map (\m -> { date = m.begins_at, title = m.title, href = "#meetings/" ++ m.slug }) meetings
     in
-    Html.div [] (List.map Common.Views.dateTitleHrefRow meetingDetails)
+    Html.div [] (List.map (Common.Views.dateTitleHrefRow timeZone) meetingDetails)

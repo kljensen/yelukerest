@@ -1,14 +1,13 @@
-module Users.Model
-    exposing
-        ( JWT
-        , User
-        , niceName
-        , usersDecoder
-        )
+module Users.Model exposing
+    ( JWT
+    , User
+    , niceName
+    , usersDecoder
+    )
 
 import Json.Decode as Decode
-import Json.Decode.Pipeline exposing (decode, optional, required)
-import String exposing (isEmpty)
+import Json.Decode.Pipeline exposing (optional, required)
+import String exposing (fromInt, isEmpty)
 
 
 type alias JWT =
@@ -34,7 +33,7 @@ usersDecoder =
 
 userDecoder : Decode.Decoder User
 userDecoder =
-    decode User
+    Decode.succeed User
         |> required "id" Decode.int
         |> required "netid" Decode.string
         |> required "role" Decode.string
@@ -49,13 +48,14 @@ niceName : User -> String
 niceName user =
     let
         noNameDefault =
-            "User id#" ++ toString user.id ++ " (netid =" ++ user.netid ++ ")"
+            "User id#" ++ fromInt user.id ++ " (netid =" ++ user.netid ++ ")"
 
         prefix =
             case user.name of
                 Just name ->
                     if isEmpty name then
                         noNameDefault
+
                     else
                         name
 
@@ -67,6 +67,7 @@ niceName user =
                 Just known_as ->
                     if isEmpty known_as then
                         ""
+
                     else
                         " (" ++ known_as ++ ")"
 

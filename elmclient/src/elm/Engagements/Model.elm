@@ -1,17 +1,17 @@
 module Engagements.Model exposing (Engagement, engagementDecoder, engagementsDecoder, participationEnum)
 
-import Date exposing (Date)
-import Json.Decode as Decode
-import Json.Decode.Extra exposing (date)
-import Json.Decode.Pipeline exposing (decode, required)
+import Json.Decode as Decode exposing (Decoder)
+import Json.Decode.Extra exposing (datetime)
+import Json.Decode.Pipeline exposing (required)
+import Time exposing (Posix)
 
 
 type alias Engagement =
     { user_id : Int
     , meeting_id : Int
     , participation : String
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
@@ -27,9 +27,9 @@ engagementsDecoder =
 
 engagementDecoder : Decode.Decoder Engagement
 engagementDecoder =
-    decode Engagement
+    Decode.succeed Engagement
         |> required "user_id" Decode.int
         |> required "meeting_id" Decode.int
         |> required "participation" Decode.string
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime

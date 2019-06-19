@@ -1,8 +1,7 @@
-module Assignments.Updates
-    exposing
-        ( onFetchAssignmentGradeDistributions
-        , onFetchAssignmentGrades
-        )
+module Assignments.Updates exposing
+    ( onFetchAssignmentGradeDistributions
+    , onFetchAssignmentGrades
+    )
 
 import Assignments.Model
     exposing

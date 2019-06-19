@@ -30,10 +30,12 @@ onSSETableChange routingKey ( oldModel, oldCmd ) =
                 Ok user ->
                     ( if usersUpdated then
                         fetchUsers user
+
                       else
                         Cmd.none
                     , if engagementsUpdated then
                         fetchEngagements user
+
                       else
                         Cmd.none
                     )

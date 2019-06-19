@@ -1,4 +1,4 @@
-module Engagements.Commands exposing (..)
+module Engagements.Commands exposing (encodeEngagement, fetchEngagements, fetchEngagementsUrl, submitEngagement)
 
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser, JWT)
@@ -28,20 +28,21 @@ submitEngagement jwt meetingID userID participationLevel =
             , Http.header "Accept" "application/vnd.pgrst.object+json"
             ]
 
+        msg =
+            Msgs.OnSubmitEngagementResponse meetingID userID
+
         request =
             Http.request
                 { method = "POST"
                 , headers = headers
                 , url = "/rest/engagements"
                 , timeout = Nothing
-                , expect = Http.expectJson engagementDecoder
-                , withCredentials = False
+                , expect = Http.expectJson (RemoteData.fromResult >> msg) engagementDecoder
+                , tracker = Nothing
                 , body = Http.jsonBody (encodeEngagement meetingID userID participationLevel)
                 }
     in
     request
-        |> RemoteData.sendRequest
-        |> Cmd.map (Msgs.OnSubmitEngagementResponse meetingID userID)
 
 
 encodeEngagement : Int -> Int -> String -> Encode.Value

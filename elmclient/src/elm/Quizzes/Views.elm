@@ -2,8 +2,6 @@ module Quizzes.Views exposing (takeQuizView)
 
 -- import Html.Attributes as Attrs
 
-import Common.Views exposing (merge4)
-import Date
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
@@ -24,6 +22,7 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Set
+import Time exposing (Posix, utc)
 
 
 getOrNotAsked : comparable -> Dict comparable (WebData b) -> WebData b
@@ -43,7 +42,32 @@ filterGet x f =
         |> List.head
 
 
-takeQuizView : Maybe Date.Date -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
+type alias QuizViewData =
+    { submissions : List QuizSubmission
+    , quizzes : List Quiz
+    , questions : List QuizQuestion
+    , answers : List QuizAnswer
+    }
+
+
+makeQuizViewData : List QuizSubmission -> List Quiz -> List QuizQuestion -> List QuizAnswer -> QuizViewData
+makeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers =
+    { submissions = quizSubmissions
+    , quizzes = quizzes
+    , questions = theseQuizQuestions
+    , answers = theseQuizAnswers
+    }
+
+
+mergeQuizViewData : WebData (List QuizSubmission) -> WebData (List Quiz) -> WebData (List QuizQuestion) -> WebData (List QuizAnswer) -> WebData QuizViewData
+mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers =
+    RemoteData.map makeQuizViewData quizSubmissions
+        |> RemoteData.andMap quizzes
+        |> RemoteData.andMap theseQuizQuestions
+        |> RemoteData.andMap theseQuizAnswers
+
+
+takeQuizView : Maybe Posix -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
 takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSubmitQuizzes =
     let
         theseQuizQuestions =
@@ -55,32 +79,32 @@ takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers 
         thisPendingSubmitQuiz =
             getOrNotAsked quizID pendingSubmitQuizzes
 
-        data =
-            merge4 quizSubmissions quizzes theseQuizQuestions theseQuizAnswers
+        wdQuizData =
+            mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers
     in
     case maybeDate of
         Nothing ->
             Html.div [] [ Html.text "Loading..." ]
 
         Just currentDate ->
-            case data of
+            case wdQuizData of
                 RemoteData.Failure error ->
-                    Html.div [] [ Html.text (toString error) ]
+                    Html.div [] [ Html.text "HTTP Error!" ]
 
                 RemoteData.Loading ->
                     Html.div [] [ Html.text "Loading..." ]
 
-                RemoteData.Success ( qs, q, qq, qa ) ->
+                RemoteData.Success data ->
                     let
                         sub =
-                            filterGet qs (\a -> a.quiz_id == quizID)
+                            filterGet data.submissions (\a -> a.quiz_id == quizID)
 
                         quiz =
-                            filterGet q (\a -> a.id == quizID)
+                            filterGet data.quizzes (\a -> a.id == quizID)
                     in
                     case ( sub, quiz ) of
                         ( Just daSub, Just daQuiz ) ->
-                            showQuizForm currentDate quizID daSub daQuiz qq qa thisPendingSubmitQuiz
+                            showQuizForm currentDate quizID daSub daQuiz data.questions data.answers thisPendingSubmitQuiz
 
                         ( _, Nothing ) ->
                             Html.div [] [ Html.text "Error - you've not yet started this quiz." ]
@@ -108,7 +132,7 @@ showSubmitError x =
         RemoteData.Failure e ->
             let
                 errorMessage =
-                    toString e
+                    "HTTP error!"
             in
             Html.div [ Attrs.class "red" ] [ Html.text ("Error submitting the quiz! " ++ errorMessage) ]
 
@@ -116,7 +140,7 @@ showSubmitError x =
             Html.text ""
 
 
-showQuizForm : Date.Date -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData a -> Html.Html Msg
+showQuizForm : Posix -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData a -> Html.Html Msg
 showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pendingSubmit =
     let
         quizQuestionOptionIds =
@@ -130,10 +154,14 @@ showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pe
                 |> Set.fromList
     in
     Html.form
-        [ Events.onWithOptions
+        [ Events.custom
             "submit"
-            { preventDefault = True, stopPropagation = False }
-            (Decode.succeed (Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds))
+            (Decode.succeed
+                { preventDefault = True
+                , stopPropagation = False
+                , message = Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds
+                }
+            )
         ]
         (List.map (showQuestion quizAnswerSet) quizQuestions
             ++ [ showSubmitButton currentDate quiz quizSubmission pendingSubmit
@@ -141,7 +169,17 @@ showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pe
         )
 
 
-showSubmitButton : Date.Date -> Quiz -> QuizSubmission -> WebData a -> Html.Html Msg
+toUtcString : Time.Posix -> String
+toUtcString time =
+    String.fromInt (Time.toHour utc time)
+        ++ ":"
+        ++ String.fromInt (Time.toMinute utc time)
+        ++ ":"
+        ++ String.fromInt (Time.toSecond utc time)
+        ++ " (UTC)"
+
+
+showSubmitButton : Posix -> Quiz -> QuizSubmission -> WebData a -> Html.Html Msg
 showSubmitButton currentDate quiz quizSubmission pendingSubmit =
     let
         submitablity =
@@ -165,7 +203,7 @@ showSubmitButton currentDate quiz quizSubmission pendingSubmit =
                         ("This quiz has a duration of "
                             ++ quiz.duration
                             ++ " and a close date of "
-                            ++ toString quiz.closed_at
+                            ++ toUtcString quiz.closed_at
                             ++ ".  You have roughly "
                             ++ dateDeltaToString (dateDelta submission.closed_at currentDate)
                             ++ " left."
@@ -192,19 +230,20 @@ showQuestionOption selectedAnswers option =
         selectionIndicator =
             if Set.member option.id selectedAnswers then
                 Html.span [ Attrs.class "saved-quiz-option" ] [ Html.text "SAVED" ]
+
             else
                 Html.text ""
     in
     Html.div []
         [ Html.input
-            [ Attrs.name (toString option.id)
-            , Attrs.id ("option-" ++ toString option.id)
+            [ Attrs.name (String.fromInt option.id)
+            , Attrs.id ("option-" ++ String.fromInt option.id)
             , Attrs.type_ "checkbox"
             , Events.onCheck (Msgs.OnToggleQuizQuestionOption option.id)
             ]
             []
         , Html.label
-            [ Attrs.for ("option-" ++ toString option.id)
+            [ Attrs.for ("option-" ++ String.fromInt option.id)
             ]
             [ Html.text option.body
             , selectionIndicator
@@ -212,12 +251,12 @@ showQuestionOption selectedAnswers option =
         ]
 
 
-dateDelta : Date.Date -> Date.Date -> Float
+dateDelta : Posix -> Posix -> Int
 dateDelta d2 d1 =
-    Date.toTime d2 - Date.toTime d1
+    Time.posixToMillis d2 - Time.posixToMillis d1
 
 
-dateDeltaToString : Float -> String
+dateDeltaToString : Int -> String
 dateDeltaToString d =
     let
         msInSecond =
@@ -232,14 +271,11 @@ dateDeltaToString d =
         msInDay =
             24 * msInHour
 
-        d1 =
-            Basics.floor d
-
         days =
-            d1 // msInDay
+            d // msInDay
 
         d2 =
-            d1 - (days * msInDay)
+            d - (days * msInDay)
 
         hours =
             d2 // msInHour
@@ -258,13 +294,13 @@ dateDeltaToString d =
     in
     case days > 0 of
         True ->
-            toString days
+            String.fromInt days
                 ++ " days and "
-                ++ toString hours
+                ++ String.fromInt hours
                 ++ " hours"
 
         False ->
             [ hours, minutes, seconds ]
-                |> List.map toString
+                |> List.map String.fromInt
                 |> List.map (String.padLeft 2 '0')
                 |> String.join ":"

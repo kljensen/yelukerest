@@ -1,4 +1,4 @@
-module Models exposing (..)
+module Models exposing (Flags, Model, Route(..), TimeZone, UIElements, initialModel)
 
 import Assignments.Model
     exposing
@@ -12,9 +12,10 @@ import Assignments.Model
         , PendingBeginAssignments
         )
 import Auth.Model exposing (CurrentUser)
-import Date exposing (Date)
+import Browser.Navigation exposing (Key)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
+import Json.Decode
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg, SSEMsg(..))
 import Quizzes.Model
@@ -29,6 +30,7 @@ import Quizzes.Model
 import RemoteData exposing (WebData)
 import SSE exposing (SseAccess)
 import Set exposing (Set)
+import Time exposing (Posix, Zone, ZoneName(..), utc)
 import Users.Model exposing (User)
 
 
@@ -37,6 +39,7 @@ type alias Flags =
     , piazzaURL : Maybe String
     , aboutURL : String
     , canvasURL : String
+    , location : String
     }
 
 
@@ -48,9 +51,17 @@ type alias UIElements =
     }
 
 
+type alias TimeZone =
+    { zone : Zone
+    , zoneName : ZoneName
+    }
+
+
 type alias Model =
-    { current_date : Maybe Date
+    { current_date : Maybe Posix
+    , timeZone : TimeZone
     , route : Route
+    , navKey : Key
     , meetings : WebData (List Meeting)
     , currentUser : WebData CurrentUser
     , assignments : WebData (List Assignment)
@@ -84,17 +95,19 @@ type alias Model =
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
     , quizQuestionOptionInputs : Set Int
     , sse : SseAccess Msgs.Msg
-    , latestMessage : Result String String
+    , latestMessage : Result Json.Decode.Error String
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
     , pendingSubmitEngagements : Dict ( Int, Int ) (WebData Engagement)
     }
 
 
-initialModel : Flags -> Route -> Model
-initialModel flags route =
+initialModel : Flags -> Route -> Key -> Model
+initialModel flags route key =
     { current_date = Nothing
+    , timeZone = { zone = utc, zoneName = Name "utc" }
     , route = route
+    , navKey = key
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
     , assignments = RemoteData.NotAsked

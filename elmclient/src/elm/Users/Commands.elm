@@ -1,4 +1,4 @@
-module Users.Commands exposing (..)
+module Users.Commands exposing (fetchUsers, fetchUsersUrl)
 
 import Auth.Commands exposing (fetchForCurrentUser)
 import Auth.Model exposing (CurrentUser)

@@ -1,4 +1,4 @@
-module Msgs exposing (Msg(..), SSEMsg(..))
+module Msgs exposing (BrowserLocation(..), Msg(..), SSEMsg(..))
 
 import Assignments.Model
     exposing
@@ -10,9 +10,10 @@ import Assignments.Model
         , AssignmentSubmission
         )
 import Auth.Model exposing (CurrentUser)
+import Browser exposing (UrlRequest(..))
 import Engagements.Model exposing (Engagement)
+import Json.Decode
 import Meetings.Model exposing (Meeting)
-import Navigation exposing (Location)
 import Quizzes.Model
     exposing
         ( Quiz
@@ -23,19 +24,27 @@ import Quizzes.Model
         , QuizSubmission
         )
 import RemoteData exposing (WebData)
-import Time exposing (Time)
+import Time exposing (Posix)
+import Url exposing (Url)
 import Users.Model exposing (User)
+
+
+type BrowserLocation
+    = StringLocation String
+    | UrlLocation Url
 
 
 type SSEMsg
     = Noop
-    | SSETableChange (Result String String)
+    | SSETableChange (Result Json.Decode.Error String)
 
 
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
     | OnFetchAssignments (WebData (List Assignment))
     | OnFetchAssignmentGrades (WebData (List AssignmentGrade))
+    | OnFetchTimeZone Time.Zone
+    | OnFetchTimeZoneName Time.ZoneName
     | OnFetchAssignmentGradeDistributions (WebData (List AssignmentGradeDistribution))
     | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))
@@ -45,8 +54,9 @@ type Msg
     | OnFetchQuizGrades (WebData (List QuizGrade))
     | OnFetchQuizGradeDistributions (WebData (List QuizGradeDistribution))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
-    | OnLocationChange Location
-    | Tick Time
+    | OnLocationChange BrowserLocation
+    | LinkClicked UrlRequest
+    | Tick Posix
     | OnSubmitAssignmentFieldSubmissions Assignment
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String

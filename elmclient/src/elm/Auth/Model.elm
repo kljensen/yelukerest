@@ -1,14 +1,13 @@
-module Auth.Model
-    exposing
-        ( CurrentUser
-        , JWT
-        , currentUserDecoder
-        , isFacultyOrTA
-        , isLoggedInFacultyOrTA
-        )
+module Auth.Model exposing
+    ( CurrentUser
+    , JWT
+    , currentUserDecoder
+    , isFacultyOrTA
+    , isLoggedInFacultyOrTA
+    )
 
 import Json.Decode as Decode
-import Json.Decode.Pipeline exposing (decode, optional, required)
+import Json.Decode.Pipeline exposing (optional, required)
 import RemoteData exposing (WebData)
 
 
@@ -28,7 +27,7 @@ type alias CurrentUser =
 
 currentUserDecoder : Decode.Decoder CurrentUser
 currentUserDecoder =
-    decode CurrentUser
+    Decode.succeed CurrentUser
         |> required "id" Decode.int
         |> required "netid" Decode.string
         |> required "jwt" Decode.string
@@ -48,6 +47,7 @@ isLoggedInFacultyOrTA wdUser =
         RemoteData.Success user ->
             if isFacultyOrTA user.role then
                 Ok user
+
             else
                 Err "Not authorized"
 
