@@ -12,7 +12,7 @@ import Assignments.Model
         , PendingBeginAssignments
         )
 import Auth.Model exposing (CurrentUser)
-import Date exposing (Date)
+import Time exposing (Posix)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting, MeetingSlug)

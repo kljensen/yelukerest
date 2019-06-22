@@ -1,8 +1,8 @@
 module Routing exposing (matchers, parseLocation)
 
 import Models exposing (Route(..))
-import Navigation exposing (Location)
-import UrlParser exposing ((</>), Parser, int, map, oneOf, parseHash, s, string, top)
+import Url exposing (Url)
+import Url.Parser exposing ((</>), Parser, int, map, oneOf, parseHash, s, string, top)
 
 
 matchers : Parser (Route -> a) a

@@ -11,7 +11,6 @@ import Assignments.Model
 import Auth.Model exposing (CurrentUser)
 import Auth.Views exposing (loginLink)
 import Common.Comparisons exposing (sortByDate)
-import Date exposing (Date)
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Meetings.Model exposing (Meeting)
@@ -25,6 +24,7 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Round
+import Time exposing (Posix)
 
 
 type alias WebDataGradeData a =

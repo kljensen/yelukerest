@@ -23,12 +23,12 @@ module Assignments.Model exposing
 
 import Auth.Model exposing (CurrentUser)
 import Common.Comparisons exposing (dateIsLessThan)
-import Date exposing (Date)
 import Dict exposing (Dict)
 import Json.Decode as Decode
-import Json.Decode.Extra exposing (date)
-import Json.Decode.Pipeline exposing (decode, hardcoded, optional, required)
+import Json.Decode.Extra exposing (datetime)
+import Json.Decode.Pipeline exposing (hardcoded, optional, required)
 import RemoteData exposing (WebData)
+import Time exposing (Posix)
 
 
 type alias AssignmentSlug =
@@ -44,7 +44,7 @@ type alias Assignment =
     , is_open : Bool
     , title : String
     , body : String
-    , closed_at : Date
+    , closed_at : Posix
     , fields : List AssignmentField
     }
 
@@ -58,8 +58,8 @@ type alias AssignmentField =
     , is_url : Bool
     , is_multiline : Bool
     , display_order : Int
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
@@ -70,8 +70,8 @@ type alias AssignmentSubmission =
     , user_id : Maybe Int
     , team_nickname : Maybe String
     , submitter_user_id : Int
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     , fields : List AssignmentFieldSubmission
     }
 
@@ -82,8 +82,8 @@ type alias AssignmentFieldSubmission =
     , assignment_slug : String
     , body : String
     , submitter_user_id : Int
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
@@ -111,7 +111,7 @@ emptyAssignmentFieldSubmissionList =
 
 assignmentDecoder : Decode.Decoder Assignment
 assignmentDecoder =
-    decode Assignment
+    Decode.succeed Assignment
         |> required "slug" Decode.string
         |> required "points_possible" Decode.int
         |> required "is_draft" Decode.bool
@@ -120,7 +120,7 @@ assignmentDecoder =
         |> required "is_open" Decode.bool
         |> required "title" Decode.string
         |> required "body" Decode.string
-        |> required "closed_at" Json.Decode.Extra.date
+        |> required "closed_at" Json.Decode.Extra.datetime
         |> required "fields" assignmentFieldsDecoder
 
 
@@ -131,7 +131,7 @@ assignmentFieldsDecoder =
 
 assignmentFieldDecoder : Decode.Decoder AssignmentField
 assignmentFieldDecoder =
-    decode AssignmentField
+    Decode.succeed AssignmentField
         |> required "id" Decode.int
         |> required "assignment_slug" Decode.string
         |> required "label" Decode.string
@@ -140,8 +140,8 @@ assignmentFieldDecoder =
         |> required "is_url" Decode.bool
         |> required "is_multiline" Decode.bool
         |> required "display_order" Decode.int
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
 
 
 assignmentSubmissionsDecoder : Decode.Decoder (List AssignmentSubmission)
@@ -151,15 +151,15 @@ assignmentSubmissionsDecoder =
 
 assignmentSubmissionDecoder : Decode.Decoder AssignmentSubmission
 assignmentSubmissionDecoder =
-    decode AssignmentSubmission
+    Decode.succeed AssignmentSubmission
         |> required "id" Decode.int
         |> required "assignment_slug" Decode.string
         |> required "is_team" Decode.bool
         |> required "user_id" (Decode.nullable Decode.int)
         |> required "team_nickname" (Decode.nullable Decode.string)
         |> required "submitter_user_id" Decode.int
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
         |> optional "fields" assignmentFieldSubmissionsDecoder emptyAssignmentFieldSubmissionList
 
 
@@ -188,14 +188,14 @@ submissionBelongsToUser u sub =
 
 assignmentFieldSubmissionDecoder : Decode.Decoder AssignmentFieldSubmission
 assignmentFieldSubmissionDecoder =
-    decode AssignmentFieldSubmission
+    Decode.succeed AssignmentFieldSubmission
         |> required "assignment_submission_id" Decode.int
         |> required "assignment_field_id" Decode.int
         |> required "assignment_slug" Decode.string
         |> required "body" Decode.string
         |> required "submitter_user_id" Decode.int
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
 
 
 type NotSubmissibleReason
@@ -208,7 +208,7 @@ type SubmissibleState
     | NotSubmissible NotSubmissibleReason
 
 
-isSubmissible : Date.Date -> Assignment -> SubmissibleState
+isSubmissible : Posix -> Assignment -> SubmissibleState
 isSubmissible currentDate assignment =
     if assignment.is_draft then
         NotSubmissible IsDraft
@@ -228,20 +228,20 @@ type alias AssignmentGrade =
     , assignment_submission_id : Int
     , points : Float
     , points_possible : Int
-    , created_at : Date
-    , updated_at : Date
+    , created_at : Posix
+    , updated_at : Posix
     }
 
 
 assignmentGradeDecoder : Decode.Decoder AssignmentGrade
 assignmentGradeDecoder =
-    decode AssignmentGrade
+    Decode.succeed AssignmentGrade
         |> required "assignment_slug" Decode.string
         |> required "assignment_submission_id" Decode.int
         |> required "points" Decode.float
         |> required "points_possible" Decode.int
-        |> required "created_at" Json.Decode.Extra.date
-        |> required "updated_at" Json.Decode.Extra.date
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
 
 
 assignmentGradesDecoder : Decode.Decoder (List AssignmentGrade)
@@ -263,7 +263,7 @@ type alias AssignmentGradeDistribution =
 
 assignmentGradeDistributionDecoder : Decode.Decoder AssignmentGradeDistribution
 assignmentGradeDistributionDecoder =
-    decode AssignmentGradeDistribution
+    Decode.succeed AssignmentGradeDistribution
         |> required "assignment_slug" Decode.string
         |> required "count" Decode.int
         |> required "average" Decode.float

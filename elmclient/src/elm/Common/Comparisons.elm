@@ -3,12 +3,12 @@ module Common.Comparisons exposing
     , sortByDate
     )
 
-import Date exposing (Date)
+import Time exposing (Posix, posixToMillis)
 
 
-dateIsLessThan : Date -> Date -> Bool
+dateIsLessThan : Posix -> Posix -> Bool
 dateIsLessThan a b =
-    case Basics.compare (Date.toTime a) (Date.toTime b) of
+    case Basics.compare (posixToMillis a) (posixToMillis b) of
         LT ->
             True
 
@@ -17,14 +17,14 @@ dateIsLessThan a b =
 
 
 {-| Returns the sort order betweek `f(x)` and `f(y)`
-where `f()` returns a Date for type `a` and `x`
+where `f()` returns a Posix for type `a` and `x`
 and `y` are both of type `a`.
 -}
-fieldDateCompare : (a -> Date) -> a -> a -> Order
+fieldDateCompare : (a -> Posix) -> a -> a -> Order
 fieldDateCompare f x y =
-    Basics.compare (Date.toTime (f x)) (Date.toTime (f y))
+    Basics.compare (posixToMillis (f x)) (posixToMillis (f y))
 
 
-sortByDate : (a -> Date) -> List a -> List a
+sortByDate : (a -> Posix) -> List a -> List a
 sortByDate f x =
     List.sortWith (fieldDateCompare f) x

@@ -3,7 +3,6 @@ module Quizzes.Views exposing (takeQuizView)
 -- import Html.Attributes as Attrs
 
 import Common.Views exposing (merge4)
-import Date
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
@@ -24,6 +23,7 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Set
+import Time exposing (Posix)
 
 
 getOrNotAsked : comparable -> Dict comparable (WebData b) -> WebData b

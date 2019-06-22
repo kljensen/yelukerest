@@ -6,8 +6,8 @@ module Users.Model exposing
     )
 
 import Json.Decode as Decode
-import Json.Decode.Pipeline exposing (decode, optional, required)
-import String exposing (isEmpty)
+import Json.Decode.Pipeline exposing (optional, required)
+import String exposing (fromInt, isEmpty)
 
 
 type alias JWT =
@@ -33,7 +33,7 @@ usersDecoder =
 
 userDecoder : Decode.Decoder User
 userDecoder =
-    decode User
+    Decode.succeed User
         |> required "id" Decode.int
         |> required "netid" Decode.string
         |> required "role" Decode.string
@@ -48,7 +48,7 @@ niceName : User -> String
 niceName user =
     let
         noNameDefault =
-            "User id#" ++ toString user.id ++ " (netid =" ++ user.netid ++ ")"
+            "User id#" ++ fromInt user.id ++ " (netid =" ++ user.netid ++ ")"
 
         prefix =
             case user.name of

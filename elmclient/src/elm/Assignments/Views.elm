@@ -16,7 +16,6 @@ import Assignments.Model
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Common.Views
-import Date exposing (Date)
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
@@ -25,6 +24,7 @@ import Json.Decode as Decode
 import Markdown
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
+import Time exposing (Posix)
 
 
 listView : WebData (List Assignment) -> Html Msg

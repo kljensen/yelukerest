@@ -2,7 +2,6 @@ module Meetings.Views exposing (detailView, listView)
 
 import Auth.Model exposing (CurrentUser, isLoggedInFacultyOrTA)
 import Common.Views exposing (dateToString)
-import Date
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attrs
@@ -19,6 +18,7 @@ import Quizzes.Model
         , quizSubmitability
         )
 import RemoteData exposing (WebData)
+import Time exposing (Posix)
 
 
 listView : WebData (List Meeting) -> Html Msg

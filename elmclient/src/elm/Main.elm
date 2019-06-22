@@ -5,10 +5,10 @@ import Common.Commands exposing (updateDate)
 import Meetings.Commands exposing (fetchMeetings)
 import Models exposing (Flags, Model, initialModel)
 import Msgs exposing (Msg)
-import Navigation exposing (Location)
 import Routing
 import Subscriptions exposing (subscriptions)
 import Update exposing (update)
+import Url exposing (Url)
 import View exposing (view)
 
 
