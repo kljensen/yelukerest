@@ -49,7 +49,7 @@ type alias UIElements =
 
 
 type alias Model =
-    { current_date : Maybe Date
+    { current_date : Maybe Posix
     , route : Route
     , meetings : WebData (List Meeting)
     , currentUser : WebData CurrentUser

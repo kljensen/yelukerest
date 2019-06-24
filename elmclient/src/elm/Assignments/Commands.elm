@@ -19,12 +19,13 @@ import Assignments.Model
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
         )
-import Auth.Commands exposing (fetchForCurrentUser)
+import Auth.Commands exposing (fetchForCurrentUser, sendRequestWithJWT)
 import Auth.Model exposing (CurrentUser, JWT)
 import Http
 import Json.Encode as Encode
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
+import String
 import Tuple
 
 
@@ -55,7 +56,7 @@ fetchAssignmentSubmissionsUrl currentUser =
         defaultQuery =
             base
                 ++ "?user_id=eq."
-                ++ toString currentUser.id
+                ++ String.fromInt currentUser.id
                 ++ "&"
                 ++ select
     in
@@ -67,7 +68,7 @@ fetchAssignmentSubmissionsUrl currentUser =
             else
                 base
                     ++ "?or=(user_id.eq."
-                    ++ toString currentUser.id
+                    ++ String.fromInt currentUser.id
                     ++ ",team_nickname.eq."
                     ++ nickname
                     ++ ")&"
@@ -92,14 +93,12 @@ createAssignmentSubmission jwt slug =
                 , headers = headers
                 , url = "/rest/assignment_submissions"
                 , timeout = Nothing
-                , expect = Http.expectJson assignmentSubmissionDecoder
-                , withCredentials = False
+                , tracker = Nothing
+                , expect = Http.expectJson (RemoteData.fromResult >> Msgs.OnBeginAssignmentComplete slug) assignmentSubmissionDecoder
                 , body = Http.jsonBody (Encode.object [ ( "assignment_slug", Encode.string slug ) ])
                 }
     in
     request
-        |> RemoteData.sendRequest
-        |> Cmd.map (Msgs.OnBeginAssignmentComplete slug)
 
 
 encodeAFS : ( Int, String ) -> Encode.Value
@@ -115,8 +114,7 @@ encodeAFS tup =
 encodeAFSList : List ( Int, String ) -> Encode.Value
 encodeAFSList valueTuples =
     valueTuples
-        |> List.map encodeAFS
-        |> Encode.list
+        |> Encode.list encodeAFS
 
 
 sendAssignmentFieldSubmissions : JWT -> String -> List ( Int, String ) -> Cmd Msg
@@ -133,20 +131,21 @@ sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
         obj =
             List.map
 
+        msg =
+            Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug
+
         request =
             Http.request
                 { method = "POST"
                 , headers = headers
                 , url = "/rest/assignment_field_submissions"
                 , timeout = Nothing
-                , expect = Http.expectJson assignmentFieldSubmissionsDecoder
-                , withCredentials = False
+                , tracker = Nothing
+                , expect = Http.expectJson (RemoteData.fromResult >> msg) assignmentFieldSubmissionsDecoder
                 , body = Http.jsonBody (encodeAFSList valueTuples)
                 }
     in
     request
-        |> RemoteData.sendRequest
-        |> Cmd.map (Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug)
 
 
 {-| Notice that there is no way to restrict this
