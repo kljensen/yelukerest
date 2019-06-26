@@ -21,7 +21,7 @@ loginOrDashboard currentUser =
         RemoteData.Loading ->
             loginLink
 
-        RemoteData.Success currentUser ->
+        RemoteData.Success u ->
             Html.a
                 [ Attrs.href "#/dashboard" ]
                 [ Html.text "Dashboard" ]

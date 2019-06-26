@@ -31,8 +31,8 @@ listView meetings =
 
 
 getQuizForMeetingID : Int -> WebData (List Quiz) -> Maybe Quiz
-getQuizForMeetingID meetingID quizzes =
-    case quizzes of
+getQuizForMeetingID meetingID wdQuizzes =
+    case wdQuizzes of
         RemoteData.Success quizzes ->
             quizzes
                 |> List.filter (\quiz -> quiz.meeting_id == meetingID)
@@ -54,14 +54,14 @@ getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
             Nothing
 
 
-detailView : Maybe Date.Date -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailView maybeCurrentDate currentUser meetings slug quizzes quizSubmissions pendingBeginQuizzes =
+detailView : Maybe Posix -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailView maybeCurrentDate currentUser wdMeetings slug quizzes quizSubmissions pendingBeginQuizzes =
     case maybeCurrentDate of
         Nothing ->
             Html.text "Loding..."
 
         Just currentDate ->
-            case meetings of
+            case wdMeetings of
                 RemoteData.NotAsked ->
                     Html.text ""
 
@@ -83,10 +83,10 @@ detailView maybeCurrentDate currentUser meetings slug quizzes quizSubmissions pe
                             meetingNotFoundView slug
 
                 RemoteData.Failure err ->
-                    Html.text (toString err)
+                    Html.text "HTTP Error!"
 
 
-detailViewForJustMeeting : Date.Date -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailViewForJustMeeting : Posix -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
 detailViewForJustMeeting currentDate currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
     let
         maybeQuiz =
@@ -123,7 +123,7 @@ recordEngagementButton : Int -> WebData CurrentUser -> Html.Html Msg
 recordEngagementButton meetingID currentUser =
     case isLoggedInFacultyOrTA currentUser of
         Ok _ ->
-            Html.a [ Attrs.href ("#/engagements/" ++ toString meetingID) ]
+            Html.a [ Attrs.href ("#/engagements/" ++ String.fromInt meetingID) ]
                 [ Html.button
                     [ Attrs.class "btn btn-primary" ]
                     [ Html.text "Take attendance" ]
@@ -133,7 +133,7 @@ recordEngagementButton meetingID currentUser =
             Html.text ""
 
 
-showQuizStatus : Date.Date -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizStatus : Posix -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
 showQuizStatus currentDate meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizzes of
         RemoteData.Success quizzes ->
@@ -171,7 +171,7 @@ pText theString =
     Html.p [] [ Html.text theString ]
 
 
-showQuizSubmissionStatus : Date.Date -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizSubmissionStatus : Posix -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
 showQuizSubmissionStatus currentDate quiz wdQuizSubmissions maybePendingBeginQuiz =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
@@ -247,8 +247,8 @@ meetingNotFoundView slug =
 
 
 listOrStatus : WebData (List Meeting) -> Html Msg
-listOrStatus meetings =
-    case meetings of
+listOrStatus wdMeetings =
+    case wdMeetings of
         RemoteData.NotAsked ->
             Html.text ""
 
@@ -259,7 +259,7 @@ listOrStatus meetings =
             listMeetings meetings
 
         RemoteData.Failure error ->
-            Html.text (toString error)
+            Html.text "HTTP Error!"
 
 
 listMeetings : List Meeting -> Html Msg

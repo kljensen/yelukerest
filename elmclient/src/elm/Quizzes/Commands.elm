@@ -9,7 +9,7 @@ module Quizzes.Commands exposing
     , submitQuizAnswers
     )
 
-import Auth.Commands exposing (fetchForCurrentUser, requestForJWT)
+import Auth.Commands exposing (fetchForCurrentUser, handleJsonResponse, requestForJWT)
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http
 import Json.Decode as Decode
@@ -114,30 +114,34 @@ createQuizSubmission jwt quizID =
             , Http.header "Accept" "application/vnd.pgrst.object+json"
             ]
 
+        insertResponseResolver =
+            Http.stringResolver <| handleJsonResponse <| Decode.succeed quizID
+
         insertSubmissionRequest =
-            Http.request
+            Http.task
                 { method = "POST"
                 , headers = headers1
                 , url = "/rest/quiz_submissions"
                 , timeout = Nothing
-                , expect = Http.expectJson (Decode.succeed quizID)
-                , withCredentials = False
+                , resolver = insertResponseResolver
                 , body = Http.jsonBody (Encode.object [ ( "quiz_id", Encode.int quizID ) ])
                 }
 
+        fetchResponseResolver =
+            Http.stringResolver <| handleJsonResponse <| quizSubmissionsDecoder
+
         fetchSubmissionsRequest =
-            Http.request
+            Http.task
                 { method = "GET"
                 , headers = [ Http.header "Authorization" ("Bearer " ++ jwt) ]
                 , url = "/rest/quiz_submissions_info"
                 , timeout = Nothing
-                , expect = Http.expectJson quizSubmissionsDecoder
-                , withCredentials = False
+                , resolver = fetchResponseResolver
                 , body = Http.emptyBody
                 }
     in
-    Http.task insertSubmissionRequest
-        |> Task.andThen (\x -> Http.task fetchSubmissionsRequest)
+    insertSubmissionRequest
+        |> Task.andThen (\x -> fetchSubmissionsRequest)
         |> Task.attempt RemoteData.fromResult
         |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
 

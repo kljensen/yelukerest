@@ -9,11 +9,10 @@ module Quizzes.Updates exposing
     , takeQuiz
     )
 
+import Browser.Navigation as Nav
 import Dict
 import Models exposing (Model)
 import Msgs exposing (Msg)
-import Browser exposing (Navigation)
-import Url exposing (Url)
 import Quizzes.Commands
     exposing
         ( createQuizSubmission
@@ -32,6 +31,8 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Set
+import String
+import Url exposing (Url)
 
 
 onSubmitQuizAnswers : Model -> Int -> List Int -> ( Model, Cmd Msg )
@@ -147,7 +148,7 @@ takeQuiz model quizID =
                 , quizAnswers = Dict.insert quizID RemoteData.Loading model.quizAnswers
             }
     in
-    ( newModel, Cmd.batch ([ Navigation.load ("#quiz-submissions/" ++ toString quizID) ] ++ extraCmds) )
+    ( newModel, Cmd.batch ([ Nav.load ("#quiz-submissions/" ++ String.fromInt quizID) ] ++ extraCmds) )
 
 
 onFetchQuizGrades : Model -> WebData (List QuizGrade) -> ( Model, Cmd Msg )

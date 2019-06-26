@@ -24,6 +24,7 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Round
+import String
 import Time exposing (Posix)
 
 
@@ -153,7 +154,7 @@ showDashboard currentUser =
         [ Html.h2 [] [ Html.text "Your account info" ]
         , Html.table [ Attrs.class "dashboard" ]
             [ Html.tbody []
-                [ row "id" (toString currentUser.id)
+                [ row "id" (String.fromInt currentUser.id)
                 , row "netid" currentUser.netid
                 , row "role" currentUser.role
                 , row "nickname" currentUser.nickname
@@ -183,7 +184,7 @@ maybeShowGradeTable webDataGradeData =
             showGradeTable gd
 
         RemoteData.Failure e ->
-            Html.div [] [ Html.text ("Failed to load data:" ++ toString e) ]
+            Html.div [] [ Html.text "Failed to load data. HTTP error" ]
 
         _ ->
             Html.div [] [ Html.text "Loading..." ]
@@ -260,7 +261,7 @@ maybeToStringWithDefault default f x =
             default
 
 
-shortDate : Date -> String
+shortDate : Posix -> String
 shortDate d =
     -- The space in here is nonbreaking unicode \x00A0
     -- DateFormat.format "%d\u{00A0}%b" d
@@ -323,7 +324,7 @@ showGradeForQuiz gd quiz meeting =
         , td2 meeting.title
         , td2 qs
         , td grade
-        , td2 (toString quiz.points_possible)
+        , td2 (String.fromInt quiz.points_possible)
         , td average
         , td2 stddev
         ]
@@ -409,8 +410,8 @@ showGradeForAssignment gd assignment =
            will have more assignmentSubmissions than just their own
         -}
         matchesMaybeSubmission =
-            \maybeSub assignmentGrade ->
-                case maybeSub of
+            \msub assignmentGrade ->
+                case msub of
                     Just sub ->
                         assignmentGrade.assignment_submission_id == sub.id
 
@@ -441,7 +442,7 @@ showGradeForAssignment gd assignment =
         , td assignment.title
         , td2 subInfo
         , td grade
-        , td2 (toString assignment.points_possible)
+        , td2 (String.fromInt assignment.points_possible)
         , td average
         , td2 stddev
         ]

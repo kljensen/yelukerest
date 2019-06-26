@@ -11,6 +11,7 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Engagements.Model exposing (Engagement)
+import Json.Decode
 import Meetings.Model exposing (Meeting)
 import Quizzes.Model
     exposing
@@ -29,7 +30,7 @@ import Users.Model exposing (User)
 
 type SSEMsg
     = Noop
-    | SSETableChange (Result String String)
+    | SSETableChange (Result Json.Decode.Error String)
 
 
 type Msg

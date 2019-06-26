@@ -3,7 +3,6 @@ module Common.Views exposing
     , dateTitleHrefRow
     , dateToString
     , divWithText
-    , merge4
     , piazzaLink
     , shortDateToString
     , showDraftStatus
@@ -23,17 +22,18 @@ type alias DateTitleHrefRecord =
     }
 
 
-merge4 :
-    WebData a
-    -> WebData b
-    -> WebData c
-    -> WebData d
-    -> WebData ( a, b, c, d )
-merge4 a b c d =
-    RemoteData.map (\a b c d -> ( a, b, c, d )) a
-        |> RemoteData.andMap b
-        |> RemoteData.andMap c
-        |> RemoteData.andMap d
+
+-- merge4 :
+--     WebData a
+--     -> WebData b
+--     -> WebData c
+--     -> WebData d
+--     -> WebData ( a, b, c, d )
+-- merge4 a b c d =
+--     RemoteData.map (\a b c d -> ( a, b, c, d )) a
+--         |> RemoteData.andMap b
+--         |> RemoteData.andMap c
+--         |> RemoteData.andMap d
 
 
 showDraftStatus : Bool -> Html.Html Msg

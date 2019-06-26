@@ -28,8 +28,8 @@ import Time exposing (Posix)
 
 
 listView : WebData (List Assignment) -> Html Msg
-listView assignments =
-    case assignments of
+listView wdAssignments =
+    case wdAssignments of
         RemoteData.NotAsked ->
             loginToViewAssignments
 
@@ -76,9 +76,9 @@ getSubmissionForSlug submissions slug wdCurrentUser =
             Nothing
 
 
-detailView : WebData CurrentUser -> Maybe Date.Date -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Date -> Html.Html Msg
-detailView wdCurrentUser maybeDate assignments assignmentSubmissions pendingBeginAssignments slug current_date =
-    case ( assignments, assignmentSubmissions ) of
+detailView : WebData CurrentUser -> Maybe Posix -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate wdAssignments assignmentSubmissions pendingBeginAssignments slug current_date =
+    case ( wdAssignments, assignmentSubmissions ) of
         ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
                 maybeAssignment =
@@ -113,7 +113,7 @@ meetingNotFoundView slug =
         ]
 
 
-dateTimeToString : Date.Date -> String
+dateTimeToString : Posix -> String
 dateTimeToString date =
     "foo"
 
@@ -123,7 +123,7 @@ dateTimeToString date =
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Date.Date -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Date -> Html.Html Msg
+detailViewForJustAssignment : Posix -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Posix -> Html.Html Msg
 detailViewForJustAssignment currentDate assignment maybeSubmission maybeBeginAssignment current_date =
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
@@ -164,11 +164,11 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : Date.Date -> Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+beginSubmission : Posix -> Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
 beginSubmission currentDate assignment maybeBeginAssignment =
     case isSubmissible currentDate assignment of
-        Submissible assignment ->
-            showBeginAssignmentButton assignment maybeBeginAssignment
+        Submissible assignment2 ->
+            showBeginAssignmentButton assignment2 maybeBeginAssignment
 
         NotSubmissible reason ->
             let
@@ -203,7 +203,7 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
                 ]
 
         Just (RemoteData.Failure error) ->
-            Html.div [ Attrs.class "red" ] [ Html.text (toString error) ]
+            Html.div [ Attrs.class "red" ] [ Html.text "HTTP error!" ]
 
         _ ->
             Html.text "other error"
@@ -216,11 +216,11 @@ spinner =
         ]
 
 
-submissionInstructions : Date.Date -> Assignment -> AssignmentSubmission -> Html.Html Msg
+submissionInstructions : Posix -> Assignment -> AssignmentSubmission -> Html.Html Msg
 submissionInstructions currentDate assignment submission =
     case isSubmissible currentDate assignment of
-        Submissible assignment ->
-            showSubmissionForm assignment
+        Submissible assignment2 ->
+            showSubmissionForm assignment2
 
         NotSubmissible reason ->
             let

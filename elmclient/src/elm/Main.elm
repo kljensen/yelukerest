@@ -12,7 +12,7 @@ import Url exposing (Url)
 import View exposing (view)
 
 
-init : Flags -> Location -> ( Model, Cmd Msg )
+init : Flags -> Url -> ( Model, Cmd Msg )
 init flags location =
     let
         currentRoute =

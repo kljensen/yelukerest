@@ -12,9 +12,9 @@ import Assignments.Model
         , PendingBeginAssignments
         )
 import Auth.Model exposing (CurrentUser)
-import Time exposing (Posix)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
+import Json.Decode
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Msgs exposing (Msg, SSEMsg(..))
 import Quizzes.Model
@@ -29,6 +29,7 @@ import Quizzes.Model
 import RemoteData exposing (WebData)
 import SSE exposing (SseAccess)
 import Set exposing (Set)
+import Time exposing (Posix)
 import Users.Model exposing (User)
 
 
@@ -84,7 +85,7 @@ type alias Model =
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
     , quizQuestionOptionInputs : Set Int
     , sse : SseAccess Msgs.Msg
-    , latestMessage : Result String String
+    , latestMessage : Result Json.Decode.Error String
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
     , pendingSubmitEngagements : Dict ( Int, Int ) (WebData Engagement)

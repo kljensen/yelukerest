@@ -2,7 +2,7 @@ module Routing exposing (matchers, parseLocation)
 
 import Models exposing (Route(..))
 import Url exposing (Url)
-import Url.Parser exposing ((</>), Parser, int, map, oneOf, parseHash, s, string, top)
+import Url.Parser exposing ((</>), Parser, int, map, oneOf, parse, s, string, top)
 
 
 matchers : Parser (Route -> a) a
@@ -19,9 +19,18 @@ matchers =
         ]
 
 
-parseLocation : Location -> Route
+parseHash : Url -> Maybe Route
+parseHash url =
+    -- The RealWorld spec treats the fragment like a path.
+    -- This makes it *literally* the path, so we can proceed
+    -- with parsing as if it had been a normal path all along.
+    { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
+        |> parse matchers
+
+
+parseLocation : Url -> Route
 parseLocation location =
-    case parseHash matchers location of
+    case parseHash location of
         Just route ->
             route
 

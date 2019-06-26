@@ -80,7 +80,7 @@ update msg model =
             ( { model | route = newRoute }, Cmd.none )
 
         Msgs.Tick theTime ->
-            ( { model | current_date = Just (Date.fromTime theTime) }, Cmd.none )
+            ( { model | current_date = Just theTime }, Cmd.none )
 
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )

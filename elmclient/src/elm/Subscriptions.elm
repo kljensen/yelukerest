@@ -3,12 +3,12 @@ module Subscriptions exposing (subscriptions)
 import Models exposing (Model)
 import Msgs exposing (Msg)
 import SSE exposing (serverSideEvents)
-import Time exposing (Time, second)
+import Time exposing (Posix)
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Time.every (5 * second) Msgs.Tick
+        [ Time.every 5000 Msgs.Tick
         , serverSideEvents model.sse
         ]

@@ -1,4 +1,12 @@
-module Auth.Commands exposing (fetchCurrentUser, fetchCurrentUserUrl, fetchForCurrentUser, fetchForJWT, requestForJWT, sendRequestWithJWT)
+module Auth.Commands exposing
+    ( fetchCurrentUser
+    , fetchCurrentUserUrl
+    , fetchForCurrentUser
+    , fetchForJWT
+    , handleJsonResponse
+    , requestForJWT
+    , sendRequestWithJWT
+    )
 
 import Auth.Model exposing (CurrentUser, JWT, currentUserDecoder)
 import Http
@@ -59,3 +67,31 @@ requestForJWT jwt url method body decoder data2msg =
 
 -- |> Msgs.OnFetchCurrentUser
 -- |> Cmd.map msg
+
+
+handleJsonResponse : Decode.Decoder a -> Http.Response String -> Result Http.Error a
+handleJsonResponse decoder response =
+    -- This is mostly used for tasks when I need to chain http requests. Though, I
+    -- feel like I ought to rewrite the server side API such that chaining is not
+    -- required.
+    -- See https://korban.net/posts/elm/2019-02-15-combining-http-requests-with-task-in-elm/
+    case response of
+        Http.BadUrl_ url ->
+            Err (Http.BadUrl url)
+
+        Http.Timeout_ ->
+            Err Http.Timeout
+
+        Http.BadStatus_ { statusCode } _ ->
+            Err (Http.BadStatus statusCode)
+
+        Http.NetworkError_ ->
+            Err Http.NetworkError
+
+        Http.GoodStatus_ _ body ->
+            case Decode.decodeString decoder body of
+                Err _ ->
+                    Err (Http.BadBody body)
+
+                Ok result ->
+                    Ok result
