@@ -28,11 +28,20 @@ parseHash url =
         |> parse matchers
 
 
-parseLocation : Url -> Route
+parseLocation : String -> Route
 parseLocation location =
-    case parseHash location of
-        Just route ->
-            route
+    let
+        loc =
+            Url.fromString location
+    in
+    case loc of
+        Just url ->
+            case parseHash url of
+                Just route ->
+                    route
+
+                Nothing ->
+                    NotFoundRoute
 
         Nothing ->
             NotFoundRoute

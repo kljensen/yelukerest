@@ -67,20 +67,6 @@ mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers =
         |> RemoteData.andMap theseQuizAnswers
 
 
-
--- merge4 :
---     WebData a
---     -> WebData b
---     -> WebData c
---     -> WebData d
---     -> WebData ( a, b, c, d )
--- merge4 a b c d =
---     RemoteData.map (\a b c d -> ( a, b, c, d )) a
---         |> RemoteData.andMap b
---         |> RemoteData.andMap c
---         |> RemoteData.andMap d
-
-
 takeQuizView : Maybe Posix -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
 takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSubmitQuizzes =
     let

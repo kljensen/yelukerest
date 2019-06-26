@@ -38,6 +38,7 @@ type alias Flags =
     , piazzaURL : Maybe String
     , aboutURL : String
     , canvasURL : String
+    , location : String
     }
 
 

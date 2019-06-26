@@ -1,5 +1,5 @@
 /* jslint browser: true */
-/* global EventSource */
+/* global EventSource, document, window */
 /* exported initElmPorts */
 
 // From https://github.com/gpremer/elm-sse-ports
@@ -127,5 +127,17 @@ exports.default = function initElmPorts(app) {
     app.ports.deleteEventSourceJS.subscribe((address) => {
         sources[address].close(); // we only call if it exists
         delete sources[address]; // we only call if it exists
+    });
+
+
+    // Inform app of browser navigation (the BACK and FORWARD buttons)
+    document.addEventListener('popstate', () => {
+        app.ports.onUrlChange.send(document.location.href);
+    });
+
+    // Change the URL upon request, inform app of the change.
+    app.ports.pushUrl.subscribe((url) => {
+        window.history.pushState({}, '', url);
+        app.ports.onUrlChange.send(document.location.href);
     });
 };

@@ -46,7 +46,7 @@ type Msg
     | OnFetchQuizGrades (WebData (List QuizGrade))
     | OnFetchQuizGradeDistributions (WebData (List QuizGradeDistribution))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
-    | OnLocationChange Url
+    | OnLocationChange String
     | Tick Posix
     | OnSubmitAssignmentFieldSubmissions Assignment
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))

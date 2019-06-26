@@ -238,10 +238,14 @@ submissionInstructions currentDate assignment submission =
 showSubmissionForm : Assignment -> Html.Html Msg
 showSubmissionForm assignment =
     Html.form
-        [ Events.onWithOptions
+        [ Events.custom
             "submit"
-            { preventDefault = True, stopPropagation = False }
-            (Decode.succeed (Msgs.OnSubmitAssignmentFieldSubmissions assignment))
+            (Decode.succeed
+                { preventDefault = True
+                , stopPropagation = False
+                , message = Msgs.OnSubmitAssignmentFieldSubmissions assignment
+                }
+            )
         ]
         (List.map showFormField assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
@@ -263,7 +267,7 @@ showFormField assignmentField =
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder assignmentField.placeholder
-                    , Attrs.name (toString assignmentField.id)
+                    , Attrs.name (String.fromInt assignmentField.id)
                     , Events.onInput
                         (Msgs.OnUpdateAssignmentFieldSubmissionInput
                             assignmentField.id
@@ -277,7 +281,7 @@ showFormField assignmentField =
                     , Attrs.class "input field"
                     , Attrs.placeholder assignmentField.placeholder
                     , Attrs.title assignmentField.help
-                    , Attrs.name (toString assignmentField.id)
+                    , Attrs.name (String.fromInt assignmentField.id)
                     , Events.onInput
                         (Msgs.OnUpdateAssignmentFieldSubmissionInput
                             assignmentField.id
@@ -320,7 +324,7 @@ showPreviousSubmissionField fieldSubmissions field =
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder field.placeholder
-                    , Attrs.name (toString field.id)
+                    , Attrs.name (String.fromInt field.id)
                     , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
                     , Attrs.disabled True
                     ]
@@ -332,7 +336,7 @@ showPreviousSubmissionField fieldSubmissions field =
                     , Attrs.class "input field"
                     , Attrs.placeholder field.placeholder
                     , Attrs.title field.help
-                    , Attrs.name (toString field.id)
+                    , Attrs.name (String.fromInt field.id)
                     , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
                     , Attrs.disabled True
                     ]
