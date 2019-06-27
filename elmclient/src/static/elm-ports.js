@@ -1,5 +1,5 @@
 /* jslint browser: true */
-/* global EventSource, document, window */
+/* global EventSource */
 /* exported initElmPorts */
 
 // From https://github.com/gpremer/elm-sse-ports
@@ -87,7 +87,7 @@ exports.default = function initElmPorts(app) {
      * @param  {string} address The server address
      * @param  {string} eventType Type of event
      * @param  {boolean} doCreate=false Should we create new event source?
-     * @returns {eventSource} And eventsource object
+     * @returns {eventSource} An eventsource object
      */
     function doAddListener(address, eventType, doCreate = false) {
         let eventSource;
@@ -99,7 +99,6 @@ exports.default = function initElmPorts(app) {
         addEventHandlers(eventType, eventSource);
         return eventSource;
     }
-
     app.ports.createEventSourceJS.subscribe(createNewEventSource);
 
     app.ports.addListenerJS.subscribe((addressAndEventType) => {
@@ -127,17 +126,5 @@ exports.default = function initElmPorts(app) {
     app.ports.deleteEventSourceJS.subscribe((address) => {
         sources[address].close(); // we only call if it exists
         delete sources[address]; // we only call if it exists
-    });
-
-
-    // Inform app of browser navigation (the BACK and FORWARD buttons)
-    document.addEventListener('popstate', () => {
-        app.ports.onUrlChange.send(document.location.href);
-    });
-
-    // Change the URL upon request, inform app of the change.
-    app.ports.pushUrl.subscribe((url) => {
-        window.history.pushState({}, '', url);
-        app.ports.onUrlChange.send(document.location.href);
     });
 };

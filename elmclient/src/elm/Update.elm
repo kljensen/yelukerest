@@ -16,6 +16,7 @@ import Assignments.Updates
         )
 import Auth.Model exposing (isFacultyOrTA)
 import Browser exposing (UrlRequest(..))
+import Browser.Navigation exposing (load, pushUrl)
 import Dict exposing (Dict)
 import Engagements.Commands
     exposing
@@ -24,8 +25,8 @@ import Engagements.Commands
         )
 import Engagements.Updates exposing (onSSETableChange)
 import Json.Decode exposing (decodeString, string)
-import Models exposing (Model)
-import Msgs exposing (Msg, BrowserLocation(..))
+import Models exposing (Model, Route(..))
+import Msgs exposing (BrowserLocation(..), Msg)
 import Quizzes.Commands
     exposing
         ( createQuizSubmission
@@ -52,6 +53,7 @@ import Routing exposing (parseLocation)
 import SSE exposing (SseAccess, withListener)
 import Set exposing (Set)
 import Time exposing (Posix)
+import Url
 import Users.Commands exposing (fetchUsers)
 
 
@@ -74,7 +76,17 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Msgs.LinkClicked urlRequest ->
-            ( model, Cmd.none )
+            case urlRequest of
+                Internal url ->
+                    case parseLocation (UrlLocation url) of
+                        NotFoundRoute ->
+                            ( model, load (Url.toString url) )
+
+                        _ ->
+                            ( model, pushUrl model.navKey (Url.toString url) )
+
+                External href ->
+                    ( model, load href )
 
         Msgs.OnLocationChange location ->
             let
@@ -82,7 +94,6 @@ update msg model =
                     parseLocation location
             in
             ( { model | route = newRoute }, Cmd.none )
-
 
         Msgs.Tick theTime ->
             ( { model | current_date = Just theTime }, Cmd.none )

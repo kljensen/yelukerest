@@ -22,11 +22,24 @@ matchers =
 
 parseHash : Url -> Maybe Route
 parseHash url =
-    -- The RealWorld spec treats the fragment like a path.
-    -- This makes it *literally* the path, so we can proceed
-    -- with parsing as if it had been a normal path all along.
-    { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
-        |> parse matchers
+    let
+        -- Overwrite the URL's path with the fragment component, solely
+        -- for the purposes of parsing.
+        fakeURL =
+            { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
+
+        route =
+            parse matchers fakeURL
+    in
+    case ( url.fragment, url.path ) of
+        ( Nothing, "/" ) ->
+            route
+
+        ( Nothing, _ ) ->
+            Nothing
+
+        ( Just f, _ ) ->
+            route
 
 
 parseLocation : BrowserLocation -> Route
