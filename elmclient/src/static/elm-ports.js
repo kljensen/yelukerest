@@ -99,7 +99,9 @@ exports.default = function initElmPorts(app) {
         addEventHandlers(eventType, eventSource);
         return eventSource;
     }
-    app.ports.createEventSourceJS.subscribe(createNewEventSource);
+
+    // Currently unused and therefore pruned
+    // app.ports.createEventSourceJS.subscribe(createNewEventSource);
 
     app.ports.addListenerJS.subscribe((addressAndEventType) => {
         const address = addressAndEventType[0];
@@ -116,15 +118,17 @@ exports.default = function initElmPorts(app) {
         doAddListener(address, eventType, true);
     });
 
-    app.ports.removeListenerJS.subscribe((addressAndEventType) => {
-        const address = addressAndEventType[0];
-        const eventType = addressAndEventType[1];
-        const eventSource = sources[address]; // we only call if it exists
-        eventSource.removeEventListener(eventType, sendEventToElm);
-    });
+    // Currently unused and therefore pruned
+    // app.ports.removeListenerJS.subscribe((addressAndEventType) => {
+    //     const address = addressAndEventType[0];
+    //     const eventType = addressAndEventType[1];
+    //     const eventSource = sources[address]; // we only call if it exists
+    //     eventSource.removeEventListener(eventType, sendEventToElm);
+    // });
 
-    app.ports.deleteEventSourceJS.subscribe((address) => {
-        sources[address].close(); // we only call if it exists
-        delete sources[address]; // we only call if it exists
-    });
+    // Currently unused and therefore pruned
+    // app.ports.deleteEventSourceJS.subscribe((address) => {
+    //     sources[address].close(); // we only call if it exists
+    //     delete sources[address]; // we only call if it exists
+    // });
 };
