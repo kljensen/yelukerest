@@ -12,6 +12,7 @@ import Assignments.Model
         , PendingBeginAssignments
         )
 import Auth.Model exposing (CurrentUser)
+import Browser.Navigation exposing (Key)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
 import Json.Decode
@@ -53,6 +54,7 @@ type alias UIElements =
 type alias Model =
     { current_date : Maybe Posix
     , route : Route
+    , navKey : Key
     , meetings : WebData (List Meeting)
     , currentUser : WebData CurrentUser
     , assignments : WebData (List Assignment)
@@ -93,10 +95,11 @@ type alias Model =
     }
 
 
-initialModel : Flags -> Route -> Model
-initialModel flags route =
+initialModel : Flags -> Route -> Key -> Model
+initialModel flags route key =
     { current_date = Nothing
     , route = route
+    , navKey = key
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
     , assignments = RemoteData.NotAsked
@@ -139,3 +142,4 @@ type Route
     | EditEngagementsRoute Int
     | TakeQuizRoute Int
     | NotFoundRoute
+

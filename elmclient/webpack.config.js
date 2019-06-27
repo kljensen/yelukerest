@@ -84,6 +84,10 @@ const commonConfig = {
             chunkFilename: isDev ? '[id].css' : '[id]-[hash].css',
         }),
     ],
+    devServer: {
+        inline: true,
+        stats: 'errors-only',
+    },
 };
 
 // additional webpack settings for local env (when invoked by 'npm start')
@@ -121,7 +125,13 @@ if (isProd === true) {
             rules: [{
                 test: /\.elm$/,
                 exclude: [/elm-stuff/, /node_modules/],
-                use: 'elm-webpack-loader',
+                use: [{
+                    loader: 'elm-webpack-loader',
+                    options: {
+                        verbose: true,
+                        optimize: true,
+                    },
+                }],
             }],
         },
         plugins: [

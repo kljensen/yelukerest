@@ -1,4 +1,4 @@
-module Msgs exposing (Msg(..), SSEMsg(..))
+module Msgs exposing (BrowserLocation(..), Msg(..), SSEMsg(..))
 
 import Assignments.Model
     exposing
@@ -10,6 +10,7 @@ import Assignments.Model
         , AssignmentSubmission
         )
 import Auth.Model exposing (CurrentUser)
+import Browser exposing (UrlRequest(..))
 import Engagements.Model exposing (Engagement)
 import Json.Decode
 import Meetings.Model exposing (Meeting)
@@ -26,6 +27,11 @@ import RemoteData exposing (WebData)
 import Time exposing (Posix)
 import Url exposing (Url)
 import Users.Model exposing (User)
+
+
+type BrowserLocation
+    = StringLocation String
+    | UrlLocation Url
 
 
 type SSEMsg
@@ -46,7 +52,8 @@ type Msg
     | OnFetchQuizGrades (WebData (List QuizGrade))
     | OnFetchQuizGradeDistributions (WebData (List QuizGradeDistribution))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
-    | OnLocationChange String
+    | OnLocationChange BrowserLocation
+    | LinkClicked UrlRequest
     | Tick Posix
     | OnSubmitAssignmentFieldSubmissions Assignment
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))

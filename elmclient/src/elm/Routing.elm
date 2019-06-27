@@ -1,6 +1,7 @@
 module Routing exposing (matchers, parseLocation)
 
 import Models exposing (Route(..))
+import Msgs exposing (BrowserLocation(..))
 import Url exposing (Url)
 import Url.Parser exposing ((</>), Parser, int, map, oneOf, parse, s, string, top)
 
@@ -28,13 +29,18 @@ parseHash url =
         |> parse matchers
 
 
-parseLocation : String -> Route
+parseLocation : BrowserLocation -> Route
 parseLocation location =
     let
-        loc =
-            Url.fromString location
+        theLocation =
+            case location of
+                StringLocation loc ->
+                    Url.fromString loc
+
+                UrlLocation loc ->
+                    Just loc
     in
-    case loc of
+    case theLocation of
         Just url ->
             case parseHash url of
                 Just route ->

@@ -2,6 +2,7 @@ module View exposing (indexView, notFoundView, page, view)
 
 import Assignments.Views
 import Auth.Views
+import Browser exposing (Document)
 import Common.Views exposing (piazzaLink)
 import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
@@ -13,11 +14,13 @@ import Msgs exposing (Msg)
 import Quizzes.Views
 
 
-view : Model -> Html Msg
+view : Model -> Document Msg
 view model =
-    div []
-        [ div [] [ page model ]
-        ]
+    let
+        content =
+            div [] [ div [] [ page model ] ]
+    in
+    Document "foo" [ content ]
 
 
 page : Model -> Html Msg

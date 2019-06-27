@@ -15,6 +15,7 @@ import Assignments.Updates
         , onFetchAssignmentGrades
         )
 import Auth.Model exposing (isFacultyOrTA)
+import Browser exposing (UrlRequest(..))
 import Dict exposing (Dict)
 import Engagements.Commands
     exposing
@@ -24,7 +25,7 @@ import Engagements.Commands
 import Engagements.Updates exposing (onSSETableChange)
 import Json.Decode exposing (decodeString, string)
 import Models exposing (Model)
-import Msgs exposing (Msg)
+import Msgs exposing (Msg, BrowserLocation(..))
 import Quizzes.Commands
     exposing
         ( createQuizSubmission
@@ -72,12 +73,16 @@ listToDict getKey values =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        Msgs.LinkClicked urlRequest ->
+            ( model, Cmd.none )
+
         Msgs.OnLocationChange location ->
             let
                 newRoute =
                     parseLocation location
             in
             ( { model | route = newRoute }, Cmd.none )
+
 
         Msgs.Tick theTime ->
             ( { model | current_date = Just theTime }, Cmd.none )

@@ -2,10 +2,11 @@ module Main exposing (init, main)
 
 import Auth.Commands exposing (fetchCurrentUser)
 import Browser
+import Browser.Navigation exposing (Key)
 import Common.Commands exposing (updateDate)
 import Meetings.Commands exposing (fetchMeetings)
 import Models exposing (Flags, Model, initialModel)
-import Msgs exposing (Msg)
+import Msgs exposing (BrowserLocation(..), Msg)
 import Routing
 import Subscriptions exposing (subscriptions)
 import Update exposing (update)
@@ -13,23 +14,29 @@ import Url exposing (Url)
 import View exposing (view)
 
 
-init : Flags -> ( Model, Cmd Msg )
-init flags =
+init : Flags -> Url -> Key -> ( Model, Cmd Msg )
+init flags url key =
     let
         currentRoute =
-            Routing.parseLocation flags.location
+            Routing.parseLocation (StringLocation flags.location)
 
         m =
-            initialModel flags currentRoute
+            initialModel flags currentRoute key
     in
-    ( initialModel flags currentRoute, Cmd.batch [ fetchMeetings, fetchCurrentUser, updateDate ] )
+    ( m, Cmd.batch [ fetchMeetings, fetchCurrentUser, updateDate ] )
+
+
+
+-- See https://mmhaskell.com/blog/2018/11/12/elm-iv-navigation
 
 
 main : Program Flags Model Msg
 main =
-    Browser.element
+    Browser.application
         { init = init
         , view = view
         , update = update
         , subscriptions = subscriptions
+        , onUrlChange = \u -> Msgs.OnLocationChange (UrlLocation u)
+        , onUrlRequest = Msgs.LinkClicked
         }
