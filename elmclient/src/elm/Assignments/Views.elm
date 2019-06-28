@@ -15,20 +15,21 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
-import Common.Views
+import Common.Views exposing (longDateToString)
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Json.Decode as Decode
 import Markdown
+import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
 
 
-listView : WebData (List Assignment) -> Html Msg
-listView wdAssignments =
+listView : TimeZone -> WebData (List Assignment) -> Html Msg
+listView timeZone wdAssignments =
     case wdAssignments of
         RemoteData.NotAsked ->
             loginToViewAssignments
@@ -37,7 +38,7 @@ listView wdAssignments =
             Html.text "Loading..."
 
         RemoteData.Success assignments ->
-            listAssignments assignments
+            listAssignments timeZone assignments
 
         RemoteData.Failure error ->
             loginToViewAssignments
@@ -54,13 +55,13 @@ loginToViewAssignments =
         ]
 
 
-listAssignments : List Assignment -> Html Msg
-listAssignments assignments =
+listAssignments : TimeZone -> List Assignment -> Html Msg
+listAssignments timeZone assignments =
     let
         assignmentDetails =
             List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug }) assignments
     in
-    Html.div [] (List.map Common.Views.dateTitleHrefRow assignmentDetails)
+    Html.div [] (List.map (Common.Views.dateTitleHrefRow timeZone) assignmentDetails)
 
 
 getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> WebData CurrentUser -> Maybe AssignmentSubmission
@@ -76,8 +77,8 @@ getSubmissionForSlug submissions slug wdCurrentUser =
             Nothing
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate wdAssignments assignmentSubmissions pendingBeginAssignments slug current_date =
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions pendingBeginAssignments slug current_date =
     case ( wdAssignments, assignmentSubmissions ) of
         ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
             let
@@ -94,7 +95,7 @@ detailView wdCurrentUser maybeDate wdAssignments assignmentSubmissions pendingBe
             in
             case ( maybeDate, maybeAssignment ) of
                 ( Just currentDate, Just assignment ) ->
-                    detailViewForJustAssignment currentDate assignment maybeSubmission maybePendingBegin current_date
+                    detailViewForJustAssignment currentDate timeZone assignment maybeSubmission maybePendingBegin current_date
 
                 ( Nothing, _ ) ->
                     Html.div [] [ Html.text "Loading..." ]
@@ -113,23 +114,18 @@ meetingNotFoundView slug =
         ]
 
 
-dateTimeToString : Posix -> String
-dateTimeToString date =
-    "foo"
-
-
 
 -- DateFormat.format "%l:%M%p %A, %B %e, %Y" date
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Posix -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Posix -> Html.Html Msg
-detailViewForJustAssignment currentDate assignment maybeSubmission maybeBeginAssignment current_date =
+detailViewForJustAssignment : Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Posix -> Html.Html Msg
+detailViewForJustAssignment currentDate timeZone assignment maybeSubmission maybeBeginAssignment current_date =
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
             [ Html.text "Due: "
-            , Html.time [] [ Html.text (dateTimeToString assignment.closed_at) ]
+            , Html.time [] [ Html.text (longDateToString assignment.closed_at timeZone) ]
             ]
         , Markdown.toHtml [] assignment.body
         , Html.hr [] []

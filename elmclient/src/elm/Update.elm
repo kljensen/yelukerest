@@ -313,6 +313,26 @@ update msg model =
             in
             ( { model | pendingSubmitEngagements = pses }, Cmd.none )
 
+        Msgs.OnFetchTimeZone z ->
+            let
+                tz1 =
+                    model.timeZone
+
+                tz2 =
+                    { tz1 | zone = z }
+            in
+            ( { model | timeZone = tz2 }, Cmd.none )
+
+        Msgs.OnFetchTimeZoneName zoneName ->
+            let
+                tz1 =
+                    model.timeZone
+
+                tz2 =
+                    { tz1 | zoneName = zoneName }
+            in
+            ( { model | timeZone = tz2 }, Cmd.none )
+
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )
 setSseAndDo model f =

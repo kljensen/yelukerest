@@ -33,16 +33,16 @@ page model =
             Dashboard.Views.dashboard model
 
         Models.MeetingListRoute ->
-            Meetings.Views.listView model.meetings
+            Meetings.Views.listView model.timeZone model.meetings
 
         Models.MeetingDetailRoute slug ->
-            Meetings.Views.detailView model.current_date model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.pendingBeginQuizzes
+            Meetings.Views.detailView model.current_date model.timeZone model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.pendingBeginQuizzes
 
         Models.AssignmentListRoute ->
-            Assignments.Views.listView model.assignments
+            Assignments.Views.listView model.timeZone model.assignments
 
         Models.AssignmentDetailRoute slug ->
-            Assignments.Views.detailView model.currentUser model.current_date model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
+            Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
 
         Models.TakeQuizRoute quizID ->
             Quizzes.Views.takeQuizView model.current_date quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.pendingSubmitQuizzes

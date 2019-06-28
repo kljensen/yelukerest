@@ -3,7 +3,7 @@ module Main exposing (init, main)
 import Auth.Commands exposing (fetchCurrentUser)
 import Browser
 import Browser.Navigation exposing (Key)
-import Common.Commands exposing (updateDate)
+import Common.Commands exposing (getTimeZone, getTimeZoneName, updateDate)
 import Meetings.Commands exposing (fetchMeetings)
 import Models exposing (Flags, Model, initialModel)
 import Msgs exposing (BrowserLocation(..), Msg)
@@ -23,7 +23,15 @@ init flags url key =
         m =
             initialModel flags currentRoute key
     in
-    ( m, Cmd.batch [ fetchMeetings, fetchCurrentUser, updateDate ] )
+    ( m
+    , Cmd.batch
+        [ fetchMeetings
+        , fetchCurrentUser
+        , updateDate
+        , getTimeZone
+        , getTimeZoneName
+        ]
+    )
 
 
 

@@ -43,6 +43,8 @@ type Msg
     = OnFetchMeetings (WebData (List Meeting))
     | OnFetchAssignments (WebData (List Assignment))
     | OnFetchAssignmentGrades (WebData (List AssignmentGrade))
+    | OnFetchTimeZone Time.Zone
+    | OnFetchTimeZoneName Time.ZoneName
     | OnFetchAssignmentGradeDistributions (WebData (List AssignmentGradeDistribution))
     | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))

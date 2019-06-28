@@ -1,4 +1,4 @@
-module Models exposing (Flags, Model, Route(..), UIElements, initialModel)
+module Models exposing (Flags, Model, Route(..), TimeZone, UIElements, initialModel)
 
 import Assignments.Model
     exposing
@@ -30,7 +30,7 @@ import Quizzes.Model
 import RemoteData exposing (WebData)
 import SSE exposing (SseAccess)
 import Set exposing (Set)
-import Time exposing (Posix)
+import Time exposing (Posix, Zone, ZoneName(..), utc)
 import Users.Model exposing (User)
 
 
@@ -51,8 +51,15 @@ type alias UIElements =
     }
 
 
+type alias TimeZone =
+    { zone : Zone
+    , zoneName : ZoneName
+    }
+
+
 type alias Model =
     { current_date : Maybe Posix
+    , timeZone : TimeZone
     , route : Route
     , navKey : Key
     , meetings : WebData (List Meeting)
@@ -98,6 +105,7 @@ type alias Model =
 initialModel : Flags -> Route -> Key -> Model
 initialModel flags route key =
     { current_date = Nothing
+    , timeZone = { zone = utc, zoneName = Name "utc" }
     , route = route
     , navKey = key
     , meetings = RemoteData.Loading
@@ -142,4 +150,3 @@ type Route
     | EditEngagementsRoute Int
     | TakeQuizRoute Int
     | NotFoundRoute
-
