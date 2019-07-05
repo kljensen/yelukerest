@@ -98,7 +98,7 @@ type alias Model =
     , latestMessage : Result Json.Decode.Error String
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
-    , pendingSubmitEngagements : Dict ( Int, Int ) (WebData Engagement)
+    , pendingSubmitEngagements : Dict ( String, Int ) (WebData Engagement)
     }
 
 
@@ -147,6 +147,6 @@ type Route
     | MeetingDetailRoute MeetingSlug
     | AssignmentListRoute
     | AssignmentDetailRoute AssignmentSlug
-    | EditEngagementsRoute Int
+    | EditEngagementsRoute String
     | TakeQuizRoute Int
     | NotFoundRoute

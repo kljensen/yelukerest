@@ -50,8 +50,8 @@ page model =
         Models.TakeQuizRoute quizID ->
             Quizzes.Views.takeQuizView model.current_date quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.pendingSubmitQuizzes
 
-        Models.EditEngagementsRoute meetingID ->
-            lazy5 maybeEditEngagements model.currentUser model.users model.engagements model.meetings meetingID
+        Models.EditEngagementsRoute meetingSlug ->
+            lazy5 maybeEditEngagements model.currentUser model.users model.engagements model.meetings meetingSlug
 
         Models.NotFoundRoute ->
             notFoundView

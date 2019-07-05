@@ -6,8 +6,6 @@ alter view meetings owner to api;
 
 COMMENT ON VIEW meetings IS
     'An in-person meeting of our class, usually a lecture';
-COMMENT ON COLUMN meetings.id IS
-    'A surrogate primary key';
 COMMENT ON COLUMN meetings.slug IS
     'A short identifier, appropriate for URLs, like "sql-intro"';
 COMMENT ON COLUMN meetings.summary IS

@@ -27,7 +27,7 @@ import Time exposing (Posix)
 
 type alias Quiz =
     { id : Int
-    , meeting_id : Int
+    , meeting_slug : String
     , points_possible : Int
     , is_draft : Bool
     , duration : String
@@ -48,7 +48,7 @@ quizDecoder : Decoder Quiz
 quizDecoder =
     Decode.succeed Quiz
         |> required "id" Decode.int
-        |> required "meeting_id" Decode.int
+        |> required "meeting_slug" Decode.string
         |> required "points_possible" Decode.int
         |> required "is_draft" Decode.bool
         |> required "duration" Decode.string

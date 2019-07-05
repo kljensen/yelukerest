@@ -1,7 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS quiz (
     id SERIAL PRIMARY KEY,
-    meeting_id INT REFERENCES meeting(id)
+    meeting_slug VARCHAR(100) REFERENCES meeting(slug)
         ON DELETE CASCADE
         ON UPDATE CASCADE
         UNIQUE NOT NULL,
@@ -35,12 +35,12 @@ BEGIN
   IF (NEW.closed_at IS NULL) THEN
     SELECT begins_at INTO NEW.closed_at
     FROM api.meetings
-    WHERE id = NEW.meeting_id;
+    WHERE slug = NEW.meeting_slug;
   END IF;
   IF (NEW.open_at IS NULL) THEN
     SELECT (begins_at - '5 days'::INTERVAL) INTO NEW.open_at
     FROM api.meetings
-    WHERE id = NEW.meeting_id;
+    WHERE slug = NEW.meeting_slug;
   END IF;
   NEW.updated_at = current_timestamp;
   RETURN NEW;

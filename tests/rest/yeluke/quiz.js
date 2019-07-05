@@ -18,7 +18,7 @@ describe('quizzes API endpoint', () => {
     const studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
     const facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
 
-    before(async() => {
+    before(async () => {
         resetdb();
     });
 
@@ -29,24 +29,29 @@ describe('quizzes API endpoint', () => {
             .expect(401, done);
     });
 
+    const meetingSlugs = [
+        'intro',
+        'structuredquerylang',
+        'entrepreneurship-woot',
+    ];
     const listTestCases = [{
         title: 'should allow students to see all quizzes',
-        expected: [1, 2, 3],
+        expected: meetingSlugs,
         length: 3,
         status: 200,
         jwt: studentJWTPromise,
     }, {
         title: 'should allow faculty to see all quizzes',
-        expected: [1, 2, 3],
+        expected: meetingSlugs,
         length: 3,
         status: 200,
         jwt: facultyJWTPromise,
     }];
 
-    makeListTestCases(it, '/quizzes', (x => x.meeting_id), listTestCases);
+    makeListTestCases(it, '/quizzes', (x => x.meeting_slug), listTestCases);
 
     const newQuiz = {
-        meeting_id: 3,
+        meeting_slug: 'entrepreneurship-woot',
         points_possible: 13,
         is_draft: false,
         duration: '00:10:00',

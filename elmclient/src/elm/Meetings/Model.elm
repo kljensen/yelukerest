@@ -11,8 +11,7 @@ type alias MeetingSlug =
 
 
 type alias Meeting =
-    { id : Int
-    , slug : String
+    { slug : String
     , title : String
     , summary : Maybe String
     , description : String
@@ -29,7 +28,6 @@ meetingsDecoder =
 meetingDecoder : Decode.Decoder Meeting
 meetingDecoder =
     Decode.succeed Meeting
-        |> required "id" Decode.int
         |> required "slug" Decode.string
         |> required "title" Decode.string
         |> required "summary" (Decode.nullable Decode.string)
