@@ -20,15 +20,15 @@ SELECT throws_ok(
     'anonymous user should not have access to the data schema'
 );
 SELECT throws_ok(
-    'INSERT INTO api.meetings (id, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (20, ''intro'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    'INSERT INTO api.meetings (slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''intro'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
     '42501',
     'permission denied for relation meetings',
     'anonymous user should not be able to insert into the api.meetings view'
 );
 
 select set_eq(
-    'select id from api.meetings',
-    array[ 1, 2, 3, 4],
+    'select slug from api.meetings',
+    array['intro', 'structuredquerylang', 'entrepreneurship-woot', 'server-side-apps'],
     'anonymous user can see all rows of the api.meetings view'
 );
 
@@ -46,23 +46,23 @@ SELECT throws_ok(
 );
 
 select set_eq(
-    'select id from api.meetings',
-    array[ 1, 2, 3, 4],
+    'select slug from api.meetings',
+    array['intro', 'structuredquerylang', 'entrepreneurship-woot', 'server-side-apps'],
     'faculty user can see all rows of the api.meetings view'
 );
 
 SELECT lives_ok(
-    'INSERT INTO api.meetings (id, title, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (20, ''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
     'faculty should be able to insert into the api.meetings view'
 );
 
 SELECT lives_ok(
-    'UPDATE api.meetings SET description = ''foo'' WHERE id=20',
+    'UPDATE api.meetings SET description = ''foo'' WHERE slug=''fakeclass''',
     'faculty should be able to update meetings in the api.meetings view'
 );
 
 SELECT throws_like(
-    'INSERT INTO api.meetings (id, title, slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (20, ''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
     '%duplicate key%',
     'meetings schema should reject duplicate slugs'
 );

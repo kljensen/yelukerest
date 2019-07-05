@@ -14,28 +14,17 @@ describe('meetings API endpoint', () => {
 
     it('should be selectable', (done) => {
         restService()
-            .get('/meetings?select=id')
+            .get('/meetings?select=slug')
             .expect('Content-Type', /json/)
             .expect(200, done)
             .expect((r) => {
                 r.body.length.should.equal(4);
-                r.body[0].id.should.equal(1);
-            });
-    });
-
-    it('should be selectable by primary key', (done) => {
-        restService()
-            .get('/meetings/1')
-            .expect(200, done)
-            .expect((r) => {
-                r.body.id.should.equal(1);
-                r.body.slug.should.equal('intro');
+                r.body[0].slug.should.equal('intro');
             });
     });
 
     const newMeeting = {
-        id: 100,
-        slug: 'intro',
+        slug: 'new-meeting',
         summary: 'summary_2_2_2',
         description: 'description_1_',
         begins_at: '2017-12-27T14:54:50+00:00',
