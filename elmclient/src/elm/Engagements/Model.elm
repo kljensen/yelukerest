@@ -8,7 +8,7 @@ import Time exposing (Posix)
 
 type alias Engagement =
     { user_id : Int
-    , meeting_id : Int
+    , meeting_slug : String
     , participation : String
     , created_at : Posix
     , updated_at : Posix
@@ -29,7 +29,7 @@ engagementDecoder : Decode.Decoder Engagement
 engagementDecoder =
     Decode.succeed Engagement
         |> required "user_id" Decode.int
-        |> required "meeting_id" Decode.int
+        |> required "meeting_slug" Decode.string
         |> required "participation" Decode.string
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime

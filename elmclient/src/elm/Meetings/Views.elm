@@ -31,12 +31,12 @@ listView timeZone meetings =
 -- getQuizForMeeting
 
 
-getQuizForMeetingID : Int -> WebData (List Quiz) -> Maybe Quiz
-getQuizForMeetingID meetingID wdQuizzes =
+getQuizForMeetingSlug : String -> WebData (List Quiz) -> Maybe Quiz
+getQuizForMeetingSlug slug wdQuizzes =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             quizzes
-                |> List.filter (\quiz -> quiz.meeting_id == meetingID)
+                |> List.filter (\quiz -> quiz.meeting_slug == slug)
                 |> List.head
 
         _ ->
@@ -91,10 +91,7 @@ detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -
 detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
     let
         maybeQuiz =
-            getQuizForMeetingID meeting.id wdQuizzes
-
-        maybeQuizSubmission =
-            getQuizSubmissionForQuizID meeting.id wdQuizSubmissions
+            getQuizForMeetingSlug meeting.slug wdQuizzes
 
         maybePendingBeginQuiz =
             case maybeQuiz of
@@ -116,15 +113,15 @@ detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQu
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
-        , recordEngagementButton meeting.id currentUser
+        , recordEngagementButton meeting.slug currentUser
         ]
 
 
-recordEngagementButton : Int -> WebData CurrentUser -> Html.Html Msg
-recordEngagementButton meetingID currentUser =
+recordEngagementButton : String -> WebData CurrentUser -> Html.Html Msg
+recordEngagementButton meetingSlug currentUser =
     case isLoggedInFacultyOrTA currentUser of
         Ok _ ->
-            Html.a [ Attrs.href ("#/engagements/" ++ String.fromInt meetingID) ]
+            Html.a [ Attrs.href ("#/engagements/" ++  meetingSlug) ]
                 [ Html.button
                     [ Attrs.class "btn btn-primary" ]
                     [ Html.text "Take attendance" ]
@@ -141,7 +138,7 @@ showQuizStatus currentDate timeZone meeting wdQuizzes wdQuizSubmissions maybePen
             let
                 maybeQuiz =
                     quizzes
-                        |> List.filter (\quiz -> quiz.meeting_id == meeting.id)
+                        |> List.filter (\quiz -> quiz.meeting_slug == meeting.slug)
                         |> List.head
             in
             case maybeQuiz of

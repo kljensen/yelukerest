@@ -71,5 +71,5 @@ type Msg
     | OnSSE SSEMsg
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))
-    | OnChangeEngagement Int Int String
-    | OnSubmitEngagementResponse Int Int (WebData Engagement)
+    | OnChangeEngagement String Int String
+    | OnSubmitEngagementResponse String Int (WebData Engagement)

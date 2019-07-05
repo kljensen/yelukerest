@@ -19,8 +19,8 @@ fetchEngagements currentUser =
     fetchForCurrentUser currentUser fetchEngagementsUrl engagementsDecoder Msgs.OnFetchEngagements
 
 
-submitEngagement : JWT -> Int -> Int -> String -> Cmd Msg
-submitEngagement jwt meetingID userID participationLevel =
+submitEngagement : JWT -> String -> Int -> String -> Cmd Msg
+submitEngagement jwt meetingSlug userID participationLevel =
     let
         headers =
             [ Http.header "Authorization" ("Bearer " ++ jwt)
@@ -29,7 +29,7 @@ submitEngagement jwt meetingID userID participationLevel =
             ]
 
         msg =
-            Msgs.OnSubmitEngagementResponse meetingID userID
+            Msgs.OnSubmitEngagementResponse meetingSlug userID
 
         request =
             Http.request
@@ -39,16 +39,16 @@ submitEngagement jwt meetingID userID participationLevel =
                 , timeout = Nothing
                 , expect = Http.expectJson (RemoteData.fromResult >> msg) engagementDecoder
                 , tracker = Nothing
-                , body = Http.jsonBody (encodeEngagement meetingID userID participationLevel)
+                , body = Http.jsonBody (encodeEngagement meetingSlug userID participationLevel)
                 }
     in
     request
 
 
-encodeEngagement : Int -> Int -> String -> Encode.Value
-encodeEngagement meetingID userID participationLevel =
+encodeEngagement : String -> Int -> String -> Encode.Value
+encodeEngagement meetingSlug userID participationLevel =
     Encode.object
-        [ ( "meeting_id", Encode.int meetingID )
+        [ ( "meeting_slug", Encode.string meetingSlug )
         , ( "user_id", Encode.int userID )
         , ( "participation", Encode.string participationLevel )
         ]

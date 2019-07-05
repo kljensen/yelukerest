@@ -243,7 +243,7 @@ quizGradeTableHeader =
 
 meetingQuizRow : QuizGradeData a -> Meeting -> Html.Html Msg
 meetingQuizRow gd meeting =
-    case getQuizForMeetingID gd.quizzes meeting.id of
+    case getQuizForMeetingSlug gd.quizzes meeting.slug of
         Just quiz ->
             showGradeForQuiz gd quiz meeting
 
@@ -330,10 +330,10 @@ showGradeForQuiz gd quiz meeting =
         ]
 
 
-getQuizForMeetingID : List Quiz -> Int -> Maybe Quiz
-getQuizForMeetingID quizzes meetingID =
+getQuizForMeetingSlug : List Quiz -> String -> Maybe Quiz
+getQuizForMeetingSlug quizzes slug =
     quizzes
-        |> List.filter (\quiz -> quiz.meeting_id == meetingID)
+        |> List.filter (\quiz -> quiz.meeting_slug == slug)
         |> List.head
 
 

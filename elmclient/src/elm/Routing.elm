@@ -16,7 +16,7 @@ matchers =
         , map AssignmentListRoute (s "assignments")
         , map AssignmentDetailRoute (s "assignments" </> string)
         , map TakeQuizRoute (s "quiz-submissions" </> int)
-        , map EditEngagementsRoute (s "engagements" </> int)
+        , map EditEngagementsRoute (s "engagements" </> string)
         ]
 
 

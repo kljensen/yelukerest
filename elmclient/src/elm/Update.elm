@@ -286,30 +286,30 @@ update msg model =
         Msgs.OnFetchUsers response ->
             ( { model | users = response }, Cmd.none )
 
-        Msgs.OnChangeEngagement meetingID userID level ->
+        Msgs.OnChangeEngagement meetingSlug userID level ->
             let
                 npses =
-                    Dict.insert ( meetingID, userID ) RemoteData.Loading model.pendingSubmitEngagements
+                    Dict.insert ( meetingSlug, userID ) RemoteData.Loading model.pendingSubmitEngagements
 
                 newModel =
                     { model | pendingSubmitEngagements = npses }
             in
             case model.currentUser of
                 RemoteData.Success user ->
-                    ( newModel, submitEngagement user.jwt meetingID userID level )
+                    ( newModel, submitEngagement user.jwt meetingSlug userID level )
 
                 _ ->
                     ( model, Cmd.none )
 
-        Msgs.OnSubmitEngagementResponse meetingID userID response ->
+        Msgs.OnSubmitEngagementResponse meetingSlug userID response ->
             let
                 pses =
                     case response of
                         RemoteData.Success _ ->
-                            Dict.remove ( meetingID, userID ) model.pendingSubmitEngagements
+                            Dict.remove ( meetingSlug, userID ) model.pendingSubmitEngagements
 
                         _ ->
-                            Dict.insert ( meetingID, userID ) response model.pendingSubmitEngagements
+                            Dict.insert ( meetingSlug, userID ) response model.pendingSubmitEngagements
             in
             ( { model | pendingSubmitEngagements = pses }, Cmd.none )
 
