@@ -4,8 +4,8 @@
 -- a hack-a-thon.
 CREATE TABLE IF NOT EXISTS meeting (
     title VARCHAR(250) NOT NULL,
-    slug VARCHAR(100) UNIQUE NOT NULL
-        CHECK (slug ~ $$^[a-z0-9-]+$$),
+    slug TEXT UNIQUE NOT NULL
+        CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 60),
     summary TEXT,
     description TEXT NOT NULL,
     begins_at TIMESTAMP WITH TIME ZONE NOT NULL,

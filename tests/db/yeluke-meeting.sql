@@ -2,7 +2,7 @@
 BEGIN;
 
 -- Plan the tests.
-SELECT plan(10);
+SELECT plan(12);
 
 SELECT view_owner_is(
     'api', 'meetings', 'api',
@@ -67,6 +67,16 @@ SELECT throws_like(
     'meetings schema should reject duplicate slugs'
 );
 
+SELECT throws_like(
+    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''abcdeX'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    '%violates check constraint "meeting_slug_check"%',
+    'meetings slugs should be only [a-z0-9-]'
+);
+SELECT throws_like(
+    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''abcdefghij0123456789abcdefghij0123456789abcdefghij0123456789'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
+    '%violates check constraint "meeting_slug_check"%',
+    'meetings slugs should be limited to 100 length'
+);
 
 SELECT table_privs_are(
     'api', 'meetings', 'faculty', ARRAY['SELECT', 'DELETE', 'INSERT', 'UPDATE'],
