@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(11);
 
 SELECT view_owner_is(
     'api', 'assignments', 'api',
@@ -41,6 +41,8 @@ SELECT set_eq(
 );
 
 PREPARE doinsert AS INSERT INTO api.assignments (slug,points_possible,title,body,closed_at) VALUES ('foo', 23, 'foo', 'foo', '2017-12-27 14:55:50');
+PREPARE badinsert1 AS INSERT INTO api.assignments (slug,points_possible,title,body,closed_at) VALUES ('fooX', 23, 'foo', 'foo', '2017-12-27 14:55:50');
+PREPARE badinsert2 AS INSERT INTO api.assignments (slug,points_possible,title,body,closed_at) VALUES ('abcdefghij0123456789abcdefghij0123456789abcdefghij0123456789XX', 23, 'foo', 'foo', '2017-12-27 14:55:50');
 
 SELECT throws_like(
     'doinsert',
@@ -59,6 +61,18 @@ SELECT lives_ok(
 SELECT lives_ok(
     'DELETE FROM api.assignments WHERE slug = ''foo''',
     'faculty can delete assignments'
+);
+
+SELECT throws_like(
+    'badinsert1',
+    '%violates check constraint%',
+    'assignment slugs must be lowercase alphanumeric'
+);
+
+SELECT throws_like(
+    'badinsert2',
+    '%violates check constraint%',
+    'assignment slugs must be less than 60 characters'
 );
 
 select * from finish();

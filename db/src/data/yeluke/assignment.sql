@@ -1,7 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS assignment (
-    slug VARCHAR(100) PRIMARY KEY
-        CHECK (slug ~ $$^[a-z0-9-]+$$),
+    slug TEXT PRIMARY KEY
+        CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 60),
     -- Number of points possible on this assignment.
     points_possible smallint NOT NULL
         CHECK (points_possible >= 0),
