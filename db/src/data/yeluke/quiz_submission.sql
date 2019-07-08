@@ -1,6 +1,6 @@
 
 CREATE TABLE IF NOT EXISTS quiz_submission (
-    quiz_id INT REFERENCES quiz(id)
+    meeting_slug TEXT REFERENCES quiz(meeting_slug)
         ON UPDATE CASCADE
         ON DELETE CASCADE
         NOT NULL,
@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS quiz_submission (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    PRIMARY KEY (quiz_id, user_id)
-    -- UNIQUE (id, quiz_id),
+    PRIMARY KEY (meeting_slug, user_id)
 );
 
 

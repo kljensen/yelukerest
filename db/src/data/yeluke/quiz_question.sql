@@ -1,7 +1,8 @@
 
 CREATE TABLE IF NOT EXISTS quiz_question (
-    id SERIAL PRIMARY KEY,
-    quiz_id INT REFERENCES quiz(id)
+    slug TEXT NOT NULL
+        CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 60),
+    meeting_slug TEXT REFERENCES quiz(meeting_slug)
         ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
     is_markdown BOOLEAN DEFAULT false,
     body text NOT NULL,
@@ -12,8 +13,7 @@ CREATE TABLE IF NOT EXISTS quiz_question (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    UNIQUE (id, quiz_id)
-    -- UNIQUE (id, quiz_id),
+    PRIMARY KEY (slug, meeting_slug)
 );
 
 
