@@ -8,5 +8,4 @@ grant select, insert, update, delete on data.assignment_field to api;
 grant select on api.assignment_fields to student, ta;
 
 -- faculty have CRUD privileges
-grant usage on data.assignment_field_id_seq to faculty;
 grant select, insert, update, delete on api.assignment_fields to faculty;

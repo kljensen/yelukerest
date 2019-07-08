@@ -101,23 +101,24 @@ createAssignmentSubmission jwt slug =
     request
 
 
-encodeAFS : ( Int, String ) -> Encode.Value
-encodeAFS tup =
+encodeAFS : String -> ( String, String ) -> Encode.Value
+encodeAFS assignmentSlug tup =
     -- Encode the assignment field submission into a minimal
     -- json format to be sent to the server.
     Encode.object
-        [ ( "assignment_field_id", Encode.int (Tuple.first tup) )
+        [ ( "assignment_field_slug", Encode.string (Tuple.first tup) )
         , ( "body", Encode.string (Tuple.second tup) )
+        , ( "assignment_slug", Encode.string assignmentSlug )
         ]
 
 
-encodeAFSList : List ( Int, String ) -> Encode.Value
-encodeAFSList valueTuples =
+encodeAFSList : String -> List ( String, String ) -> Encode.Value
+encodeAFSList assignmentSlug valueTuples =
     valueTuples
-        |> Encode.list encodeAFS
+        |> Encode.list (encodeAFS assignmentSlug)
 
 
-sendAssignmentFieldSubmissions : JWT -> String -> List ( Int, String ) -> Cmd Msg
+sendAssignmentFieldSubmissions : JWT -> String -> List ( String, String ) -> Cmd Msg
 sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
     let
         headers =
@@ -142,7 +143,7 @@ sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
                 , timeout = Nothing
                 , tracker = Nothing
                 , expect = Http.expectJson (RemoteData.fromResult >> msg) assignmentFieldSubmissionsDecoder
-                , body = Http.jsonBody (encodeAFSList valueTuples)
+                , body = Http.jsonBody (encodeAFSList assignmentSlug valueTuples)
                 }
     in
     request

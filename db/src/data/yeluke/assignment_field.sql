@@ -1,6 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS assignment_field (
-    id SERIAL PRIMARY KEY,
+    slug TEXT
+        CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 30),
     assignment_slug VARCHAR(100)
         REFERENCES assignment(slug)
         ON DELETE CASCADE ON UPDATE CASCADE
@@ -19,7 +20,7 @@ CREATE TABLE IF NOT EXISTS assignment_field (
         DEFAULT current_timestamp,
     CONSTRAINT url_not_multiline CHECK (NOT (is_url AND is_multiline)),
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    UNIQUE(id, assignment_slug) -- For foreign keys\
+    PRIMARY KEY (slug, assignment_slug) -- For foreign keys\
 );
 
 -- TODO: add ability include regular expressions and 

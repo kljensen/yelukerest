@@ -19,6 +19,7 @@ module Assignments.Model exposing
     , assignmentsDecoder
     , isSubmissible
     , submissionBelongsToUser
+    , valuesForSubmissionID
     )
 
 import Auth.Model exposing (CurrentUser)
@@ -50,7 +51,7 @@ type alias Assignment =
 
 
 type alias AssignmentField =
-    { id : Int
+    { slug : String
     , assignment_slug : String
     , label : String
     , help : String
@@ -78,7 +79,7 @@ type alias AssignmentSubmission =
 
 type alias AssignmentFieldSubmission =
     { assignment_submission_id : Int
-    , assignment_field_id : Int
+    , assignment_field_slug : String
     , assignment_slug : String
     , body : String
     , submitter_user_id : Int
@@ -87,8 +88,18 @@ type alias AssignmentFieldSubmission =
     }
 
 
+valuesForSubmissionID : Int -> AssignmentFieldSubmissionInputs -> List ( String, String )
+valuesForSubmissionID submissionID afsi =
+    -- Get key, value tuples out of the afsi where the
+    -- submission id matches
+    afsi
+        |> Dict.filter (\k -> \_ -> Tuple.first k == submissionID)
+        |> Dict.toList
+        |> List.map (\( ( a, b ), c ) -> ( b, c ))
+
+
 type alias AssignmentFieldSubmissionInputs =
-    Dict Int String
+    Dict ( Int, String ) String
 
 
 type alias PendingAssignmentFieldSubmissionRequests =
@@ -132,7 +143,7 @@ assignmentFieldsDecoder =
 assignmentFieldDecoder : Decode.Decoder AssignmentField
 assignmentFieldDecoder =
     Decode.succeed AssignmentField
-        |> required "id" Decode.int
+        |> required "slug" Decode.string
         |> required "assignment_slug" Decode.string
         |> required "label" Decode.string
         |> required "help" Decode.string
@@ -190,7 +201,7 @@ assignmentFieldSubmissionDecoder : Decode.Decoder AssignmentFieldSubmission
 assignmentFieldSubmissionDecoder =
     Decode.succeed AssignmentFieldSubmission
         |> required "assignment_submission_id" Decode.int
-        |> required "assignment_field_id" Decode.int
+        |> required "assignment_field_slug" Decode.string
         |> required "assignment_slug" Decode.string
         |> required "body" Decode.string
         |> required "submitter_user_id" Decode.int

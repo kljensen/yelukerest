@@ -9,6 +9,7 @@ import Assignments.Commands
         , fetchAssignments
         , sendAssignmentFieldSubmissions
         )
+import Assignments.Model exposing (valuesForSubmissionID)
 import Assignments.Updates
     exposing
         ( onFetchAssignmentGradeDistributions
@@ -173,26 +174,35 @@ update msg model =
                     -- In other cases do nothing
                     ( model, Cmd.none )
 
-        Msgs.OnSubmitAssignmentFieldSubmissions assignment ->
+        Msgs.OnSubmitAssignmentFieldSubmissions assignmentSubmission ->
             let
-                fieldIDs =
-                    List.map .id assignment.fields
+                -- Have the submission id. Need to submit the assignmentSubmissionField tuples
+                values =
+                    valuesForSubmissionID assignmentSubmission.id model.assignmentFieldSubmissionInputs
 
                 pendingRequest =
-                    Dict.insert assignment.slug RemoteData.Loading model.pendingAssignmentFieldSubmissionRequests
-
-                values =
-                    valuesFromDict model.assignmentFieldSubmissionInputs fieldIDs
+                    Dict.insert assignmentSubmission.assignment_slug RemoteData.Loading model.pendingAssignmentFieldSubmissionRequests
             in
             case model.currentUser of
                 RemoteData.Success user ->
-                    ( { model | pendingAssignmentFieldSubmissionRequests = pendingRequest }, Cmd.batch [ sendAssignmentFieldSubmissions user.jwt assignment.slug values ] )
+                    ( { model | pendingAssignmentFieldSubmissionRequests = pendingRequest }
+                    , Cmd.batch
+                        [ sendAssignmentFieldSubmissions user.jwt assignmentSubmission.assignment_slug values
+                        ]
+                    )
 
                 _ ->
                     ( model, Cmd.none )
 
-        Msgs.OnUpdateAssignmentFieldSubmissionInput assignmentFieldId assignmentFieldValue ->
-            ( { model | assignmentFieldSubmissionInputs = Dict.update assignmentFieldId (\_ -> Just assignmentFieldValue) model.assignmentFieldSubmissionInputs }, Cmd.none )
+        Msgs.OnUpdateAssignmentFieldSubmissionInput submissionID assignmentFieldSlug assignmentFieldValue ->
+            let
+                key =
+                    ( submissionID, assignmentFieldSlug )
+
+                newAfsi =
+                    Dict.update key (\_ -> Just assignmentFieldValue) model.assignmentFieldSubmissionInputs
+            in
+            ( { model | assignmentFieldSubmissionInputs = newAfsi }, Cmd.none )
 
         Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug response ->
             -- todo, update the model.assignmentSubmissions

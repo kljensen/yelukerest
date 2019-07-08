@@ -121,7 +121,7 @@ recordEngagementButton : String -> WebData CurrentUser -> Html.Html Msg
 recordEngagementButton meetingSlug currentUser =
     case isLoggedInFacultyOrTA currentUser of
         Ok _ ->
-            Html.a [ Attrs.href ("#/engagements/" ++  meetingSlug) ]
+            Html.a [ Attrs.href ("#/engagements/" ++ meetingSlug) ]
                 [ Html.button
                     [ Attrs.class "btn btn-primary" ]
                     [ Html.text "Take attendance" ]

@@ -216,7 +216,7 @@ submissionInstructions : Posix -> Assignment -> AssignmentSubmission -> Html.Htm
 submissionInstructions currentDate assignment submission =
     case isSubmissible currentDate assignment of
         Submissible assignment2 ->
-            showSubmissionForm assignment2
+            showSubmissionForm submission assignment2
 
         NotSubmissible reason ->
             let
@@ -231,23 +231,23 @@ submissionInstructions currentDate assignment submission =
             Common.Views.divWithText message
 
 
-showSubmissionForm : Assignment -> Html.Html Msg
-showSubmissionForm assignment =
+showSubmissionForm : AssignmentSubmission -> Assignment -> Html.Html Msg
+showSubmissionForm submission assignment =
     Html.form
         [ Events.custom
             "submit"
             (Decode.succeed
                 { preventDefault = True
                 , stopPropagation = False
-                , message = Msgs.OnSubmitAssignmentFieldSubmissions assignment
+                , message = Msgs.OnSubmitAssignmentFieldSubmissions submission
                 }
             )
         ]
-        (List.map showFormField assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
+        (List.map (showFormField submission) assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
 
-showFormField : AssignmentField -> Html.Html Msg
-showFormField assignmentField =
+showFormField : AssignmentSubmission -> AssignmentField -> Html.Html Msg
+showFormField submission assignmentField =
     let
         fieldType =
             if assignmentField.is_url then
@@ -263,10 +263,11 @@ showFormField assignmentField =
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder assignmentField.placeholder
-                    , Attrs.name (String.fromInt assignmentField.id)
+                    , Attrs.name assignmentField.slug
                     , Events.onInput
                         (Msgs.OnUpdateAssignmentFieldSubmissionInput
-                            assignmentField.id
+                            submission.id
+                            assignmentField.slug
                         )
                     ]
                     []
@@ -277,22 +278,23 @@ showFormField assignmentField =
                     , Attrs.class "input field"
                     , Attrs.placeholder assignmentField.placeholder
                     , Attrs.title assignmentField.help
-                    , Attrs.name (String.fromInt assignmentField.id)
+                    , Attrs.name assignmentField.slug
                     , Events.onInput
                         (Msgs.OnUpdateAssignmentFieldSubmissionInput
-                            assignmentField.id
+                            submission.id
+                            assignmentField.slug
                         )
                     ]
                     []
         ]
 
 
-getSubmissionValueForFieldID : List AssignmentFieldSubmission -> Int -> String
-getSubmissionValueForFieldID fieldSubmissions fieldID =
+getSubmissionValueForFieldSlug : List AssignmentFieldSubmission -> String -> String
+getSubmissionValueForFieldSlug fieldSubmissions fieldSlug =
     let
         maybeSubmission =
             fieldSubmissions
-                |> List.filter (\f -> f.assignment_field_id == fieldID)
+                |> List.filter (\f -> f.assignment_field_slug == fieldSlug)
                 |> List.head
     in
     case maybeSubmission of
@@ -320,8 +322,8 @@ showPreviousSubmissionField fieldSubmissions field =
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder field.placeholder
-                    , Attrs.name (String.fromInt field.id)
-                    , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
+                    , Attrs.name field.slug
+                    , Attrs.value (getSubmissionValueForFieldSlug fieldSubmissions field.slug)
                     , Attrs.disabled True
                     ]
                     []
@@ -332,8 +334,8 @@ showPreviousSubmissionField fieldSubmissions field =
                     , Attrs.class "input field"
                     , Attrs.placeholder field.placeholder
                     , Attrs.title field.help
-                    , Attrs.name (String.fromInt field.id)
-                    , Attrs.value (getSubmissionValueForFieldID fieldSubmissions field.id)
+                    , Attrs.name field.slug
+                    , Attrs.value (getSubmissionValueForFieldSlug fieldSubmissions field.slug)
                     , Attrs.disabled True
                     ]
                     []

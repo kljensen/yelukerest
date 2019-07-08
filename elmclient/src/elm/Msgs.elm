@@ -57,9 +57,9 @@ type Msg
     | OnLocationChange BrowserLocation
     | LinkClicked UrlRequest
     | Tick Posix
-    | OnSubmitAssignmentFieldSubmissions Assignment
+    | OnSubmitAssignmentFieldSubmissions AssignmentSubmission
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
-    | OnUpdateAssignmentFieldSubmissionInput Int String
+    | OnUpdateAssignmentFieldSubmissionInput Int String String
     | OnBeginQuiz Int
     | OnBeginQuizComplete Int (WebData (List QuizSubmission))
     | OnFetchQuizQuestions Int (WebData (List QuizQuestion))

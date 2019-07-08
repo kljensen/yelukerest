@@ -40,7 +40,7 @@ SELECT set_eq(
     'students should be able to select from the api.assignment_fields view'
 );
 
-PREPARE doinsert AS INSERT INTO api.assignment_fields (assignment_slug,label,help,placeholder) VALUES ('exam-1', 'gobblygook', 'find this online', 'e.g. kljensen');
+PREPARE doinsert AS INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen');
 
 SELECT throws_like(
     'doinsert',
