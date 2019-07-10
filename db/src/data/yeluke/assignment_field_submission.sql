@@ -58,22 +58,25 @@ BEGIN
             (u.id = request.user_id() OR user_id = request.user_id())
         );
     END IF;
+
+    IF (request.user_id() IS NULL ) THEN
+        IF (NEW.submitter_user_id IS NULL ) THEN
+            -- In practice this should only be the case when an
+            -- administrator is using the database directly and
+            -- not through the API.
+            SELECT submitter_user_id INTO NEW.submitter_user_id
+            FROM api.assignment_submissions AS sub
+            WHERE sub.id = NEW.assignment_submission_id;
+        END IF;
+    ELSE
+        NEW.submitter_user_id = request.user_id();
+    END IF;
+
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
-CREATE OR REPLACE FUNCTION fill_assignment_field_submission_update_defaults()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- TODO: Should I only do this for people in
-    -- the 'student' role, or != 'faculty' role?
-    IF (request.user_id() IS NOT NULL) THEN
-        NEW.submitter_user_id = request.user_id();
-    END IF;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
 
 DROP TRIGGER IF EXISTS tg_assignment_field_submission_default ON assignment_field_submission;
 CREATE TRIGGER tg_assignment_field_submission_default
@@ -81,10 +84,3 @@ CREATE TRIGGER tg_assignment_field_submission_default
             ON assignment_field_submission
     FOR EACH ROW
 EXECUTE PROCEDURE fill_assignment_field_submission_defaults();
-
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_update_default ON assignment_field_submission;
-CREATE TRIGGER tg_assignment_field_submission_update_default
-    BEFORE INSERT OR UPDATE
-            ON assignment_field_submission
-    FOR EACH ROW
-EXECUTE PROCEDURE fill_assignment_field_submission_update_defaults();

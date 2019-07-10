@@ -58,9 +58,17 @@ BEGIN
     IF (NEW.user_id IS NULL AND NOT NEW.is_team ) THEN
         NEW.user_id = request.user_id();
     END IF;
-    -- Set default submitter_user_id from request credentials
+    -- Set default submitter_user_id. This is done in 
+    -- the table defaults, but we do it here so that
+    -- we can fill in team nickname below.
     IF (NEW.submitter_user_id IS NULL ) THEN
-        NEW.submitter_user_id = request.user_id();
+        IF (request.user_id() IS NULL ) THEN
+            IF (NEW.user_id IS NOT NULL) THEN
+                NEW.submitter_user_id = NEW.user_id;
+            END IF;
+        ELSE
+            NEW.submitter_user_id = request.user_id();
+        END IF;
     END IF;
     -- Set default team_nickname from user table
     IF (NEW.is_team AND NEW.team_nickname IS NULL) THEN

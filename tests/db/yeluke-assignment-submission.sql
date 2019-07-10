@@ -50,6 +50,7 @@ SELECT set_eq(
 
 PREPARE doinsert AS INSERT INTO api.assignment_submissions (id, assignment_slug, is_team, user_id, team_nickname, submitter_user_id) VALUES($1, $2, $3, $4, $5, $6);
 PREPARE doinsert_noid AS INSERT INTO api.assignment_submissions (assignment_slug, is_team, user_id, team_nickname, submitter_user_id) VALUES($1, $2, $3, $4, $5);
+PREPARE doinsert_no_submitted_by AS INSERT INTO api.assignment_submissions (assignment_slug, is_team, user_id, team_nickname) VALUES($1, $2, $3, $4);
 PREPARE doinsert_noteam AS INSERT INTO api.assignment_submissions (assignment_slug, user_id, submitter_user_id) VALUES($1, $2, $3);
 
 
@@ -112,6 +113,7 @@ SELECT throws_like(
 );
 
 
+
 SELECT throws_like(
     'EXECUTE doinsert_noid(''project-update-1'', FALSE, 2, NULL, 2)',
     '%violates row-level security policy%',
@@ -119,6 +121,8 @@ SELECT throws_like(
 );
 
 
+set local role student;
+set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '2';
 
 SELECT lives_ok(

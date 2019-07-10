@@ -213,10 +213,6 @@ select set_eq (
     'students cannot update assignment field submissions for another team'
 );
 
-
--- They should be able to...for team/individual
--- insert/update/delete
--- Can't do these if not on team
-
 select * from finish();
 rollback;
+
