@@ -37,10 +37,12 @@ CREATE TABLE IF NOT EXISTS assignment_submission (
 );
 
 -- Only one submission per team per assignment
+DROP INDEX IF EXISTS assignment_submission_unique_team;
 CREATE UNIQUE INDEX assignment_submission_unique_team
     ON assignment_submission (team_nickname, assignment_slug)
     WHERE user_id IS NULL;
 -- Only one submission per user per assignment
+DROP INDEX IF EXISTS assignment_submission_unique_user;
 CREATE UNIQUE INDEX assignment_submission_unique_user
     ON assignment_submission (user_id, assignment_slug)
     WHERE team_nickname IS NULL;

@@ -15,7 +15,6 @@ using (
 	request.user_role() = 'faculty'
 );
 
--- student users need to edit their answers
 grant select on api.quiz_grades to student, ta;
 
 -- faculty have CRUD privileges

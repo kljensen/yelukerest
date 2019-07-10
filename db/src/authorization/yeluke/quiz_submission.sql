@@ -28,9 +28,21 @@ using (
 			and
 			EXISTS(
 				SELECT * 
-				FROM api.quizzes as q
+				FROM api.quizzes q
+				LEFT JOIN api.quiz_grade_exceptions qge ON (q.id = qge.quiz_id)
 				WHERE (
-					q.id = quiz_id and q.is_open
+					q.id = data.quiz_submission.quiz_id and
+					(
+						q.is_open
+						or
+						(
+							qge.closed_at > current_timestamp
+							AND
+							q.is_draft = False
+							AND
+							q.open_at < current_timestamp
+						)
+					)
 				)
 			)
 		)
@@ -41,6 +53,7 @@ using (
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own quiz_submissions.
 grant select, insert on api.quiz_submissions to student, ta;
+-- grant select on api.quiz_info to student, ta, faculty;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_submissions to faculty;

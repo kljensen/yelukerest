@@ -70,20 +70,42 @@ using (
             -- Same query as above, but also insisting
             -- that the assignment be open
             EXISTS(
-                SELECT * from
+                SELECT ass_sub.id from
                     api.assignment_submissions AS ass_sub INNER JOIN api.users
                 ON (
                     ass_sub.user_id = api.users.id
                     OR
                     ass_sub.team_nickname = api.users.team_nickname
-                ) INNER JOIN api.assignments
-                ON (api.assignments.slug = ass_sub.assignment_slug)
-                WHERE (
-                    api.assignments.is_open = true
+                )
+                INNER JOIN api.assignments
+                ON (
+                        api.assignments.slug = ass_sub.assignment_slug
+                )
+                LEFT JOIN api.assignment_grade_exceptions AS ge
+                ON (
+                    ge.assignment_slug = ass_sub.assignment_slug
                     AND
+                    (
+                        (ass_sub.is_team AND ge.team_nickname = ass_sub.team_nickname)
+                        OR
+                        (NOT ass_sub.is_team AND ge.user_id = ass_sub.user_id)
+                    )
+                )
+                WHERE (
                     api.users.id = request.user_id()
                     AND
                     ass_sub.id = assignment_submission_id
+                    AND (
+                        api.assignments.is_open = true
+                        OR
+                        (
+                            (ge.user_id = ass_sub.user_id
+                            OR
+                            ge.team_nickname = ass_sub.team_nickname)
+                            AND
+                            ge.closed_at > current_timestamp
+                        )
+                    )
                 )
             )
         )

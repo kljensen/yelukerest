@@ -14,3 +14,5 @@
 \ir ./yeluke/assignment_field_submission.sql
 \ir ./yeluke/quiz_grade.sql
 \ir ./yeluke/assignment_grade.sql
+\ir ./yeluke/quiz_grade_exception.sql
+\ir ./yeluke/assignment_grade_exception.sql

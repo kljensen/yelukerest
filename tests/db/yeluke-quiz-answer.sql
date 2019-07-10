@@ -27,6 +27,10 @@ set request.jwt.claim.role = 'faculty';
 -- Make all the quizzes look like they were just started
 UPDATE api.quizzes SET created_at=current_timestamp, updated_at=current_timestamp;
 
+-- Delete exceptions. We test those separately.
+DELETE FROM api.quiz_grade_exceptions;
+
+
 SELECT results_eq(
     'SELECT DISTINCT(user_id) FROM api.quiz_answers',
     ARRAY[1, 2],
