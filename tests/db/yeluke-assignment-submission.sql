@@ -1,6 +1,9 @@
 begin;
 select plan(17);
 
+-- We test exceptions elsewhere.
+DELETE FROM api.assignment_grade_exceptions;
+
 SELECT view_owner_is(
     'api', 'assignment_submissions', 'api',
     'api.assignment_submissions view should be owned by the api role'

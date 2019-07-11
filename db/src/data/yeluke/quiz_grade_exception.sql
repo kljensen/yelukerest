@@ -1,8 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS quiz_grade_exception (
-    -- Assignment: team, not team
-    -- Quiz
-    meeting_slug VARCHAR(100) REFERENCES meeting(slug)
+    id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    quiz_id INT REFERENCES quiz(id)
         ON DELETE CASCADE
         ON UPDATE CASCADE
         NOT NULL,
@@ -18,7 +17,7 @@ CREATE TABLE IF NOT EXISTS quiz_grade_exception (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    PRIMARY KEY (meeting_slug, user_id)
+    UNIQUE (quiz_id, user_id)
 );
 
 

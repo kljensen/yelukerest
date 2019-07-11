@@ -43,14 +43,24 @@ using (
         request.user_role() = ANY('{student,ta}'::text[])
         -- They can write rows in the assignment_submissions table if
         and
-            -- The assignment is open
-			EXISTS(
-				SELECT * 
-				FROM api.assignments as a
-				WHERE (
-					a.slug = assignment_slug and a.is_open
-				)
-			)
+			(
+                -- The assignment is open
+                EXISTS(
+                    SELECT * 
+                    FROM api.assignments as a
+                    WHERE (
+                        a.slug = assignment_slug and a.is_open
+                    )
+                ) OR
+                -- Or the student has a grading exception
+                EXISTS (
+                    SELECT *
+                    FROM api.assignment_grade_exceptions as e
+                    JOIN api.users as u
+                    ON (u.id = e.user_id OR u.team_nickname = e.team_nickname)
+                    WHERE e.closed_at > current_timestamp
+                )
+            )
         and (
             -- It is an individual assignment and it has their user_id
             (NOT is_team AND request.user_id() = user_id)
