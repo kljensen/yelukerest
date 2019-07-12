@@ -96,7 +96,6 @@ using (
                     AND
                     ass_sub.id = assignment_submission_id
                     AND (
-                        TRUE OR
                         api.assignments.is_open = true
                         OR
                         (
@@ -104,7 +103,7 @@ using (
                             OR
                             ge.team_nickname = ass_sub.team_nickname)
                             AND
-                            ge.closed_at < current_timestamp
+                            ge.closed_at > current_timestamp
                         )
                     )
                 )
