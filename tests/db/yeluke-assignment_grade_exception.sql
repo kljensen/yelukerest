@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(12);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_exceptions', 'api',
@@ -66,12 +66,26 @@ SELECT lives_ok(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
-DELETE FROM api.assignment_submissions WHERE id=600;
 UPDATE api.assignment_grade_exceptions SET closed_at = current_timestamp - '1 hour'::INTERVAL WHERE user_id=5;
-
+DELETE FROM api.assignment_field_submissions WHERE assignment_submission_id=600;
 set local role student;
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '5';
+
+SELECT throws_like(
+    'EXECUTE insert_field_submission(600, ''secret'')', 
+    '%violates row-level security policy%',
+    'students should NOT be able to create assignment field submissions after assignment closed_at their exception is expired'
+);
+
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+DELETE FROM api.assignment_submissions WHERE id=600;
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '5';
+
 SELECT throws_like(
     'EXECUTE insert_submission(600, ''team-selection'', FALSE, 5, NULL, 5)', 
     '%violates row-level security policy%',
