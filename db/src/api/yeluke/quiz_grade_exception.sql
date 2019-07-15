@@ -5,3 +5,4 @@ create or replace view quiz_grade_exceptions as
 -- The `user` table should have RLS becuase students should not
 -- see each others user grades.
 alter view quiz_grade_exceptions owner to api;
+

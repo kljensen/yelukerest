@@ -119,6 +119,7 @@ SELECT throws_ok(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+DELETE FROM api.quiz_grade_exceptions;
 UPDATE api.quizzes SET
     open_at = (current_timestamp - '1 hour'::INTERVAL),
     closed_at = (current_timestamp + '30 minutes'::INTERVAL)
