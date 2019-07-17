@@ -3,6 +3,7 @@ module Quizzes.Model exposing
     , QuizAnswer
     , QuizGrade
     , QuizGradeDistribution
+    , QuizGradeException
     , QuizOpenState(..)
     , QuizQuestion
     , QuizQuestionOption
@@ -10,6 +11,8 @@ module Quizzes.Model exposing
     , SubmissionEditableState(..)
     , quizAnswersDecoder
     , quizGradeDistributionsDecoder
+    , quizGradeExceptionDecoder
+    , quizGradeExceptionsDecoder
     , quizGradesDecoder
     , quizQuestionsDecoder
     , quizSubmissionDecoder
@@ -78,15 +81,24 @@ type SubmissionEditableState
     | NoSubmission
 
 
-quizSubmitability : Posix -> Quiz -> Maybe QuizSubmission -> ( QuizOpenState, SubmissionEditableState )
-quizSubmitability currentDate quiz maybeQuizSubmission =
+quizSubmitability : Posix -> Quiz -> Maybe QuizSubmission -> Maybe QuizGradeException -> ( QuizOpenState, SubmissionEditableState )
+quizSubmitability currentDate quiz maybeQuizSubmission maybeException =
     let
         quizOpenState =
             if dateIsLessThan currentDate quiz.open_at then
                 BeforeQuizOpen
 
             else if dateIsLessThan quiz.closed_at currentDate then
-                AfterQuizClosed
+                case maybeException of
+                    Just exception ->
+                        if dateIsLessThan currentDate exception.closed_at then
+                            QuizOpen
+
+                        else
+                            AfterQuizClosed
+
+                    Nothing ->
+                        AfterQuizClosed
 
             else if quiz.is_draft then
                 QuizIsDraft
@@ -252,3 +264,31 @@ quizGradeDistributionDecoder =
 quizGradeDistributionsDecoder : Decode.Decoder (List QuizGradeDistribution)
 quizGradeDistributionsDecoder =
     Decode.list quizGradeDistributionDecoder
+
+
+type alias QuizGradeException =
+    { id : Int
+    , quiz_id : Int
+    , user_id : Int
+    , fractional_credit : Float
+    , closed_at : Posix
+    , created_at : Posix
+    , updated_at : Posix
+    }
+
+
+quizGradeExceptionDecoder : Decode.Decoder QuizGradeException
+quizGradeExceptionDecoder =
+    Decode.succeed QuizGradeException
+        |> required "id" Decode.int
+        |> required "quiz_id" Decode.int
+        |> required "user_id" Decode.int
+        |> required "fractional_credit" Decode.float
+        |> required "closed_at" Json.Decode.Extra.datetime
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
+
+
+quizGradeExceptionsDecoder : Decode.Decoder (List QuizGradeException)
+quizGradeExceptionsDecoder =
+    Decode.list quizGradeExceptionDecoder

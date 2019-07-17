@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS quiz_grade_exception (
         ON DELETE CASCADE
         ON UPDATE CASCADE
         NOT NULL,
+    fractional_credit DECIMAL NOT NULL DEFAULT 1
+        CHECK (fractional_credit >= 0 AND fractional_credit <= 1),
     closed_at TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL

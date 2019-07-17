@@ -33,6 +33,7 @@ import Quizzes.Commands
         ( createQuizSubmission
         , fetchQuizAnswers
         , fetchQuizGradeDistributions
+        , fetchQuizGradeExceptions
         , fetchQuizGrades
         , fetchQuizQuestions
         , fetchQuizSubmissions
@@ -122,6 +123,8 @@ update msg model =
                             Cmd.batch
                                 [ fetchAssignments user
                                 , fetchQuizzes user
+                                , fetchQuizGradeDistributions user
+                                , fetchQuizGradeExceptions user
                                 , fetchAssignmentSubmissions user
                                 , fetchQuizSubmissions user
                                 , fetchQuizGrades user
@@ -252,6 +255,9 @@ update msg model =
 
         Msgs.TakeQuiz quizID ->
             takeQuiz model quizID
+
+        Msgs.OnFetchQuizGradeExceptions quizGradeExceptions ->
+            ( { model | quizGradeExceptions = quizGradeExceptions }, Cmd.none )
 
         Msgs.OnFetchQuizQuestions quizID response ->
             ( { model | quizQuestions = Dict.insert quizID response model.quizQuestions }, Cmd.none )

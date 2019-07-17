@@ -24,6 +24,7 @@ import Quizzes.Model
         , QuizAnswer
         , QuizGrade
         , QuizGradeDistribution
+        , QuizGradeException
         , QuizQuestion
         , QuizSubmission
         )
@@ -66,6 +67,7 @@ type alias Model =
     , currentUser : WebData CurrentUser
     , assignments : WebData (List Assignment)
     , quizzes : WebData (List Quiz)
+    , quizGradeExceptions : WebData (List QuizGradeException)
     , quizSubmissions : WebData (List QuizSubmission)
     , quizGrades : WebData (List QuizGrade)
     , quizGradeDistributions : WebData (List QuizGradeDistribution)
@@ -112,6 +114,7 @@ initialModel flags route key =
     , currentUser = RemoteData.Loading
     , assignments = RemoteData.NotAsked
     , quizzes = RemoteData.NotAsked
+    , quizGradeExceptions = RemoteData.NotAsked
     , quizSubmissions = RemoteData.NotAsked
     , quizGrades = RemoteData.NotAsked
     , quizGradeDistributions = RemoteData.NotAsked

@@ -20,6 +20,7 @@ import Quizzes.Model
         , QuizAnswer
         , QuizGrade
         , QuizGradeDistribution
+        , QuizGradeException
         , QuizQuestion
         , QuizSubmission
         )
@@ -73,3 +74,4 @@ type Msg
     | OnFetchUsers (WebData (List User))
     | OnChangeEngagement String Int String
     | OnSubmitEngagementResponse String Int (WebData Engagement)
+    | OnFetchQuizGradeExceptions (WebData (List QuizGradeException))

@@ -2,17 +2,21 @@ module Quizzes.Views exposing (takeQuizView)
 
 -- import Html.Attributes as Attrs
 
+import Auth.Model exposing (CurrentUser)
+import Common.Views exposing (longDateToString, stringDateDelta)
 import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Json.Decode as Decode
 import Markdown
+import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
         ( Quiz
         , QuizAnswer
+        , QuizGradeException
         , QuizOpenState(..)
         , QuizQuestion
         , QuizQuestionOption
@@ -67,8 +71,8 @@ mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers =
         |> RemoteData.andMap theseQuizAnswers
 
 
-takeQuizView : Maybe Posix -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
-takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers pendingSubmitQuizzes =
+takeQuizView : WebData CurrentUser -> Maybe Posix -> TimeZone -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
+takeQuizView wdUser maybeDate timeZone quizID quizSubmissions quizzes quizQuestions quizAnswers wdQuizGradeExceptions pendingSubmitQuizzes =
     let
         theseQuizQuestions =
             getOrNotAsked quizID quizQuestions
@@ -82,11 +86,11 @@ takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers 
         wdQuizData =
             mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers
     in
-    case maybeDate of
-        Nothing ->
-            Html.div [] [ Html.text "Loading..." ]
+    case ( wdUser, maybeDate ) of
+        ( RemoteData.Failure e, _ ) ->
+            Html.div [] [ Html.text "You must be logged in to see quizzes." ]
 
-        Just currentDate ->
+        ( RemoteData.Success user, Just currentDate ) ->
             case wdQuizData of
                 RemoteData.Failure error ->
                     Html.div [] [ Html.text "HTTP Error!" ]
@@ -104,16 +108,19 @@ takeQuizView maybeDate quizID quizSubmissions quizzes quizQuestions quizAnswers 
                     in
                     case ( sub, quiz ) of
                         ( Just daSub, Just daQuiz ) ->
-                            showQuizForm currentDate quizID daSub daQuiz data.questions data.answers thisPendingSubmitQuiz
+                            showQuizForm user currentDate timeZone quizID daSub daQuiz data.questions data.answers wdQuizGradeExceptions thisPendingSubmitQuiz
 
                         ( _, Nothing ) ->
-                            Html.div [] [ Html.text "Error - you've not yet started this quiz." ]
+                            Html.div [] [ Html.text "Error - no such quiz." ]
 
                         ( Nothing, _ ) ->
-                            Html.div [] [ Html.text "Error - no such quiz." ]
+                            Html.div [] [ Html.text "Error - you've not yet started this quiz." ]
 
                 RemoteData.NotAsked ->
                     Html.div [] [ Html.text "Need to load data to view this page!" ]
+
+        ( _, _ ) ->
+            Html.div [] [ Html.text "Loading..." ]
 
 
 isLoading : WebData a -> Bool
@@ -140,8 +147,8 @@ showSubmitError x =
             Html.text ""
 
 
-showQuizForm : Posix -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData a -> Html.Html Msg
-showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pendingSubmit =
+showQuizForm : CurrentUser -> Posix -> TimeZone -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData (List QuizGradeException) -> WebData a -> Html.Html Msg
+showQuizForm user currentDate timeZone quizID quizSubmission quiz quizQuestions quizAnswers wdQuizGradeExceptions pendingSubmit =
     let
         quizQuestionOptionIds =
             quizQuestions
@@ -152,6 +159,16 @@ showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pe
             quizAnswers
                 |> List.map .quiz_question_option_id
                 |> Set.fromList
+
+        maybeException =
+            case wdQuizGradeExceptions of
+                RemoteData.Success exceptions ->
+                    exceptions
+                        |> List.filter (\e -> e.quiz_id == quiz.id && e.user_id == user.id)
+                        |> List.head
+
+                _ ->
+                    Nothing
     in
     Html.form
         [ Events.custom
@@ -164,7 +181,7 @@ showQuizForm currentDate quizID quizSubmission quiz quizQuestions quizAnswers pe
             )
         ]
         (List.map (showQuestion quizAnswerSet) quizQuestions
-            ++ [ showSubmitButton currentDate quiz quizSubmission pendingSubmit
+            ++ [ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pendingSubmit
                ]
         )
 
@@ -179,11 +196,11 @@ toUtcString time =
         ++ " (UTC)"
 
 
-showSubmitButton : Posix -> Quiz -> QuizSubmission -> WebData a -> Html.Html Msg
-showSubmitButton currentDate quiz quizSubmission pendingSubmit =
+showSubmitButton : Posix -> TimeZone -> Quiz -> QuizSubmission -> Maybe QuizGradeException -> WebData a -> Html.Html Msg
+showSubmitButton currentDate timeZone quiz quizSubmission maybeException pendingSubmit =
     let
         submitablity =
-            quizSubmitability currentDate quiz (Just quizSubmission)
+            quizSubmitability currentDate quiz (Just quizSubmission) maybeException
     in
     case submitablity of
         ( BeforeQuizOpen, _ ) ->
@@ -202,11 +219,18 @@ showSubmitButton currentDate quiz quizSubmission pendingSubmit =
                     [ Html.text
                         ("This quiz has a duration of "
                             ++ quiz.duration
-                            ++ " and a close date of "
-                            ++ toUtcString quiz.closed_at
-                            ++ ".  You have roughly "
-                            ++ dateDeltaToString (dateDelta submission.closed_at currentDate)
+                            ++ " and must be submitted prior to "
+                            ++ longDateToString submission.closed_at timeZone
+                            ++ ". You have roughly "
+                            ++ stringDateDelta submission.closed_at currentDate
                             ++ " left."
+                            ++ (case maybeException of
+                                    Just exception ->
+                                        " (That includes your quiz grade exception/extension.)"
+
+                                    Nothing ->
+                                        ""
+                               )
                         )
                     ]
                 , showSubmitError pendingSubmit
@@ -249,58 +273,3 @@ showQuestionOption selectedAnswers option =
             , selectionIndicator
             ]
         ]
-
-
-dateDelta : Posix -> Posix -> Int
-dateDelta d2 d1 =
-    Time.posixToMillis d2 - Time.posixToMillis d1
-
-
-dateDeltaToString : Int -> String
-dateDeltaToString d =
-    let
-        msInSecond =
-            1000
-
-        msInMinute =
-            60 * msInSecond
-
-        msInHour =
-            60 * msInMinute
-
-        msInDay =
-            24 * msInHour
-
-        days =
-            d // msInDay
-
-        d2 =
-            d - (days * msInDay)
-
-        hours =
-            d2 // msInHour
-
-        d3 =
-            d2 - (hours * msInHour)
-
-        minutes =
-            d3 // msInMinute
-
-        d4 =
-            d3 - (minutes * msInMinute)
-
-        seconds =
-            d4 // msInSecond
-    in
-    case days > 0 of
-        True ->
-            String.fromInt days
-                ++ " days and "
-                ++ String.fromInt hours
-                ++ " hours"
-
-        False ->
-            [ hours, minutes, seconds ]
-                |> List.map String.fromInt
-                |> List.map (String.padLeft 2 '0')
-                |> String.join ":"

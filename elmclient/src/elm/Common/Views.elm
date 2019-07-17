@@ -1,11 +1,13 @@
 module Common.Views exposing
     ( DateTitleHrefRecord
+    , dateDeltaToString
     , dateTitleHrefRow
     , divWithText
     , longDateToString
     , piazzaLink
     , shortDateToString
     , showDraftStatus
+    , stringDateDelta
     )
 
 import DateFormat
@@ -168,3 +170,63 @@ formatZoneName zoneName =
                             ":" ++ String.fromInt minutes
             in
             "UTC " ++ sign ++ hours ++ minSuffix
+
+
+dateDelta : Posix -> Posix -> Int
+dateDelta d2 d1 =
+    Time.posixToMillis d2 - Time.posixToMillis d1
+
+
+stringDateDelta : Posix -> Posix -> String
+stringDateDelta d2 d1 =
+    dateDeltaToString (dateDelta d2 d1)
+
+
+dateDeltaToString : Int -> String
+dateDeltaToString d =
+    let
+        msInSecond =
+            1000
+
+        msInMinute =
+            60 * msInSecond
+
+        msInHour =
+            60 * msInMinute
+
+        msInDay =
+            24 * msInHour
+
+        days =
+            d // msInDay
+
+        d2 =
+            d - (days * msInDay)
+
+        hours =
+            d2 // msInHour
+
+        d3 =
+            d2 - (hours * msInHour)
+
+        minutes =
+            d3 // msInMinute
+
+        d4 =
+            d3 - (minutes * msInMinute)
+
+        seconds =
+            d4 // msInSecond
+    in
+    case days > 0 of
+        True ->
+            String.fromInt days
+                ++ " days and "
+                ++ String.fromInt hours
+                ++ " hours"
+
+        False ->
+            [ hours, minutes, seconds ]
+                |> List.map String.fromInt
+                |> List.map (String.padLeft 2 '0')
+                |> String.join ":"

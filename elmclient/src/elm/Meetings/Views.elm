@@ -1,7 +1,7 @@
 module Meetings.Views exposing (detailView, listView)
 
 import Auth.Model exposing (CurrentUser, isLoggedInFacultyOrTA)
-import Common.Views exposing (longDateToString)
+import Common.Views exposing (longDateToString, stringDateDelta)
 import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attrs
@@ -13,6 +13,7 @@ import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
         ( Quiz
+        , QuizGradeException
         , QuizOpenState(..)
         , QuizSubmission
         , SubmissionEditableState(..)
@@ -55,8 +56,8 @@ getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
             Nothing
 
 
-detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions pendingBeginQuizzes =
+detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions quizGradeExceptions pendingBeginQuizzes =
     case maybeCurrentDate of
         Nothing ->
             Html.text "Loding..."
@@ -78,7 +79,7 @@ detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSub
                     in
                     case maybeMeeting of
                         Just meeting ->
-                            detailViewForJustMeeting currentDate timeZone currentUser meeting quizzes quizSubmissions pendingBeginQuizzes
+                            detailViewForJustMeeting currentDate timeZone currentUser meeting quizzes quizSubmissions quizGradeExceptions pendingBeginQuizzes
 
                         Nothing ->
                             meetingNotFoundView slug
@@ -87,8 +88,8 @@ detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSub
                     Html.text "Error loading meetings!"
 
 
-detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions pendingBeginQuizzes =
+detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
+detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions pendingBeginQuizzes =
     let
         maybeQuiz =
             getQuizForMeetingSlug meeting.slug wdQuizzes
@@ -109,7 +110,7 @@ detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQu
         , Markdown.toHtml [] meeting.description
         , case currentUser of
             RemoteData.Success user ->
-                showQuizStatus currentDate timeZone meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz
+                showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
@@ -131,8 +132,8 @@ recordEngagementButton meetingSlug currentUser =
             Html.text ""
 
 
-showQuizStatus : Posix -> TimeZone -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizStatus currentDate timeZone meeting wdQuizzes wdQuizSubmissions maybePendingBeginQuiz =
+showQuizStatus : Posix -> CurrentUser -> TimeZone -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             let
@@ -144,7 +145,7 @@ showQuizStatus currentDate timeZone meeting wdQuizzes wdQuizSubmissions maybePen
             case maybeQuiz of
                 Just quiz ->
                     Html.p []
-                        [ showQuizSubmissionStatus currentDate timeZone quiz wdQuizSubmissions maybePendingBeginQuiz
+                        [ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz
                         ]
 
                 Nothing ->
@@ -169,29 +170,63 @@ pText theString =
     Html.p [] [ Html.text theString ]
 
 
-showQuizSubmissionStatus : Posix -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizSubmissionStatus currentDate timeZone quiz wdQuizSubmissions maybePendingBeginQuiz =
+quizDueDateView : Posix -> TimeZone -> Quiz -> QuizOpenState -> SubmissionEditableState -> Maybe QuizGradeException -> String
+quizDueDateView currentDate timeZone quiz quizOpenState submissionEditableState maybeQuizGradeExecption =
+    case submissionEditableState of
+        EditableSubmission submission ->
+            stringDateDelta submission.closed_at currentDate
+
+        NotEditableSubmission submission ->
+            "Nothing"
+
+        NoSubmission ->
+            "Nothing"
+
+
+showQuizSubmissionStatus : Posix -> CurrentUser -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
+showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
             let
+                matchesQuizAndUserId =
+                    \qs -> qs.quiz_id == quiz.id && qs.user_id == user.id
+
                 maybeSubmission =
                     submissions
-                        |> List.filter (\qs -> qs.quiz_id == quiz.id)
+                        |> List.filter matchesQuizAndUserId
                         |> List.head
 
+                maybeException =
+                    case wdQuizGradeExceptions of
+                        RemoteData.Success exceptions ->
+                            exceptions
+                                |> List.filter matchesQuizAndUserId
+                                |> List.head
+
+                        _ ->
+                            Nothing
+
+                dueString =
+                    case maybeException of
+                        Just exception ->
+                            "It looks like you have an exception/extension. Your quiz will be due by " ++ longDateToString exception.closed_at timeZone ++ " instead of " ++ longDateToString quiz.closed_at timeZone
+
+                        Nothing ->
+                            "The quiz is due by " ++ longDateToString quiz.closed_at timeZone ++ "."
+
                 submitablity =
-                    quizSubmitability currentDate quiz maybeSubmission
+                    quizSubmitability currentDate quiz maybeSubmission maybeException
             in
             case submitablity of
                 ( QuizOpen, EditableSubmission submission ) ->
                     Html.div []
-                        [ Html.p [] [ Html.text "You already started the quiz." ]
+                        [ Html.p [] [ Html.text ("You already started the quiz. You have roughly " ++ stringDateDelta submission.closed_at currentDate ++ " to finish it.") ]
                         , Html.p []
                             [ Html.button
                                 [ Attrs.class "btn btn-primary"
                                 , Events.onClick (Msgs.TakeQuiz quiz.id)
                                 ]
-                                [ Html.text "Re-start quiz" ]
+                                [ Html.text "Edit quiz" ]
                             ]
                         ]
 
@@ -209,23 +244,38 @@ showQuizSubmissionStatus currentDate timeZone quiz wdQuizSubmissions maybePendin
                                     ( "Begin quiz", defaultAttrs ++ [ Attrs.disabled True ] )
                     in
                     Html.div []
-                        [ Html.p [] [ Html.text "You did not yet start the quiz." ]
+                        [ Html.p [] [ Html.text ("You did not yet start the quiz.  " ++ dueString) ]
                         , Html.p [] [ Html.button btnAttrs [ Html.text btnText ] ]
                         ]
 
                 ( _, NotEditableSubmission submission ) ->
-                    Html.p []
-                        [ Html.text "You already submitted this quiz."
-                        ]
+                    let
+                        exceptionNote =
+                            case maybeException of
+                                Just exception ->
+                                    "  It looks like you had a grading exception/extension. Your quiz was due by " ++ longDateToString exception.closed_at timeZone ++ "."
+
+                                Nothing ->
+                                    ""
+                    in
+                    pText ("You already submitted this quiz." ++ exceptionNote)
 
                 ( AfterQuizClosed, _ ) ->
-                    pText ("This quiz is now closed. It was due by " ++ longDateToString quiz.closed_at timeZone ++ ".")
+                    case maybeException of
+                        Just exception ->
+                            pText ("This quiz is now closed. It was due by " ++ longDateToString exception.closed_at timeZone ++ ". You had an extention. The quiz was originally due by " ++ longDateToString quiz.closed_at timeZone)
+
+                        Nothing ->
+                            pText ("This quiz is now closed. It was due by " ++ longDateToString quiz.closed_at timeZone ++ ".")
 
                 ( QuizIsDraft, _ ) ->
-                    pText "This quiz is still in draft mode. The instructor needs to finize the quiz."
+                    pText
+                        ("This quiz is still in draft mode. The instructor needs to finize the quiz.  "
+                            ++ dueString
+                        )
 
                 ( BeforeQuizOpen, _ ) ->
-                    pText ("This quiz is not yet open for submissions. It opens at " ++ longDateToString quiz.open_at timeZone ++ ".")
+                    pText ("This quiz is not yet open for submissions. It opens at " ++ longDateToString quiz.open_at timeZone ++ ".  " ++ dueString)
 
         RemoteData.NotAsked ->
             pText "Quiz submissions not yet loaded. Unclear if you started this quiz."

@@ -39,7 +39,7 @@ page model =
             lazy2 Meetings.Views.listView model.timeZone model.meetings
 
         Models.MeetingDetailRoute slug ->
-            Meetings.Views.detailView model.current_date model.timeZone model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.pendingBeginQuizzes
+            Meetings.Views.detailView model.current_date model.timeZone model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.quizGradeExceptions model.pendingBeginQuizzes
 
         Models.AssignmentListRoute ->
             lazy2 Assignments.Views.listView model.timeZone model.assignments
@@ -48,7 +48,7 @@ page model =
             Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
 
         Models.TakeQuizRoute quizID ->
-            Quizzes.Views.takeQuizView model.current_date quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.pendingSubmitQuizzes
+            Quizzes.Views.takeQuizView model.currentUser model.current_date model.timeZone quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.quizGradeExceptions model.pendingSubmitQuizzes
 
         Models.EditEngagementsRoute meetingSlug ->
             lazy5 maybeEditEngagements model.currentUser model.users model.engagements model.meetings meetingSlug

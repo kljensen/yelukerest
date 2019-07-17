@@ -2,6 +2,7 @@ module Quizzes.Commands exposing
     ( createQuizSubmission
     , fetchQuizAnswers
     , fetchQuizGradeDistributions
+    , fetchQuizGradeExceptions
     , fetchQuizGrades
     , fetchQuizQuestions
     , fetchQuizSubmissions
@@ -23,6 +24,7 @@ import Quizzes.Model
         , QuizSubmission
         , quizAnswersDecoder
         , quizGradeDistributionsDecoder
+        , quizGradeExceptionsDecoder
         , quizGradesDecoder
         , quizQuestionsDecoder
         , quizSubmissionDecoder
@@ -98,6 +100,16 @@ fetchQuizGradeDistributions currentUser =
 fetchQuizGradeDistributionsUrl : String
 fetchQuizGradeDistributionsUrl =
     "/rest/quiz_grade_distributions"
+
+
+fetchQuizGradeExceptions : CurrentUser -> Cmd Msg
+fetchQuizGradeExceptions currentUser =
+    fetchForCurrentUser currentUser fetchQuizGradeExceptionsUrl quizGradeExceptionsDecoder Msgs.OnFetchQuizGradeExceptions
+
+
+fetchQuizGradeExceptionsUrl : String
+fetchQuizGradeExceptionsUrl =
+    "/rest/quiz_grade_exceptions"
 
 
 
