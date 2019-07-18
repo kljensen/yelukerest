@@ -4,6 +4,7 @@ import Assignments.Commands
     exposing
         ( createAssignmentSubmission
         , fetchAssignmentGradeDistributions
+        , fetchAssignmentGradeExceptions
         , fetchAssignmentGrades
         , fetchAssignmentSubmissions
         , fetchAssignments
@@ -131,6 +132,7 @@ update msg model =
                                 , fetchQuizGradeDistributions user
                                 , fetchAssignmentGrades user
                                 , fetchAssignmentGradeDistributions user
+                                , fetchAssignmentGradeExceptions user
                                 ]
 
                         ( sseUserModel, sseCmd ) =
@@ -255,6 +257,9 @@ update msg model =
 
         Msgs.TakeQuiz quizID ->
             takeQuiz model quizID
+
+        Msgs.OnFetchAssignmentGradeExceptions assignmentGradeExceptions ->
+            ( { model | assignmentGradeExceptions = assignmentGradeExceptions }, Cmd.none )
 
         Msgs.OnFetchQuizGradeExceptions quizGradeExceptions ->
             ( { model | quizGradeExceptions = quizGradeExceptions }, Cmd.none )

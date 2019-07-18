@@ -6,6 +6,7 @@ import Assignments.Model
         , AssignmentFieldSubmission
         , AssignmentGrade
         , AssignmentGradeDistribution
+        , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
         )
@@ -75,3 +76,4 @@ type Msg
     | OnChangeEngagement String Int String
     | OnSubmitEngagementResponse String Int (WebData Engagement)
     | OnFetchQuizGradeExceptions (WebData (List QuizGradeException))
+    | OnFetchAssignmentGradeExceptions (WebData (List AssignmentGradeException))

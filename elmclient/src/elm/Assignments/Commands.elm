@@ -1,6 +1,7 @@
 module Assignments.Commands exposing
     ( createAssignmentSubmission
     , fetchAssignmentGradeDistributions
+    , fetchAssignmentGradeExceptions
     , fetchAssignmentGrades
     , fetchAssignmentSubmissions
     , fetchAssignments
@@ -14,6 +15,7 @@ import Assignments.Model
         , AssignmentSlug
         , assignmentFieldSubmissionsDecoder
         , assignmentGradeDistributionsDecoder
+        , assignmentGradeExceptionsDecoder
         , assignmentGradesDecoder
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
@@ -173,3 +175,13 @@ fetchAssignmentGradeDistributions currentUser =
 fetchAssignmentGradeDistributionsUrl : String
 fetchAssignmentGradeDistributionsUrl =
     "/rest/assignment_grade_distributions"
+
+
+fetchAssignmentGradeExceptions : CurrentUser -> Cmd Msg
+fetchAssignmentGradeExceptions currentUser =
+    fetchForCurrentUser currentUser fetchAssignmentGradeExceptionsUrl assignmentGradeExceptionsDecoder Msgs.OnFetchAssignmentGradeExceptions
+
+
+fetchAssignmentGradeExceptionsUrl : String
+fetchAssignmentGradeExceptionsUrl =
+    "/rest/assignment_grade_exceptions"

@@ -6,6 +6,7 @@ import Assignments.Model
         , AssignmentFieldSubmissionInputs
         , AssignmentGrade
         , AssignmentGradeDistribution
+        , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
         , PendingAssignmentFieldSubmissionRequests
@@ -72,6 +73,7 @@ type alias Model =
     , quizGrades : WebData (List QuizGrade)
     , quizGradeDistributions : WebData (List QuizGradeDistribution)
     , uiElements : UIElements
+    , assignmentGradeExceptions : WebData (List AssignmentGradeException)
     , assignmentSubmissions : WebData (List AssignmentSubmission)
     , assignmentGrades : WebData (List AssignmentGrade)
     , assignmentGradeDistributions : WebData (List AssignmentGradeDistribution)
@@ -124,6 +126,7 @@ initialModel flags route key =
         , aboutURL = flags.aboutURL
         , canvasURL = flags.canvasURL
         }
+    , assignmentGradeExceptions = RemoteData.NotAsked
     , assignmentSubmissions = RemoteData.NotAsked
     , assignmentGrades = RemoteData.NotAsked
     , assignmentGradeDistributions = RemoteData.NotAsked

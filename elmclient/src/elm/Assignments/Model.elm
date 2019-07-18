@@ -5,6 +5,7 @@ module Assignments.Model exposing
     , AssignmentFieldSubmissionInputs
     , AssignmentGrade
     , AssignmentGradeDistribution
+    , AssignmentGradeException
     , AssignmentSlug
     , AssignmentSubmission
     , NotSubmissibleReason(..)
@@ -13,6 +14,7 @@ module Assignments.Model exposing
     , SubmissibleState(..)
     , assignmentFieldSubmissionsDecoder
     , assignmentGradeDistributionsDecoder
+    , assignmentGradeExceptionsDecoder
     , assignmentGradesDecoder
     , assignmentSubmissionDecoder
     , assignmentSubmissionsDecoder
@@ -219,13 +221,22 @@ type SubmissibleState
     | NotSubmissible NotSubmissibleReason
 
 
-isSubmissible : Posix -> Assignment -> SubmissibleState
-isSubmissible currentDate assignment =
+isSubmissible : Posix -> Maybe AssignmentGradeException -> Assignment -> SubmissibleState
+isSubmissible currentDate maybeException assignment =
     if assignment.is_draft then
         NotSubmissible IsDraft
 
     else if assignment.is_open == False then
-        NotSubmissible IsAfterClosed
+        case maybeException of
+            Just exception ->
+                if dateIsLessThan currentDate exception.closed_at then
+                    Submissible assignment
+
+                else
+                    NotSubmissible IsAfterClosed
+
+            Nothing ->
+                NotSubmissible IsAfterClosed
 
     else if dateIsLessThan currentDate assignment.closed_at then
         Submissible assignment
@@ -288,3 +299,35 @@ assignmentGradeDistributionDecoder =
 assignmentGradeDistributionsDecoder : Decode.Decoder (List AssignmentGradeDistribution)
 assignmentGradeDistributionsDecoder =
     Decode.list assignmentGradeDistributionDecoder
+
+
+type alias AssignmentGradeException =
+    { id : Int
+    , assignment_slug : AssignmentSlug
+    , is_team : Bool
+    , user_id : Maybe Int
+    , team_nickname : Maybe String
+    , fractional_credit : Float
+    , closed_at : Posix
+    , created_at : Posix
+    , updated_at : Posix
+    }
+
+
+assignmentGradeExceptionDecoder : Decode.Decoder AssignmentGradeException
+assignmentGradeExceptionDecoder =
+    Decode.succeed AssignmentGradeException
+        |> required "id" Decode.int
+        |> required "assignment_slug" Decode.string
+        |> required "is_team" Decode.bool
+        |> required "user_id" (Decode.nullable Decode.int)
+        |> required "team_nickname" (Decode.nullable Decode.string)
+        |> required "fractional_credit" Decode.float
+        |> required "closed_at" Json.Decode.Extra.datetime
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
+
+
+assignmentGradeExceptionsDecoder : Decode.Decoder (List AssignmentGradeException)
+assignmentGradeExceptionsDecoder =
+    Decode.list assignmentGradeExceptionDecoder

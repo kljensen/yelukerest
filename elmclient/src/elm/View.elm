@@ -45,7 +45,7 @@ page model =
             lazy2 Assignments.Views.listView model.timeZone model.assignments
 
         Models.AssignmentDetailRoute slug ->
-            Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.pendingBeginAssignments slug model.current_date
+            Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.assignmentGradeExceptions model.pendingBeginAssignments slug model.current_date
 
         Models.TakeQuizRoute quizID ->
             Quizzes.Views.takeQuizView model.currentUser model.current_date model.timeZone quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.quizGradeExceptions model.pendingSubmitQuizzes

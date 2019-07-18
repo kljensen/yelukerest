@@ -5,6 +5,7 @@ import Assignments.Model
         ( Assignment
         , AssignmentField
         , AssignmentFieldSubmission
+        , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
         , NotSubmissibleReason(..)
@@ -20,6 +21,7 @@ import Dict exposing (Dict)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes as Attrs
 import Html.Events as Events
+import Http exposing (Error)
 import Json.Decode as Decode
 import Markdown
 import Models exposing (TimeZone)
@@ -77,33 +79,78 @@ getSubmissionForSlug submissions slug wdCurrentUser =
             Nothing
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions pendingBeginAssignments slug current_date =
-    case ( wdAssignments, assignmentSubmissions ) of
-        ( RemoteData.Success assignments, RemoteData.Success submissions ) ->
+type alias DetailViewData =
+    { user : CurrentUser
+    , date : Posix
+    , assignments : List Assignment
+    , submissions : List AssignmentSubmission
+    }
+
+
+maybeAndMap : Maybe a -> Maybe (a -> b) -> Maybe b
+maybeAndMap =
+    Maybe.map2 (|>)
+
+
+mergeDetailViewData : WebData CurrentUser -> Maybe Posix -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> Maybe DetailViewData
+mergeDetailViewData wdCurrentUser maybeDate wdAssignments wdAssignmentSubmissions =
+    let
+        buildData =
+            \user assignments submissions date -> { user = user, date = date, assignments = assignments, submissions = submissions }
+
+        d =
+            RemoteData.fromMaybe Result.Err maybeDate
+    in
+    Just buildData
+        |> maybeAndMap (RemoteData.toMaybe wdCurrentUser)
+        |> maybeAndMap (RemoteData.toMaybe wdAssignments)
+        |> maybeAndMap (RemoteData.toMaybe wdAssignmentSubmissions)
+        |> maybeAndMap maybeDate
+
+
+exceptionMatches : AssignmentSlug -> Int -> Maybe String -> AssignmentGradeException -> Bool
+exceptionMatches slug user_id maybeNickname exception =
+    if exception.assignment_slug == slug then
+        case exception.user_id of
+            Just exception_user_id ->
+                exception_user_id == user_id
+
+            Nothing ->
+                case ( exception.team_nickname, maybeNickname ) of
+                    ( Just exception_team_nickname, Just team_nickname ) ->
+                        exception_team_nickname == team_nickname
+
+                    ( _, _ ) ->
+                        False
+
+    else
+        False
+
+
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments slug current_date =
+    case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
+        Just data ->
             let
                 maybeAssignment =
-                    assignments
+                    data.assignments
                         |> List.filter (\assignment -> assignment.slug == slug)
                         |> List.head
 
                 maybeSubmission =
-                    getSubmissionForSlug submissions slug wdCurrentUser
+                    getSubmissionForSlug data.submissions slug (RemoteData.Success data.user)
 
                 maybePendingBegin =
                     Dict.get slug pendingBeginAssignments
             in
-            case ( maybeDate, maybeAssignment ) of
-                ( Just currentDate, Just assignment ) ->
-                    detailViewForJustAssignment currentDate timeZone assignment maybeSubmission maybePendingBegin current_date
+            case maybeAssignment of
+                Just assignment ->
+                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin
 
-                ( Nothing, _ ) ->
-                    Html.div [] [ Html.text "Loading..." ]
-
-                ( _, Nothing ) ->
+                Nothing ->
                     meetingNotFoundView slug
 
-        ( _, _ ) ->
+        Nothing ->
             loginToViewAssignments
 
 
@@ -119,13 +166,34 @@ meetingNotFoundView slug =
 -- TODO: hide the form when the client knows the closed_at date is passed.
 
 
-detailViewForJustAssignment : Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> Maybe (WebData AssignmentSubmission) -> Maybe Posix -> Html.Html Msg
-detailViewForJustAssignment currentDate timeZone assignment maybeSubmission maybeBeginAssignment current_date =
+showDueDate : Posix -> TimeZone -> Maybe AssignmentGradeException -> AssignmentSlug -> CurrentUser -> String
+showDueDate dueDate timeZone maybeException slug user =
+    let
+        dueString =
+            longDateToString dueDate timeZone ++ "."
+    in
+    case maybeException of
+        Just exception ->
+            longDateToString exception.closed_at timeZone ++ " due to your grading exception/extention. The assignment was originally due " ++ dueString
+
+        Nothing ->
+            dueString
+
+
+detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment =
+    let
+        maybeException =
+            wdExceptions
+                |> RemoteData.toMaybe
+                |> Maybe.map (List.filter (exceptionMatches assignment.slug user.id user.team_nickname))
+                |> Maybe.andThen List.head
+    in
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
         , Html.div []
             [ Html.text "Due: "
-            , Html.time [] [ Html.text (longDateToString assignment.closed_at timeZone) ]
+            , Html.time [] [ Html.text (showDueDate assignment.closed_at timeZone maybeException assignment.slug user) ]
             ]
         , Markdown.toHtml [] assignment.body
         , Html.hr [] []
@@ -135,11 +203,11 @@ detailViewForJustAssignment currentDate timeZone assignment maybeSubmission mayb
                     [ showPreviousAssignment assignment submission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
-                    , submissionInstructions currentDate assignment submission
+                    , submissionInstructions currentDate assignment maybeException submission
                     ]
 
             Nothing ->
-                beginSubmission currentDate assignment maybeBeginAssignment
+                beginSubmission currentDate assignment maybeException maybeBeginAssignment
         ]
 
 
@@ -160,11 +228,11 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : Posix -> Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-beginSubmission currentDate assignment maybeBeginAssignment =
-    case isSubmissible currentDate assignment of
+beginSubmission : Posix -> Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+beginSubmission currentDate assignment maybeException maybeBeginAssignment =
+    case isSubmissible currentDate maybeException assignment of
         Submissible assignment2 ->
-            showBeginAssignmentButton assignment2 maybeBeginAssignment
+            showBeginAssignmentButton assignment2 maybeException maybeBeginAssignment
 
         NotSubmissible reason ->
             let
@@ -179,8 +247,8 @@ beginSubmission currentDate assignment maybeBeginAssignment =
             Common.Views.divWithText message
 
 
-showBeginAssignmentButton : Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-showBeginAssignmentButton assignment maybeBeginAssignment =
+showBeginAssignmentButton : Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+showBeginAssignmentButton assignment maybeException maybeBeginAssignment =
     case maybeBeginAssignment of
         Nothing ->
             Html.button
@@ -212,9 +280,9 @@ spinner =
         ]
 
 
-submissionInstructions : Posix -> Assignment -> AssignmentSubmission -> Html.Html Msg
-submissionInstructions currentDate assignment submission =
-    case isSubmissible currentDate assignment of
+submissionInstructions : Posix -> Assignment -> Maybe AssignmentGradeException -> AssignmentSubmission -> Html.Html Msg
+submissionInstructions currentDate assignment maybeException submission =
+    case isSubmissible currentDate maybeException assignment of
         Submissible assignment2 ->
             showSubmissionForm submission assignment2
 
