@@ -48,17 +48,29 @@ using (
                 EXISTS(
                     SELECT * 
                     FROM api.assignments as a
+                    LEFT OUTER JOIN api.assignment_grade_exceptions as e
+                        ON (a.slug = e.assignment_slug)
+                    LEFT OUTER JOIN api.users as u
+                        ON (e.user_id = u.id OR e.team_nickname = u.team_nickname)
                     WHERE (
-                        a.slug = assignment_slug and a.is_open
+                        a.slug = data.assignment_submission.assignment_slug
+                        and (
+                            -- It is either open
+                            a.is_open
+                            -- Or they have an exception
+                            OR (
+                                e.closed_at > current_timestamp
+                                AND
+                                a.is_draft = False
+                                AND (
+                                    -- Remember NULLs are never equal to each other
+                                    e.user_id = data.assignment_submission.user_id
+                                    OR
+                                    e.team_nickname = data.assignment_submission.team_nickname
+                                )
+                            )
+                        )
                     )
-                ) OR
-                -- Or the student has a grading exception
-                EXISTS (
-                    SELECT *
-                    FROM api.assignment_grade_exceptions as e
-                    JOIN api.users as u
-                    ON (u.id = e.user_id OR u.team_nickname = e.team_nickname)
-                    WHERE e.closed_at > current_timestamp
                 )
             )
         and (

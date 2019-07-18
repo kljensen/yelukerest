@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(13);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_exceptions', 'api',
@@ -47,7 +47,8 @@ SELECT set_eq(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
-UPDATE api.assignments SET closed_at = current_timestamp - '1 hour'::INTERVAL WHERE slug='team-selection';
+DELETE FROM api.assignment_submissions;
+UPDATE api.assignments SET closed_at = current_timestamp - '1 hour'::INTERVAL;
 PREPARE insert_submission AS INSERT INTO api.assignment_submissions (id, assignment_slug, is_team, user_id, team_nickname, submitter_user_id) VALUES($1, $2, $3, $4, $5, $6);
 PREPARE insert_field_submission AS INSERT INTO api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,body) VALUES($1, $2, 'foo');
 
@@ -62,6 +63,12 @@ SELECT lives_ok(
 SELECT lives_ok(
     'EXECUTE insert_field_submission(600, ''secret'')', 
     'students should be able to create assignment field submissions after assignment closed_at if they have an unexpired exception'
+);
+
+SELECT throws_like(
+    'EXECUTE insert_submission(700, ''js-koans'', FALSE, 5, NULL, 5)', 
+    '%violates row-level security policy%',
+    'students should NOT be able to create assignment submissions for closed assignments for which they have no exception'
 );
 
 set local role faculty;
@@ -102,3 +109,5 @@ SELECT throws_like(
 
 select * from finish();
 rollback;
+
+-- TODO, test team submission!!!

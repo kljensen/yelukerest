@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(22);
 
 SELECT view_owner_is(
     'api', 'assignment_field_submissions', 'api',
@@ -111,6 +111,24 @@ SELECT lives_ok(
     'students can update their own assignment field submissions'
 );
 
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+UPDATE api.assignments SET is_draft = TRUE WHERE slug='team-selection';
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '4';
+SELECT throws_like(
+    'UPDATE api.assignment_field_submissions SET body=''foooo'' WHERE assignment_submission_id=11 AND assignment_field_slug=''secret''', 
+    '%violates row-level security policy%',
+    'students cannot update a assignment field submission if the assignment is in draft'
+);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+UPDATE api.assignments SET is_draft = FALSE WHERE slug='team-selection';
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '4';
 
 SELECT throws_like(
     'DELETE FROM api.assignment_field_submissions WHERE assignment_submission_id=11 AND assignment_field_slug=''secret''', 

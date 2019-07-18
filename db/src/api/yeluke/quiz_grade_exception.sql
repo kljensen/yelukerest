@@ -14,8 +14,8 @@ create or replace view quiz_submissions_info as
         -- This is a little bit redundant...Here we're checking if there is still time 
         -- for the user to submit a quiz answer. This takes into account any extension
         -- they received for this quiz.
-        (q.is_draft = False AND q.open_at < current_timestamp AND current_timestamp < LEAST(GREATEST(q.closed_at, qge.closed_at), qs.created_at + q.duration)) AS is_open,
-        LEAST(GREATEST(q.closed_at, qge.closed_at), qs.created_at + q.duration) as closed_at
+        (q.is_draft = False AND q.open_at < current_timestamp AND current_timestamp < LEAST(COALESCE(qge.closed_at, q.closed_at), qs.created_at + q.duration)) AS is_open,
+        LEAST(COALESCE(qge.closed_at, q.closed_at), qs.created_at + q.duration) as closed_at
     FROM
         api.quiz_submissions qs
         JOIN api.quizzes q ON qs.quiz_id = q.id
