@@ -22,7 +22,7 @@ using (
             -- is not null when `is_team` is TRUE.
             (is_team AND (
                 EXISTS(
-                    SELECT * FROM api.users as u
+                    SELECT u.id FROM api.users as u
                     WHERE
                         u.id = request.user_id()
                         AND
@@ -46,7 +46,7 @@ using (
 			(
                 -- The assignment is open
                 EXISTS(
-                    SELECT * 
+                    SELECT a.slug
                     FROM api.assignments as a
                     LEFT OUTER JOIN api.assignment_grade_exceptions as e
                         ON (a.slug = e.assignment_slug)
@@ -83,7 +83,7 @@ using (
                 -- TODO: REFACTOR to reduce code duplication with the
                 -- RLS policy above on reads.
                 EXISTS(
-                    SELECT * FROM api.users as u
+                    SELECT u.id FROM api.users as u
                     WHERE
                         u.id = request.user_id()
                         AND

@@ -22,7 +22,7 @@ using (
                 -- This query finds all assignment_submissions owned by
                 -- this user or their team that have the current 
                 -- assignment_submission_id
-                SELECT * from
+                SELECT ass_sub.id from
                     api.assignment_submissions AS ass_sub INNER JOIN api.users
                 ON (
                     ass_sub.user_id = api.users.id

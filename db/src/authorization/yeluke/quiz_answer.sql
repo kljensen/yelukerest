@@ -28,7 +28,7 @@ using (
 		and
         -- and the quiz is open for submission. 
         EXISTS(
-            SELECT * 
+            SELECT qsi.quiz_id, qsi.user_id 
             FROM api.quiz_submissions_info as qsi
             WHERE (
                 qsi.quiz_id = quiz_id

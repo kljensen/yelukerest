@@ -18,7 +18,7 @@ using (
         -- particular row points. Here, we're relying on the
         -- RLS of api.assignment_submission.
         EXISTS (
-            SELECT * FROM api.assignment_submissions as ass_sub
+            SELECT ass_sub.id FROM api.assignment_submissions as ass_sub
             WHERE assignment_submission_id = ass_sub.id
         )
     )

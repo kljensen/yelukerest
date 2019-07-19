@@ -27,7 +27,7 @@ using (
 			request.user_id() = user_id
 			and
 			EXISTS(
-				SELECT * 
+				SELECT q.id
 				FROM api.quizzes q
 				LEFT JOIN api.quiz_grade_exceptions qge ON (q.id = qge.quiz_id)
 				WHERE (

@@ -16,7 +16,7 @@ using (
         -- shoud find some way to refactor this into a function.
         request.user_role() = ANY('{student,ta}'::text[])
         AND EXISTS(
-            SELECT * FROM api.quiz_submissions AS qs
+            SELECT qs.quiz_id, qs.user_id FROM api.quiz_submissions AS qs
             WHERE
                 -- It is the current user
                 (qs.user_id = request.user_id()

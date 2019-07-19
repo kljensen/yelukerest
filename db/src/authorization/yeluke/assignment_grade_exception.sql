@@ -18,7 +18,7 @@ using (
         -- is not null when `is_team` is TRUE.
         (is_team AND (
             EXISTS(
-                SELECT * FROM api.users as u
+                SELECT u.id FROM api.users as u
                 WHERE
                     u.id = request.user_id()
                     AND
