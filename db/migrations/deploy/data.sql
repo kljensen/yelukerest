@@ -1,4 +1,5 @@
--- Deploy app:0000000002-data to pg
+-- Deploy yelukerest:data to pg
+-- requires: init
 
 BEGIN;
 
