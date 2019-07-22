@@ -15,101 +15,128 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
---
--- Name: api; Type: SCHEMA; Schema: -; Owner: superuser
---
 
-CREATE SCHEMA api;
-
-
-ALTER SCHEMA api OWNER TO superuser;
-
---
--- Name: auth; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA auth;
-
-
-ALTER SCHEMA auth OWNER TO superuser;
-
---
--- Name: data; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA data;
-
-
-ALTER SCHEMA data OWNER TO superuser;
-
---
--- Name: pgjwt; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA pgjwt;
-
-
-ALTER SCHEMA pgjwt OWNER TO superuser;
-
---
--- Name: rabbitmq; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA rabbitmq;
-
-
-ALTER SCHEMA rabbitmq OWNER TO superuser;
-
---
--- Name: request; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA request;
-
-
-ALTER SCHEMA request OWNER TO superuser;
-
---
--- Name: settings; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA settings;
-
-
-ALTER SCHEMA settings OWNER TO superuser;
 
 --
 -- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
 --
-
 CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
-
-
---
--- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
---
-
 COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
 
 
 --
 -- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: 
 --
-
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
-
-
---
--- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
---
-
 COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+--
+-- Roles
+--
+
+-- NOTE: this migration does not include anything from
+-- our app that is not hardcoded. E.g. the authenticator
+-- password. Need to set that after migration ends as
+-- superuser.
+--
+
+
+CREATE OR REPLACE FUNCTION public.drop_create_role(rolename NAME) RETURNS TEXT AS
+$$
+BEGIN
+    IF NOT EXISTS (SELECT * FROM pg_roles WHERE rolname = rolename) THEN
+        EXECUTE format('CREATE ROLE %I', rolename);
+        RETURN 'CREATE ROLE';
+    ELSE
+        EXECUTE 'REASSIGN OWNED BY ' || quote_ident(rolename) || ' TO postgres';
+        EXECUTE 'DROP OWNED BY ' || quote_ident(rolename);
+        EXECUTE 'DROP ROLE IF EXISTS ' || quote_ident(rolename);
+        EXECUTE 'CREATE ROLE ' || quote_ident(rolename);
+        RETURN format('ROLE ''%I'' ALREADY EXISTS', rolename);
+    END IF;
+END;
+$$
+LANGUAGE plpgsql;
+
+SELECT public.drop_create_role('authenticator');
+ALTER ROLE authenticator WITH LOGIN;
+SELECT public.drop_create_role('authapp');
+ALTER ROLE authenticator WITH LOGIN;
+SELECT public.drop_create_role('anonymous');
+SELECT public.drop_create_role('api');
+SELECT public.drop_create_role('faculty');
+SELECT public.drop_create_role('observer');
+SELECT public.drop_create_role('student');
+SELECT public.drop_create_role('ta');
+DROP FUNCTION IF EXISTS public.drop_create_role;
+
+
+
+--
+-- Role memberships
+--
+
+GRANT anonymous TO authenticator;
+GRANT api TO current_user;
+GRANT faculty TO authenticator;
+GRANT observer TO authenticator;
+GRANT student TO authenticator;
+
+--
+-- Name: api; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS api;
+ALTER SCHEMA api OWNER TO superuser;
+
+--
+-- Name: auth; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS auth;
+ALTER SCHEMA auth OWNER TO superuser;
+
+--
+-- Name: data; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS data;
+ALTER SCHEMA data OWNER TO superuser;
+
+--
+-- Name: pgjwt; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS pgjwt;
+ALTER SCHEMA pgjwt OWNER TO superuser;
+
+--
+-- Name: rabbitmq; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS rabbitmq;
+ALTER SCHEMA rabbitmq OWNER TO superuser;
+
+--
+-- Name: request; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS request;
+ALTER SCHEMA request OWNER TO superuser;
+
+--
+-- Name: settings; Type: SCHEMA; Schema: -; Owner: superuser
+--
+
+CREATE SCHEMA IF NOT EXISTS settings;
+ALTER SCHEMA settings OWNER TO superuser;
+
 
 
 --
 -- Name: user; Type: TYPE; Schema: api; Owner: superuser
 --
-
+DROP TYPE IF EXISTS api."user";
 CREATE TYPE api."user" AS (
 	id integer,
 	name text,
@@ -123,7 +150,7 @@ ALTER TYPE api."user" OWNER TO superuser;
 --
 -- Name: participation_enum; Type: TYPE; Schema: data; Owner: superuser
 --
-
+DROP TYPE IF EXISTS data.participation_enum;
 CREATE TYPE data.participation_enum AS ENUM (
     'absent',
     'attended',
@@ -137,7 +164,7 @@ ALTER TYPE data.participation_enum OWNER TO superuser;
 --
 -- Name: user_role; Type: TYPE; Schema: data; Owner: superuser
 --
-
+DROP TYPE IF EXISTS data.user_role;
 CREATE TYPE data.user_role AS ENUM (
     'student',
     'faculty',
