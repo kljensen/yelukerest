@@ -37,7 +37,7 @@ COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 -- NOTE: this migration does not include anything from
 -- our app that is not hardcoded. E.g. the authenticator
 -- password. Need to set that after migration ends as
--- superuser.
+-- superuser. Need to let 
 --
 
 
@@ -61,7 +61,7 @@ LANGUAGE plpgsql;
 SELECT public.drop_create_role('authenticator');
 ALTER ROLE authenticator WITH LOGIN;
 SELECT public.drop_create_role('authapp');
-ALTER ROLE authenticator WITH LOGIN;
+ALTER ROLE authapp WITH LOGIN;
 SELECT public.drop_create_role('anonymous');
 SELECT public.drop_create_role('api');
 SELECT public.drop_create_role('faculty');
