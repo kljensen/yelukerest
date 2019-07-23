@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-""" A client for Yelukereset, primarily to be used by faculty for
+""" A client for Yelukerest, primarily to be used by faculty for
     bulk administration connecting directly to the database.
 """
 import os
@@ -9,6 +9,18 @@ import ldap3
 import psycopg2
 from names import get_student_nickname
 from models import quiz
+import ruamel.yaml as ruamel_yaml
+import datetime
+
+
+def read_yaml(filehandle):
+    """ Reads a YAML file from the file system
+    """
+
+    yaml = ruamel_yaml.YAML(typ="safe", pure=True)
+    data = yaml.load(filehandle)
+    return data
+
 
 @click.group()
 @click.pass_context
@@ -59,6 +71,7 @@ def known_as_is_redundant(known_as, name):
         return True
     return False
 
+
 @database.command()
 @click.pass_context
 def getuserldap(ctx):
@@ -83,10 +96,12 @@ def getuserldap(ctx):
             last_name = ldapget(result, 'sn')
             email = ldapget(result, 'mail')
             organization = ldapget(result, 'o')
-            print(", ".join(str(s) for s in [name, known_as, last_name, email, organization]))
+            print(", ".join(str(s)
+                            for s in [name, known_as, last_name, email, organization]))
             cur = conn.cursor()
             statement = 'UPDATE data.user SET known_as = %s, name = %s, email = %s, lastname = %s, organization = %s WHERE netid = %s'
-            cur.execute(statement, (known_as, name, email, last_name, organization, netid))
+            cur.execute(statement, (known_as, name, email,
+                                    last_name, organization, netid))
             conn.commit()
 
 
@@ -134,7 +149,7 @@ def addstudent(ctx, student):
 
 def addlistofstudents(conn, students):
     """ Add a list of students
-    
+
     Arguments:
         conn {sql connection} -- connection to the postgres database
         students {list} -- list of student netids, each of which a string
@@ -166,6 +181,7 @@ def addlistofstudents(conn, students):
         cur.execute(statement, (netid, "student", new_nickname))
         conn.commit()
 
+
 @database.command()
 @click.pass_context
 @click.argument('quiz_id', type=click.INT)
@@ -174,6 +190,7 @@ def grade_quiz(ctx, quiz_id):
     """
     conn = ctx.obj['conn']
     quiz.grade(conn, quiz_id)
+
 
 @database.command()
 @click.pass_context
@@ -186,6 +203,85 @@ def grade_quizzes(ctx):
         quiz.grade(conn, quiz_id)
 
 
+def delete_missing_meetings(cursor, slugs):
+    """ Deletes all meetings that are not in a list of slugs
+
+    Arguments:
+        cursor {psycopg2 cursor} -- A database cursor
+        slugs {list} -- List of meeting slugs we want to keep
+    """
+    query = """
+        DELETE FROM data.meeting
+        WHERE slug NOT IN %s;
+    """
+    cursor.execute(query, (tuple(slugs),))
+
+
+def upsert_meetings(cursor, meetings):
+    """ Upserts meetings. Each meeting may have different
+        columns specified. Though, each must have a 'slug' column
+        or an exception will be raised.
+
+    Arguments:
+        cursor {psygopg2 cursor} -- A database cursor
+        meetings {list} -- list of meetings
+    """
+    base_query = """
+        INSERT INTO data.meeting ({})
+        VALUES ({})
+        ON CONFLICT (slug)
+        DO UPDATE
+        SET {};
+    """
+
+    def make_query(meeting):
+        keys = meeting.keys()
+        return base_query.format(
+            ','.join(keys),
+            ','.join('%({})s'.format(k) for k in keys),
+            ','.join('{}=EXCLUDED.{}'.format(k, k) for k in keys)
+
+        )
+    for meeting in meetings:
+        query = make_query(meeting)
+        cursor.execute(query, meeting)
+
+
+def parse_timedelta(td):
+    h, m = map(int, td.split(":"))
+    return datetime.timedelta(hours=h, minutes=m)
+
+
+@database.command()
+@click.pass_context
+@click.argument('infile', type=click.File('r'))
+@click.option('--timedelta')
+def update_meetings(ctx, infile, timedelta):
+    """ Updates all meetings in the database. This takes a YAML-formatted
+        list of meetings. Any meetings in the database with slugs that are
+        not in the input YAML file will be deleted. Those that exist will
+        be updated. Those that are new will be added.
+    """
+    conn = ctx.obj['conn']
+    meetings = read_yaml(infile)
+
+    if timedelta:
+        td = parse_timedelta(timedelta)
+        for m in meetings:
+            m["begins_at"] += td
+
+    try:
+        with conn.cursor() as cur:
+            delete_missing_meetings(cur, [m['slug'] for m in meetings])
+            upsert_meetings(cur, meetings)
+        conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
-     #pylint: disable=unexpected-keyword-arg, no-value-for-parameter
+     # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
     database(obj={})
