@@ -3,4 +3,5 @@
     "elm.formatCommand": "./node_modules/.bin/elm-format",
     "elm.makeCommand": "elm-make",
     "json.formatOnSave": false,
+    "python.pythonPath": "/Users/kljensen/.miniconda3/envs/yelukerest/bin/python",
 }
