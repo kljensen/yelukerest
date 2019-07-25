@@ -217,36 +217,6 @@ def delete_missing_meetings(cursor, slugs):
     cursor.execute(query, (tuple(slugs),))
 
 
-def upsert_meetings(cursor, meetings):
-    """ Upserts meetings. Each meeting may have different
-        columns specified. Though, each must have a 'slug' column
-        or an exception will be raised.
-
-    Arguments:
-        cursor {psygopg2 cursor} -- A database cursor
-        meetings {list} -- list of meetings
-    """
-    base_query = """
-        INSERT INTO data.meeting ({})
-        VALUES ({})
-        ON CONFLICT (slug)
-        DO UPDATE
-        SET {};
-    """
-
-    def make_query(meeting):
-        keys = meeting.keys()
-        return base_query.format(
-            ','.join(keys),
-            ','.join('%({})s'.format(k) for k in keys),
-            ','.join('{}=EXCLUDED.{}'.format(k, k) for k in keys)
-
-        )
-    for meeting in meetings:
-        query = make_query(meeting)
-        cursor.execute(query, meeting)
-
-
 def parse_timedelta(td):
     h, m = map(int, td.split(":"))
     return datetime.timedelta(hours=h, minutes=m)
@@ -273,11 +243,120 @@ def update_meetings(ctx, infile, timedelta):
     try:
         with conn.cursor() as cur:
             delete_missing_meetings(cur, [m['slug'] for m in meetings])
-            upsert_meetings(cur, meetings)
+            do_upsert(cur, "data.meeting", "slug", meetings)
         conn.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
         conn.rollback()
+    finally:
+        conn.close()
+
+
+def delete_missing_assignments(cursor, slugs):
+    """ Deletes all assignments that are not in a list of slugs
+
+    Arguments:
+        cursor {psycopg2 cursor} -- A database cursor
+        slugs {list} -- List of assignment slugs we want to keep
+    """
+    query = """
+        DELETE FROM data.assignment
+        WHERE slug NOT IN %s;
+    """
+    cursor.execute(query, (tuple(slugs),))
+
+
+def nonchild(d):
+    """ Returns a copy of a dictionary where any key prefixed with "child:"
+        is removed.
+    """
+    return {k: v for k, v in d.items() if not k.startswith('child:')}
+
+
+def do_upsert(cursor, table, conflict_condition, rows):
+    """ Upserts rows.
+
+    Arguments:
+        cursor {psygopg2 cursor} -- A database cursor
+        table {string} -- table in which to upsert
+        conflict_condition {string} -- confict condition for UPDATE
+        rows {list} -- the data to upsert, a list of dictionaries
+    """
+    base_query = """
+        INSERT INTO {} ({})
+        VALUES ({})
+        ON CONFLICT ({})
+        DO UPDATE
+        SET {};
+    """
+
+    def make_query(assignment):
+        keys = assignment.keys()
+        return base_query.format(
+            table,
+            ','.join(keys),
+            ','.join('%({})s'.format(k) for k in keys),
+            conflict_condition,
+            ','.join('{}=EXCLUDED.{}'.format(k, k) for k in keys)
+
+        )
+    for row in rows:
+        q = make_query(row)
+        cursor.execute(q, row)
+
+
+def upsert_assignments(cursor, assignments):
+    """ Upserts assignments. Each assignment may have different
+        columns specified. Though, each must have a 'slug' column
+        or an exception will be raised.
+
+    Arguments:
+        cursor {psygopg2 cursor} -- A database cursor
+        assignments {list} -- list of assignments
+    """
+    do_upsert(cursor, "data.assignment", "slug",
+              [nonchild(a) for a in assignments])
+
+    all_fields = []
+    for assignment in assignments:
+        fields = assignment.get("child:assignment_fields", [])
+        for field in fields:
+            field["assignment_slug"] = assignment["slug"]
+        all_fields.extend(fields)
+
+    delete_query = """
+        DELETE FROM data.assignment_field
+        WHERE (slug, assignment_slug) NOT IN %s
+    """
+    keys = tuple(
+        (f["slug"], f["assignment_slug"]) for f in all_fields)
+    print(keys)
+    cursor.execute(delete_query, (keys, ))
+
+    do_upsert(cursor, 'data.assignment_field',
+              'slug, assignment_slug', all_fields)
+
+
+@database.command()
+@click.pass_context
+@click.argument('infile', type=click.File('r'))
+def update_assignments(ctx, infile):
+    """ Updates all assignments in the database. This takes a YAML-formatted
+        list of assignments. Any assignments in the database with slugs that are
+        not in the input YAML file will be deleted. Those that exist will
+        be updated. Those that are new will be added.
+    """
+    conn = ctx.obj['conn']
+    assignments = read_yaml(infile)
+
+    try:
+        with conn.cursor() as cur:
+            delete_missing_assignments(cur, [m['slug'] for m in assignments])
+            upsert_assignments(cur, assignments)
+        conn.commit()
+    except (Exception, psycopg2.DatabaseError) as error:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
