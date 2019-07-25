@@ -330,7 +330,6 @@ def upsert_assignments(cursor, assignments):
     """
     keys = tuple(
         (f["slug"], f["assignment_slug"]) for f in all_fields)
-    print(keys)
     cursor.execute(delete_query, (keys, ))
 
     do_upsert(cursor, 'data.assignment_field',
