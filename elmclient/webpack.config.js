@@ -2,6 +2,7 @@ const path = require('path');
 const webpack = require('webpack');
 const merge = require('webpack-merge');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const HtmlWebpackInlineSourcePlugin = require('html-webpack-inline-source-plugin');
 const autoprefixer = require('autoprefixer');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 // const ExtractTextPlugin = require('extract-text-webpack-plugin');
@@ -64,11 +65,6 @@ const commonConfig = {
                 postcss: [autoprefixer()],
             },
         }),
-        new HtmlWebpackPlugin({
-            template: 'src/static/index.html',
-            inject: 'body',
-            filename: 'index.html',
-        }),
         new webpack.DefinePlugin({
             // Todo: get these via a call to the database instead
             // of through the environment. (?)
@@ -114,6 +110,13 @@ if (isDev === true) {
                 }],
             }],
         },
+        plugins: [
+            new HtmlWebpackPlugin({
+                template: 'src/static/index.html',
+                inject: 'body',
+                filename: 'index.html',
+            }),
+        ],
     });
 }
 
@@ -135,6 +138,13 @@ if (isProd === true) {
             }],
         },
         plugins: [
+            new HtmlWebpackPlugin({
+                template: 'src/static/index.html',
+                inject: 'body',
+                filename: 'index.html',
+                inlineSource: '.(js|css)$', // embed all javascript and css inline
+            }),
+            new HtmlWebpackInlineSourcePlugin(),
             new CopyWebpackPlugin([{
                 from: 'src/static/img/',
                 to: 'static/img/',
