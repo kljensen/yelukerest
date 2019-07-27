@@ -1,4 +1,4 @@
-version: '3.2'
+version: '3.4'
 services:
 
   # This is the database to which the all the other components in the stack will connect and interact with

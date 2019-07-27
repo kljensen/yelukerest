@@ -1,7 +1,8 @@
-version: '3.2'
+version: '3.4'
 volumes:
   # A named volume to share data between containers
   yelukerest-pg-data:
+    name: ${PG_DATA_VOLUME_NAME}
     # External here indicates that the user must have
     # created this volume independently. It must exist
     # if you want to bring these services that depend
