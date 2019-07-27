@@ -97,7 +97,7 @@ services:
     # The script that is run to start our process.
     entrypoint: "/app/run.sh"
 
-  sharedterminal:
-    build: sharedterminal
-    environment:
-      - SHAREDTERMINAL_PORT=${SHAREDTERMINAL_PORT}
+  #sharedterminal:
+  #  build: sharedterminal
+  #  environment:
+  #    - SHAREDTERMINAL_PORT=${SHAREDTERMINAL_PORT}
