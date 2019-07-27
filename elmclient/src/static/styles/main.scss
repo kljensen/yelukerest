@@ -8,8 +8,49 @@ html {
     max-width: 900px;
 }
 
+/* source-code-pro-regular - latin */
+@font-face {
+    font-family: 'Source Code Pro';
+    font-style: normal;
+    font-weight: 400;
+    src: url('../fonts/source-code-pro-v10-latin-regular.eot');
+    /* IE9 Compat Modes */
+    src: local('Source Code Pro'), local('SourceCodePro-Regular'),
+        url('../fonts/source-code-pro-v10-latin-regular.eot?#iefix') format('embedded-opentype'),
+        /* IE6-IE8 */
+        url('../fonts/source-code-pro-v10-latin-regular.woff2') format('woff2'),
+        /* Super Modern Browsers */
+        url('../fonts/source-code-pro-v10-latin-regular.woff') format('woff'),
+        /* Modern Browsers */
+        url('../fonts/source-code-pro-v10-latin-regular.ttf') format('truetype'),
+        /* Safari, Android, iOS */
+        url('../fonts/source-code-pro-v10-latin-regular.svg#SourceCodePro') format('svg');
+    /* Legacy iOS */
+}
+
+/* source-code-pro-700 - latin */
+@font-face {
+    font-family: 'Source Code Pro';
+    font-style: normal;
+    font-weight: 700;
+    src: url('../fonts/source-code-pro-v10-latin-700.eot');
+    /* IE9 Compat Modes */
+    src: local('Source Code Pro Bold'), local('SourceCodePro-Bold'),
+        url('../fonts/source-code-pro-v10-latin-700.eot?#iefix') format('embedded-opentype'),
+        /* IE6-IE8 */
+        url('../fonts/source-code-pro-v10-latin-700.woff2') format('woff2'),
+        /* Super Modern Browsers */
+        url('../fonts/source-code-pro-v10-latin-700.woff') format('woff'),
+        /* Modern Browsers */
+        url('../fonts/source-code-pro-v10-latin-700.ttf') format('truetype'),
+        /* Safari, Android, iOS */
+        url('../fonts/source-code-pro-v10-latin-700.svg#SourceCodePro') format('svg');
+    /* Legacy iOS */
+}
+
+
 body {
-    font-family: Source Code Pro, fixed;
+    font-family: "Source Code Pro", fixed;
     padding: 0.5rem;
     padding-bottom: 2rem;
 }
@@ -60,7 +101,9 @@ table.dashboard {
     }
 
 }
-pre, code {
+
+pre,
+code {
     font-size: 100%;
 }
 
