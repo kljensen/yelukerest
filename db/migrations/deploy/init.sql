@@ -81,6 +81,7 @@ GRANT api TO current_user;
 GRANT faculty TO authenticator;
 GRANT observer TO authenticator;
 GRANT student TO authenticator;
+GRANT ta TO authenticator;
 
 --
 -- Name: api; Type: SCHEMA; Schema: -; Owner: superuser
