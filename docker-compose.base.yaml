@@ -1,10 +1,11 @@
-version: '3.4'
+version: "3.4"
 volumes:
   # A named volume to share data between containers
   elmclient-build:
     external: false
-services: 
-
+  yelukerest-certs:
+    external: true
+services:
   elmclient:
     build: elmclient
     # Set the location where docker will put our files
@@ -34,11 +35,11 @@ services:
       - db:db
     environment:
       - PGRST_DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-      - PGRST_DB_SCHEMA=${DB_SCHEMA} 
+      - PGRST_DB_SCHEMA=${DB_SCHEMA}
       - PGRST_DB_ANON_ROLE=${DB_ANON_ROLE}
-      - PGRST_DB_POOL=${DB_POOL} 
-      - PGRST_JWT_SECRET=${JWT_SECRET}  
-      - PGRST_MAX_ROWS=${MAX_ROWS} 
+      - PGRST_DB_POOL=${DB_POOL}
+      - PGRST_JWT_SECRET=${JWT_SECRET}
+      - PGRST_MAX_ROWS=${MAX_ROWS}
       - PGRST_PRE_REQUEST=${PRE_REQUEST}
       - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
 
@@ -49,7 +50,8 @@ services:
   openresty:
     image: openresty/openresty:jessie
     ports:
-      - "127.0.0.1:8080:80"
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
     links:
       - postgrest:postgrest
       - authapp:authapp
@@ -79,6 +81,7 @@ services:
       - SSE_PORT=${SSE_PORT}
     volumes:
       - elmclient-build:/var/elmclient/
+      - yelukerest-certs:/etc/letsencrypt/live/localhost
       - "./openresty/entrypoint.sh:/entrypoint.sh"
       - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf"
       - "./openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes"
