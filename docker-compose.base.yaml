@@ -3,7 +3,7 @@ volumes:
   # A named volume to share data between containers
   elmclient-build:
     external: false
-  yelukerest-certs:
+  yelukerest-letsencrypt:
     external: true
 services:
   elmclient:
@@ -43,21 +43,30 @@ services:
       - PGRST_PRE_REQUEST=${PRE_REQUEST}
       - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
 
+  certbot:
+    image: certbot/certbot:v0.36.0
+    entrypoint: /entrypoint.sh
+    volumes:
+      - yelukerest-letsencrypt:/etc/letsencrypt/
+      - "./certbot/entrypoint.sh:/entrypoint.sh"
   # OpenResty (Nginx + Lua) instance that sits in front of PostgREST.
   # All the requests comming into the system are first hitting this component.
   # After some processing/checks and transformation, the request is forwarded
   # to PostgREST down the stack.
   openresty:
-    image: openresty/openresty:jessie
+    image: openresty/openresty:stretch
     ports:
-      - "127.0.0.1:80:80"
-      - "127.0.0.1:443:443"
+      - "${OPENRESTY_LISTEN_HOST}:80:80"
+      - "${OPENRESTY_LISTEN_HOST}:443:443"
     links:
       - postgrest:postgrest
       - authapp:authapp
       - sse:sse
+      - certbot:certbot
     entrypoint: /entrypoint.sh
+    restart: on-failure
     environment:
+      - FQDN=${FQDN}
       - JWT_SECRET=${JWT_SECRET}
       - DEVELOPMENT=${DEVELOPMENT}
       - POSTGREST_HOST=${POSTGREST_HOST}
@@ -81,9 +90,9 @@ services:
       - SSE_PORT=${SSE_PORT}
     volumes:
       - elmclient-build:/var/elmclient/
-      - yelukerest-certs:/etc/letsencrypt/live/localhost
+      - yelukerest-letsencrypt:/etc/letsencrypt/
       - "./openresty/entrypoint.sh:/entrypoint.sh"
-      - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf"
+      - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf.tmpl"
       - "./openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes"
       - "./openresty/nginx/html:/usr/local/openresty/nginx/html"
       - "./openresty/lualib/user_code:/usr/local/openresty/lualib/user_code"

@@ -49,6 +49,16 @@ tests and tests of the REST API using [supertest](https://github.com/visionmedia
 
 ## Random notes
 
+### Getting the initial letsencrypt certificate
+
+```
+docker run -p 80:80 -it -v yelukerest-letsencrypt:/etc/letsencrypt certbot/certbot  certonly
+ --standalone --preferred-challenges http -d www.660.mba
+```
+
+Run that when not running anything else. Data are persisted to the yelukerest-letsencrypt data volume.
+
+
 ### Adding a table when working on the database
 
 1. Add the table in  `db/src/data/yeluke.sql`
