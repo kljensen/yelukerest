@@ -1,10 +1,11 @@
-version: '3.4'
+version: "3.4"
 volumes:
   # A named volume to share data between containers
   elmclient-build:
     external: false
-services: 
-
+  yelukerest-letsencrypt:
+    external: true
+services:
   elmclient:
     build: elmclient
     # Set the location where docker will put our files
@@ -34,28 +35,38 @@ services:
       - db:db
     environment:
       - PGRST_DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-      - PGRST_DB_SCHEMA=${DB_SCHEMA} 
+      - PGRST_DB_SCHEMA=${DB_SCHEMA}
       - PGRST_DB_ANON_ROLE=${DB_ANON_ROLE}
-      - PGRST_DB_POOL=${DB_POOL} 
-      - PGRST_JWT_SECRET=${JWT_SECRET}  
-      - PGRST_MAX_ROWS=${MAX_ROWS} 
+      - PGRST_DB_POOL=${DB_POOL}
+      - PGRST_JWT_SECRET=${JWT_SECRET}
+      - PGRST_MAX_ROWS=${MAX_ROWS}
       - PGRST_PRE_REQUEST=${PRE_REQUEST}
       - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
 
+  certbot:
+    image: certbot/certbot:v0.36.0
+    entrypoint: /entrypoint.sh
+    volumes:
+      - yelukerest-letsencrypt:/etc/letsencrypt/
+      - "./certbot/entrypoint.sh:/entrypoint.sh"
   # OpenResty (Nginx + Lua) instance that sits in front of PostgREST.
   # All the requests comming into the system are first hitting this component.
   # After some processing/checks and transformation, the request is forwarded
   # to PostgREST down the stack.
   openresty:
-    image: openresty/openresty:jessie
+    image: openresty/openresty:stretch
     ports:
-      - "127.0.0.1:8080:80"
+      - "${OPENRESTY_LISTEN_HOST}:80:80"
+      - "${OPENRESTY_LISTEN_HOST}:443:443"
     links:
       - postgrest:postgrest
       - authapp:authapp
       - sse:sse
+      - certbot:certbot
     entrypoint: /entrypoint.sh
+    restart: on-failure
     environment:
+      - FQDN=${FQDN}
       - JWT_SECRET=${JWT_SECRET}
       - DEVELOPMENT=${DEVELOPMENT}
       - POSTGREST_HOST=${POSTGREST_HOST}
@@ -79,8 +90,10 @@ services:
       - SSE_PORT=${SSE_PORT}
     volumes:
       - elmclient-build:/var/elmclient/
+      - yelukerest-letsencrypt:/etc/letsencrypt/
       - "./openresty/entrypoint.sh:/entrypoint.sh"
-      - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf"
+      - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf.tmpl"
+      - "./openresty/nginx/conf/dhparam.pem:/usr/local/openresty/nginx/conf/dhparam.pem"
       - "./openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes"
       - "./openresty/nginx/html:/usr/local/openresty/nginx/html"
       - "./openresty/lualib/user_code:/usr/local/openresty/lualib/user_code"

@@ -7,6 +7,12 @@
 
 FROM openresty/openresty:jessie
 
+RUN apt-get update && apt-get install -y wget \
+    && wget https://dl.eff.org/certbot-auto \
+    && mv certbot-auto /usr/local/bin/certbot-auto \
+    && chown root /usr/local/bin/certbot-auto \
+    && chmod 0755 /usr/local/bin/certbot-auto
+
 COPY entrypoint.sh /entrypoint.sh
 COPY nginx /usr/local/openresty/nginx
 COPY lualib /usr/local/openresty/lualib
