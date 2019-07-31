@@ -93,6 +93,7 @@ services:
       - yelukerest-letsencrypt:/etc/letsencrypt/
       - "./openresty/entrypoint.sh:/entrypoint.sh"
       - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf.tmpl"
+      - "./openresty/nginx/conf/dhparam.pem:/usr/local/openresty/nginx/conf/dhparam.pem"
       - "./openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes"
       - "./openresty/nginx/html:/usr/local/openresty/nginx/html"
       - "./openresty/lualib/user_code:/usr/local/openresty/lualib/user_code"
