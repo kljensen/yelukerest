@@ -11,6 +11,7 @@ from names import get_student_nickname
 from models import quiz
 import ruamel.yaml as ruamel_yaml
 import datetime
+from jinja2 import Template
 
 
 def read_yaml(filehandle):
@@ -305,7 +306,19 @@ def do_upsert(cursor, table, conflict_condition, rows):
         cursor.execute(q, row)
 
 
-def upsert_assignments(cursor, assignments):
+def prepare_assignment(class_number, assignment):
+    """ Removes children and runs body of assignment through jinja2.
+
+    Arguments:
+        class_number {string} -- Class number, like 656 or 660
+        assignment {dictionary} -- Assignment info
+    """
+    template = Template(assignment['body'])
+    assignment['body'] = template.render(class_number=class_number)
+    return nonchild(assignment)
+
+
+def upsert_assignments(cursor, class_number, assignments):
     """ Upserts assignments. Each assignment may have different
         columns specified. Though, each must have a 'slug' column
         or an exception will be raised.
@@ -315,7 +328,7 @@ def upsert_assignments(cursor, assignments):
         assignments {list} -- list of assignments
     """
     do_upsert(cursor, "data.assignment", "slug",
-              [nonchild(a) for a in assignments])
+              [prepare_assignment(class_number, a) for a in assignments])
 
     all_fields = []
     for assignment in assignments:
@@ -338,8 +351,9 @@ def upsert_assignments(cursor, assignments):
 
 @database.command()
 @click.pass_context
+@click.argument('class_number')
 @click.argument('infile', type=click.File('r'))
-def update_assignments(ctx, infile):
+def update_assignments(ctx, class_number, infile):
     """ Updates all assignments in the database. This takes a YAML-formatted
         list of assignments. Any assignments in the database with slugs that are
         not in the input YAML file will be deleted. Those that exist will
@@ -351,9 +365,10 @@ def update_assignments(ctx, infile):
     try:
         with conn.cursor() as cur:
             delete_missing_assignments(cur, [m['slug'] for m in assignments])
-            upsert_assignments(cur, assignments)
+            upsert_assignments(cur, class_number, assignments)
         conn.commit()
     except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
         conn.rollback()
         raise
     finally:
