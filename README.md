@@ -1,9 +1,10 @@
 # A restful API for class data
+
 We are using the excellent [postgrest start kit](https://github.com/subzerocloud/postgrest-starter-kit). The main
 entrypoint to this code is `docker-compose.yml`, which shows what
 containers are started when you do `docker-compose up`. Once your
 containers are running, if you are in the root of this directory,
-running `subzero dashboard` will give you a useful view of the 
+running `subzero dashboard` will give you a useful view of the
 logs of all the containers and can also restart containers on file
 changes.
 
@@ -22,10 +23,10 @@ in the `node` directory.
 
 ## Understanding how all this works
 
-It will likely be necessary to read the documentation of 
-[Postgrest](https://postgrest.com/en/v4.3/) and the 
+It will likely be necessary to read the documentation of
+[Postgrest](https://postgrest.com/en/v4.3/) and the
 [Postgrest starter kit](https://github.com/subzerocloud/postgrest-starter-kit/wiki)
-to understand how all this fits together. 
+to understand how all this fits together.
 
 Here are a few pieces that are specific to our setup, particularly
 the auth flow.
@@ -46,7 +47,6 @@ To run the tests, do `npm test` from the root of this project.
 The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
 tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
 
-
 ## Random notes
 
 ### Getting the initial letsencrypt certificate
@@ -58,10 +58,23 @@ docker run -p 80:80 -it -v yelukerest-letsencrypt:/etc/letsencrypt certbot/certb
 
 Run that when not running anything else. Data are persisted to the yelukerest-letsencrypt data volume.
 
+When working on localhost, you'll need a cert for localhost that you'll trust on a one-off basis.
+
+```
+openssl req -x509 -out localhost.crt -keyout localhost.key -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' -extensions EXT -config <( \\
+   printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")\
+```
+
+This will create two files: `fullchain.pem` and `privkey.pem`, that you will
+need to move into the `yelukerest-letsencrypt` volume at `/etc/letsencrypt/live/localhost`.
+Certbot will not be running in development, so it won't try to renew those certs.
+The first time you visit the running website on localhost in development you'll
+likely be prompted by your browser to accept and remember the self-signed
+certificate.
 
 ### Adding a table when working on the database
 
-1. Add the table in  `db/src/data/yeluke.sql`
+1. Add the table in `db/src/data/yeluke.sql`
 2. Add the table in `db/src/sample_data/yeluke/reset.sql`
 3. Add the api views in `db/src/api/yeluke.sql`
 4. Add the auth in `db/src/authorization/yeluke.sql`
