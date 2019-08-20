@@ -37,15 +37,25 @@ def database(ctx):
     ctx.obj['conn'] = conn
 
 
-def do_ldap_search(netid):
-    """ Search Yale LDAP for a particular netid
+def get_ldap_connection(host, user, password):
+    """ Returns a connection to the LDAP host
     """
-    server_uri = "ldap://directory.yale.edu:389"
-    search_base = "ou=People,o=yale.edu"
-    search_filter = "(uid={0})".format(netid)
+    server = ldap3.Server(host)
+    conn = ldap3.Connection(server, user, password, auto_bind=True)
+    return conn
+
+
+def do_ldap_search(conn, netid):
+    """ Search Yale LDAP for a particular netid. On the command
+        line this would be something like the following:
+        ldapsearch \
+            -H ldaps://ad.its.yale.edu:3269 \
+            -D cn=s_klj39,OU=Non-Netids,OU=Users-OU,dc=yu,dc=yale,dc=edu \
+            -w $LDAP_PASS "(&(objectclass=Person)(CN=klj39))"
+    """
+    search_base = ""
+    search_filter = "(&(objectclass=Person)(CN={0}))".format(netid)
     attributes = "*"
-    server = ldap3.Server(server_uri)
-    conn = ldap3.Connection(server, auto_bind=True)
     conn.search(search_base, search_filter, attributes=attributes)
     try:
         return conn.entries[0]
@@ -78,6 +88,13 @@ def known_as_is_redundant(known_as, name):
 def getuserldap(ctx):
     """ Fill in info from Yale LDAP for all students
     """
+    try:
+        ldap_host = os.environ['LDAP_HOST']
+        ldap_user = os.environ['LDAP_USER']
+        ldap_pass = os.environ['LDAP_PASS']
+    except KeyError:
+        print("You must provide the following in the environment: LDAP_HOST, LDAP_USER, LDAP_PASS")
+
     conn = ctx.obj['conn']
     cur = conn.cursor()
     statement = 'SELECT netid FROM data.user'
@@ -85,9 +102,10 @@ def getuserldap(ctx):
     netids = set([row[0] for row in cur.fetchall()])
     conn.commit()
 
+    ldap_conn = get_ldap_connection(ldap_host, ldap_user, ldap_pass)
     for netid in netids:
         print('------------------' + netid)
-        result = do_ldap_search(netid)
+        result = do_ldap_search(ldap_conn, netid)
         if result:
             print(result)
             known_as = ldapget(result, 'knownAs')
