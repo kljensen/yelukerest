@@ -51,6 +51,8 @@ tests and tests of the REST API using [supertest](https://github.com/visionmedia
 
 ### Getting the initial letsencrypt certificate
 
+To get certificates _issued_ do something like the following
+
 ```
 docker run -p 80:80 -it -v yelukerest-letsencrypt:/etc/letsencrypt certbot/certbot  certonly
  --standalone --preferred-challenges http -d www.660.mba
@@ -60,9 +62,14 @@ Run that when not running anything else. Data are persisted to the yelukerest-le
 
 When working on localhost, you'll need a cert for localhost that you'll trust on a one-off basis.
 
+docker run -it -v yelukerest-letsencrypt:/etc/letsencrypt debian:stretch /bin/bash
+
 ```
-openssl req -x509 -out localhost.crt -keyout localhost.key -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' -extensions EXT -config <( \\
-   printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")\
+apt-get update && apt-get install -y openssl
+mkdir /etc/letsencrypt/live/localhost
+cd /etc/letsencrypt/live/localhost
+openssl req -x509 -out fullchain.pem -keyout privkey.pem -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' -extensions EXT -config <( \\
+      printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
 ```
 
 This will create two files: `fullchain.pem` and `privkey.pem`, that you will

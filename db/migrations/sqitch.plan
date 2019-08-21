@@ -3,3 +3,4 @@
 
 init 2019-07-19T19:00:17Z Kyle L. Jensen <kljensen@gmail.com> # Initial schema
 data [init] 2019-07-19T19:16:23Z Kyle L. Jensen <kljensen@gmail.com> # Creates inital configuration data
+user_secrets [init] 2019-08-21T19:03:16Z Kyle L. Jensen <kljensen@gmail.com> # Add user_secrets
