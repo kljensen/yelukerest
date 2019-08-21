@@ -57,7 +57,7 @@ import SSE exposing (SseAccess, withListener)
 import Set exposing (Set)
 import Time exposing (Posix)
 import Url
-import Users.Commands exposing (fetchUsers)
+import Users.Commands exposing (fetchUserSecrets, fetchUsers)
 
 
 valuesFromDict : Dict comparable b -> List comparable -> List ( comparable, b )
@@ -133,6 +133,7 @@ update msg model =
                                 , fetchAssignmentGrades user
                                 , fetchAssignmentGradeDistributions user
                                 , fetchAssignmentGradeExceptions user
+                                , fetchUserSecrets user
                                 ]
 
                         ( sseUserModel, sseCmd ) =
@@ -261,6 +262,9 @@ update msg model =
         Msgs.OnFetchAssignmentGradeExceptions assignmentGradeExceptions ->
             ( { model | assignmentGradeExceptions = assignmentGradeExceptions }, Cmd.none )
 
+        Msgs.OnFetchUserSecrets userSecrets ->
+            ( { model | userSecrets = userSecrets }, Cmd.none )
+
         Msgs.OnFetchQuizGradeExceptions quizGradeExceptions ->
             ( { model | quizGradeExceptions = quizGradeExceptions }, Cmd.none )
 
@@ -353,6 +357,18 @@ update msg model =
                     { tz1 | zoneName = zoneName }
             in
             ( { model | timeZone = tz2 }, Cmd.none )
+
+        Msgs.ToggleShowUserSecret slug ->
+            let
+                s =
+                    case Set.member slug model.userSecretsToShow of
+                        True ->
+                            Set.remove slug model.userSecretsToShow
+
+                        False ->
+                            Set.insert slug model.userSecretsToShow
+            in
+            ( { model | userSecretsToShow = s }, Cmd.none )
 
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )

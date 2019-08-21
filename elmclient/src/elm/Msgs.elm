@@ -28,7 +28,7 @@ import Quizzes.Model
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
 import Url exposing (Url)
-import Users.Model exposing (User)
+import Users.Model exposing (User, UserSecret)
 
 
 type BrowserLocation
@@ -73,7 +73,9 @@ type Msg
     | OnSSE SSEMsg
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))
+    | OnFetchUserSecrets (WebData (List UserSecret))
     | OnChangeEngagement String Int String
     | OnSubmitEngagementResponse String Int (WebData Engagement)
     | OnFetchQuizGradeExceptions (WebData (List QuizGradeException))
     | OnFetchAssignmentGradeExceptions (WebData (List AssignmentGradeException))
+    | ToggleShowUserSecret String

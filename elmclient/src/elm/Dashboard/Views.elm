@@ -13,6 +13,7 @@ import Auth.Views exposing (loginLink)
 import Common.Comparisons exposing (sortByDate)
 import Html exposing (Html)
 import Html.Attributes as Attrs
+import Html.Events as Events
 import Meetings.Model exposing (Meeting)
 import Msgs exposing (Msg)
 import Quizzes.Model
@@ -24,13 +25,17 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Round
+import Set exposing (Set)
 import String
 import Time exposing (Posix)
+import Users.Model exposing (UserSecret)
 
 
 type alias WebDataGradeData a =
     { a
         | currentUser : WebData CurrentUser
+        , userSecrets : WebData (List UserSecret)
+        , userSecretsToShow : Set String
         , meetings : WebData (List Meeting)
         , assignments : WebData (List Assignment)
         , assignmentSubmissions : WebData (List AssignmentSubmission)
@@ -45,6 +50,8 @@ type alias WebDataGradeData a =
 
 type alias GradeData =
     { currentUser : CurrentUser
+    , userSecrets : List UserSecret
+    , userSecretsToShow : Set String
     , meetings : List Meeting
     , assignments : List Assignment
     , assignmentSubmissions : List AssignmentSubmission
@@ -81,6 +88,8 @@ type alias QuizGradeData a =
 gradeDataFromWebData : WebDataGradeData a -> WebData GradeData
 gradeDataFromWebData wgd =
     RemoteData.map newGradeData wgd.currentUser
+        |> RemoteData.andMap wgd.userSecrets
+        |> RemoteData.andMap (RemoteData.Success wgd.userSecretsToShow)
         |> RemoteData.andMap wgd.meetings
         |> RemoteData.andMap wgd.assignments
         |> RemoteData.andMap wgd.assignmentSubmissions
@@ -94,6 +103,8 @@ gradeDataFromWebData wgd =
 
 newGradeData :
     CurrentUser
+    -> List UserSecret
+    -> Set String
     -> List Meeting
     -> List Assignment
     -> List AssignmentSubmission
@@ -104,8 +115,10 @@ newGradeData :
     -> List QuizGrade
     -> List QuizGradeDistribution
     -> GradeData
-newGradeData currentUser meetings assignments assignmentSubmissions assignmentGrades assignmentGradeDistributions quizzes quizSubmissions quizGrades quizGradeDistributions =
+newGradeData currentUser userSecrets userSecretsToShow meetings assignments assignmentSubmissions assignmentGrades assignmentGradeDistributions quizzes quizSubmissions quizGrades quizGradeDistributions =
     { currentUser = currentUser
+    , userSecrets = userSecrets
+    , userSecretsToShow = userSecretsToShow
     , meetings = meetings
     , assignments = assignments
     , assignmentSubmissions = assignmentSubmissions
@@ -121,31 +134,26 @@ newGradeData currentUser meetings assignments assignmentSubmissions assignmentGr
 dashboard : WebDataGradeData a -> Html.Html Msg
 dashboard webDataGradeData =
     let
-        userInfo =
-            case webDataGradeData.currentUser of
-                RemoteData.NotAsked ->
-                    Html.text ""
-
-                RemoteData.Loading ->
-                    Html.text "Loading ..."
-
-                RemoteData.Success currentUser ->
-                    showDashboard currentUser
-
-                RemoteData.Failure err ->
-                    loginLink
-
-        gradeTable =
-            maybeShowGradeTable webDataGradeData
+        gradeData =
+            gradeDataFromWebData webDataGradeData
     in
-    Html.div []
-        [ userInfo
-        , gradeTable
-        ]
+    case gradeData of
+        RemoteData.Success gd ->
+            Html.div []
+                [ userInfoTable gd.currentUser
+                , userSecretTable gd.currentUser gd.userSecrets gd.userSecretsToShow
+                , showGradeTable gd
+                ]
+
+        RemoteData.Failure e ->
+            loginLink
+
+        _ ->
+            Html.div [] [ Html.text "Loading..." ]
 
 
-showDashboard : CurrentUser -> Html.Html Msg
-showDashboard currentUser =
+userInfoTable : CurrentUser -> Html.Html Msg
+userInfoTable currentUser =
     let
         row =
             dashboardRow []
@@ -159,8 +167,55 @@ showDashboard currentUser =
                 , row "role" currentUser.role
                 , row "nickname" currentUser.nickname
                 , row "team_nickname" (Maybe.withDefault "none" currentUser.team_nickname)
-                , dashboardRow [ Attrs.class "secondary" ] "jwt" currentUser.jwt
                 ]
+            ]
+        ]
+
+
+secretRow : Set String -> UserSecret -> Html.Html Msg
+secretRow secretsToShow secret =
+    secretRowMarkup secretsToShow secret.slug secret.body
+
+
+secretRowMarkup : Set String -> String -> String -> Html.Html Msg
+secretRowMarkup secretsToShow slug body =
+    let
+        onClick =
+            Events.onClick (Msgs.ToggleShowUserSecret slug)
+
+        bodyMarkup =
+            case Set.member slug secretsToShow of
+                True ->
+                    Html.span []
+                        [ Html.text (body ++ " ")
+                        , Html.button
+                            [ onClick
+                            ]
+                            [ Html.text "hide" ]
+                        ]
+
+                False ->
+                    Html.span [] [ Html.text "...hidden... ", Html.button [ onClick ] [ Html.text "show" ] ]
+    in
+    Html.tr []
+        [ Html.td [] [ Html.text slug ]
+        , Html.td []
+            [ bodyMarkup
+            ]
+        ]
+
+
+userSecretTable : CurrentUser -> List UserSecret -> Set String -> Html.Html Msg
+userSecretTable user secrets secretsToShow =
+    Html.div []
+        [ Html.h2 [] [ Html.text "Your user secrets" ]
+        , Html.table [ Attrs.class "dashboard" ]
+            [ Html.tbody []
+                ([ secretRowMarkup secretsToShow "jwt" user.jwt ]
+                    ++ List.map
+                        (secretRow secretsToShow)
+                        secrets
+                )
             ]
         ]
 
@@ -171,23 +226,6 @@ dashboardRow attrs label value =
         [ Html.td attrs [ Html.text label ]
         , Html.td attrs [ Html.text value ]
         ]
-
-
-maybeShowGradeTable : WebDataGradeData a -> Html.Html Msg
-maybeShowGradeTable webDataGradeData =
-    let
-        gradeData =
-            gradeDataFromWebData webDataGradeData
-    in
-    case gradeData of
-        RemoteData.Success gd ->
-            showGradeTable gd
-
-        RemoteData.Failure e ->
-            Html.div [] [ Html.text "Failed to load data. HTTP error" ]
-
-        _ ->
-            Html.div [] [ Html.text "Loading..." ]
 
 
 showGradeTable : GradeData -> Html.Html Msg

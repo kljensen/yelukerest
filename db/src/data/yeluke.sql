@@ -16,3 +16,4 @@
 \ir ./yeluke/assignment_grade.sql
 \ir ./yeluke/quiz_grade_exception.sql
 \ir ./yeluke/assignment_grade_exception.sql
+\ir ./yeluke/user_secret.sql

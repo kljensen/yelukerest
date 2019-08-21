@@ -33,7 +33,7 @@ import RemoteData exposing (WebData)
 import SSE exposing (SseAccess)
 import Set exposing (Set)
 import Time exposing (Posix, Zone, ZoneName(..), utc)
-import Users.Model exposing (User)
+import Users.Model exposing (User, UserSecret)
 
 
 type alias Flags =
@@ -66,6 +66,8 @@ type alias Model =
     , navKey : Key
     , meetings : WebData (List Meeting)
     , currentUser : WebData CurrentUser
+    , userSecrets : WebData (List UserSecret)
+    , userSecretsToShow : Set String
     , assignments : WebData (List Assignment)
     , quizzes : WebData (List Quiz)
     , quizGradeExceptions : WebData (List QuizGradeException)
@@ -114,6 +116,8 @@ initialModel flags route key =
     , navKey = key
     , meetings = RemoteData.Loading
     , currentUser = RemoteData.Loading
+    , userSecrets = RemoteData.NotAsked
+    , userSecretsToShow = Set.empty
     , assignments = RemoteData.NotAsked
     , quizzes = RemoteData.NotAsked
     , quizGradeExceptions = RemoteData.NotAsked

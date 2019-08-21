@@ -1,7 +1,9 @@
 module Users.Model exposing
     ( JWT
     , User
+    , UserSecret
     , niceName
+    , userSecretsDecoder
     , usersDecoder
     )
 
@@ -75,3 +77,27 @@ niceName user =
                     ""
     in
     prefix ++ suffix
+
+
+type alias UserSecret =
+    { id : Int
+    , user_id : Maybe Int
+    , team_nickname : Maybe String
+    , slug : String
+    , body : String
+    }
+
+
+userSecretDecoder : Decode.Decoder UserSecret
+userSecretDecoder =
+    Decode.succeed UserSecret
+        |> required "id" Decode.int
+        |> required "user_id" (Decode.nullable Decode.int)
+        |> required "team_nickname" (Decode.nullable Decode.string)
+        |> required "slug" Decode.string
+        |> required "body" Decode.string
+
+
+userSecretsDecoder : Decode.Decoder (List UserSecret)
+userSecretsDecoder =
+    Decode.list userSecretDecoder
