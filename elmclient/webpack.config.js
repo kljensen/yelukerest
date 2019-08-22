@@ -116,6 +116,12 @@ if (isDev === true) {
                 inject: 'body',
                 filename: 'index.html',
             }),
+            new CopyWebpackPlugin([{
+                from: 'src/static/img/',
+                to: 'static/img/',
+            }, {
+                from: 'src/favicon.ico',
+            }]),
         ],
     });
 }
@@ -145,13 +151,6 @@ if (isProd === true) {
                 inlineSource: '.(js|css)$', // embed all javascript and css inline
             }),
             new HtmlWebpackInlineSourcePlugin(),
-            new CopyWebpackPlugin([{
-                from: 'src/static/img/',
-                to: 'static/img/',
-            }, {
-                from: 'src/favicon.ico',
-            }]),
-
             // extract CSS into a separate file
             // minify & mangle JS/CSS
             // new webpack.optimize.minimize({
