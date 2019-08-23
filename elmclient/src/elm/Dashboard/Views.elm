@@ -11,10 +11,12 @@ import Assignments.Model
 import Auth.Model exposing (CurrentUser)
 import Auth.Views exposing (loginLink)
 import Common.Comparisons exposing (sortByDate)
+import Common.Views exposing (shortDateToString)
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Meetings.Model exposing (Meeting)
+import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
@@ -33,7 +35,8 @@ import Users.Model exposing (UserSecret)
 
 type alias WebDataGradeData a =
     { a
-        | currentUser : WebData CurrentUser
+        | timeZone : TimeZone
+        , currentUser : WebData CurrentUser
         , userSecrets : WebData (List UserSecret)
         , userSecretsToShow : Set String
         , meetings : WebData (List Meeting)
@@ -50,6 +53,7 @@ type alias WebDataGradeData a =
 
 type alias GradeData =
     { currentUser : CurrentUser
+    , timeZone : TimeZone
     , userSecrets : List UserSecret
     , userSecretsToShow : Set String
     , meetings : List Meeting
@@ -67,6 +71,7 @@ type alias GradeData =
 type alias AssignmentGradeData a =
     { a
         | currentUser : CurrentUser
+        , timeZone : TimeZone
         , assignments : List Assignment
         , assignmentSubmissions : List AssignmentSubmission
         , assignmentGrades : List AssignmentGrade
@@ -77,6 +82,7 @@ type alias AssignmentGradeData a =
 type alias QuizGradeData a =
     { a
         | currentUser : CurrentUser
+        , timeZone : TimeZone
         , meetings : List Meeting
         , quizzes : List Quiz
         , quizSubmissions : List QuizSubmission
@@ -88,6 +94,7 @@ type alias QuizGradeData a =
 gradeDataFromWebData : WebDataGradeData a -> WebData GradeData
 gradeDataFromWebData wgd =
     RemoteData.map newGradeData wgd.currentUser
+        |> RemoteData.andMap (RemoteData.Success wgd.timeZone)
         |> RemoteData.andMap wgd.userSecrets
         |> RemoteData.andMap (RemoteData.Success wgd.userSecretsToShow)
         |> RemoteData.andMap wgd.meetings
@@ -103,6 +110,7 @@ gradeDataFromWebData wgd =
 
 newGradeData :
     CurrentUser
+    -> TimeZone
     -> List UserSecret
     -> Set String
     -> List Meeting
@@ -115,8 +123,9 @@ newGradeData :
     -> List QuizGrade
     -> List QuizGradeDistribution
     -> GradeData
-newGradeData currentUser userSecrets userSecretsToShow meetings assignments assignmentSubmissions assignmentGrades assignmentGradeDistributions quizzes quizSubmissions quizGrades quizGradeDistributions =
+newGradeData currentUser timeZone userSecrets userSecretsToShow meetings assignments assignmentSubmissions assignmentGrades assignmentGradeDistributions quizzes quizSubmissions quizGrades quizGradeDistributions =
     { currentUser = currentUser
+    , timeZone = timeZone
     , userSecrets = userSecrets
     , userSecretsToShow = userSecretsToShow
     , meetings = meetings
@@ -299,13 +308,6 @@ maybeToStringWithDefault default f x =
             default
 
 
-shortDate : Posix -> String
-shortDate d =
-    -- The space in here is nonbreaking unicode \x00A0
-    -- DateFormat.format "%d\u{00A0}%b" d
-    "foo"
-
-
 td : String -> Html.Html Msg
 td x =
     Html.td [] [ Html.text x ]
@@ -358,7 +360,7 @@ showGradeForQuiz gd quiz meeting =
                     ( "n/a", "n/a" )
     in
     Html.tr []
-        [ td (shortDate meeting.begins_at)
+        [ td (shortDateToString meeting.begins_at gd.timeZone)
         , td2 meeting.title
         , td2 qs
         , td grade
@@ -476,7 +478,7 @@ showGradeForAssignment gd assignment =
                     ( "n/a", "n/a" )
     in
     Html.tr []
-        [ td2 (shortDate assignment.closed_at)
+        [ td2 (shortDateToString assignment.closed_at gd.timeZone)
         , td assignment.title
         , td2 subInfo
         , td grade
