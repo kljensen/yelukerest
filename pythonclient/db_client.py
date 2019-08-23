@@ -466,7 +466,6 @@ def delete_missing_quiz_question_options(cur, quiz_id, slugs):
             WHERE id NOT IN (SELECT id FROM found_options)
     """.format(comma_params(slugs))
     try:
-        print(str(cur.mogrify(query, slugs+(quiz_id,))))
         cur.execute(query, slugs+(quiz_id,))
     except psycopg2.ProgrammingError as err:
         print(err)
