@@ -66,17 +66,31 @@ niceName user =
 
         suffix =
             case user.known_as of
-                Just known_as ->
-                    if isEmpty known_as then
+                Just knownAs ->
+                    if isEmpty knownAs then
                         ""
 
                     else
-                        " (" ++ known_as ++ ")"
+                        showSuffixWithKnownAs prefix knownAs
 
                 Nothing ->
                     ""
     in
     prefix ++ suffix
+
+
+showSuffixWithKnownAs : String -> String -> String
+showSuffixWithKnownAs name knownAs =
+    let
+        nameIncludesNickname =
+            List.member knownAs (String.split " " name)
+    in
+    case nameIncludesNickname of
+        True ->
+            ""
+
+        False ->
+            " (" ++ knownAs ++ ")"
 
 
 type alias UserSecret =
