@@ -124,3 +124,59 @@ code {
         padding-left: 1rem;
     }
 }
+
+.engagement-student-holder {
+    display: flex;
+    flex-direction: column;
+
+    h1 {
+        margin-bottom: 1rem;
+    }
+
+    .student {
+        display: flex;
+        flex-direction: column;
+        // border: 1px solid black;
+        margin-bottom: 1rem;
+
+        span {
+            font-weight: bold;
+        }
+
+        @media only screen and (max-width: $small-break) {
+            font-size: 0.8rem;
+        }
+    }
+
+    .radio-holder {
+        display: flex;
+        flex-direction: row;
+        // border: 1px solid black;
+        justify-content: space-between;
+
+        label {
+            flex: 1;
+            border: 1px solid lightgray;
+            text-align: center;
+            // padding: 0 0.5rem;
+
+            // Hide these from users
+            input[type="radio"] {
+                clip: rect(1px, 1px, 1px, 1px);
+                clip-path: inset(50%);
+                height: 1px;
+                width: 1px;
+                margin: -1px;
+                overflow: hidden;
+                padding: 0;
+                position: absolute;
+            }
+        }
+
+        label.selected {
+            background-color: #eee;
+            font-weight: bold;
+        }
+    }
+
+}

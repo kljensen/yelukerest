@@ -82,8 +82,8 @@ editEngagementsForMeeting currentUser users engagements meeting =
         renderUser =
             userEngagementSelect meeting.slug engagements
     in
-    Html.div []
-        [ Html.h2 [] [ Html.text ("Attendance for meeting id=" ++ meeting.slug ++ ": " ++ meeting.title) ]
+    Html.div [ Attrs.class "engagement-student-holder" ]
+        [ Html.h1 [] [ Html.text ("Attendance — " ++ meeting.title) ]
         , Html.div [] (List.map renderUser users)
         ]
 
@@ -102,11 +102,18 @@ userEngagementSelect meetingSlug engagements user =
         onInputHandler =
             Msgs.OnChangeEngagement meetingSlug user.id
     in
-    Html.p []
-        [ Html.label [ Attrs.for (String.fromInt user.id) ] [ Html.text (niceName user) ]
-        , Html.select
-            [ Events.onInput onInputHandler, Attrs.name (String.fromInt user.id), Attrs.class "engagement" ]
-            (List.map renderOptions participationEnum)
+    Html.div [ Attrs.class "student" ]
+        [ Html.span [] [ Html.text (niceName user) ]
+        , Html.div
+            [ Attrs.class "radio-holder"
+            , Events.onInput onInputHandler
+            ]
+            (List.map (participationRadioOption user.id maybeEngagement) participationEnum)
+
+        -- We used to use select. Keeping here for now...
+        -- , Html.select
+        --     [ Events.onInput onInputHandler, Attrs.name (String.fromInt user.id), Attrs.class "engagement" ]
+        --     (List.map renderOptions participationEnum)
         ]
 
 
@@ -129,3 +136,32 @@ participationSelectOption maybeEngagement optionValue =
         , Attrs.selected isSelected
         ]
         [ Html.text optionValue ]
+
+
+participationRadioOption : Int -> Maybe Engagement -> String -> Html.Html Msg
+participationRadioOption userId maybeEngagement optionValue =
+    let
+        isSelected =
+            case maybeEngagement of
+                Nothing ->
+                    False
+
+                Just engagement ->
+                    engagement.participation == optionValue
+
+        -- x =
+        --     Debug.log "(value, isSelected)" ( optionValue, isSelected )
+    in
+    Html.label
+        [ Attrs.classList
+            [ ( "selected", isSelected ) ]
+        ]
+        [ Html.input
+            [ Attrs.value optionValue
+            , Attrs.checked isSelected
+            , Attrs.type_ "radio"
+            , Attrs.name ("user-" ++ String.fromInt userId ++ "-engagement")
+            ]
+            []
+        , Html.text optionValue
+        ]
