@@ -9,7 +9,7 @@ import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
-import Html.Lazy exposing (lazy2, lazy5)
+import Html.Lazy exposing (lazy2, lazy5, lazy6)
 import Meetings.Views
 import Models exposing (Model)
 import Msgs exposing (Msg)
@@ -51,7 +51,7 @@ page model =
             Quizzes.Views.takeQuizView model.currentUser model.current_date model.timeZone quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.quizGradeExceptions model.pendingSubmitQuizzes
 
         Models.EditEngagementsRoute meetingSlug ->
-            lazy5 maybeEditEngagements model.currentUser model.users model.engagements model.meetings meetingSlug
+            lazy6 maybeEditEngagements model.currentUser model.engagementUserQuery model.users model.engagements model.meetings meetingSlug
 
         Models.NotFoundRoute ->
             notFoundView

@@ -105,6 +105,7 @@ type alias Model =
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
     , pendingSubmitEngagements : Dict ( String, Int ) (WebData Engagement)
+    , engagementUserQuery : Maybe String
     }
 
 
@@ -147,6 +148,7 @@ initialModel flags route key =
     , engagements = RemoteData.NotAsked
     , users = RemoteData.NotAsked
     , pendingSubmitEngagements = Dict.empty
+    , engagementUserQuery = Nothing
     }
 
 

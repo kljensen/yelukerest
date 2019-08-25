@@ -79,3 +79,4 @@ type Msg
     | OnFetchQuizGradeExceptions (WebData (List QuizGradeException))
     | OnFetchAssignmentGradeExceptions (WebData (List AssignmentGradeException))
     | ToggleShowUserSecret String
+    | OnChangeEngagementUserQuery String

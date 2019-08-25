@@ -370,6 +370,9 @@ update msg model =
             in
             ( { model | userSecretsToShow = s }, Cmd.none )
 
+        Msgs.OnChangeEngagementUserQuery userQuery ->
+            ( { model | engagementUserQuery = Just userQuery }, Cmd.none )
+
 
 setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )
 setSseAndDo model f =

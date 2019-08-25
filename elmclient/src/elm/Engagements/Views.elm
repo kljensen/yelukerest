@@ -13,39 +13,42 @@ import Users.Model exposing (User, niceName)
 
 type alias EngagementData =
     { currentUser : CurrentUser
+    , userQuery : Maybe String
     , users : List User
     , engagements : List Engagement
     , meetings : List Meeting
     }
 
 
-makeEngagementData : CurrentUser -> List User -> List Engagement -> List Meeting -> EngagementData
-makeEngagementData currentUser users engagements meetings =
+makeEngagementData : CurrentUser -> Maybe String -> List User -> List Engagement -> List Meeting -> EngagementData
+makeEngagementData currentUser userQuery users engagements meetings =
     { currentUser = currentUser
+    , userQuery = userQuery
     , users = users
     , engagements = engagements
     , meetings = meetings
     }
 
 
-mergeEngagementData : WebData CurrentUser -> WebData (List User) -> WebData (List Engagement) -> WebData (List Meeting) -> WebData EngagementData
-mergeEngagementData wdCurrentUser wdUsers wdEngagements wdMeetings =
+mergeEngagementData : WebData CurrentUser -> Maybe String -> WebData (List User) -> WebData (List Engagement) -> WebData (List Meeting) -> WebData EngagementData
+mergeEngagementData wdCurrentUser userQuery wdUsers wdEngagements wdMeetings =
     RemoteData.map makeEngagementData wdCurrentUser
+        |> RemoteData.andMap (RemoteData.Success userQuery)
         |> RemoteData.andMap wdUsers
         |> RemoteData.andMap wdEngagements
         |> RemoteData.andMap wdMeetings
 
 
-maybeEditEngagements : WebData CurrentUser -> WebData (List User) -> WebData (List Engagement) -> WebData (List Meeting) -> String -> Html.Html Msg
-maybeEditEngagements wdCurrentUser wdUsers wdEngagements wdMeetings meetingSlug =
+maybeEditEngagements : WebData CurrentUser -> Maybe String -> WebData (List User) -> WebData (List Engagement) -> WebData (List Meeting) -> String -> Html.Html Msg
+maybeEditEngagements wdCurrentUser engagementuserQuery wdUsers wdEngagements wdMeetings meetingSlug =
     let
         neededData =
-            mergeEngagementData wdCurrentUser wdUsers wdEngagements wdMeetings
+            mergeEngagementData wdCurrentUser engagementuserQuery wdUsers wdEngagements wdMeetings
     in
     case neededData of
         RemoteData.Success data ->
             if isFacultyOrTA data.currentUser.role then
-                editEngagements data.currentUser data.users data.engagements data.meetings meetingSlug
+                editEngagements data.currentUser data.userQuery data.users data.engagements data.meetings meetingSlug
 
             else
                 Html.text "forbidden"
@@ -60,8 +63,8 @@ maybeEditEngagements wdCurrentUser wdUsers wdEngagements wdMeetings meetingSlug 
             Html.text "Failed to load data!"
 
 
-editEngagements : CurrentUser -> List User -> List Engagement -> List Meeting -> String -> Html.Html Msg
-editEngagements currentUser users engagements meetings meetingSlug =
+editEngagements : CurrentUser -> Maybe String -> List User -> List Engagement -> List Meeting -> String -> Html.Html Msg
+editEngagements currentUser userQuery users engagements meetings meetingSlug =
     let
         maybeMeeting =
             meetings
@@ -70,22 +73,70 @@ editEngagements currentUser users engagements meetings meetingSlug =
     in
     case maybeMeeting of
         Just meeting ->
-            editEngagementsForMeeting currentUser users engagements meeting
+            editEngagementsForMeeting currentUser userQuery users engagements meeting
 
         Nothing ->
             Html.text "No such meeting"
 
 
-editEngagementsForMeeting : CurrentUser -> List User -> List Engagement -> Meeting -> Html.Html Msg
-editEngagementsForMeeting currentUser users engagements meeting =
+editEngagementsForMeeting : CurrentUser -> Maybe String -> List User -> List Engagement -> Meeting -> Html.Html Msg
+editEngagementsForMeeting currentUser userQuery users engagements meeting =
     let
         renderUser =
             userEngagementSelect meeting.slug engagements
+
+        matchingUsers =
+            searchUsers users userQuery
+
+        queryValue =
+            case userQuery of
+                Nothing ->
+                    ""
+
+                Just q ->
+                    q
     in
     Html.div [ Attrs.class "engagement-student-holder" ]
         [ Html.h1 [] [ Html.text ("Attendance — " ++ meeting.title) ]
-        , Html.div [] (List.map renderUser users)
+        , Html.input
+            [ Events.onInput Msgs.OnChangeEngagementUserQuery
+            , Attrs.class "engagement-user-query"
+            , Attrs.placeholder
+                "🔎 Search..."
+            , Attrs.value queryValue
+            ]
+            []
+        , Html.div [] (List.map renderUser matchingUsers)
         ]
+
+
+searchUsers : List User -> Maybe String -> List User
+searchUsers users userQuery =
+    case userQuery of
+        Nothing ->
+            users
+
+        Just q ->
+            users
+                |> List.filter (userMatchesQuery q)
+
+
+userMatchesQuery : String -> User -> Bool
+userMatchesQuery userQuery user =
+    [ user.name, user.known_as ]
+        |> List.map (stringMatches userQuery)
+        |> List.any (\x -> x == True)
+
+
+stringMatches : String -> Maybe String -> Bool
+stringMatches x y =
+    case y of
+        Just z ->
+            String.toLower z
+                |> String.contains (String.toLower x)
+
+        Nothing ->
+            False
 
 
 userEngagementSelect : String -> List Engagement -> User -> Html.Html Msg
