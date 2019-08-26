@@ -109,7 +109,7 @@ def getuserldap(ctx):
         if result:
             print(result)
             known_as = ldapget(result, 'knownAs')
-            name = ldapget(result, 'cn')
+            name = ldapget(result, 'displayName')
             if known_as_is_redundant(known_as, name):
                 known_as = None
             last_name = ldapget(result, 'sn')
