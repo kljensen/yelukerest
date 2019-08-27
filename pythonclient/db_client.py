@@ -12,6 +12,7 @@ from models import quiz
 import ruamel.yaml as ruamel_yaml
 import datetime
 from jinja2 import Template
+from functools import partial
 
 
 def read_yaml(filehandle):
@@ -244,8 +245,9 @@ def parse_timedelta(td):
 @database.command()
 @click.pass_context
 @click.argument('infile', type=click.File('r'))
+@click.argument('class_number')
 @click.option('--timedelta')
-def update_meetings(ctx, infile, timedelta):
+def update_meetings(ctx, infile, class_number, timedelta):
     """ Updates all meetings in the database. This takes a YAML-formatted
         list of meetings. Any meetings in the database with slugs that are
         not in the input YAML file will be deleted. Those that exist will
@@ -259,10 +261,14 @@ def update_meetings(ctx, infile, timedelta):
         for m in meetings:
             m["begins_at"] += td
 
+    prepare_meeting = partial(prepare_content, class_number, 'description')
+
     try:
         with conn.cursor() as cur:
+            print("WOOOT")
             delete_missing_meetings(cur, [m['slug'] for m in meetings])
-            do_upsert(cur, "data.meeting", "slug", meetings)
+            do_upsert(cur, "data.meeting", "slug",
+                      [prepare_meeting(m) for m in meetings])
         conn.commit()
     except (Exception, psycopg2.DatabaseError) as error:
         print(error)
@@ -324,16 +330,17 @@ def do_upsert(cursor, table, conflict_condition, rows):
         cursor.execute(q, row)
 
 
-def prepare_assignment(class_number, assignment):
-    """ Removes children and runs body of assignment through jinja2.
+def prepare_content(class_number, key, obj):
+    """ Removes children and runs body of obj through jinja2.
 
     Arguments:
         class_number {string} -- Class number, like 656 or 660
-        assignment {dictionary} -- Assignment info
+        obj {dictionary} -- Obj, an assignment or meeting info
     """
-    template = Template(assignment['body'])
-    assignment['body'] = template.render(class_number=class_number)
-    return nonchild(assignment)
+    template = Template(obj[key])
+    obj[key] = template.render(class_number=class_number)
+    print(obj[key])
+    return nonchild(obj)
 
 
 def upsert_assignments(cursor, class_number, assignments):
@@ -345,8 +352,10 @@ def upsert_assignments(cursor, class_number, assignments):
         cursor {psygopg2 cursor} -- A database cursor
         assignments {list} -- list of assignments
     """
+    prepare_assignment = partial(prepare_content, class_number, 'body')
+
     do_upsert(cursor, "data.assignment", "slug",
-              [prepare_assignment(class_number, a) for a in assignments])
+              [prepare_assignment(a) for a in assignments])
 
     all_fields = []
     for assignment in assignments:
