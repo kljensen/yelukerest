@@ -13,6 +13,7 @@ import ruamel.yaml as ruamel_yaml
 import datetime
 from jinja2 import Template
 from functools import partial
+import requests
 
 
 def read_yaml(filehandle):
@@ -86,7 +87,7 @@ def known_as_is_redundant(known_as, name):
 
 @database.command()
 @click.pass_context
-def getuserldap(ctx):
+def fill_user_ldap(ctx):
     """ Fill in info from Yale LDAP for all students
     """
     try:
@@ -145,29 +146,77 @@ def adduser(ctx, netid, role, nickname):
 @database.command()
 @click.pass_context
 @click.argument('infile', type=click.File('r'))
-def addstudents(ctx, infile):
+def add_students(ctx, infile):
     """ Add students from a list of netids
 
-        Run like `honcho run python ./db_client.py addstudents filename`
+        Run like `honcho run python ./db_client.py add_students filename`
     """
     users = [line.strip() for line in infile]
     conn = ctx.obj['conn']
-    return addlistofstudents(conn, users)
+    return add_list_of_students(conn, users)
+
+
+def get_students_registered_for_class(url, username, password, crn, term):
+    """ Grabs the students registered for a course in a particular term
+        Uses an API like
+        https://boomi.som.yale.edu:9090/ws/rest/subscribers/klj39/CourseRoster/
+
+    Arguments:
+        url {string} -- API URL, e.g. 
+        username {string} -- API username (http basic auth)
+        password {string} -- API password (http basic auth)
+        crn {string} -- CRN for the course
+        term {string} -- term for the course, e.g. "201903" for fall 2019
+    """
+    payload = {'CRN': crn, 'TermCode': term}
+    response = requests.get(url, params=payload, auth=(username, password))
+    registration_info = response.json()
+    students = registration_info["Course"]["roster"]["student"]
+    return students
+
+
+@database.command()
+@click.argument('crn')
+@click.argument('term')
+@click.option('--ldap/--no-ldap', default=False)
+@click.pass_context
+def add_students_from_api(ctx, crn, term, ldap):
+    """ Add students from registration API. Takes the course registration
+        number which you can get from the YBB or SOM Portal. Term is something
+        like 201903 for Fall of 2019.
+
+        Run like `honcho run python ./db_client.py add_students_from_api CRN TERM`
+    """
+    api_url = os.environ["REGISTRATION_API_URL"]
+    api_username = os.environ["REGISTRATION_API_USERNAME"]
+    api_password = os.environ["REGISTRATION_API_PASSWORD"]
+    students = get_students_registered_for_class(
+        api_url,
+        api_username,
+        api_password,
+        crn,
+        term
+    )
+    netids = [student["netid"] for student in students]
+    add_list_of_students(ctx.obj['conn'], netids)
+
+    if ldap:
+        ctx.invoke(fill_user_ldap)
 
 
 @database.command()
 @click.pass_context
 @click.argument('student')
-def addstudent(ctx, student):
+def add_student(ctx, student):
     """ Add a student by netid
-        Run like `honcho run python ./db_client.py addstudent klj12`
+        Run like `honcho run python ./db_client.py add_student klj12`
     """
     users = [student.strip()]
     conn = ctx.obj['conn']
-    return addlistofstudents(conn, users)
+    return add_list_of_students(conn, users)
 
 
-def addlistofstudents(conn, students):
+def add_list_of_students(conn, students):
     """ Add a list of students
 
     Arguments:
