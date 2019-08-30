@@ -85,6 +85,17 @@ def known_as_is_redundant(known_as, name):
     return False
 
 
+def get_ldap_connection_from_env(env):
+    try:
+        ldap_host = env['LDAP_HOST']
+        ldap_user = env['LDAP_USER']
+        ldap_pass = env['LDAP_PASS']
+    except KeyError:
+        print("You must provide the following in the environment: LDAP_HOST, LDAP_USER, LDAP_PASS")
+    ldap_conn = get_ldap_connection(ldap_host, ldap_user, ldap_pass)
+    return ldap_conn
+
+
 def email_to_netid(ldap_conn, email):
     """ Turns a Yale email address into a netid using LDAP
 
@@ -103,13 +114,6 @@ def email_to_netid(ldap_conn, email):
 def fill_user_ldap(ctx):
     """ Fill in info from Yale LDAP for all students
     """
-    try:
-        ldap_host = os.environ['LDAP_HOST']
-        ldap_user = os.environ['LDAP_USER']
-        ldap_pass = os.environ['LDAP_PASS']
-    except KeyError:
-        print("You must provide the following in the environment: LDAP_HOST, LDAP_USER, LDAP_PASS")
-
     conn = ctx.obj['conn']
     cur = conn.cursor()
     statement = 'SELECT netid FROM data.user'
@@ -117,7 +121,7 @@ def fill_user_ldap(ctx):
     netids = set([row[0] for row in cur.fetchall()])
     conn.commit()
 
-    ldap_conn = get_ldap_connection(ldap_host, ldap_user, ldap_pass)
+    ldap_conn = get_ldap_connection_from_env(os.environ)
     for netid in netids:
         print('------------------' + netid)
         result = do_ldap_search(ldap_conn, "CN={0}".format(netid))
@@ -166,28 +170,29 @@ def add_students(ctx, infile, ldap):
         Run like `honcho run python ./db_client.py add_students filename`
     """
     users = [line.strip() for line in infile]
-    emails = [u for u in users if "@" in u]
-    netids = [u for u in users if "@" not in u]
+    do_add_students(ctx.obj["conn"], users)
+    if ldap:
+        ctx.invoke(fill_user_ldap)
+
+
+def do_add_students(conn, users):
+    """ Add a list of users. Can be email or netid
+
+    Arguments:
+        conn {database connection} -- Database connection
+        users {iterable} -- emails or netids
+    """
+    emails = [u.strip() for u in users if "@" in u]
+    netids = [u.strip() for u in users if "@" not in u]
 
     if emails:
-        try:
-            ldap_host = os.environ['LDAP_HOST']
-            ldap_user = os.environ['LDAP_USER']
-            ldap_pass = os.environ['LDAP_PASS']
-        except KeyError:
-            print(
-                "You must provide the following in the environment: LDAP_HOST, LDAP_USER, LDAP_PASS")
-
-        ldap_conn = get_ldap_connection(ldap_host, ldap_user, ldap_pass)
+        ldap_conn = get_ldap_connection_from_env(os.environ)
         email_netids = [email_to_netid(ldap_conn, e) for e in emails]
         netids.extend(email_netids)
 
     if netids:
-        conn = ctx.obj['conn']
         add_list_of_students(conn, netids)
-
-    if ldap:
-        ctx.invoke(fill_user_ldap)
+    return netids
 
 
 def get_students_registered_for_class(url, username, password, crn, term):
@@ -239,15 +244,17 @@ def add_students_from_api(ctx, crn, term, ldap):
 
 
 @database.command()
+@click.option('--ldap/--no-ldap', default=False)
 @click.pass_context
 @click.argument('student')
-def add_student(ctx, student):
+def add_student(ctx, student, ldap):
     """ Add a student by netid
         Run like `honcho run python ./db_client.py add_student klj12`
     """
     users = [student.strip()]
-    conn = ctx.obj['conn']
-    return add_list_of_students(conn, users)
+    do_add_students(ctx.obj["conn"], users)
+    if ldap:
+        ctx.invoke(fill_user_ldap)
 
 
 def add_list_of_students(conn, students):
