@@ -47,7 +47,7 @@ def get_ldap_connection(host, user, password):
     return conn
 
 
-def do_ldap_search(conn, netid):
+def do_ldap_search(conn, query):
     """ Search Yale LDAP for a particular netid. On the command
         line this would be something like the following:
         ldapsearch \
@@ -56,7 +56,7 @@ def do_ldap_search(conn, netid):
             -w $LDAP_PASS "(&(objectclass=Person)(CN=klj39))"
     """
     search_base = ""
-    search_filter = "(&(objectclass=Person)(CN={0}))".format(netid)
+    search_filter = "(&(objectclass=Person)({0}))".format(query)
     attributes = "*"
     conn.search(search_base, search_filter, attributes=attributes)
     try:
@@ -85,6 +85,19 @@ def known_as_is_redundant(known_as, name):
     return False
 
 
+def email_to_netid(ldap_conn, email):
+    """ Turns a Yale email address into a netid using LDAP
+
+    Arguments:
+        email {string} -- Email address for which you want netid
+    """
+    result = do_ldap_search(ldap_conn, "mail={0}".format(email.lower()))
+    netid = ldapget(result, 'cn')
+    if netid is None:
+        raise Exception("No netid for email {0}".format(email))
+    return netid
+
+
 @database.command()
 @click.pass_context
 def fill_user_ldap(ctx):
@@ -107,7 +120,7 @@ def fill_user_ldap(ctx):
     ldap_conn = get_ldap_connection(ldap_host, ldap_user, ldap_pass)
     for netid in netids:
         print('------------------' + netid)
-        result = do_ldap_search(ldap_conn, netid)
+        result = do_ldap_search(ldap_conn, "CN={0}".format(netid))
         if result:
             print(result)
             known_as = ldapget(result, 'knownAs')
@@ -146,14 +159,35 @@ def adduser(ctx, netid, role, nickname):
 @database.command()
 @click.pass_context
 @click.argument('infile', type=click.File('r'))
-def add_students(ctx, infile):
+@click.option('--ldap/--no-ldap', default=False)
+def add_students(ctx, infile, ldap):
     """ Add students from a list of netids
 
         Run like `honcho run python ./db_client.py add_students filename`
     """
     users = [line.strip() for line in infile]
-    conn = ctx.obj['conn']
-    return add_list_of_students(conn, users)
+    emails = [u for u in users if "@" in u]
+    netids = [u for u in users if "@" not in u]
+
+    if emails:
+        try:
+            ldap_host = os.environ['LDAP_HOST']
+            ldap_user = os.environ['LDAP_USER']
+            ldap_pass = os.environ['LDAP_PASS']
+        except KeyError:
+            print(
+                "You must provide the following in the environment: LDAP_HOST, LDAP_USER, LDAP_PASS")
+
+        ldap_conn = get_ldap_connection(ldap_host, ldap_user, ldap_pass)
+        email_netids = [email_to_netid(ldap_conn, e) for e in emails]
+        netids.extend(email_netids)
+
+    if netids:
+        conn = ctx.obj['conn']
+        add_list_of_students(conn, netids)
+
+    if ldap:
+        ctx.invoke(fill_user_ldap)
 
 
 def get_students_registered_for_class(url, username, password, crn, term):
