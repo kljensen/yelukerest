@@ -267,6 +267,9 @@ function makeJWT(userID, role, expiresIn) {
     const payload = {
         user_id: userID,
         role,
+        // Backdate a bit in case there is clock drift.
+        // https://github.com/auth0/node-jsonwebtoken
+        iat: Math.floor(Date.now() / 1000) - 30,
     };
     const signingOptions = {
         algorithm: 'HS256',
