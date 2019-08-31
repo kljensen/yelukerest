@@ -15,14 +15,16 @@ const SUPER_USER_PASSWORD = process.env.SUPER_USER_PASSWORD;
 
 const DB_HOST = process.env.DB_HOST;
 const DB_NAME = process.env.DB_NAME;
-const PG = `${COMPOSE_PROJECT_NAME}_db_1`
+const PG = `${COMPOSE_PROJECT_NAME}_db_1`;
 
 const psql_version = spawnSync('psql', ['--version']);
 const have_psql = (psql_version.stdout && psql_version.stdout.toString('utf8')
     .trim()
     .length > 0);
 
-const baseURL = 'http://localhost:8080';
+const baseURL = 'https://localhost';
+// So that we don't raise an error on self-signed certs.
+process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 var restService = function () {
     return request(`${baseURL}/rest`);
 }

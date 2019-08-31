@@ -63,22 +63,26 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
     // const yelukeCookieInfo = {
     //     name: 'yeluke.sid',
     // };
+    let sidCookie = null;
+    let previousResponse = responseFromCASServer;
+    for (let tries = 0; tries < 2; tries += 1) {
+        let finalResponse;
+        try {
+            const finalURL = new url.URL(previousResponse.headers.location);
+            finalResponse = await request.agent(`${finalURL.protocol}//${finalURL.host}`)
+                .get(`${finalURL.pathname}${finalURL.search}`)
+                .retry(2);
+            // .expect(agentCookies.set(yelukeCookieInfo));
+        } catch (error) {
+            throw error;
+        }
+        previousResponse = finalResponse;
+        if (finalResponse.header['set-cookie']) {
+            sidCookie = finalResponse.header['set-cookie'];
+            break;
+        }
 
-    const finalURL = new url.URL(responseFromCASServer.headers.location);
-    const agent = request.agent(`${finalURL.protocol}//${finalURL.host}`);
-    let finalResponse;
-    try {
-        finalResponse = await agent
-            .get(`${finalURL.pathname}${finalURL.search}`);
-        // .expect(agentCookies.set(yelukeCookieInfo));
-    } catch (error) {
-        throw error;
     }
-    // we.expect(finalResponse.header)
-    //     .to.have.property('set-cookie');
-    // we.expect(finalResponse.header['set-cookie'])
-    //     .to.have.lengthOf(1);
-    const sidCookie = finalResponse.header['set-cookie'];
 
     return sidCookie;
 }
@@ -195,7 +199,7 @@ const getRequestWithJWT = (path, jwt) => {
  */
 async function makeInsertTestCases(theIt, path, body, testCases) {
     testCases.forEach((tc) => {
-        theIt(tc.title || 'the test', async() => {
+        theIt(tc.title || 'the test', async () => {
             we.expect(tc)
                 .to.have.property('status');
 
@@ -237,7 +241,7 @@ async function makeInsertTestCases(theIt, path, body, testCases) {
  */
 async function makeListTestCases(theIt, path, transformation, testCases) {
     testCases.forEach((tc) => {
-        theIt(tc.title || 'the test', async() => {
+        theIt(tc.title || 'the test', async () => {
             we.expect(tc)
                 .to.have.property('status');
 

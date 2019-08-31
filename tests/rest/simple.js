@@ -1,11 +1,12 @@
-const request = require('supertest');
-const should = require("should");
+const {
+    restService,
+} = require('./common.js');
 
-describe('root endpoint', function () {
-    it('returns json', function (done) {
-        request('http://localhost:8080/rest')
+describe('root endpoint', () => {
+    it('returns json', (done) => {
+        restService()
             .get('/')
             .expect('Content-Type', /json/)
-            .expect(200, done)
+            .expect(200, done);
     });
 });
