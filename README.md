@@ -1,45 +1,63 @@
-# A restful API for class data
+# Yelukerest: software for managing my classes at Yale
 
-We are using the excellent [postgrest start kit](https://github.com/subzerocloud/postgrest-starter-kit). The main
-entrypoint to this code is `docker-compose.yml`, which shows what
-containers are started when you do `docker-compose up`. Once your
-containers are running, if you are in the root of this directory,
-running `subzero dashboard` will give you a useful view of the
-logs of all the containers and can also restart containers on file
-changes.
+This repo contains software for managing my classes at Yale. The major
+functions of the software include:
 
-If you are working on the front-end, most of your work will be
-in the `node` directory.
+- recording student enrollment and participation;
+- storing class schedule information, such as meeting times, meeting subjects, and pre-class reading;
+- storing and administering quizzes based on pre-class reading material;
+- storing assignment information and accepting assignment submissions; and,
+- storing student grades on assignments and quizzes.
 
-## Getting started in development
+The core of the application is a RESTful API built on top of
+[postgrest](https://postgrest.readthedocs.io). The structure of this repo is
+taken from the excellent
+[postgrest start kit](https://github.com/subzerocloud/postgrest-starter-kit).
+The application includes a number of components each of which runs in a
+[docker](https://en.wikipedia.org/wiki/Docker_%28software%29) container.
+The main
+entrypoint is `docker-compose*.yml`, which shows what
+containers are started in dev and production.
 
-1. Install Docker
-2. Run `npm install`
-3. Install [subzero-cli](https://github.com/subzerocloud/subzero-cli)
-4. Run `docker-compose up -d`
-5. Run `subzero dashboard` when the containers are up
-6. Edit the code you want --- most components of the stack will restart
-   on changes.
+```
+# For development
+docker-compose -f ./docker-compose.base.yaml -f ./docker-compose.dev.yaml up
+# For production
+docker-compose -f ./docker-compose.base.yaml -f ./docker-compose.prod.yaml up
+```
 
-## Understanding how all this works
+The roles of the most important components are as follows:
+
+- _[postgres](https://www.postgresql.org/)_ - provides persistence nearly all
+  of the application data and enforces
+  relational integrity.
+- _backup_ - Saves backups of the production postgres database to S3, usually hourly.
+- _[rabbitmq](https://www.rabbitmq.com/)_ - subscription/notification
+  service generally used to alert applications
+  to changes in the database, such as new rows.
+- _[pg_amqp_bridge](https://github.com/subzerocloud/pg-amqp-bridge)_ -
+  sends NOTIFY events from postgres to rabbitmq.
+- _postgrest_ - provides a RESTful API over the postgres application database.
+- _[openresty](https://openresty.org)_ - the webserver that accepts incoming
+  HTTP requests and proxies them to relevant backend services, such as postgrest.
+- _[certbot](https://certbot.eff.org/)_ - obtains and renews SSL certificates
+  for openresty.
+- _authapp_ - communicates with a CAS server to authenticate users. Stores user
+  sessions in signed client-side cookies and severside in redis.
+- _[redis](https://redis.io/)_ - used to store user session information on
+  the backend.
+- _mockcas_ - Used in development as a mock CAS server.
+- _elmclient_ - a front-end client that runs in web browsers and communicates
+  with the API. This is the main way in which students interact with the
+  API.
+- _sse_ - a backend service that accepts
+  [sse](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) connections so that the elmclient
+  can subscribe to table changes in postgres (via rabbitmq and pg_amqp_bridge).
 
 It will likely be necessary to read the documentation of
 [Postgrest](https://postgrest.com/en/v4.3/) and the
 [Postgrest starter kit](https://github.com/subzerocloud/postgrest-starter-kit/wiki)
 to understand how all this fits together.
-
-Here are a few pieces that are specific to our setup, particularly
-the auth flow.
-
-1. Facutly (TAs) will create users "by hand" in the database
-   based on who comes to class. We won't create user accounts
-   just based on CAS login as we did in the past.
-1. The node application will handle CAS authentication and will
-   need to check if users exist in the database when doing so.
-1. Once a user is authenticated, the app will ust JWT to communicate
-   with the REST API (at `/rest`) to do all the stuff students need
-   to do---view lectures, submit assignments, take quizzes.
-1. Easy peasy.
 
 ## Testing
 
@@ -48,6 +66,17 @@ The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
 tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
 
 ## Random notes
+
+### Restoring production backups
+
+Backups are saved to s3 hourly in production. To restore, download one,
+then run something like
+
+```
+pg_restore --host $HOST -U superuser -d app --port $PORT --clean --exit-on-error ./thebackup.dump
+```
+
+The `--clean` will drop (or truncate?) tables.
 
 ### Getting the initial letsencrypt certificate
 
