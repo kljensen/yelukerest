@@ -549,20 +549,15 @@ def delete_missing_quiz_question_options(cur, quiz_id, slugs):
     """
     query = """
         WITH options (question_slug, option_slug) AS (VALUES {0}),
-        options_to_keep (quiz_question_id, slug) AS (
+        options_to_delete (quiz_question_id, slug) AS (
             SELECT qq.id, option_slug FROM
-                options JOIN data.quiz_question qq
+                options RIGHT JOIN data.quiz_question qq
                 ON options.question_slug = qq.slug
                 WHERE qq.quiz_id = %s
-        ),
-        found_options AS (
-            SELECT qqo.id FROM data.quiz_question_option qqo
-                JOIN options_to_keep otk
-                ON qqo.quiz_question_id = otk.quiz_question_id
-                AND qqo.slug = otk.slug
+                AND options.option_slug IS NULL
         )
         DELETE FROM data.quiz_question_option
-            WHERE id NOT IN (SELECT id FROM found_options)
+            WHERE id IN (SELECT id FROM options_to_delete)
     """.format(comma_params(slugs))
     try:
         cur.execute(query, slugs+(quiz_id,))
