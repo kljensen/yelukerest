@@ -19,7 +19,6 @@ describe('meetings API endpoint', () => {
             .expect(200, done)
             .expect((r) => {
                 r.body.length.should.equal(4);
-                r.body[0].slug.should.equal('intro');
             });
     });
 
