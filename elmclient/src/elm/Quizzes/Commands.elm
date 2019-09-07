@@ -117,9 +117,12 @@ fetchQuizGradeExceptionsUrl =
 -- |> Cmd.map (Msgs.OnBeginQuizComplete quizID)
 
 
-createQuizSubmission : JWT -> Int -> Cmd Msg
-createQuizSubmission jwt quizID =
+createQuizSubmission : CurrentUser -> Int -> Cmd Msg
+createQuizSubmission user quizID =
     let
+        jwt =
+            user.jwt
+
         headers1 =
             [ Http.header "Authorization" ("Bearer " ++ jwt)
             , Http.header "Prefer" "return=representation"
@@ -146,7 +149,7 @@ createQuizSubmission jwt quizID =
             Http.task
                 { method = "GET"
                 , headers = [ Http.header "Authorization" ("Bearer " ++ jwt) ]
-                , url = "/rest/quiz_submissions_info"
+                , url = fetchQuizSubmissionsUrl user.id
                 , timeout = Nothing
                 , resolver = fetchResponseResolver
                 , body = Http.emptyBody

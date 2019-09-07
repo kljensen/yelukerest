@@ -118,7 +118,7 @@ onBeginQuiz model quizID =
         cmds =
             case model.currentUser of
                 RemoteData.Success user ->
-                    Cmd.batch [ createQuizSubmission user.jwt quizID ]
+                    Cmd.batch [ createQuizSubmission user quizID ]
 
                 _ ->
                     Cmd.none
