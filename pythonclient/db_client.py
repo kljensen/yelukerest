@@ -548,16 +548,22 @@ def delete_missing_quiz_question_options(cur, quiz_id, slugs):
           tuple of quiz_question slug quiz_question_option slug.
     """
     query = """
-        WITH options (question_slug, option_slug) AS (VALUES {0}),
-        options_to_delete (quiz_question_id, slug) AS (
-            SELECT qq.id, option_slug FROM
-                options RIGHT JOIN data.quiz_question qq
-                ON options.question_slug = qq.slug
-                WHERE qq.quiz_id = %s
-                AND options.option_slug IS NULL
+        WITH keepers (question_slug, option_slug) AS (VALUES {0}),
+        existing (id, quiz_question_id, question_slug, option_slug) AS (
+            SELECT qqo.id, qq.id, qq.slug, qqo.slug FROM data.quiz_question qq
+            JOIN data.quiz_question_option qqo
+            ON qqo.quiz_question_id = qq.id
+            WHERE qq.quiz_id=%s
+        ),
+        todelete AS (
+            select * from
+            existing LEFT OUTER JOIN keepers
+            ON keepers.question_slug=existing.question_slug
+            AND keepers.option_slug=existing.option_slug
+            WHERE keepers.option_slug IS NULL
         )
         DELETE FROM data.quiz_question_option
-            WHERE id IN (SELECT id FROM options_to_delete)
+        WHERE id in (SELECT id from todelete)
     """.format(comma_params(slugs))
     try:
         cur.execute(query, slugs+(quiz_id,))

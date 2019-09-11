@@ -4,9 +4,10 @@ from operator import attrgetter
 from itertools import groupby
 from psycopg2.extras import NamedTupleCursor
 
+
 def get_gradable_quiz_ids(conn):
     """ Get the ids of quizzes that can be graded
-    
+
     Arguments:
         conn {psycopg2 Connection} -- The connection to the database
     """
@@ -21,6 +22,7 @@ def get_nt_cursor(conn):
     """
     return conn.cursor(cursor_factory=NamedTupleCursor)
 
+
 def do_execute(conn, statement, params):
     """ Execute a statement and return results
     """
@@ -30,11 +32,13 @@ def do_execute(conn, statement, params):
     conn.commit()
     return results
 
+
 def get_submissions(conn, quiz_id):
     """ Grab submissions for a quiz
     """
     statement = 'SELECT * FROM data.quiz_submission WHERE quiz_id = %s'
     return do_execute(conn, statement, (quiz_id,))
+
 
 def get_answers(conn, quiz_id, submission_user_id):
     """ Retreives answers for a particular submission
@@ -61,6 +65,7 @@ def get_answers(conn, quiz_id, submission_user_id):
     result = do_execute(conn, statement, (submission_user_id, quiz_id))
     return result
 
+
 def upsert_grade(conn, quiz_id, user_id, points):
     """ Upsert a quiz grade
     """
@@ -72,7 +77,8 @@ def upsert_grade(conn, quiz_id, user_id, points):
         WHERE quiz_grade.quiz_id=%s AND quiz_grade.user_id=%s
         RETURNING *
     """
-    do_execute(conn, statement, (quiz_id, user_id, points, points, quiz_id, user_id))
+    do_execute(conn, statement, (quiz_id, user_id,
+                                 points, points, quiz_id, user_id))
 
 
 def grade_submission(conn, quiz, submission):
@@ -96,9 +102,8 @@ def grade_submission(conn, quiz, submission):
         if is_correct:
             num_correct += 1
         num_questions += 1
-
-    points = quiz.points_possible * float(num_correct) / float(num_questions)
-    print(points)
+    points = quiz.points_possible * \
+        float(num_correct) / float(num_questions)
     upsert_grade(conn, quiz.id, submission.user_id, points)
 
 
@@ -109,6 +114,7 @@ def get_question_options(conn, quiz_id):
         SELECT * FROM data.quiz_question_option WHERE quiz_id = %s ORDER BY quiz_question_id
     """
     return do_execute(conn, statement, (quiz_id,))
+
 
 def get_quiz(conn, quiz_id):
     """ Get a quiz by id
@@ -124,4 +130,3 @@ def grade(conn, quiz_id):
     submissions = get_submissions(conn, quiz_id)
     for submission in submissions:
         grade_submission(conn, quiz, submission)
-        
