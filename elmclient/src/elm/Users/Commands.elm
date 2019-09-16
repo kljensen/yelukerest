@@ -28,7 +28,7 @@ fetchUserSecrets currentUser =
             "/rest/user_secrets?"
 
         idQuery =
-            "user_id.eq." ++ String.fromInt currentUser.id
+            "user_id=eq." ++ String.fromInt currentUser.id
 
         url =
             case currentUser.team_nickname of
