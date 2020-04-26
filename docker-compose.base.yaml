@@ -1,139 +1,160 @@
-version: "3.4"
+version: '3.4'
 volumes:
-  # A named volume to share data between containers
-  elmclient-build:
-    external: false
-  yelukerest-letsencrypt:
-    external: true
+    # A named volume to share data between containers
+    elmclient-build:
+        external: false
+    yelukerest-letsencrypt:
+        external: true
 services:
-  elmclient:
-    build: elmclient
-    # Set the location where docker will put our files
-    working_dir: /opt/app
-    environment:
-      - DEVELOPMENT=${DEVELOPMENT}
-      - PIAZZA_URL=${ELMCLIENT_PIAZZA_URL}
-      - ABOUT_URL=${ELMCLIENT_ABOUT_URL}
-      - CANVAS_URL=${ELMCLIENT_CANVAS_URL}
-      - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
-    volumes:
-      # Note that the package.json-like files were moved into the
-      # container as specified by the elmclient/Dockerfile.
-      - elmclient-build:/opt/app/dist
-      - "./elmclient/src:/opt/app/src"
-      - "./elmclient/run.sh:/opt/app/run.sh"
-      - "./elmclient/webpack.config.js:/opt/app/webpack.config.js"
-    entrypoint: "/opt/app/run.sh"
+    elmclient:
+        build: elmclient
+        # Set the location where docker will put our files
+        working_dir: /opt/app
+        environment:
+            - DEVELOPMENT=${DEVELOPMENT}
+            - PIAZZA_URL=${ELMCLIENT_PIAZZA_URL}
+            - ABOUT_URL=${ELMCLIENT_ABOUT_URL}
+            - CANVAS_URL=${ELMCLIENT_CANVAS_URL}
+            - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
+        volumes:
+            # Note that the package.json-like files were moved into the
+            # container as specified by the elmclient/Dockerfile.
+            - elmclient-build:/opt/app/dist
+            - './elmclient/src:/opt/app/src'
+            - './elmclient/run.sh:/opt/app/run.sh'
+            - './elmclient/webpack.config.js:/opt/app/webpack.config.js'
+        entrypoint: '/opt/app/run.sh'
 
-  # PostgREST instance, is responsible for communicating with the database
-  # and providing a REST api, (almost) every request that is sent to the database goes through it
-  postgrest:
-    image: postgrest/postgrest:v0.5.0.0-6bcbb12
-    ports:
-      - "127.0.0.1:3000:${POSTGREST_PORT}"
-    links:
-      - db:db
-    environment:
-      - PGRST_DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-      - PGRST_DB_SCHEMA=${DB_SCHEMA}
-      - PGRST_DB_ANON_ROLE=${DB_ANON_ROLE}
-      - PGRST_DB_POOL=${DB_POOL}
-      - PGRST_JWT_SECRET=${JWT_SECRET}
-      - PGRST_MAX_ROWS=${MAX_ROWS}
-      - PGRST_PRE_REQUEST=${PRE_REQUEST}
-      - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
+    # PostgREST instance, is responsible for communicating with the database
+    # and providing a REST api, (almost) every request that is sent to the database goes through it
+    postgrest:
+        image: postgrest/postgrest:v0.5.0.0-6bcbb12
+        ports:
+            - '127.0.0.1:3000:${POSTGREST_PORT}'
+        links:
+            - db:db
+        environment:
+            - PGRST_DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - PGRST_DB_SCHEMA=${DB_SCHEMA}
+            - PGRST_DB_ANON_ROLE=${DB_ANON_ROLE}
+            - PGRST_DB_POOL=${DB_POOL}
+            - PGRST_JWT_SECRET=${JWT_SECRET}
+            - PGRST_MAX_ROWS=${MAX_ROWS}
+            - PGRST_PRE_REQUEST=${PRE_REQUEST}
+            - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
 
-  certbot:
-    image: certbot/certbot:v0.36.0
-    entrypoint: /entrypoint.sh
-    volumes:
-      - yelukerest-letsencrypt:/etc/letsencrypt/
-      - "./certbot/entrypoint.sh:/entrypoint.sh"
-  # OpenResty (Nginx + Lua) instance that sits in front of PostgREST.
-  # All the requests comming into the system are first hitting this component.
-  # After some processing/checks and transformation, the request is forwarded
-  # to PostgREST down the stack.
-  openresty:
-    image: openresty/openresty:stretch
-    ports:
-      - "${OPENRESTY_LISTEN_HOST}:80:80"
-      - "${OPENRESTY_LISTEN_HOST}:443:443"
-    links:
-      - postgrest:postgrest
-      - authapp:authapp
-      - sse:sse
-      - certbot:certbot
-    entrypoint: /entrypoint.sh
-    restart: on-failure
-    environment:
-      - FQDN=${FQDN}
-      # - JWT_SECRET=${JWT_SECRET}
-      # - DEVELOPMENT=${DEVELOPMENT}
-      - POSTGREST_HOST=${POSTGREST_HOST}
-      - POSTGREST_PORT=${POSTGREST_PORT}
-      - AUTHAPP_HOST=${AUTHAPP_HOST}
-      - AUTHAPP_PORT=${AUTHAPP_PORT}
-      - ELMCLIENT_HOST=${ELMCLIENT_HOST}
-      - ELMCLIENT_PORT=${ELMCLIENT_PORT}
-      - SHAREDTERMINAL_PORT=${SHAREDTERMINAL_PORT}
-      - SHAREDTERMINAL_HOST=${SHAREDTERMINAL_HOST}
-      # - DB_HOST=${DB_HOST}
-      # - DB_PORT=${DB_PORT}
-      # - DB_NAME=${DB_NAME}
-      # - DB_SCHEMA=${DB_SCHEMA}
-      # - DB_USER=${DB_USER}
-      # - DB_PASS=${DB_PASS}
-      - SWAGGER_JWT=${SWAGGER_JWT}
-      - SWAGGER_INFO_TITLE=${SWAGGER_INFO_TITLE}
-      - SWAGGER_INFO_DESCRIPTION=${SWAGGER_INFO_DESCRIPTION}
-      - SSE_HOST=${SSE_HOST}
-      - SSE_PORT=${SSE_PORT}
-    volumes:
-      - elmclient-build:/var/elmclient/
-      - yelukerest-letsencrypt:/etc/letsencrypt/
-      - "./openresty/entrypoint.sh:/entrypoint.sh"
-      - "./openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf.tmpl"
-      - "./openresty/nginx/conf/dhparam.pem:/usr/local/openresty/nginx/conf/dhparam.pem"
-      - "./openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes"
-      - "./openresty/nginx/html:/usr/local/openresty/nginx/html"
-      - "./openresty/lualib/user_code:/usr/local/openresty/lualib/user_code"
+    certbot:
+        image: certbot/certbot:v0.36.0
+        entrypoint: /entrypoint.sh
+        volumes:
+            - yelukerest-letsencrypt:/etc/letsencrypt/
+            - './certbot/entrypoint.sh:/entrypoint.sh'
+    # OpenResty (Nginx + Lua) instance that sits in front of PostgREST.
+    # All the requests comming into the system are first hitting this component.
+    # After some processing/checks and transformation, the request is forwarded
+    # to PostgREST down the stack.
+    openresty:
+        image: openresty/openresty:stretch
+        ports:
+            - '${OPENRESTY_LISTEN_HOST}:80:80'
+            - '${OPENRESTY_LISTEN_HOST}:443:443'
+        links:
+            - postgrest:postgrest
+            - authapp:authapp
+            - sse:sse
+            - certbot:certbot
+        entrypoint: /entrypoint.sh
+        restart: on-failure
+        environment:
+            - FQDN=${FQDN}
+            # - JWT_SECRET=${JWT_SECRET}
+            # - DEVELOPMENT=${DEVELOPMENT}
+            - POSTGREST_HOST=${POSTGREST_HOST}
+            - POSTGREST_PORT=${POSTGREST_PORT}
+            - AUTHAPP_HOST=${AUTHAPP_HOST}
+            - AUTHAPP_PORT=${AUTHAPP_PORT}
+            - ELMCLIENT_HOST=${ELMCLIENT_HOST}
+            - ELMCLIENT_PORT=${ELMCLIENT_PORT}
+            - SHAREDTERMINAL_PORT=${SHAREDTERMINAL_PORT}
+            - SHAREDTERMINAL_HOST=${SHAREDTERMINAL_HOST}
+            # - DB_HOST=${DB_HOST}
+            # - DB_PORT=${DB_PORT}
+            # - DB_NAME=${DB_NAME}
+            # - DB_SCHEMA=${DB_SCHEMA}
+            # - DB_USER=${DB_USER}
+            # - DB_PASS=${DB_PASS}
+            - SWAGGER_JWT=${SWAGGER_JWT}
+            - SWAGGER_INFO_TITLE=${SWAGGER_INFO_TITLE}
+            - SWAGGER_INFO_DESCRIPTION=${SWAGGER_INFO_DESCRIPTION}
+            - SSE_HOST=${SSE_HOST}
+            - SSE_PORT=${SSE_PORT}
+        volumes:
+            - elmclient-build:/var/elmclient/
+            - yelukerest-letsencrypt:/etc/letsencrypt/
+            - './openresty/entrypoint.sh:/entrypoint.sh'
+            - './openresty/nginx/conf/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf.tmpl'
+            - './openresty/nginx/conf/dhparam.pem:/usr/local/openresty/nginx/conf/dhparam.pem'
+            - './openresty/nginx/conf/includes:/usr/local/openresty/nginx/conf/includes'
+            - './openresty/nginx/html:/usr/local/openresty/nginx/html'
+            - './openresty/lualib/user_code:/usr/local/openresty/lualib/user_code'
 
-  # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
-  # to RabbitMQ based on the BRIDGE_CHANNELS configuration
-  pg_amqp_bridge:
-    image: subzerocloud/pg-amqp-bridge:0.0.6
-    links:
-      - db
-      - rabbitmq
-    environment:
-      - RUST_LOG=info # output forwarded messages
-      - POSTGRESQL_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-      - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
-      - BRIDGE_CHANNELS=events:amq.topic
+    # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
+    # to RabbitMQ based on the BRIDGE_CHANNELS configuration
+    pg_amqp_bridge:
+        image: subzerocloud/pg-amqp-bridge:0.0.6
+        links:
+            - db
+            - rabbitmq
+        environment:
+            - RUST_LOG=info # output forwarded messages
+            - POSTGRESQL_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
+            - BRIDGE_CHANNELS=events:amq.topic
 
-  # RabbitMQ instance can be used to consolidate events that originated in your database/application.
-  # You can connect here with different consumers and take actions based on those events (like sending signup emails)
-  rabbitmq:
-    image: rabbitmq:3-management
-    ports:
-      - "127.0.0.1:5671:5671"
-      - "127.0.0.1:5672:5672"
-      - "127.0.0.1:15672:15672"
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-  redis:
-    image: redis:4
-    ports:
-      - "127.0.0.1:6379:6379"
-  sse:
-    build: sse
-    ports:
-      - "127.0.0.1:${SSE_HOST_PORT}:${SSE_PORT}"
-    links:
-      - db
-      - rabbitmq
-    environment:
-      - DEVELOPMENT=${DEVELOPMENT}
-      - PORT=${SSE_PORT}
-      - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
+    # RabbitMQ instance can be used to consolidate events that originated in your database/application.
+    # You can connect here with different consumers and take actions based on those events (like sending signup emails)
+    rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+            - '127.0.0.1:5671:5671'
+            - '127.0.0.1:5672:5672'
+            - '127.0.0.1:15672:15672'
+        environment:
+            - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
+            - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
+    redis:
+        image: redis:4
+        ports:
+            - '127.0.0.1:6379:6379'
+    sse:
+        build: sse
+        ports:
+            - '127.0.0.1:${SSE_HOST_PORT}:${SSE_PORT}'
+        links:
+            - db
+            - rabbitmq
+        environment:
+            - DEVELOPMENT=${DEVELOPMENT}
+            - PORT=${SSE_PORT}
+            - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
+
+    graphql:
+        build: graphql
+        working_dir: /app
+        ports:
+            - '127.0.0.1:8082:${POSTGRAPHILE_PORT}'
+        links:
+            - db:db
+        environment:
+            - DB_HOST=${DB_HOST}
+            - DB_PORT=${DB_PORT}
+            - DB_USER=${DB_USER}
+            - DB_NAME=${DB_NAME}
+            - DB_SCHEMA=${DB_SCHEMA}
+            - DB_PASS=${DB_PASS}
+            - PORT=${POSTGRAPHILE_PORT}
+            - JWT_SECRET=${JWT_SECRET}
+        volumes:
+            - './graphql/src:/app/src'
+            - './graphql/run.sh:/app/run.sh'
+        entrypoint: '/app/run.sh'

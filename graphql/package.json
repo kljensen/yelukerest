@@ -1,0 +1,16 @@
+{
+    "name": "graphql",
+    "version": "0.0.1",
+    "description": "GraphQL API for yelukerest",
+    "main": "server.js",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "Unlicense",
+    "dependencies": {
+        "express": "^4.17.1",
+        "nodemon": "^2.0.3",
+        "postgraphile": "^4.6.0"
+    }
+}
