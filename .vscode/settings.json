@@ -4,4 +4,5 @@
     "elm.makeCommand": "elm-make",
     "json.formatOnSave": false,
     "python.pythonPath": "/Users/kljensen/.miniconda3/envs/yelukerest/bin/python",
+    "git.ignoreLimitWarning": true,
 }

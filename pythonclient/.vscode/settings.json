@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/Users/kljensen/.miniconda3/envs/yelukerest/bin/python"
+    "python.pythonPath": "/Users/kljensen/.miniconda3/envs/yelukerest/bin/python",
+    "git.ignoreLimitWarning": true
 }
