@@ -42,7 +42,6 @@ services:
             - PGRST_MAX_ROWS=${MAX_ROWS}
             - PGRST_PRE_REQUEST=${PRE_REQUEST}
             - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
-
     certbot:
         image: certbot/certbot:v0.36.0
         entrypoint: /entrypoint.sh
@@ -137,7 +136,6 @@ services:
             - DEVELOPMENT=${DEVELOPMENT}
             - PORT=${SSE_PORT}
             - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
-
     graphql:
         build: graphql
         working_dir: /app
@@ -146,12 +144,9 @@ services:
         links:
             - db:db
         environment:
-            - DB_HOST=${DB_HOST}
-            - DB_PORT=${DB_PORT}
-            - DB_USER=${DB_USER}
-            - DB_NAME=${DB_NAME}
-            - DB_SCHEMA=${DB_SCHEMA}
-            - DB_PASS=${DB_PASS}
+            - DEVELOPMENT=${DEVELOPMENT}
+            - DATABASE_URL=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+            - DATABASE_SCHEMA=api
             - PORT=${POSTGRAPHILE_PORT}
             - JWT_SECRET=${JWT_SECRET}
         volumes:

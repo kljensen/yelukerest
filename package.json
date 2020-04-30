@@ -1,6 +1,7 @@
 {
     "name": "starter-kit",
     "dependencies": {
+        "blessed": "^0.1.81",
         "chai": "^4.2.0",
         "chai-as-promised": "^7.1.1",
         "chai-string": "^1.5.0",

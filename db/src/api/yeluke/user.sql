@@ -1,6 +1,8 @@
 create or replace view users as
     select * from data.user;
 
+COMMENT ON TYPE "api"."user" IS E'@name user_type';
+
 -- It is important to set the correct owner so the RLS policy kicks in.
 -- The `user` table should have RLS becuase students should not
 -- see each others user grades.

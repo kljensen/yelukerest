@@ -15,4 +15,12 @@ set +a
 # set -x
 set -v
 
-docker exec -it "${COMPOSE_PROJECT_NAME}_${1}_1" /bin/bash
+
+
+if [ -z "$SH" ]
+  then
+      SHELL=/bin/bash
+  else
+      SHELL=/bin/sh
+fi
+docker exec -it "${COMPOSE_PROJECT_NAME}_${1}_1" $SHELL

@@ -31,15 +31,73 @@ config.jwt_secret = getRequiredEnvVariable('JWT_SECRET');
 config.jwt_issuer = 'yeluke-authapp';
 
 // Get database-related connection info
-config.db_host = getRequiredEnvVariable('DB_HOST');
-config.db_port = getRequiredEnvVariable('DB_PORT');
-config.db_schema = getRequiredEnvVariable('DB_SCHEMA');
-config.db_name = getRequiredEnvVariable('DB_NAME');
-config.db_user = getRequiredEnvVariable('DB_USER');
-config.db_pass = getRequiredEnvVariable('DB_PASS');
+config.database_url = getRequiredEnvVariable('DATABASE_URL');
+config.database_schema = getRequiredEnvVariable('DATABASE_SCHEMA');
 
 // Grab the host and port on which we should run
 config.host = '0.0.0.0';
 config.port = getRequiredEnvVariable('PORT');
+
+if (config.is_development) {
+    config.postgraphile_options = {
+        // subscriptions: false,
+        watchPg: false,
+        // dynamicJson: true,
+        setofFunctionsContainNulls: false,
+        ignoreRBAC: false,
+        ignoreIndexes: false,
+        showErrorStack: 'json',
+        // extendedErrors: ['hint', 'detail', 'errcode'],
+        extendedErrors: [
+            'severity',
+            'code',
+            'detail',
+            'hint',
+            'position',
+            'internalPosition',
+            'internalQuery',
+            'where',
+            'schema',
+            'table',
+            'column',
+            'dataType',
+            'constraint',
+            'file',
+            'line',
+            'routine',
+        ],
+        appendPlugins: [require('@graphile-contrib/pg-simplify-inflector')],
+        exportGqlSchemaPath: 'schema.graphql',
+        graphiql: true,
+        enhanceGraphiql: true,
+        graphiqlRoute: '/foo',
+        enableQueryBatching: true,
+        legacyRelations: 'omit',
+        // allowExplain(req) {
+        //     // TODO: customise condition!
+        //     return true;
+        // },
+        // pgSettings(req) {
+        //     /* TODO */
+        // },
+    };
+} else {
+    config.postgraphile_options = {
+        subscriptions: true,
+        retryOnInitFail: true,
+        // dynamicJson: true,
+        setofFunctionsContainNulls: false,
+        ignoreRBAC: false,
+        ignoreIndexes: false,
+        extendedErrors: ['errcode'],
+        // appendPlugins: [require('@graphile-contrib/pg-simplify-inflector')],
+        graphiql: false,
+        enableQueryBatching: true,
+        // our default logging has performance issues, but do make sure
+        // you have a logging system in place!
+        disableQueryLog: true,
+        legacyRelations: 'omit',
+    };
+}
 
 module.exports = config;
