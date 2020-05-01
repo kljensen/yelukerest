@@ -15,15 +15,16 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
     FOREIGN KEY
         (assignment_submission_id, assignment_slug)
         REFERENCES assignment_submission(id, assignment_slug)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON UPDATE CASCADE,
     FOREIGN KEY
         (assignment_field_slug, assignment_slug)
         REFERENCES assignment_field(slug, assignment_slug)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON UPDATE CASCADE,
     body VARCHAR(10000) NOT NULL,
-    submitter_user_id INT REFERENCES "user"(id)
-        ON DELETE CASCADE
-        ON UPDATE CASCADE NOT NULL DEFAULT request.user_id(),
+    submitter_user_id INT
+        REFERENCES "user"(id)
+        ON UPDATE CASCADE
+        NOT NULL DEFAULT request.user_id(),
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,

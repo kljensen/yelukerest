@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(17);
 
 SELECT view_owner_is(
     'api', 'quiz_answers', 'api',
@@ -155,6 +155,7 @@ SELECT results_eq(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+DELETE FROM api.quiz_answers WHERE quiz_question_option_id = 5;
 DELETE FROM api.quiz_question_options WHERE id = 5;
 
 SELECT results_eq(
@@ -165,19 +166,6 @@ SELECT results_eq(
 
 -- TODO: parameterize these so I'm not relying on so much knowledge of the sample data
 EXECUTE insertanswer(2, 4, 6);
-DELETE FROM api.quiz_questions WHERE id = 3;
-SELECT results_eq(
-    'SELECT (quiz_question_option_id) FROM api.quiz_answers WHERE quiz_question_option_id=6',
-    ARRAY[]::integer[],
-    'deleting a quiz question should cascade delete answers pointing to it'
-);
-
-DELETE FROM api.users WHERE id=1;
-SELECT results_eq(
-    'SELECT (user_id) FROM api.quiz_answers WHERE user_id=1',
-    ARRAY[]::integer[],
-    'deleting a user cascade deletes all their quiz answers'
-);
 
 
 select * from finish();

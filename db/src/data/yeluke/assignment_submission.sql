@@ -4,15 +4,12 @@ CREATE TABLE IF NOT EXISTS assignment_submission (
     assignment_slug VARCHAR(100),
     is_team BOOLEAN,
     FOREIGN KEY (assignment_slug, is_team) REFERENCES assignment(slug, is_team)
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON UPDATE CASCADE,
     user_id INT REFERENCES "user"(id)
-        ON DELETE CASCADE
         ON UPDATE CASCADE,
     team_nickname VARCHAR(50) REFERENCES team(nickname)
-        ON DELETE CASCADE
         ON UPDATE CASCADE,
     submitter_user_id INT REFERENCES "user"(id)
-        ON DELETE CASCADE
         ON UPDATE CASCADE NOT NULL DEFAULT request.user_id(),
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL

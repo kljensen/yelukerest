@@ -2,10 +2,8 @@
 CREATE TABLE IF NOT EXISTS quiz_submission (
     quiz_id INT REFERENCES quiz(id)
         ON UPDATE CASCADE
-        ON DELETE CASCADE
         NOT NULL,
     user_id INT REFERENCES "user"(id)
-        ON DELETE CASCADE
         ON UPDATE CASCADE
         NOT NULL DEFAULT request.user_id(),
     created_at TIMESTAMP WITH TIME ZONE

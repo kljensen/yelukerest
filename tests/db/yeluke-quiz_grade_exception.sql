@@ -39,6 +39,8 @@ SELECT set_eq(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+DELETE FROM api.quiz_grades;
+DELETE FROM api.quiz_answers;
 DELETE FROM api.quiz_submissions;
 PREPARE startquiz AS INSERT INTO api.quiz_submissions (quiz_id, user_id) VALUES($1, $2);
 UPDATE api.quizzes SET is_draft=TRUE;

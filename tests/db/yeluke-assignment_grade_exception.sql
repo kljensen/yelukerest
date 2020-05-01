@@ -47,6 +47,8 @@ SELECT set_eq(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+DELETE FROM api.assignment_grades;
+DELETE FROM api.assignment_field_submissions;
 DELETE FROM api.assignment_submissions;
 UPDATE api.assignments SET closed_at = current_timestamp - '1 hour'::INTERVAL;
 PREPARE insert_submission AS INSERT INTO api.assignment_submissions (id, assignment_slug, is_team, user_id, team_nickname, submitter_user_id) VALUES($1, $2, $3, $4, $5, $6);

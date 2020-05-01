@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS assignment_field (
         CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 30),
     assignment_slug VARCHAR(100)
         REFERENCES assignment(slug)
-        ON DELETE CASCADE ON UPDATE CASCADE
+        ON UPDATE CASCADE
         NOT NULL,
     label VARCHAR(100) NOT NULL,
     help VARCHAR(200) NOT NULL,

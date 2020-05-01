@@ -1,8 +1,9 @@
 
 CREATE TABLE IF NOT EXISTS quiz_question (
     id SERIAL PRIMARY KEY,
-    quiz_id INT REFERENCES quiz(id)
-        ON DELETE CASCADE ON UPDATE CASCADE NOT NULL,
+    quiz_id INT
+        REFERENCES quiz(id)
+        ON UPDATE CASCADE NOT NULL,
     slug TEXT NOT NULL
         CHECK (slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$' AND char_length(slug) < 100),
     is_markdown BOOLEAN DEFAULT false,

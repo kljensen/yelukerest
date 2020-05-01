@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS quiz_answer (
     -- This quiz answer must point to a quiz submission
     FOREIGN KEY (quiz_id, user_id)
         REFERENCES quiz_submission(quiz_id, user_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
+        ON UPDATE CASCADE,
     -- This quiz answer must point to a quiz question option
     FOREIGN KEY (quiz_question_option_id, quiz_id)
         REFERENCES quiz_question_option(id, quiz_id)
-        ON UPDATE CASCADE ON DELETE CASCADE,
+        ON UPDATE CASCADE,
 
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL

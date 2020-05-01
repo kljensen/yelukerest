@@ -5,10 +5,8 @@ CREATE TABLE IF NOT EXISTS user_secret (
         CHECK (slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$' AND char_length(slug) < 100),
     body TEXT NOT NULL,
     user_id INT REFERENCES "user"(id)
-        ON DELETE CASCADE
         ON UPDATE CASCADE,
     team_nickname TEXT REFERENCES team(nickname)
-        ON DELETE CASCADE
         ON UPDATE CASCADE
         CHECK (char_length(team_nickname) < 50),
     created_at TIMESTAMP WITH TIME ZONE

@@ -15,11 +15,11 @@ CREATE TABLE IF NOT EXISTS assignment_grade (
     -- Must point to assignment
     FOREIGN KEY (assignment_slug, points_possible)
         REFERENCES assignment(slug, points_possible)
-        ON UPDATE CASCADE ON DELETE CASCADE,
+        ON UPDATE CASCADE,
     -- Must point to a assignment submission
     FOREIGN KEY (assignment_submission_id, assignment_slug)
         REFERENCES assignment_submission(id, assignment_slug)
-        ON UPDATE CASCADE ON DELETE CASCADE
+        ON UPDATE CASCADE
 );
 
 CREATE OR REPLACE FUNCTION fill_assignment_grade_defaults()
