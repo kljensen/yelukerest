@@ -1,76 +1,44 @@
-const common = require('./common.js');
-const restService = common.restService;
-const jwt = common.jwt;
-const resetdb = common.resetdb;
-const baseURL = common.baseURL;
+const chai = require('chai');
 const request = require('supertest');
-const should = require("should");
+const common = require('./common.js');
 
-describe.skip('auth', function () {
-    before(function (done) {
+chai.should();
+
+const { resetdb, baseURL } = common;
+
+describe('auth/login', () => {
+    before((done) => {
         resetdb();
         done();
     });
 
-    it('login', function (done) {
-        restService()
-            .post('/rpc/login?select=me,token')
-            .set('Accept', 'application/vnd.pgrst.object+json')
-            .send({
-                email: "alice@email.com",
-                password: "pass"
-            })
-            .expect('Content-Type', /json/)
-            .expect(200, done)
-            .expect(r => {
-                //console.log(r.body)
-                r.body.me.email.should.equal('alice@email.com');
-            })
+    it('should redirect to CAS', (done) => {
+        request(baseURL).get('/auth/login').expect(307, done);
     });
 
-    it('me', function (done) {
-        restService()
-            .post('/rpc/me')
-            .set('Accept', 'application/vnd.pgrst.object+json')
-            .set('Authorization', 'Bearer ' + jwt)
-            .send({})
-            .expect('Content-Type', /json/)
-            .expect(200, done)
-            .expect(r => {
-                //console.log(r.body)
-                r.body.email.should.equal('alice@email.com');
-            })
-    });
+    // it('me', (done) => {
+    //     restService()
+    //         .post('/rpc/me')
+    //         .set('Accept', 'application/vnd.pgrst.object+json')
+    //         .set('Authorization', `Bearer ${jwt}`)
+    //         .send({})
+    //         .expect('Content-Type', /json/)
+    //         .expect(200, done)
+    //         .expect((r) => {
+    //             r.body.email.should.equal('alice@email.com');
+    //         });
+    // });
 
-    it('refresh_token', function (done) {
-        restService()
-            .post('/rpc/refresh_token')
-            .set('Accept', 'application/vnd.pgrst.object+json')
-            .set('Authorization', 'Bearer ' + jwt)
-            .send({})
-            .expect('Content-Type', /json/)
-            .expect(200, done)
-            .expect(r => {
-                //console.log(r.body)
-                r.body.length.should.above(0);
-            })
-    });
-
-    it('signup', function (done) {
-        restService()
-            .post('/rpc/signup')
-            .set('Accept', 'application/vnd.pgrst.object+json')
-            .send({
-                name: "John Doe",
-                email: "john@email.com",
-                password: "pass"
-            })
-            .expect('Content-Type', /json/)
-            .expect(200, done)
-            .expect(r => {
-                //console.log(r.body)
-                r.body.me.email.should.equal('john@email.com');
-            })
-    });
-
+    // it('refresh_token', (done) => {
+    //     restService()
+    //         .post('/rpc/refresh_token')
+    //         .set('Accept', 'application/vnd.pgrst.object+json')
+    //         .set('Authorization', `Bearer ${jwt}`)
+    //         .send({})
+    //         .expect('Content-Type', /json/)
+    //         .expect(200, done)
+    //         .expect((r) => {
+    //             r.body.length.should.above(0);
+    //         });
+    // });
 });
