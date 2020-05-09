@@ -3,6 +3,7 @@ const request = require('supertest');
 const common = require('./common.js');
 
 chai.should();
+const { expect } = chai;
 
 const { resetdb, baseURL } = common;
 
@@ -13,7 +14,10 @@ describe('auth/login', () => {
     });
 
     it('should redirect to CAS', (done) => {
-        request(baseURL).get('/auth/login').expect(307, done);
+        request(baseURL)
+            .get('/auth/login')
+            .expect(307, done)
+            .expect('location', /^http/i);
     });
 
     // it('me', (done) => {
