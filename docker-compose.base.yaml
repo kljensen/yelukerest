@@ -54,7 +54,7 @@ services:
     # After some processing/checks and transformation, the request is forwarded
     # to PostgREST down the stack.
     openresty:
-        image: openresty/openresty:stretch
+        image: openresty/openresty:1.15.8.3-2-stretch
         ports:
             - '${OPENRESTY_LISTEN_HOST}:80:80'
             - '${OPENRESTY_LISTEN_HOST}:443:443'
