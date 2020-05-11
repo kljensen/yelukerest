@@ -93,6 +93,7 @@ services:
             - REDIS_PORT=${REDIS_PORT}
             - JWT_SECRET=${JWT_SECRET}
             - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
+            - DEVELOPMENT=${DEVELOPMENT}
         volumes:
             - elmclient-build:/var/elmclient/
             - yelukerest-letsencrypt:/etc/letsencrypt/
