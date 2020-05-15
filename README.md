@@ -65,6 +65,20 @@ To run the tests, do `npm test` from the root of this project.
 The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
 tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
 
+## Starting in a new development environment
+
+When you checkout this repo anew and wish to work on yelukerest you'll
+need to complete a few steps.
+
+1. Create the letsencrypt volume
+   `docker volume create --name=yelukerest-letsencrypt`
+2. Create local certs for https
+   `./bin/create-local-dev-https-certs.sh`
+3. Create the `.env` file with all the variables you need. Likely best to get this from another
+   machine on which the code is working.
+4. Start the server
+   `docker-compose -f docker-compose.base.yaml -f docker-compose.dev.yaml up`
+
 ## Random notes
 
 ### Restoring production backups
@@ -78,7 +92,7 @@ pg_restore --host $HOST -U superuser -d app --port $PORT --clean --exit-on-error
 
 The `--clean` will drop (or truncate?) tables.
 
-### Getting the initial letsencrypt certificate
+### Getting the initial letsencrypt certificate in production
 
 To get certificates _issued_ do something like the following
 
@@ -88,25 +102,6 @@ docker run -p 80:80 -it -v yelukerest-letsencrypt:/etc/letsencrypt certbot/certb
 ```
 
 Run that when not running anything else. Data are persisted to the yelukerest-letsencrypt data volume.
-
-When working on localhost, you'll need a cert for localhost that you'll trust on a one-off basis.
-
-docker run -it -v yelukerest-letsencrypt:/etc/letsencrypt debian:stretch /bin/bash
-
-```
-apt-get update && apt-get install -y openssl
-mkdir /etc/letsencrypt/live/localhost
-cd /etc/letsencrypt/live/localhost
-openssl req -x509 -out fullchain.pem -keyout privkey.pem -newkey rsa:2048 -nodes -sha256 -subj '/CN=localhost' -extensions EXT -config <( \\
-      printf "[dn]\nCN=localhost\n[req]\ndistinguished_name = dn\n[EXT]\nsubjectAltName=DNS:localhost\nkeyUsage=digitalSignature\nextendedKeyUsage=serverAuth")
-```
-
-This will create two files: `fullchain.pem` and `privkey.pem`, that you will
-need to move into the `yelukerest-letsencrypt` volume at `/etc/letsencrypt/live/localhost`.
-Certbot will not be running in development, so it won't try to renew those certs.
-The first time you visit the running website on localhost in development you'll
-likely be prompted by your browser to accept and remember the self-signed
-certificate.
 
 ### Adding a table when working on the database
 
