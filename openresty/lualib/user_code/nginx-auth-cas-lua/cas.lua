@@ -1,34 +1,18 @@
 local http = require('resty.http')
+local session_store = require "resty.session"
+-- session_store.cookie.samesite = "Strict"
 
 local conf = {
-   cas_uri = "https://127.0.0.1/cas";
+   cas_uri = "https://localhost/cas";
 }
 local cas_uri = conf.cas_uri
-local cookie_name = conf.cookie_name or "NGXCAS"
-local cookie_params = conf.cookie_params or "; Path=/; Secure; HttpOnly"
-local session_lifetime = conf.session_lifetime or 3600
-local store = ngx.shared[conf.store_name or "cas_store"]
 
+
+-- In development mode, we skip ssl verification because
+-- it is likely we're using self-signed certificates.
 local ssl_verify = true
 if ngx.var.development ~= nil then
    ssl_verify = false
-end
-
-
-local function _to_table(v)
-   if v == nil then
-      return {}     
-   elseif type(v) == "table" then
-      return v
-   else
-      return { v }
-   end
-end
-   
-local function _set_cookie(cookie_str)    
-   local h = _to_table(ngx.header['Set-Cookie'])
-   table.insert(h, cookie_str)
-   ngx.header['Set-Cookie'] = h
 end
 
 local function _uri_without_ticket()
@@ -39,55 +23,13 @@ local function _cas_login()
    return cas_uri .. "/login?" .. ngx.encode_args({ service = _uri_without_ticket() })
 end
 
-local function _get_sessionId()
-   return ngx.var["cookie_" .. cookie_name]
-end
-
-local function _set_our_cookie(val)
-   _set_cookie(cookie_name .. "=" .. val .. cookie_params)
-end
-
 local function first_access()
    ngx.redirect(_cas_login(), ngx.HTTP_MOVED_TEMPORARILY)
 end
 
-local function with_sessionId(sessionId)
-   -- does the cookie exist in our store?
-   local user = store:get(sessionId);
-   if user == nil then
-      -- the sessionId has expired
-      -- remove cookie immediately otherwise the client hits an infinite loop if the invalid cookie still exists.
-      _set_our_cookie("deleted; Max-Age=0")
-      first_access()
-   else
-      -- refresh the TTL
-      store:set(sessionId, user, session_lifetime)
-      
-      -- export REMOTE_USER header to the application
-      ngx.req.set_header("REMOTE_USER", user)
-   end
-end
-
-local function _set_store_and_cookie(sessionId, user)  
-   -- place cookie into cookie store
-   local success, err, forcible = store:add(sessionId, user, session_lifetime)
-   if success then
-      if forcible then
-         ngx.log(ngx.WARN, "CAS cookie store is out of memory")
-      end
-      _set_our_cookie(sessionId)
-   else      
-      if err == "no memory" then
-         -- store:add will attempt to remove old entries if it is full
-         -- it should only happen in case of memory segmentation
-         ngx.log(ngx.EMERG, "CAS cookie store is out of memory")
-      elseif err == "exists" then
-         ngx.log(ngx.ERR, "Same CAS ticket validated twice, this should never happen!")
-      end
-   end
-   return success
-end
-
+-- Contact the CAS server to validate a ticket.
+-- returns `nil` in case of an invalid ticket.
+--
 local function _validate(ticket)
    -- send a request to CAS to validate the ticket
    local httpc = http.new()
@@ -108,10 +50,20 @@ local function _validate(ticket)
    return nil
 end
 
+
+-- Grab the `ticket` query parameter from the request
+-- URL and validate this ticket with the CAS server.
+-- If the ticket is valid, reload the current page without
+-- the `ticket` URL parameter.
+--
 local function validate_with_CAS(ticket)
-   local user = _validate(ticket)
-   if user and _set_store_and_cookie(ticket, user) then
+   local netid = _validate(ticket)
+   if netid then
       -- remove ticket from url
+      local session = session_store.start()
+      session.data.netid = netid
+      session:save()
+      -- TODO: handle case of save failure?
       ngx.redirect(_uri_without_ticket(), ngx.HTTP_MOVED_TEMPORARILY)
    else
       first_access()
@@ -119,27 +71,34 @@ local function validate_with_CAS(ticket)
 end
 
 local function forceAuthentication()
-   local sessionId = _get_sessionId()
-   if sessionId ~= nil then
-      return with_sessionId(sessionId)
+   local session = session_store.open()
+   
+   -- VALID SESSION
+   if session.data.netid ~= nil then
+      -- Let them proceed and set the ngx.ctx.netid variable so
+      -- that it can be accessed in other routes without reading
+      -- cookies or the session store again.
+      -- See https://github.com/openresty/lua-nginx-module#ngxctx
+      ngx.ctx.netid = session.data.netid
+      return
    end
 
+   -- INVALID SESSION OR NO SESSION
+   -- Delete any cookies they sent
+   session:destroy()
    local ticket = ngx.var.arg_ticket
    if ticket ~= nil then
+      -- They are trying to validate a ticket, e.g.
+      -- they were redirected back here from 
       validate_with_CAS(ticket)
    else
       first_access()
    end
 end
 
-local function logout(local_logout)
-   store:delete(_get_sessionId())
-   _set_our_cookie("deleted; Max-Age=0")
-
-   if not local_logout then
-      -- redirect to cas logout
-      ngx.redirect(cas_uri .. "/logout")
-   end
+local function logout()
+   local session = session_store.open()
+   session:destroy()
 end
 
 return {
