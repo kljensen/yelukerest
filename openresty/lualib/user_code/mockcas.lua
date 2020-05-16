@@ -2,10 +2,42 @@
 local ticket_store = ngx.shared.mockcas_tickets
 local ticket_ttl = 600
 
--- The HTML for the login form
-local form = [[
-    <html><head><title>MockCAS</title></head><body><h1>Fill in the netid with with you want to authenticate!</h1><form method="GET"><div><div><label for="id">Netid:</label></div><div><input type="text" name="id"></div></div><div><div><label for="service">Service:</label></div><div><input type="text" name="service" value="foo"></div></div><div><button type="submit">Submit</button></div></form></body></html>
-]]
+
+-- Escape HTML entities
+local function escape(s)
+    if s == nil then return '' end
+    local esc, i = s:gsub('&', '&'):gsub('<', '<'):gsub('>', '>')
+    return esc
+end
+
+-- If val is nil, return an empty string, otherwise
+-- something like value="foo" so we can use this in
+-- a form.
+local function make_form_value(val)
+    local form_value = ""
+    if val ~= nil then
+        form_value = " value=\"" .. escape(val) .. "\""
+    end
+    return form_value
+end
+
+local function get_form_html(user_id, service)
+    local markup = (
+        [[
+        <html><head><title>MockCAS</title></head><body>
+        <h1>Fill in the netid with with you want to authenticate!</h1>
+        <form method="GET">
+        <div>
+        <div><label for="id">Netid:</label></div><div>
+            <input type="text" name="id"]] .. make_form_value(user_id) .. [[>
+        </div></div>
+        <div><div><label for="service">Service:</label></div><div>
+            <input type="text" name="service"]] .. make_form_value(service) .. [[>
+          </div></div><div><button type="submit">Submit</button></div></form></body></html>
+        ]]
+    )
+    return markup
+end
 
 -- XML returned when a ticket is invalid
 local function get_failure_xml(ticket)
@@ -15,7 +47,11 @@ end
 -- Gets the XML to return when we have a valid ticket
 -- in the serviceValidate route
 local function get_success_xml(user_id)
-     return [[<cas:serviceResponse xmlns:cas="https:/www.yale.edu/tp.cas"><cas:authenticationSuccess><cas:user>]] .. user_id .. [[</cas:user><cas:foo>bar</cas:foo></cas:authenticationSuccess></cas:serviceResponse> ]]
+    return (
+         [[<cas:serviceResponse xmlns:cas="https:/www.yale.edu/tp.cas"><cas:authenticationSuccess><cas:user>]]
+         .. user_id ..
+         [[</cas:user><cas:foo>bar</cas:foo></cas:authenticationSuccess></cas:serviceResponse> ]]
+    )
 end
 
 local function redirect_to_service(user_id, service)
@@ -34,13 +70,13 @@ local function login()
     -- See if we have `id` or `service` parameters
     -- in the request URI.
     local args, err = ngx.req.get_uri_args()
-    user_id = args["id"]
-    service = args["service"]
+    local user_id = args["id"]
+    local service = args["service"]
 
     -- Either show them a form or redirect.
     if user_id == nil or service == nil then
         -- Give the user a fake login page.
-        return ngx.say(form)
+        return ngx.say(get_form_html(user_id, service))
     else
         -- We have a user id and a service,
         -- create a mock ticket and redirect

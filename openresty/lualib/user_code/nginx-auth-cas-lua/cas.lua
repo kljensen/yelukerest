@@ -1,11 +1,18 @@
 local http = require('resty.http')
 
-local conf = require(ngx.var.cas_conf or "global_cas_conf")
+local conf = {
+   cas_uri = "https://127.0.0.1/cas";
+}
 local cas_uri = conf.cas_uri
 local cookie_name = conf.cookie_name or "NGXCAS"
 local cookie_params = conf.cookie_params or "; Path=/; Secure; HttpOnly"
 local session_lifetime = conf.session_lifetime or 3600
 local store = ngx.shared[conf.store_name or "cas_store"]
+
+local ssl_verify = true
+if ngx.var.development ~= nil then
+   ssl_verify = false
+end
 
 
 local function _to_table(v)
@@ -84,7 +91,7 @@ end
 local function _validate(ticket)
    -- send a request to CAS to validate the ticket
    local httpc = http.new()
-   local res, err = httpc:request_uri(cas_uri .. "/serviceValidate", { query = { ticket = ticket, service = _uri_without_ticket() } })
+   local res, err = httpc:request_uri(cas_uri .. "/serviceValidate", { query = { ticket = ticket, service = _uri_without_ticket() }, ssl_verify = ssl_verify })
   
    if res and res.status == ngx.HTTP_OK and res.body ~= nil then
       if string.find(res.body, "<cas:authenticationSuccess>") then
