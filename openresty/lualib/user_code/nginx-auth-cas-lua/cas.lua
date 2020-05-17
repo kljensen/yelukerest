@@ -101,7 +101,15 @@ local function logout()
    session:destroy()
 end
 
+-- Redirect the user either to the URL specifiied in the request's
+-- ?next= parameter or to the homepage.
+local function redirect_to_next()
+   local next = ngx.var.arg_next or "/"
+   ngx.redirect(next, ngx.HTTP_MOVED_TEMPORARILY)
+end
+
 return {
    forceAuthentication = forceAuthentication;   
    logout = logout;
+   redirect_to_next=redirect_to_next;
 }
