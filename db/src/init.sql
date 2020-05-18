@@ -16,11 +16,11 @@ set client_min_messages to warning;
 \echo # Loading database definition
 begin;
 
+create extension if not exists pgcrypto;
+
 \echo # Loading dependencies
 -- functions for storing different settins in a table
 \ir libs/settings/schema.sql
--- functions implementing authentication (parts of the lib are included in data and api schema)
-\ir libs/auth/schema.sql
 -- functions for reading different http request properties exposed by PostgREST
 \ir libs/request/schema.sql
 -- functions for sending messages to RabbitMQ entities
@@ -37,6 +37,10 @@ select settings.set('auth.default-role', 'student');
 -- you can use othere names besides "data" or even spread the tables
 -- between different schemas. The schema name "data" is just a convention
 \ir data/schema.sql
+
+-- functions implementing authentication (parts of the lib are included in data and api schema)
+\ir libs/auth/schema.sql
+
 -- entities inside this schema (which should be only views and stored procedures) will be 
 -- exposed as API endpoints. Access to them however is still governed by the 
 -- privileges defined for the current PostgreSQL role making the requests
