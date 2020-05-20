@@ -60,7 +60,11 @@ end
 -- an ngx error code
 local function fetch_user_jwt(netid)
     local user_jwt_info, err, code =  fetch_user_jwt_info(netid)
-    return user_jwt_info["jwt"], err, code
+    local jwt = nil
+    if user_jwt_info ~= nil then
+        jwt = user_jwt_info["jwt"]
+    end
+    return jwt, err, code
 end
 
 local function get_jwt(netid)
