@@ -11,6 +11,7 @@
         "eslint-config-airbnb-base": "^14.1.0",
         "eslint-plugin-import": "^2.20.2",
         "expect-cookies": "^0.1.2",
+        "jsonwebtoken": "^8.5.1",
         "lodash": "^4.17.15",
         "npm": "^6.14.5",
         "subzero-cli": "^0.1.41"
