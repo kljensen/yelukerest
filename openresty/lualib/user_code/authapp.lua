@@ -5,10 +5,11 @@ local authapp_jwt = os.getenv("AUTHAPP_JWT")
 local postgrest_host = os.getenv("POSTGREST_HOST")
 local postgrest_port = os.getenv("POSTGREST_PORT")
 
--- Fetches a JWT for a user from postgrest.
--- Returns the JWT, an error message, and
--- an ngx error code
-local function fetch_jwt_for_user(netid)
+
+-- Fetches a row from the `user_jwts` api
+-- for the netid. This should be the netid
+-- of the logged in user!
+local function fetch_user_jwt_info(netid)
 
     -- If there is no net id, forbidden
     if netid == nil or netid == "" then
@@ -43,24 +44,57 @@ local function fetch_jwt_for_user(netid)
 
     -- Print the JWT in the response
     local jwt = data["jwt"]
-    if jwt == nil then
+    if jwt == nil or type(jwt) ~= "string" or jwt == "" then
         -- If there is no JWT, the user is not authorized
         return nil, "error parsing jwt", ngx.HTTP_FORBIDDEN
     end
-    return jwt, nil, ngx.HTTP_OK
+
+    -- The returned data is assured to have a "jwt" element.
+    return data, nil, ngx.HTTP_OK
+end
+
+-- Fetches a JWT for a user from postgrest.
+-- Returns the JWT, an error message, and
+-- an ngx error code
+local function fetch_user_jwt(netid)
+    local user_jwt_info, err, code =  fetch_user_jwt_info(netid)
+    return user_jwt_info["jwt"], err, code
 end
 
 local function get_jwt(netid)
-    local jwt, err, status_code = fetch_jwt_for_user(netid)
+    local jwt, err, status_code = fetch_user_jwt(netid)
     ngx.log(ngx.WARN, "Error fetching JWT: ", err)
     if err == nil then
+        ngx.header['content-type'] = 'text/plain; charset=utf-8' 
         ngx.print(jwt)
     else
         ngx.exit(status_code)
     end
 end
 
+-- Writes response containing the `user_jwt` info for a particular netid,
+-- e.g.
+-- {"jwt":"eyJhbGciOiJIUzI9ff_6uhTJRODYLism9e_AvcWfyWYGX0","id":3,"email":"kyle.jensen@yale.edu","netid":"klj39","name":"Kyle Jensen","lastname":null,"organization":null,"known_as":"Kyle","nickname":"shiny-turd","role":"faculty","created_at":"2017-12-27T19:13:36+00:00","updated_at":"2020-05-20T18:25:10.677357+00:00","team_nickname":"bright-fog"}%
+local function get_me(netid)
+    local data, err, status_code = fetch_user_jwt_info(netid)
+    ngx.log(ngx.WARN, "Error fetching JWT: ", err)
+
+    -- Bail early if error
+    if err ~= nil then
+        ngx.exit(status_code)
+    end
+
+    encoded_data, err = cjson_safe.encode(data)
+    if encoded_data == nil or err ~= nil then
+        return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    end
+    ngx.header['encoded_data-type'] = 'application/json; charset=utf-8' 
+    ngx.print(encoded_data)
+end
+
 return {
     get_jwt = get_jwt;
-    fetch_jwt_for_user = fetch_jwt_for_user;
+    get_me = get_me;
+    fetch_user_jwt = fetch_user_jwt;
+    fetch_user_jwt_info = fetch_user_jwt_info;
 }

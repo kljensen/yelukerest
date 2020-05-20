@@ -53,7 +53,7 @@ end
 
 -- Check if user is registered
 local function user_is_registered(netid)
-   local jwt, err, status_code = authapp.fetch_jwt_for_user(netid)
+   local jwt, err, status_code = authapp.fetch_user_jwt(netid)
    if jwt ~= nil and err == nil then
       return true
    end
