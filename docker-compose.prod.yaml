@@ -35,39 +35,9 @@ services:
       - DB_ANON_ROLE=${DB_ANON_ROLE}
       - DEVELOPMENT=${DEVELOPMENT}
       - JWT_SECRET=${JWT_SECRET}
-      - AUTHAPP_DB_PASS=${AUTHAPP_DB_PASS}
-      - AUTHAPP_DB_USER=${AUTHAPP_DB_USER}
 
     volumes:
       - yelukerest-pg-data:/var/lib/postgresql/data
-
-  authapp:
-    build: authapp
-    working_dir: /app
-    ports:
-      - "127.0.0.1:8081:${AUTHAPP_PORT}"
-    links:
-      - redis:redis
-    environment:
-      - DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
-      - DEVELOPMENT=${DEVELOPMENT}
-      - CAS_HOST=secure.its.yale.edu
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_SCHEMA=${DB_SCHEMA}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${AUTHAPP_DB_USER}
-      - DB_PASS=${AUTHAPP_DB_PASS}
-      - JWT_SECRET=${JWT_SECRET}
-
-    volumes:
-      - "./authapp/src:/app/src"
-      - "./authapp/run.sh:/app/run.sh"
-    entrypoint: "/app/run.sh"
-
 
   backup:
     build: backup

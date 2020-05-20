@@ -42,11 +42,6 @@ The roles of the most important components are as follows:
   HTTP requests and proxies them to relevant backend services, such as postgrest.
 - _[certbot](https://certbot.eff.org/)_ - obtains and renews SSL certificates
   for openresty.
-- _authapp_ - communicates with a CAS server to authenticate users. Stores user
-  sessions in signed client-side cookies and severside in redis.
-- _[redis](https://redis.io/)_ - used to store user session information on
-  the backend.
-- _mockcas_ - Used in development as a mock CAS server.
 - _elmclient_ - a front-end client that runs in web browsers and communicates
   with the API. This is the main way in which students interact with the
   API.

@@ -60,10 +60,8 @@ services:
             - '${OPENRESTY_LISTEN_HOST}:443:443'
         links:
             - postgrest:postgrest
-            - authapp:authapp
             - sse:sse
             - certbot:certbot
-            - redis:redis
         entrypoint: /entrypoint.sh
         restart: on-failure
         environment:
@@ -72,8 +70,6 @@ services:
             # - DEVELOPMENT=${DEVELOPMENT}
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
-            - AUTHAPP_HOST=${AUTHAPP_HOST}
-            - AUTHAPP_PORT=${AUTHAPP_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
             - ELMCLIENT_HOST=${ELMCLIENT_HOST}
             - ELMCLIENT_PORT=${ELMCLIENT_PORT}
@@ -90,8 +86,6 @@ services:
             - SWAGGER_INFO_DESCRIPTION=${SWAGGER_INFO_DESCRIPTION}
             - SSE_HOST=${SSE_HOST}
             - SSE_PORT=${SSE_PORT}
-            - REDIS_HOST=${REDIS_HOST}
-            - REDIS_PORT=${REDIS_PORT}
             - JWT_SECRET=${JWT_SECRET}
             - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
             - DEVELOPMENT=${DEVELOPMENT}
@@ -129,10 +123,6 @@ services:
         environment:
             - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
             - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
-    redis:
-        image: redis:4
-        ports:
-            - '127.0.0.1:6379:6379'
     sse:
         build: sse
         ports:
