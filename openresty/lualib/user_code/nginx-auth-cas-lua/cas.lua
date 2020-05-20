@@ -105,50 +105,49 @@ local function get_netid_from_session(session)
 end
 
 
--- This function should be used like
--- ```
--- access_by_lua_block {
---   require('cas').require_authentication()
--- }
--- The user will be permitted if they have a
--- valid session. Otherwise they will get a 401
--- unauthorized.
---       
-local function require_authentication()
+local function session_and_netid()
    local session = session_store.open()
    local netid = get_netid_from_session(session)
-
-   -- Valid session. Let them pass.
-   if netid ~= nil then
-      return
-   end
-   ngx.exit(ngx.HTTP_UNAUTHORIZED)
+   return session, netid
 end
 
--- This function should be used like
--- ```
--- access_by_lua_block {
---   require('cas').force_authentication()
--- }
--- The user will be permitted if they have a
--- valid session. Otherwise they will  be redirected
--- to the CAS server and back with a ticket.
--- Valid tickets will get a session
---
-local function force_authentication()
-   local session = session_store.open()
-   local netid = get_netid_from_session(session)
+
+-- Checks to see if there is a cookie and, if there is,
+-- destroys the session associated with that cookie, setting
+-- a new empty cookie in the client.
+local function destroy_invalid_session(session)
+   -- INVALID SESSION OR NO SESSION
+   local cookie = session:get_cookie()
+   local had_cookie = cookie ~= nil
+   if had_cookie then
+      -- Delete any cookies they sent
+      session:destroy()
+   end
+   return had_cookie
+end
+
+-- Handle auth, everything else is a wrapper
+-- around this.
+local function authentication(force)
+   local session, netid = session_and_netid()
 
    -- Valid session. Let them pass.
    if netid ~= nil then
       return
    end
 
-   -- INVALID SESSION OR NO SESSION
-   cookie = session:get_cookie()
-   if cookie ~= nil then
-      -- Delete any cookies they sent
-      session:destroy()
+   -- Invalid session
+   local had_cookie = destroy_invalid_session(session)
+
+   -- we're done. This person is either unauthorized
+   -- (they sent no session info) or forbidden (what
+   -- they sent was invalid.)
+   if not force then
+      local status_code = ngx.HTTP_UNAUTHORIZED
+      if had_cookie then
+         status_code = ngx.HTTP_FORBIDDEN
+      end
+      ngx.exit(status_code)
    end
 
    -- See if they are trying to validate a ticket,
@@ -162,6 +161,34 @@ local function force_authentication()
       first_access()
    end
 end
+
+-- This function should be used like
+-- ```
+-- access_by_lua_block {
+--   require('cas').require_authentication()
+-- }
+-- The user will be permitted if they have a
+-- valid session. Otherwise they will get a 401
+-- unauthorized.
+--       
+local function require_authentication()
+   return authentication(false)
+end
+
+-- This function should be used like
+-- ```
+-- access_by_lua_block {
+--   require('cas').force_authentication()
+-- }
+-- The user will be permitted if they have a
+-- valid session. Otherwise they will  be redirected
+-- to the CAS server and back with a ticket.
+-- Valid tickets will get a session
+--
+local function force_authentication()
+   return authentication(true)
+end
+
 
 local function logout()
    local session = session_store.open()
