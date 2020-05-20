@@ -1,10 +1,20 @@
 local http = require('resty.http')
 local session_store = require "resty.session"
 local authapp = require "authapp"
--- session_store.cookie.samesite = "Strict"
+local cas_uri = os.getenv("AUTHAPP_CAS_URI")
+
+local function starts_with(str, start)
+   return str:sub(1, #start) == start
+end
+
+local function starts_with_http(uri)
+   return type(uri) == "string" and starts_with(uri, "http")
+end
+
+assert(starts_with_http(cas_uri), "Environment variable AUTHAPP_CAS_URI is not set or invalid")
 
 local conf = {
-   cas_uri = "https://localhost/cas";
+   cas_uri = cas_uri;
 }
 local cas_uri = conf.cas_uri
 

@@ -4,6 +4,8 @@ local cjson_safe = require "cjson.safe"
 local authapp_jwt = os.getenv("AUTHAPP_JWT")
 local postgrest_host = os.getenv("POSTGREST_HOST")
 local postgrest_port = os.getenv("POSTGREST_PORT")
+assert(type(postgrest_host) == "string" and string.len(postgrest_host) > 0, "Environment variable POSTGREST_HOST not set")
+assert(type(postgrest_port) == "string" and string.len(postgrest_port) > 0, "Environment variable POSTGREST_PORT not set")
 
 
 -- Fetches a row from the `user_jwts` api

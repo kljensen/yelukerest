@@ -65,9 +65,8 @@ services:
         entrypoint: /entrypoint.sh
         restart: on-failure
         environment:
+            - DEVELOPMENT=${DEVELOPMENT}
             - FQDN=${FQDN}
-            # - JWT_SECRET=${JWT_SECRET}
-            # - DEVELOPMENT=${DEVELOPMENT}
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
@@ -75,20 +74,13 @@ services:
             - ELMCLIENT_PORT=${ELMCLIENT_PORT}
             - SHAREDTERMINAL_PORT=${SHAREDTERMINAL_PORT}
             - SHAREDTERMINAL_HOST=${SHAREDTERMINAL_HOST}
-            # - DB_HOST=${DB_HOST}
-            # - DB_PORT=${DB_PORT}
-            # - DB_NAME=${DB_NAME}
-            # - DB_SCHEMA=${DB_SCHEMA}
-            # - DB_USER=${DB_USER}
-            # - DB_PASS=${DB_PASS}
             - SWAGGER_JWT=${SWAGGER_JWT}
             - SWAGGER_INFO_TITLE=${SWAGGER_INFO_TITLE}
             - SWAGGER_INFO_DESCRIPTION=${SWAGGER_INFO_DESCRIPTION}
             - SSE_HOST=${SSE_HOST}
             - SSE_PORT=${SSE_PORT}
             - JWT_SECRET=${JWT_SECRET}
-            - SESSION_SECRET=${AUTHAPP_SESSION_SECRET}
-            - DEVELOPMENT=${DEVELOPMENT}
+            - AUTHAPP_CAS_URI=${AUTHAPP_CAS_URI}
         volumes:
             - elmclient-build:/var/elmclient/
             - yelukerest-letsencrypt:/etc/letsencrypt/
