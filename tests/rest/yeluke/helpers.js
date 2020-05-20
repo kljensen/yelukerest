@@ -1,3 +1,4 @@
+/* eslint-disable no-console,no-useless-catch */
 const request = require('supertest');
 const we = require('chai');
 const url = require('url');
@@ -68,22 +69,28 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
     for (let tries = 0; tries < 2; tries += 1) {
         let finalResponse;
         try {
-            const finalURL = new url.URL(previousResponse.headers.location);
+            const { location } = previousResponse.headers;
+            if (!location) {
+                break;
+            }
+            const finalURL = new url.URL(location);
+            // eslint-disable-next-line no-await-in-loop
             finalResponse = await request.agent(`${finalURL.protocol}//${finalURL.host}`)
                 .get(`${finalURL.pathname}${finalURL.search}`)
                 .retry(2);
             // .expect(agentCookies.set(yelukeCookieInfo));
+            previousResponse = finalResponse;
+            if (finalResponse.header['set-cookie']) {
+                sidCookie = finalResponse.header['set-cookie'];
+                break;
+            }
         } catch (error) {
             throw error;
         }
-        previousResponse = finalResponse;
-        if (finalResponse.header['set-cookie']) {
-            sidCookie = finalResponse.header['set-cookie'];
-            break;
-        }
-
     }
-
+    if (!sidCookie) {
+        sidCookie = null;
+    }
     return sidCookie;
 }
 
@@ -160,6 +167,9 @@ async function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, con
         jwt = await getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
     } catch (error) {
         throw error;
+    }
+    if (jwt === null) {
+        jwt = undefined;
     }
     return jwt;
 }
