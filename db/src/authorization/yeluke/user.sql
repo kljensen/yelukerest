@@ -11,12 +11,19 @@ using (
 	(request.user_role() = 'student' and request.user_id() = id)
 	or
 	-- faculty and tas can see all users
-	(request.user_role() = ANY('{faculty,ta}'::text[]) or current_user = 'authapp')
+	(request.user_role() = ANY('{faculty,ta}'::text[]))
+	OR
+	-- The authapp can view users
+	(
+		request.user_role() = 'app'
+		AND
+		request.app_name() = 'authapp'
+	)
 );
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own users.
-grant select on api.users to student, ta, authapp;
+grant select on api.users to student, ta, app;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.users to faculty;

@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(16);
 
 create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean) as $$
     select (pgjwt.verify(
@@ -104,6 +104,7 @@ SELECT set_eq(
     'faculty should be able to select all user jwts'
 );
 
+set local role faculty;
 set request.jwt.claim.role = '';
 set request.jwt.claim.user_id = '';
 SELECT set_eq(
@@ -112,6 +113,27 @@ SELECT set_eq(
     $$,
     (ARRAY[])::TEXT[],
     'users with no role should not be able to select any user jwts'
+);
+
+set local role app;
+set request.jwt.claim.role = 'app';
+set request.jwt.claim.user_id = '';
+set request.jwt.claim.app_name = 'authapp';
+SELECT set_eq(
+    $$
+        SELECT (verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
+    $$,
+    ARRAY['1', '2', '3', '4', '5'],
+    'the authapp should be able to select all user jwts'
+);
+
+set request.jwt.claim.app_name = 'fooapp';
+SELECT set_eq(
+    $$
+        SELECT (verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
+    $$,
+    (ARRAY[])::TEXT[],
+    'other apps should not be able to select any user jwts'
 );
 
 

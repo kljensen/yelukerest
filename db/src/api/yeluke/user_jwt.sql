@@ -3,7 +3,17 @@ create or replace view user_jwts as
     -- Create a JWT only for faculty or for users viewing their own
     -- rows of data.
     case when
-    	(request.user_role() = 'faculty' OR (request.user_id() = id))
+    	(
+            request.user_role() = 'faculty'
+            OR
+            (request.user_id() = id)
+            OR
+            (
+                request.user_role() = 'app'
+                AND
+                request.app_name() = 'authapp'
+            )
+        )
     then
         auth.sign_jwt(id, "role")
     else

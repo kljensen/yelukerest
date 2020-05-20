@@ -11,7 +11,6 @@ set client_min_messages to warning;
 \set authenticator_pass `echo $DB_PASS`
 \set jwt_secret `echo $JWT_SECRET`
 \set quoted_jwt_secret '\'' :jwt_secret '\''
-\set authapp_pass `echo $AUTHAPP_DB_PASS`
 
 \echo # Loading database definition
 begin;

@@ -25,5 +25,24 @@ select * from check_test(
     ''
 );
 
+SELECT roles_are(ARRAY[
+    'faculty',
+    'authenticator',
+    'observer',
+    'student',
+    'superuser',
+    'app',
+    'anonymous',
+    'api',
+    'ta',
+    -- Everything below here is built-in/default
+    'pg_monitor',
+    'pg_stat_scan_tables',
+    'pg_read_all_settings',
+    'pg_signal_backend',
+    'pg_read_all_stats',
+    'postgres'
+]);
+
 select * from finish();
 rollback;

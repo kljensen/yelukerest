@@ -33,9 +33,10 @@ end;
 $$  language plpgsql;;
 
 select _temp_create_application_roles(:'authenticator', enum_range(null::data.user_role)::text[]);
+-- The `app` role is for apps that connect to the API, e.g. 
+-- a grading app. These are further distinguished by their
+-- `name` attributes in their JWT claims. The authenticator
+-- role can change to the app role, but `app` is not a valid
+-- user role.
+select _temp_create_application_roles(:'authenticator', ARRAY['app']);
 drop function _temp_create_application_roles(text, text[]);
-
--- Create the authapp user. Notice that these two variables
--- are passed in from the environment
-drop role if exists authapp;
-create role authapp with login password :'authapp_pass';
