@@ -107,7 +107,7 @@ services:
     # RabbitMQ instance can be used to consolidate events that originated in your database/application.
     # You can connect here with different consumers and take actions based on those events (like sending signup emails)
     rabbitmq:
-        image: rabbitmq:3-management
+        image: rabbitmq:3.8.3
         ports:
             - '127.0.0.1:5671:5671'
             - '127.0.0.1:5672:5672'
