@@ -28,7 +28,7 @@ services:
     # PostgREST instance, is responsible for communicating with the database
     # and providing a REST api, (almost) every request that is sent to the database goes through it
     postgrest:
-        image: postgrest/postgrest:v0.5.0.0-6bcbb12
+        image: postgrest/postgrest:v7.0.1
         ports:
             - '127.0.0.1:3000:${POSTGREST_PORT}'
         links:
