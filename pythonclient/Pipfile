@@ -11,6 +11,7 @@ ldap3 = "*"
 psycopg2 = "*"
 jinja2 = "*"
 requests = "*"
+ruamel-yaml = "*"
 
 [requires]
 python_version = "3.8"
