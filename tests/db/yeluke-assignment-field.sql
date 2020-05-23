@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(14);
 
 SELECT view_owner_is(
     'api', 'assignment_fields', 'api',
@@ -59,6 +59,44 @@ SELECT lives_ok(
 SELECT lives_ok(
     'DELETE FROM api.assignment_fields WHERE label = ''gobblygook''',
     'faculty can delete assignment_fields'
+);
+
+SELECT throws_like(
+    $$
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*')
+    $$,
+    '%violates check constraint%',
+    'if a pattern is provided, an example must be provided'
+);
+
+SELECT throws_like(
+    $$
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'bar')
+    $$,
+    '%violates check constraint%',
+    'if a pattern is provided, an example must match it (negative case)'
+);
+
+SELECT lives_ok(
+    $$
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'foobar')
+    $$,
+    'if a pattern is provided, an example must match it (positive case)'
+);
+
+SELECT throws_like(
+    $$
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'xfoobar')
+    $$,
+    '%violates check constraint%',
+    'patterns are anchored to front and back, so "foo.*" does not match "xfoobar"'
+);
+
+SELECT lives_ok(
+    $$
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug2', 'gobblygook', 'find this online', 'e.g. kljensen', '.*foo.*', 'xfoobar')
+    $$,
+    'patterns are anchored to front and back, so ".*foo.*" does not match "xfoobar"'
 );
 
 select * from finish();
