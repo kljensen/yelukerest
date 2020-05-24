@@ -323,36 +323,26 @@ showFormField submission assignmentField =
 
             else
                 "text"
+        commonAttributes = [
+            Attrs.placeholder assignmentField.placeholder
+            , Attrs.title assignmentField.help
+            , Attrs.name assignmentField.slug
+            , Attrs.pattern assignmentField.pattern
+            , Events.onInput
+            (Msgs.OnUpdateAssignmentFieldSubmissionInput
+                submission.id
+                assignmentField.slug
+            )]
     in
     Html.div []
         [ Html.label [] [ Html.text assignmentField.label ]
-        , case assignmentField.is_multiline of
-            True ->
+        , if assignmentField.is_multiline then
                 Html.textarea
-                    [ Attrs.class "textarea"
-                    , Attrs.placeholder assignmentField.placeholder
-                    , Attrs.name assignmentField.slug
-                    , Events.onInput
-                        (Msgs.OnUpdateAssignmentFieldSubmissionInput
-                            submission.id
-                            assignmentField.slug
-                        )
-                    ]
+                    ( Attrs.class "textarea" :: commonAttributes)
                     []
-
-            False ->
+            else
                 Html.input
-                    [ Attrs.type_ fieldType
-                    , Attrs.class "input field"
-                    , Attrs.placeholder assignmentField.placeholder
-                    , Attrs.title assignmentField.help
-                    , Attrs.name assignmentField.slug
-                    , Events.onInput
-                        (Msgs.OnUpdateAssignmentFieldSubmissionInput
-                            submission.id
-                            assignmentField.slug
-                        )
-                    ]
+                    ([ Attrs.type_ fieldType , Attrs.class "input field" ] ++ commonAttributes)
                     []
         ]
 

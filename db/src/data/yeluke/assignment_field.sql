@@ -1,3 +1,15 @@
+-- Tests if the first argument matches the regex in
+-- the second argument.
+create or replace function text_matches(text, text) returns bool as $$
+    select $1 ~ ('^(?:' || $2 || ')$')
+$$ stable language sql;
+
+-- Check if a value looks like a URL. Here, I'm going to get false negatives,
+-- but for the most part I don't care. See
+-- https://mathiasbynens.be/demo/url-regex
+create or replace function text_is_url(text) returns bool as $$
+    SELECT $1 ~* '^https?://[a-z0-9]+'
+$$ stable language sql;
 
 CREATE TABLE IF NOT EXISTS assignment_field (
     slug TEXT
@@ -13,8 +25,8 @@ CREATE TABLE IF NOT EXISTS assignment_field (
     is_multiline BOOLEAN NOT NULL DEFAULT false,
     display_order SMALLINT NOT NULL DEFAULT 0,
     -- The regular expression
-    pattern TEXT,
-    example TEXT,
+    pattern TEXT NOT NULL DEFAULT '.*',
+    example TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
@@ -23,11 +35,9 @@ CREATE TABLE IF NOT EXISTS assignment_field (
         DEFAULT current_timestamp,
     CONSTRAINT url_not_multiline CHECK (NOT (is_url AND is_multiline)),
     CONSTRAINT url_matches_example CHECK (
-        example is NULL
+        (is_url is FALSE)
         OR
-        is_url is FALSE
-        OR
-        example ~* 'https?://'
+        (is_url is TRUE and text_is_url(example))
     ),
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
     -- If there is a `pattern`, we also expect to receive an `example`
@@ -39,16 +49,7 @@ CREATE TABLE IF NOT EXISTS assignment_field (
     -- https://html.spec.whatwg.org/multipage/input.html#the-pattern-attribute
     -- This has the effect of anchoring the pattern to the beginning
     -- and end of the string: making the full `example` match.
-    CONSTRAINT pattern_requires_example CHECK (
-        (pattern IS NULL)
-        OR
-        (pattern IS NOT NULL AND example is NOT NULL)
-    ),
-    CONSTRAINT pattern_is_regex CHECK (
-        (pattern IS NULL)
-        OR
-        (example ~ ('^(?:' || pattern || ')$')) IS TRUE
-    ),
+    CONSTRAINT pattern_matches_example CHECK (text_matches(example, pattern)),
     PRIMARY KEY (slug, assignment_slug), 
     -- We need this unique index in order to pass
     -- along the `is_url` and `pattern` attributes

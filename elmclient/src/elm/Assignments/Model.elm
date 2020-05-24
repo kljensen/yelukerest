@@ -58,6 +58,8 @@ type alias AssignmentField =
     , label : String
     , help : String
     , placeholder : String
+    , example : String
+    , pattern : String
     , is_url : Bool
     , is_multiline : Bool
     , display_order : Int
@@ -150,6 +152,8 @@ assignmentFieldDecoder =
         |> required "label" Decode.string
         |> required "help" Decode.string
         |> required "placeholder" Decode.string
+        |> required "example" Decode.string
+        |> required "pattern" Decode.string
         |> required "is_url" Decode.bool
         |> required "is_multiline" Decode.bool
         |> required "display_order" Decode.int

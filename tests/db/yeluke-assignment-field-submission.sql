@@ -165,7 +165,7 @@ select set_eq (
   $$
     with 
     updated_rows as (
-      UPDATE api.assignment_field_submissions SET body='FOO' WHERE assignment_field_slug='repo-url' AND assignment_slug='project-update-1'
+      UPDATE api.assignment_field_submissions SET body='http://foo.edu' WHERE assignment_field_slug='repo-url' AND assignment_slug='project-update-1'
       RETURNING assignment_field_slug
     )
     select count(assignment_field_slug) as total from updated_rows
@@ -180,7 +180,7 @@ select set_eq (
   $$
     with 
     updated_rows as (
-      UPDATE api.assignment_field_submissions SET body='FOOBAR' WHERE assignment_field_slug='update-url'
+      UPDATE api.assignment_field_submissions SET body='HTTPS://FOOBAR' WHERE assignment_field_slug='update-url'
       RETURNING assignment_field_slug
     )
     select count(assignment_field_slug) as total from updated_rows

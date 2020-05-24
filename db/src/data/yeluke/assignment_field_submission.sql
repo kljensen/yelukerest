@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
     -- the assignment slug. This is a "diamond"
     -- dependency pattern.
     assignment_slug TEXT NOT NULL,
+    assignment_field_is_url BOOLEAN NOT NULL,
+    assignment_field_pattern TEXT NOT NULL,
     -- You can only submit one answer per field per submission,
     -- so it is a good primary key.
     PRIMARY KEY (assignment_submission_id, assignment_field_slug),
@@ -17,10 +19,10 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
         REFERENCES assignment_submission(id, assignment_slug)
         ON UPDATE CASCADE,
     FOREIGN KEY
-        (assignment_field_slug, assignment_slug)
-        REFERENCES assignment_field(slug, assignment_slug)
+        (assignment_field_slug, assignment_slug, assignment_field_is_url, assignment_field_pattern)
+        REFERENCES assignment_field(slug, assignment_slug, is_url, pattern)
         ON UPDATE CASCADE,
-    body VARCHAR(10000) NOT NULL,
+    body TEXT NOT NULL,
     submitter_user_id INT
         REFERENCES "user"(id)
         ON UPDATE CASCADE
@@ -31,6 +33,12 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp
+    CONSTRAINT body_matches_pattern CHECK ( text_matches(body, assignment_field_pattern)),
+    CONSTRAINT body_matches_is_url CHECK (
+        (assignment_field_is_url IS FALSE)
+        OR
+        text_is_url(body)
+    )
 );
 
 
@@ -44,7 +52,9 @@ BEGIN
         FROM api.assignment_submissions
         WHERE id = NEW.assignment_submission_id;
     END IF;
-    -- Fill in the assignment_submission_id if it is null.
+    -- Fill in the assignment_submission_id if it is null
+    -- by looking at the assignment if the assignment_slug
+    -- is not null.
     IF (NEW.assignment_submission_id IS NULL and NEW.assignment_slug IS NOT NULL and request.user_id() IS NOT NULL) THEN
         SELECT ass.id INTO NEW.assignment_submission_id
         FROM
@@ -60,6 +70,7 @@ BEGIN
         );
     END IF;
 
+    -- Try to fill in the `submitter_user_id`
     IF (request.user_id() IS NULL ) THEN
         IF (NEW.submitter_user_id IS NULL ) THEN
             -- In practice this should only be the case when an
@@ -71,6 +82,20 @@ BEGIN
         END IF;
     ELSE
         NEW.submitter_user_id = request.user_id();
+    END IF;
+
+    -- Try to fill in `pattern`
+    IF (NEW.assignment_field_pattern is NULL) THEN
+        SELECT pattern INTO NEW.assignment_field_pattern
+        FROM api.assignment_fields AS af
+        WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
+    END IF;
+
+    -- Try to fill in `is_url`
+    IF (NEW.assignment_field_is_url is NULL) THEN
+        SELECT is_url INTO NEW.assignment_field_is_url
+        FROM api.assignment_fields AS af
+        WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
     END IF;
 
     NEW.updated_at = current_timestamp;
