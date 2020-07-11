@@ -21,3 +21,4 @@
 \ir ./yeluke/user_secret.sql
 \ir ./yeluke/user_jwt.sql
 \ir ./yeluke/grade_snapshot.sql
+-- KEEP ME FOR new-table.sh

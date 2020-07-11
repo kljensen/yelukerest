@@ -15,6 +15,7 @@ truncate data.quiz_grade restart identity cascade;
 truncate data.assignment_grade restart identity cascade;
 truncate data.user_secret restart identity cascade;
 truncate data.grade_snapshot restart identity cascade;
+-- KEEP ME FOR new-table.sh
 
 
 -- user is truncated elsewhere
