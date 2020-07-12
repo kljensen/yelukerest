@@ -53,7 +53,7 @@ EOF
 cat << EOF > db/src/authorization/yeluke/$1.sql
 grant select, insert, update, delete on data.$1 to api;
 
-alter table data.quiz_grade enable row level security;
+-- alter table data.$1 enable row level security;
 
 -- create policy $1_access_policy on data.$1 to api
 -- using (
