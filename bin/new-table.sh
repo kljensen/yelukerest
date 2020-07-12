@@ -51,8 +51,6 @@ alter view $2 owner to api;
 EOF
 
 cat << EOF > db/src/authorization/yeluke/$1.sql
--- This is the only security for $2 because there
--- is no RLS and api is not the owner.
 grant select, insert, update, delete on data.$1 to api;
 
 alter table data.quiz_grade enable row level security;
