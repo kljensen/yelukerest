@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS assignment_grade (
     points_possible smallint NOT NULL,
     assignment_submission_id INT PRIMARY KEY,
     points REAL NOT NULL,
-    comments TEXT,
+    description TEXT,
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,

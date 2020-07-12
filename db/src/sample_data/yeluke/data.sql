@@ -17,4 +17,5 @@
 \ir quiz_grade_exception.sql
 \ir user_secret.sql
 \ir grade_snapshot.sql
+\ir grade.sql
 -- KEEP ME FOR new-table.sh

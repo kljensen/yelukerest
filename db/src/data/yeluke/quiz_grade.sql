@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS quiz_grade (
     quiz_id INT NOT NULL,
     points REAL NOT NULL,
     points_possible smallint NOT NULL,
-    comments TEXT,
+    description TEXT,
     user_id INT REFERENCES "user"(id)
         ON UPDATE CASCADE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE

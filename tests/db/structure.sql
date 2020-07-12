@@ -10,7 +10,7 @@ select * from check_test(
         'assignment_field_submissions', 'quiz_grades', 'assignment_grades',
         'quiz_grade_exceptions', 'assignment_grade_exceptions',
         'quiz_grade_distributions', 'assignment_grade_distributions',
-        'user_secrets', 'user_jwts', 'grade_snapshots'], 'tables present'),
+        'user_secrets', 'user_jwts', 'grade_snapshots', 'grades'], 'tables present'),
     true,
     'all views are present in api schema',
     'tables present',
