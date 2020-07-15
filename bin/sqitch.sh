@@ -34,6 +34,7 @@ passopt=(
     -e "DB_PASS=$DB_PASS"
     -e "SUPER_USER=$SUPER_USER"
     -e "SUPER_USER_PASSWORD=$SUPER_USER_PASSWORD"
+    -e "JWT_SECRET=$JWT_SECRET"
     -e "SQITCH_ORIG_SYSUSER=$user"
     -e "SQITCH_ORIG_EMAIL=$email"
     -e "TZ=$(date +%Z)" \
