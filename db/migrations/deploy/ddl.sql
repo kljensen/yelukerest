@@ -1,3 +1,7 @@
+
+-- This file was created automatically by the create-initial-migrations.sh
+-- script. DO NOT EDIT BY HAND.
+
 BEGIN;
 
 --
@@ -136,17 +140,6 @@ CREATE TYPE data.user_role AS ENUM (
 
 
 ALTER TYPE data.user_role OWNER TO superuser;
-
---
--- Name: _time_trial_type; Type: TYPE; Schema: public; Owner: superuser
---
-
-CREATE TYPE public._time_trial_type AS (
-	a_time numeric
-);
-
-
-ALTER TYPE public._time_trial_type OWNER TO superuser;
 
 SET default_tablespace = '';
 

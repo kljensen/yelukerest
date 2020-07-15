@@ -1,4 +1,17 @@
+
+-- This file was created automatically by the create-initial-migrations.sh
+-- script. DO NOT EDIT BY HAND.
+
 BEGIN;
+
+-- When we dump the data it will include the current (dev) authenticator
+-- (postgrest) user and superuser info. We don't want that. Here, we're
+-- going to replace those with values from the environment. That assumes
+-- that sqitch will have access to those environment variables when it
+-- runs. See the "bin/sqitch.sh" wrapper via which these environment
+-- variables are explicitly passed in.
+\set authenticator_user `echo $DB_USER`
+\set authenticator_pass `echo $DB_PASS`
 
 -- Initial database roles.
 --
@@ -20,33 +33,20 @@ CREATE ROLE api;
 ALTER ROLE api WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 CREATE ROLE app;
 ALTER ROLE app WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
-CREATE ROLE authenticator;
-ALTER ROLE authenticator WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md5a1a7083be3faf51a7acc88c8369c7604';
+CREATE ROLE :authenticator_user;
+ALTER ROLE :authenticator_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD :'authenticator_pass';
 CREATE ROLE faculty;
 ALTER ROLE faculty WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 CREATE ROLE observer;
 ALTER ROLE observer WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
-CREATE ROLE postgres;
-ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+-- CREATE ROLE postgres;
+-- ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 CREATE ROLE student;
 ALTER ROLE student WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
-CREATE ROLE superuser;
-ALTER ROLE superuser WITH SUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md5080613ac50188b9e81fd5a863264b8b3';
 CREATE ROLE ta;
 ALTER ROLE ta WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 
 
---
--- Role memberships
---
-
-GRANT anonymous TO authenticator GRANTED BY superuser;
-GRANT api TO superuser GRANTED BY superuser;
-GRANT app TO authenticator GRANTED BY superuser;
-GRANT faculty TO authenticator GRANTED BY superuser;
-GRANT observer TO authenticator GRANTED BY superuser;
-GRANT student TO authenticator GRANTED BY superuser;
-GRANT ta TO authenticator GRANTED BY superuser;
 
 
 --

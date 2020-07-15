@@ -14,4 +14,4 @@ set +a
 PGPASSWORD=$SUPER_USER_PASSWORD pg_dumpall \
     --host $DB_DEV_HOST --port $DB_PORT \
      -U $SUPER_USER \
-     -r
+     -roles-only --clean

@@ -12,12 +12,16 @@
 # Like other scripts in this `bin` directory, this script should
 # be run from the top-level directory of the yelukerest project.
 
-# Source environment variables
+# klj - Source environment variables
 set -a
 . ./.env
 set +a
 
 MIGRATIONS_DIR="db/migrations"
+export PGUSER="$SUPER_USER"
+export PGPASS="$SUPER_USER_PASSWORD"
+export SQITCH_PASSWORD="$SUPER_USER_PASSWORD"
+# endklj
 
 # Determine which Docker image to run.
 SQITCH_IMAGE=${SQITCH_IMAGE:=sqitch/sqitch:latest}
@@ -25,6 +29,10 @@ SQITCH_IMAGE=${SQITCH_IMAGE:=sqitch/sqitch:latest}
 # Set up required pass-through variables.
 user=${USER-$(whoami)}
 passopt=(
+    -e "DB_USER=$DB_USER"
+    -e "DB_PASS=$DB_PASS"
+    -e "SUPER_USER=$SUPER_USER"
+    -e "SUPER_USER_PASSWORD=$SUPER_USER_PASSWORD"
     -e "SQITCH_ORIG_SYSUSER=$user"
     -e "SQITCH_ORIG_EMAIL=$user@$(hostname)"
     -e "TZ=$(date +%Z)" \

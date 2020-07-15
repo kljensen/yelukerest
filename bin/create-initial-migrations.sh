@@ -26,27 +26,56 @@ set +a
 MIGRATIONS_DIRECTORY="db/migrations"
 echo "Removing old migrations directory at $MIGRATIONS_DIRECTORY"
 rm -rf $MIGRATIONS_DIRECTORY/*
-echo "done"
 
 #
 # Initialize sqitch
 #
 SQITCH="./bin/sqitch.sh -C $MIGRATIONS_DIRECTORY"
-echo "running sqitch init"
 $SQITCH init yelukerest --uri https://github.com/kljensen/yelukerest --engine pg
-echo "done"
 
 #
 # Create a migration for our global roles
 #
+# Here, we I dump all the role information from the
+# database. We do some processing on those SQL statements.
+# 1. Remove any reference to the superuser. This should
+#    be created when the database is first created.
+#    The migration will typically be run as the superuser!
+# 2. Set passwords using environment variables. Notice
+#    that these will need to be passed to sqitch when it
+#    is run (see comment below).
+# 3. Don't mess with the "postgres" user. Comment out all
+#    those lines.
+#
 ROLES=$(PGPASSWORD=$SUPER_USER_PASSWORD pg_dumpall \
     --host $DB_DEV_HOST --port $DB_PORT \
      -U $SUPER_USER \
-     -r)
+     --roles-only | \
+     grep -v "ROLE $SUPER_USER" | \
+     sed "
+        /ROLE postgres/ s/^/-- /;
+        /ROLE $SUPER_USER/ s/^/-- /;
+        s/$DB_USER/:authenticator_user/;
+        /$DB_USER/ s/PASSWORD.*/PASSWORD :'authenticator_pass';/;
+     "
+)
 
 $SQITCH add roles -n "Add global roles"
 cat << EOF > $MIGRATIONS_DIRECTORY/deploy/roles.sql
+
+-- This file was created automatically by the create-initial-migrations.sh
+-- script. DO NOT EDIT BY HAND.
+
 BEGIN;
+
+-- When we dump the data it will include the current (dev) authenticator
+-- (postgrest) user and superuser info. We don't want that. Here, we're
+-- going to replace those with values from the environment. That assumes
+-- that sqitch will have access to those environment variables when it
+-- runs. See the "bin/sqitch.sh" wrapper via which these environment
+-- variables are explicitly passed in.
+\set authenticator_user \`echo \$DB_USER\`
+\set authenticator_pass \`echo \$DB_PASS\`
 
 -- Initial database roles.
 $ROLES
@@ -54,7 +83,6 @@ $ROLES
 COMMIT;
 EOF
 
-#
 # Create a migration for our initial DDL
 #
 DDL=$(PGPASSWORD=$SUPER_USER_PASSWORD pg_dump \
@@ -62,10 +90,15 @@ DDL=$(PGPASSWORD=$SUPER_USER_PASSWORD pg_dump \
      -U $SUPER_USER \
      -s \
      $@ \
+     --exclude-schema=sqitch \
      $DB_NAME)
 
 $SQITCH add ddl --requires roles -n "Add initial ddl"
 cat << EOF > $MIGRATIONS_DIRECTORY/deploy/ddl.sql
+
+-- This file was created automatically by the create-initial-migrations.sh
+-- script. DO NOT EDIT BY HAND.
+
 BEGIN;
 
 $DDL
@@ -78,6 +111,10 @@ EOF
 #
 $SQITCH add data --requires ddl -n "Add initial data"
 cat << EOF > $MIGRATIONS_DIRECTORY/deploy/data.sql
+
+-- This file was created automatically by the create-initial-migrations.sh
+-- script. DO NOT EDIT BY HAND.
+
 BEGIN;
 
 SET search_path = settings, pg_catalog, public;

@@ -1,3 +1,7 @@
+
+-- This file was created automatically by the create-initial-migrations.sh
+-- script. DO NOT EDIT BY HAND.
+
 BEGIN;
 
 SET search_path = settings, pg_catalog, public;
