@@ -109,11 +109,14 @@ The `--clean` will drop (or truncate?) tables.
 To get certificates _issued_ do something like the following
 
 ```
-docker run -p 80:80 -it -v yelukerest-letsencrypt:/etc/letsencrypt certbot/certbot  certonly
- --standalone --preferred-challenges http -d www.660.mba
+bin/create-initial-certbot-https-cert.sh
 ```
 
 Run that when not running anything else. Data are persisted to the yelukerest-letsencrypt data volume.
+You must have the `FDQN` environment variable set to your fully qualified domain name and obviously
+your DNS records should be set such that that domain name resolves to the IP address of the machine
+on which you run the command. The command will spin up a temporary http server and therefore your
+firewall in need to be open on ports 80 and 443 for inbound connections.
 
 ### Adding a table when working on the database
 
