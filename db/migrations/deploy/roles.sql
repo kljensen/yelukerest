@@ -12,6 +12,7 @@ BEGIN;
 -- variables are explicitly passed in.
 \set authenticator_user `echo $DB_USER`
 \set authenticator_pass `echo $DB_PASS`
+\set super_user `echo $SUPER_USER`
 
 -- Initial database roles.
 --
@@ -47,6 +48,17 @@ CREATE ROLE ta;
 ALTER ROLE ta WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 
 
+--
+-- Role memberships
+--
+
+GRANT anonymous TO :authenticator_user GRANTED BY :super_user;
+GRANT api TO :super_user GRANTED BY :super_user;
+GRANT app TO :authenticator_user GRANTED BY :super_user;
+GRANT faculty TO :authenticator_user GRANTED BY :super_user;
+GRANT observer TO :authenticator_user GRANTED BY :super_user;
+GRANT student TO :authenticator_user GRANTED BY :super_user;
+GRANT ta TO :authenticator_user GRANTED BY :super_user;
 
 
 --

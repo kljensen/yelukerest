@@ -28,13 +28,14 @@ SQITCH_IMAGE=${SQITCH_IMAGE:=sqitch/sqitch:latest}
 
 # Set up required pass-through variables.
 user=${USER-$(whoami)}
+email=$(git config user.email)
 passopt=(
     -e "DB_USER=$DB_USER"
     -e "DB_PASS=$DB_PASS"
     -e "SUPER_USER=$SUPER_USER"
     -e "SUPER_USER_PASSWORD=$SUPER_USER_PASSWORD"
     -e "SQITCH_ORIG_SYSUSER=$user"
-    -e "SQITCH_ORIG_EMAIL=$user@$(hostname)"
+    -e "SQITCH_ORIG_EMAIL=$email"
     -e "TZ=$(date +%Z)" \
     -e "LESS=${LESS:--R}" \
 )

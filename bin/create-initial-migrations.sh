@@ -46,6 +46,11 @@ $SQITCH init yelukerest --uri https://github.com/kljensen/yelukerest --engine pg
 #    is run (see comment below).
 # 3. Don't mess with the "postgres" user. Comment out all
 #    those lines.
+# 4. Replace references to the super user on this system
+#    with a value pulled from the environment. recall that
+#    the role name associated with the super user is set 
+#    by the environment so that it migh tbe 'superuser' on
+#    on system and 'foobaruser' on another.
 #
 ROLES=$(PGPASSWORD=$SUPER_USER_PASSWORD pg_dumpall \
     --host $DB_DEV_HOST --port $DB_PORT \
@@ -57,6 +62,7 @@ ROLES=$(PGPASSWORD=$SUPER_USER_PASSWORD pg_dumpall \
         /ROLE $SUPER_USER/ s/^/-- /;
         s/$DB_USER/:authenticator_user/;
         /$DB_USER/ s/PASSWORD.*/PASSWORD :'authenticator_pass';/;
+        s/$SUPER_USER/:super_user/g;
      "
 )
 
@@ -76,6 +82,7 @@ BEGIN;
 -- variables are explicitly passed in.
 \set authenticator_user \`echo \$DB_USER\`
 \set authenticator_pass \`echo \$DB_PASS\`
+\set super_user \`echo \$SUPER_USER\`
 
 -- Initial database roles.
 $ROLES
