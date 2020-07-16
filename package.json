@@ -12,7 +12,7 @@
         "eslint-plugin-import": "^2.20.2",
         "expect-cookies": "^0.1.2",
         "jsonwebtoken": "^8.5.1",
-        "lodash": "^4.17.15",
+        "lodash": "^4.17.19",
         "npm": "^6.14.6",
         "subzero-cli": "^0.1.41"
     },
