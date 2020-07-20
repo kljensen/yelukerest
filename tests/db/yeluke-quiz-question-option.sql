@@ -42,8 +42,8 @@ set local role faculty;
 set request.jwt.claim.role = 'faculty';
 
 SELECT set_eq(
-    'SELECT id FROM api.quiz_question_options ORDER BY (id)',
-    ARRAY[1, 2, 3, 4, 5, 6, 8, 9, 7],
+    'SELECT id FROM api.quiz_question_options',
+    ARRAY[1, 2, 3, 4, 5, 6, 8, 9, 7, 10],
     'faculty should be able to see all quiz questions'
 );
 

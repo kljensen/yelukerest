@@ -71,7 +71,7 @@ def ldapget(result, key):
     """
     try:
         return str(getattr(result, key))
-    except ldap3.core.exceptions.LDAPKeyError:
+    except (ldap3.core.exceptions.LDAPKeyError, ldap3.core.exceptions.LDAPCursorAttributeError) as e:
         return None
 
 
@@ -127,10 +127,10 @@ def fill_user_ldap(ctx):
         result = do_ldap_search(ldap_conn, "CN={0}".format(netid))
         if result:
             print(result)
-            known_as = ldapget(result, 'knownAs')
+            known_as = ldapget(result, 'knownAs') or ldapget(result, 'givenName')
             name = ldapget(result, 'displayName')
-            if known_as_is_redundant(known_as, name):
-                known_as = None
+            # if known_as_is_redundant(known_as, name):
+            #    known_as = None
             last_name = ldapget(result, 'sn')
             email = ldapget(result, 'mail')
             organization = ldapget(result, 'o')

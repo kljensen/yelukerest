@@ -19,8 +19,10 @@ module Quizzes.Model exposing
     , quizSubmissionsDecoder
     , quizSubmitability
     , quizzesDecoder
+    , updateIntSet
     )
 
+import Set exposing (Set)
 import Common.Comparisons exposing (dateIsLessThan)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Extra exposing (datetime)
@@ -155,6 +157,8 @@ quizSubmissionDecoder =
 type alias QuizQuestion =
     { id : Int
     , body : String
+    , slug : String
+    , multiple_correct : Bool
     , options : List QuizQuestionOption
     }
 
@@ -190,6 +194,8 @@ quizQuestionDecoder =
     Decode.succeed QuizQuestion
         |> required "id" Decode.int
         |> required "body" Decode.string
+        |> required "slug" Decode.string
+        |> required "multiple_correct" Decode.bool
         |> required "options" quizQuestionOptionsDecoder
 
 
@@ -292,3 +298,12 @@ quizGradeExceptionDecoder =
 quizGradeExceptionsDecoder : Decode.Decoder (List QuizGradeException)
 quizGradeExceptionsDecoder =
     Decode.list quizGradeExceptionDecoder
+
+{-|
+    Updates a set of integers, first removing a list of
+    values and then adding a list of values.
+-}
+updateIntSet : (Set Int) -> (List Int) -> (List Int) -> (Set Int)
+updateIntSet theSet toRemove toAdd =
+    Set.diff theSet (Set.fromList toRemove)
+    |> Set.union (Set.fromList toAdd)

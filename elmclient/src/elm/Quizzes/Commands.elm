@@ -74,7 +74,7 @@ fetchQuizAnswerUrl userID quizID =
 
 fetchQuizQuestionsUrl : Int -> String
 fetchQuizQuestionsUrl quizID =
-    "/rest/quiz_questions?select=id,body,options:quiz_question_options(id,body)&quiz_id=eq." ++ String.fromInt quizID
+    "/rest/quiz_questions?select=id,body,slug,multiple_correct,options:quiz_question_option_quiz_question_id_fkey(id,body)&quiz_id=eq." ++ String.fromInt quizID
 
 
 fetchQuizQuestions : Int -> CurrentUser -> Cmd Msg

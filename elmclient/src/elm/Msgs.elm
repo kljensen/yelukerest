@@ -70,6 +70,7 @@ type Msg
     | OnSubmitQuizAnswers Int (List Int)
     | OnSubmitQuizAnswersComplete Int (WebData (List QuizAnswer))
     | OnToggleQuizQuestionOption Int Bool
+    | OnSelectQuizQuestionOption Int (List Int) Bool
     | OnSSE SSEMsg
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))

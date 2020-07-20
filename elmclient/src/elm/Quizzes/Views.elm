@@ -243,13 +243,13 @@ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pending
 showQuestion : Set.Set Int -> QuizQuestion -> Html.Html Msg
 showQuestion selectedAnswers quizQuestion =
     Html.fieldset []
-        ([ Markdown.toHtml [] quizQuestion.body ]
-            ++ List.map (showQuestionOption selectedAnswers) quizQuestion.options
+        ( Markdown.toHtml [] quizQuestion.body
+            :: List.map (showQuestionOption quizQuestion selectedAnswers) quizQuestion.options
         )
 
 
-showQuestionOption : Set.Set Int -> QuizQuestionOption -> Html.Html Msg
-showQuestionOption selectedAnswers option =
+showQuestionOption : QuizQuestion -> Set.Set Int -> QuizQuestionOption -> Html.Html Msg
+showQuestionOption quizQuestion selectedAnswers option =
     let
         selectionIndicator =
             if Set.member option.id selectedAnswers then
@@ -257,13 +257,23 @@ showQuestionOption selectedAnswers option =
 
             else
                 Html.text ""
+        inputType =
+            if quizQuestion.multiple_correct then
+                "checkbox"
+            else
+                "radio"
+        onCheckMsg =
+             if quizQuestion.multiple_correct then
+                Msgs.OnToggleQuizQuestionOption option.id
+             else
+                Msgs.OnSelectQuizQuestionOption option.id (List.map .id quizQuestion.options)
     in
     Html.div []
         [ Html.input
-            [ Attrs.name (String.fromInt option.id)
+            [ Attrs.name quizQuestion.slug
             , Attrs.id ("option-" ++ String.fromInt option.id)
-            , Attrs.type_ "checkbox"
-            , Events.onCheck (Msgs.OnToggleQuizQuestionOption option.id)
+            , Attrs.type_ inputType
+            , Events.onCheck onCheckMsg
             ]
             []
         , Html.label

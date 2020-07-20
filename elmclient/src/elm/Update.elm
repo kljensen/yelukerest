@@ -51,6 +51,7 @@ import Quizzes.Updates
         , onSubmitQuizAnswersComplete
         , takeQuiz
         )
+import Quizzes.Model exposing (updateIntSet)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
 import SSE exposing (SseAccess, withListener)
@@ -280,15 +281,20 @@ update msg model =
         Msgs.OnSubmitQuizAnswersComplete quizID response ->
             onSubmitQuizAnswersComplete model quizID response
 
+        --  Handle toggling of radio boxes on the quizzes
+        Msgs.OnSelectQuizQuestionOption optionID allOptionIDs _ ->
+            let
+                newQOIs = updateIntSet model.quizQuestionOptionInputs allOptionIDs [optionID] 
+            in
+            ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
+
+        --  Handle toggling of checkboxes on the quizzes
         Msgs.OnToggleQuizQuestionOption optionID checked ->
             let
-                newQOIs =
-                    case checked of
-                        True ->
-                            Set.insert optionID model.quizQuestionOptionInputs
-
-                        False ->
-                            Set.remove optionID model.quizQuestionOptionInputs
+                newQOIs = if checked then
+                        Set.insert optionID model.quizQuestionOptionInputs
+                    else
+                        Set.remove optionID model.quizQuestionOptionInputs
             in
             ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
 

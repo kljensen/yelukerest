@@ -1,5 +1,5 @@
 begin;
-select plan(7);
+select plan(9);
 
 SELECT view_owner_is(
     'api', 'quiz_questions', 'api',
@@ -28,6 +28,18 @@ SELECT set_eq(
     'SELECT id FROM api.quiz_questions ORDER BY (id)',
     ARRAY[1, 2, 3, 4],
     'faculty should be able to see all quiz questions'
+);
+
+SELECT set_eq(
+    'SELECT multiple_correct FROM api.quiz_questions where id=1',
+    ARRAY[FALSE],
+    'questions should indicate `multiple_correct`=false when there are multiple correct answers'
+);
+
+SELECT set_eq(
+    'SELECT multiple_correct FROM api.quiz_questions where id=4',
+    ARRAY[TRUE],
+    'questions should indicate `multiple_correct`=true when there are multiple correct answers'
 );
 
 set local role student;
