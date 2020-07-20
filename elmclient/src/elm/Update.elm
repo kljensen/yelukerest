@@ -46,6 +46,7 @@ import Quizzes.Updates
         , onBeginQuizComplete
         , onFetchQuizGradeDistributions
         , onFetchQuizGrades
+        , onFetchQuizAnswers
         , onFetchQuizSubmissions
         , onSubmitQuizAnswers
         , onSubmitQuizAnswersComplete
@@ -273,7 +274,7 @@ update msg model =
             ( { model | quizQuestions = Dict.insert quizID response model.quizQuestions }, Cmd.none )
 
         Msgs.OnFetchQuizAnswers quizID response ->
-            ( { model | quizAnswers = Dict.insert quizID response model.quizAnswers }, Cmd.none )
+            onFetchQuizAnswers model quizID response
 
         Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds ->
             onSubmitQuizAnswers model quizID quizQuestionOptionIds

@@ -71,8 +71,8 @@ mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers =
         |> RemoteData.andMap theseQuizAnswers
 
 
-takeQuizView : WebData CurrentUser -> Maybe Posix -> TimeZone -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizAnswer)) -> Html.Html Msg
-takeQuizView wdUser maybeDate timeZone quizID quizSubmissions quizzes quizQuestions quizAnswers wdQuizGradeExceptions pendingSubmitQuizzes =
+takeQuizView : WebData CurrentUser -> Maybe Posix -> TimeZone -> Int -> WebData (List QuizSubmission) -> WebData (List Quiz) -> Dict Int (WebData (List QuizQuestion)) -> Dict Int (WebData (List QuizAnswer)) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizAnswer)) -> Set.Set Int -> Html.Html Msg
+takeQuizView wdUser maybeDate timeZone quizID quizSubmissions quizzes quizQuestions quizAnswers wdQuizGradeExceptions pendingSubmitQuizzes selectedOptions =
     let
         theseQuizQuestions =
             getOrNotAsked quizID quizQuestions
@@ -108,7 +108,7 @@ takeQuizView wdUser maybeDate timeZone quizID quizSubmissions quizzes quizQuesti
                     in
                     case ( sub, quiz ) of
                         ( Just daSub, Just daQuiz ) ->
-                            showQuizForm user currentDate timeZone quizID daSub daQuiz data.questions data.answers wdQuizGradeExceptions thisPendingSubmitQuiz
+                            showQuizForm user currentDate timeZone quizID daSub daQuiz data.questions data.answers wdQuizGradeExceptions thisPendingSubmitQuiz selectedOptions
 
                         ( _, Nothing ) ->
                             Html.div [] [ Html.text "Error - no such quiz." ]
@@ -147,8 +147,8 @@ showSubmitError x =
             Html.text ""
 
 
-showQuizForm : CurrentUser -> Posix -> TimeZone -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData (List QuizGradeException) -> WebData a -> Html.Html Msg
-showQuizForm user currentDate timeZone quizID quizSubmission quiz quizQuestions quizAnswers wdQuizGradeExceptions pendingSubmit =
+showQuizForm : CurrentUser -> Posix -> TimeZone -> Int -> QuizSubmission -> Quiz -> List QuizQuestion -> List QuizAnswer -> WebData (List QuizGradeException) -> WebData a -> Set.Set Int -> Html.Html Msg
+showQuizForm user currentDate timeZone quizID quizSubmission quiz quizQuestions quizAnswers wdQuizGradeExceptions pendingSubmit selectedOptions =
     let
         quizQuestionOptionIds =
             quizQuestions
@@ -180,7 +180,7 @@ showQuizForm user currentDate timeZone quizID quizSubmission quiz quizQuestions 
                 }
             )
         ]
-        (List.map (showQuestion quizAnswerSet) quizQuestions
+        (List.map (showQuestion quizAnswerSet selectedOptions) quizQuestions
             ++ [ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pendingSubmit
                ]
         )
@@ -240,16 +240,16 @@ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pending
             Html.div [] [ Html.text "This quiz is now closed and can no longer be submitted." ]
 
 
-showQuestion : Set.Set Int -> QuizQuestion -> Html.Html Msg
-showQuestion selectedAnswers quizQuestion =
+showQuestion : Set.Set Int -> Set.Set Int -> QuizQuestion -> Html.Html Msg
+showQuestion savedAnswers selectedOptions quizQuestion =
     Html.fieldset []
         ( Markdown.toHtml [] quizQuestion.body
-            :: List.map (showQuestionOption quizQuestion selectedAnswers) quizQuestion.options
+            :: List.map (showQuestionOption quizQuestion savedAnswers selectedOptions) quizQuestion.options
         )
 
 
-showQuestionOption : QuizQuestion -> Set.Set Int -> QuizQuestionOption -> Html.Html Msg
-showQuestionOption quizQuestion selectedAnswers option =
+showQuestionOption : QuizQuestion -> Set.Set Int -> Set.Set Int -> QuizQuestionOption -> Html.Html Msg
+showQuestionOption quizQuestion selectedAnswers selectedOptions option =
     let
         selectionIndicator =
             if Set.member option.id selectedAnswers then
@@ -273,6 +273,7 @@ showQuestionOption quizQuestion selectedAnswers option =
             [ Attrs.name quizQuestion.slug
             , Attrs.id ("option-" ++ String.fromInt option.id)
             , Attrs.type_ inputType
+            , Attrs.checked (Set.member option.id selectedOptions)
             , Events.onCheck onCheckMsg
             ]
             []

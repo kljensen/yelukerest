@@ -3,6 +3,7 @@ module Quizzes.Updates exposing
     , onBeginQuizComplete
     , onFetchQuizGradeDistributions
     , onFetchQuizGrades
+    , onFetchQuizAnswers
     , onFetchQuizSubmissions
     , onSubmitQuizAnswers
     , onSubmitQuizAnswersComplete
@@ -159,3 +160,30 @@ onFetchQuizGrades model response =
 onFetchQuizGradeDistributions : Model -> WebData (List QuizGradeDistribution) -> ( Model, Cmd Msg )
 onFetchQuizGradeDistributions model response =
     ( { model | quizGradeDistributions = response }, Cmd.none )
+
+{-
+    Handle the response we get back when asking for the quiz answers for a
+    particular quiz. We're going to do two things:
+    1) store the quiz answers so that we can show "SAVED" next
+       to particular quiz question options in the interface
+    2) update our `quizQuestionOptionInputs` so that if a an
+       option is saved it also shows up an initially checked/selected.
+-}
+onFetchQuizAnswers : Model -> Int -> (WebData (List QuizAnswer)) -> ( Model, Cmd Msg )
+onFetchQuizAnswers model quizID response = 
+    let
+        quizAnswers = Dict.insert quizID response model.quizAnswers 
+        selectedInputs = case response of
+            RemoteData.Success answers ->
+                answers
+                |> List.map .quiz_question_option_id
+                |> Set.fromList
+            _ ->
+                model.quizQuestionOptionInputs
+        newModel = { model |
+            quizAnswers = quizAnswers
+            , quizQuestionOptionInputs = selectedInputs
+            }
+    in
+    
+    ( newModel, Cmd.none )
