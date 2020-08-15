@@ -1657,14 +1657,17 @@ ALTER TABLE data.quiz_question OWNER TO superuser;
 --
 
 CREATE VIEW api.quiz_questions AS
- SELECT quiz_question.id,
-    quiz_question.quiz_id,
-    quiz_question.slug,
-    quiz_question.is_markdown,
-    quiz_question.body,
-    quiz_question.created_at,
-    quiz_question.updated_at
-   FROM data.quiz_question;
+ SELECT qq.id,
+    qq.quiz_id,
+    qq.slug,
+    qq.is_markdown,
+    qq.body,
+    qq.created_at,
+    qq.updated_at,
+    ( SELECT (count(quiz_question_option.id) > 1)
+           FROM data.quiz_question_option
+          WHERE ((quiz_question_option.is_correct = true) AND (quiz_question_option.quiz_question_id = qq.id))) AS multiple_correct
+   FROM data.quiz_question qq;
 
 
 ALTER TABLE api.quiz_questions OWNER TO api;
