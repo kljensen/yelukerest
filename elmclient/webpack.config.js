@@ -79,6 +79,20 @@ const commonConfig = {
             filename: isDev ? '[name].css' : '[name]-[hash].css',
             chunkFilename: isDev ? '[id].css' : '[id]-[hash].css',
         }),
+        new CopyWebpackPlugin({
+            patterns: [
+                // The following is commented because I don't
+                // have any static img assets right now and
+                // including this makes an ugly error in logs
+                // {
+                //     from: 'src/static/img/',
+                //     to: 'static/img/',
+                // },
+                {
+                    from: 'src/favicon.ico',
+                },
+            ],
+        }),
     ],
     devServer: {
         inline: true,
@@ -115,20 +129,6 @@ if (isDev === true) {
                 template: 'src/static/index.html',
                 inject: 'body',
                 filename: 'index.html',
-            }),
-            new CopyWebpackPlugin({
-                patterns: [
-                    // The following is commented because I don't
-                    // have any static img assets right now and
-                    // including this makes an ugly error in logs
-                    // {
-                    //     from: 'src/static/img/',
-                    //     to: 'static/img/',
-                    // },
-                    {
-                        from: 'src/favicon.ico',
-                    },
-                ],
             }),
         ],
     });
