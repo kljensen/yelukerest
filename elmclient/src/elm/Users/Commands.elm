@@ -41,6 +41,6 @@ fetchUserSecrets currentUser =
                         ++ ")"
 
                 Nothing ->
-                    baseUrl ++ idQuery
+                    baseUrl ++ "user_id=eq." ++ String.fromInt currentUser.id
     in
     fetchForCurrentUser currentUser url userSecretsDecoder Msgs.OnFetchUserSecrets
