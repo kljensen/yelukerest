@@ -70,9 +70,8 @@
 <script src="./swagger-ui-bundle.js"> </script>
 <script src="./swagger-ui-standalone-preset.js"> </script>
 <script>
-window.onload = function() {
-  
-  // Build a system
+
+function loadSwagger(jwt) {
   const ui = SwaggerUIBundle({
     url: "/auth/api.json",
     dom_id: '#swagger-ui',
@@ -87,9 +86,34 @@ window.onload = function() {
       SwaggerUIBundle.plugins.DownloadUrl
     ],
     layout: "StandaloneLayout"
+  });
+
+  if (jwt != null) {
+    ui.authActions.authorize({
+      jwt: {
+          name: "jwt",
+          schema: {type: "apiKey", in: "header", name: "Authorization", description: ""},
+          value: `Bearer ${jwt}`,
+      }
+    });
+  }
+  window.ui = ui
+}
+
+window.onload = function() {
+
+  // Grab a JWT
+  fetch("/auth/jwt").then((response) => {
+    if (response.status != 200) {
+      return Promise.resolve(null);
+    } 
+    return response.text();
+  }).then((jwt) => {
+    loadSwagger(jwt);
+  }).catch((err) => {
+    console.log('error fetching JWT and setting up swagger');
   })
 
-  window.ui = ui
 }
 </script>
 </body>
