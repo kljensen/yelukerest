@@ -217,4 +217,5 @@ return {
    force_authentication = force_authentication;   
    logout = logout;
    redirect_to_next=redirect_to_next;
+   session_and_netid=session_and_netid;
 }

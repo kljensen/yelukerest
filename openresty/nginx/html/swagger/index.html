@@ -74,8 +74,10 @@ window.onload = function() {
   
   // Build a system
   const ui = SwaggerUIBundle({
-    url: "/api.json",
+    url: "/auth/api.json",
     dom_id: '#swagger-ui',
+    // See https://github.com/swagger-api/swagger-ui/issues/4631
+    validatorUrl: null,
     deepLinking: true,
     presets: [
       SwaggerUIBundle.presets.apis,

@@ -7,7 +7,6 @@ local postgrest_port = os.getenv("POSTGREST_PORT")
 assert(type(postgrest_host) == "string" and string.len(postgrest_host) > 0, "Environment variable POSTGREST_HOST not set")
 assert(type(postgrest_port) == "string" and string.len(postgrest_port) > 0, "Environment variable POSTGREST_PORT not set")
 
-
 -- Fetches a row from the `user_jwts` api
 -- for the netid. This should be the netid
 -- of the logged in user!
@@ -98,9 +97,16 @@ local function get_me(netid)
     ngx.print(encoded_data)
 end
 
+-- See if there is a valid session cookie for the current request.
+-- If there is, grab the JWT for it.
+local function jwt_for_session_cookie()
+end
+
 return {
     get_jwt = get_jwt;
     get_me = get_me;
     fetch_user_jwt = fetch_user_jwt;
     fetch_user_jwt_info = fetch_user_jwt_info;
+    postgrest_host = postgrest_host;
+    postgrest_port = postgrest_port;
 }
