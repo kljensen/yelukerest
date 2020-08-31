@@ -207,7 +207,6 @@ animal_nouns = [
     'pelican',
     'penguin',
     'pheasant',
-    'pig',
     'pigeon',
     'pony',
     'porcupine',
