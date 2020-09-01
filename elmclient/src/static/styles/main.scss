@@ -76,6 +76,17 @@ span.saved-quiz-option {
     font-size: small;
 }
 
+.quiz-question-option {
+    display: flex;
+    align-items: baseline;
+    input {
+        margin-right: 0.5rem;
+    }
+    label p:first-child {
+        margin-top: 0;
+    }
+}
+
 table.dashboard {
     table-layout: auto;
     // border-spacing: 1rem 0.5rem;

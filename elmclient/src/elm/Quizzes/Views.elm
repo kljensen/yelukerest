@@ -271,7 +271,7 @@ showQuestionOption quizQuestion selectedAnswers selectedOptions option =
              else
                 Msgs.OnSelectQuizQuestionOption option.id (List.map .id quizQuestion.options)
     in
-    Html.div []
+    Html.div [Attrs.class "quiz-question-option"]
         [ Html.input
             [ Attrs.name quizQuestion.slug
             , Attrs.id ("option-" ++ String.fromInt option.id)
@@ -283,7 +283,6 @@ showQuestionOption quizQuestion selectedAnswers selectedOptions option =
         , Html.label
             [ Attrs.for ("option-" ++ String.fromInt option.id)
             ]
-            [ Html.text option.body
-            , selectionIndicator
-            ]
+            [ Markdown.toHtml [] option.body ]
+        , selectionIndicator
         ]
