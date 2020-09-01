@@ -243,8 +243,11 @@ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pending
 showQuestion : Set.Set Int -> Set.Set Int -> QuizQuestion -> Html.Html Msg
 showQuestion savedAnswers selectedOptions quizQuestion =
     Html.fieldset []
-        ( Markdown.toHtml [] quizQuestion.body
-            :: List.map (showQuestionOption quizQuestion savedAnswers selectedOptions) quizQuestion.options
+        ( [
+            Markdown.toHtml [] quizQuestion.body
+            , Html.em [] [Html.text (if quizQuestion.multiple_correct then "Select all that apply" else "")]
+        ] ++
+            List.map (showQuestionOption quizQuestion savedAnswers selectedOptions) quizQuestion.options
         )
 
 
