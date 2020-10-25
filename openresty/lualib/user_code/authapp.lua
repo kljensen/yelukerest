@@ -89,7 +89,7 @@ local function get_me(netid)
         ngx.exit(status_code)
     end
 
-    encoded_data, err = cjson_safe.encode(data)
+    local encoded_data, err = cjson_safe.encode(data)
     if encoded_data == nil or err ~= nil then
         return ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
