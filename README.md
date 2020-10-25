@@ -4,13 +4,29 @@ This repo contains software for managing my classes at Yale. The major
 functions of the software include:
 
 - recording student enrollment and participation;
-- storing class schedule information, such as meeting times, meeting subjects, and pre-class reading;
-- storing and administering quizzes based on pre-class reading material;
+- storing class information, such as meeting times, meeting subjects, and pre-class reading;
+- storing and administering multiple choice quizzes;
 - storing assignment information and accepting assignment submissions; and,
 - storing student grades on assignments and quizzes.
 
 The core of the application is a RESTful API built on top of
-[postgrest](https://postgrest.readthedocs.io). The structure of this repo is
+[postgrest](https://postgrest.readthedocs.io). In addition, the application
+includes a web front-end for interacting with the API. For me, Yelukerest
+replaces Canvas and allows me to do many things that I cannot do easily with
+Canvas, particularly manipulating class information in an automatic fashion,
+e.g. updating student grades. When I use Yelukerest, I have one instance
+running per course and I usually also have a separate "admin" repo in which I
+store things that are course specific, such as homework assignments and
+automated grading code. Yelukerest (this code) contains nothing that is course
+specific.  The database schema in Yelukerest is generic such that I can use it
+for multiple courses.  The schema attempts to make impossible states impossible
+to represent and it also makes liberal use of Postgres' row-level permissions
+in order to manage access to data such that, e.g. students cannot alter their
+grades, can only see their own grades, etc. Such behavior is ensured through
+extensive declarative tests at the database level. Indeed, almost all the 
+important behavior of Yelukerest is in the database (Postgres) layer.
+
+The structure of this repo is
 taken from the excellent
 [postgrest start kit](https://github.com/subzerocloud/postgrest-starter-kit).
 The application includes a number of components each of which runs in a
