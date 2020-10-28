@@ -8,6 +8,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 // const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const CompressionPlugin = require('compression-webpack-plugin');
+const BrotliPlugin = require('brotli-webpack-plugin');
 
 const prod = 'production';
 const dev = 'development';
@@ -172,6 +173,11 @@ if (isProd === true) {
             // Make a .gz copy of each asset
             new CompressionPlugin({
                 test: /\.js$|\.css$|\.html$/,
+            }),
+            new BrotliPlugin({
+                test: /\.js$|\.css$|\.html$/,
+                threshold: 1024,
+                minRatio: 0.8,
             }),
         ],
     });

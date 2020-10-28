@@ -17,6 +17,7 @@
         "ace-css": "^1.1.0",
         "autoprefixer": "^9.8.0",
         "bootstrap-sass": "^3.4.1",
+        "brotli-webpack-plugin": "^1.1.0",
         "compression-webpack-plugin": "^4.0.0",
         "copy-webpack-plugin": "^6.0.1",
         "css-loader": "^3.5.3",
