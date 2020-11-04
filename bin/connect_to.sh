@@ -15,4 +15,5 @@ set +a
 # set -x
 set -v
 
-docker exec -it "${COMPOSE_PROJECT_NAME}_${1}_1" /bin/bash
+docker exec -it "${COMPOSE_PROJECT_NAME}_${1}_1" /bin/bash || \
+    docker exec -it "${COMPOSE_PROJECT_NAME}_${1}_1" /bin/sh 
