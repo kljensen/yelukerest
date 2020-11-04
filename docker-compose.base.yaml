@@ -5,7 +5,14 @@ volumes:
         external: false
     yelukerest-letsencrypt:
         external: true
+    yelukerest-redis-data:
+        external: true
 services:
+    redis:
+        image: redis:6.0.9-alpine
+        command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+        volumes:
+            - yelukerest-redis-data:/data
     elmclient:
         build: elmclient
         # Set the location where docker will put our files
@@ -62,6 +69,7 @@ services:
             - postgrest:postgrest
             - sse:sse
             - certbot:certbot
+            - redis:redis
         entrypoint: /entrypoint.sh
         restart: on-failure
         environment:
@@ -81,6 +89,7 @@ services:
             - SSE_PORT=${SSE_PORT}
             - JWT_SECRET=${JWT_SECRET}
             - AUTHAPP_CAS_URI=${AUTHAPP_CAS_URI}
+            - REDIS_PASSWORD=${REDIS_PASSWORD}
         volumes:
             - elmclient-build:/var/elmclient/
             - yelukerest-letsencrypt:/etc/letsencrypt/

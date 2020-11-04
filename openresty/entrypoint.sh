@@ -25,7 +25,7 @@ else
     export NGINX_SERVER_DEV_INCLUDES="include includes/dev/http/server/*.conf;"
 fi
 
-env_vars='$NGINX_HTTP_DEV_INCLUDES$NGINX_SERVER_DEV_INCLUDES$FQDN$OPENRESTY_DEVELOPMENT$OPENRESTY_CACHE_BYPASS'
+env_vars='$NGINX_HTTP_DEV_INCLUDES$NGINX_SERVER_DEV_INCLUDES$FQDN$OPENRESTY_DEVELOPMENT$OPENRESTY_CACHE_BYPASS$REDIS_PASSWORD'
 envsubst $env_vars </usr/local/openresty/nginx/conf/nginx.conf.tmpl |tee /usr/local/openresty/nginx/conf/nginx.conf
 
 (
