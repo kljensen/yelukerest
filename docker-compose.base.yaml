@@ -90,6 +90,7 @@ services:
             - JWT_SECRET=${JWT_SECRET}
             - AUTHAPP_CAS_URI=${AUTHAPP_CAS_URI}
             - REDIS_PASSWORD=${REDIS_PASSWORD}
+            - OPENRESTY_SESSION_SECRET=${OPENRESTY_SESSION_SECRET}
         volumes:
             - elmclient-build:/var/elmclient/
             - yelukerest-letsencrypt:/etc/letsencrypt/
