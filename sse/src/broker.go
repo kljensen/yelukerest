@@ -60,8 +60,8 @@ func (b *broker) Start() {
 
 		// Loop endlessly
 		//
+		numTicks := 0
 		for {
-			numTicks := 0
 
 			// Block until we receive from one of the
 			// three following channels.
@@ -87,9 +87,9 @@ func (b *broker) Start() {
 				// This tick is sent in order to keep the SSE
 				// connection "alive". Some browsers and proxies
 				// will otherwise terminate the connection.
-				numClients := b.SendMessage(msg{"tick", strconv.Itoa(numTicks)})
+				b.SendMessage(msg{"tick", strconv.Itoa(numTicks)})
 				numTicks++
-				log.Printf("Sent tick message to %d clients\n", numClients)
+				// log.Printf("Sent tick message to %d clients\n", numClients)
 
 			case thisMsg := <-b.messages:
 
