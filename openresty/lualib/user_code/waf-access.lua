@@ -20,3 +20,8 @@ if found_ip ~= nil then
     ngx.log(ngx.NOTICE, "Dropping request from " .. remote_addr)
     return ngx.exit(ngx.HTTP_CLOSE)
 end
+
+-- If host does not match the server name, ban.
+if ngx.var.host ~= ngx.var.server_name then
+    waf.ban(600, ngx.HTTP_CLOSE)
+end
