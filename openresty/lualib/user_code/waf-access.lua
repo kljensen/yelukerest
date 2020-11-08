@@ -12,13 +12,8 @@ local waf = require "waf"
 --
 -- and in the server or location section
 -- access_by_lua_file '../lualib/user_code/waf-access.lua';
+
 local remote_addr = ngx.var.remote_addr
-
--- If host does not match the server name, ban.
-if ngx.var.host ~= ngx.var.server_name then
-    waf.ban(600, ngx.HTTP_CLOSE)
-end
-
 local banned_ips = ngx.shared.banned_ips
 local found_ip, flags = banned_ips:get(remote_addr)
 if found_ip ~= nil then
