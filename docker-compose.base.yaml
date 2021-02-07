@@ -51,7 +51,7 @@ services:
             - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
 
     certbot:
-        image: certbot/certbot:v0.36.0
+        image: certbot/dns-route53:v1.12.0
         entrypoint: /entrypoint.sh
         volumes:
             - yelukerest-letsencrypt:/etc/letsencrypt/
