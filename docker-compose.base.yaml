@@ -79,6 +79,7 @@ services:
         environment:
             - DEVELOPMENT=${DEVELOPMENT}
             - FQDN=${FQDN}
+            - NAKED_FQDN=${NAKED_FQDN}
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}

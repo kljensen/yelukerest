@@ -25,14 +25,14 @@ else
     export NGINX_SERVER_DEV_INCLUDES="include includes/dev/http/server/*.conf;"
 fi
 
-env_vars='$NGINX_HTTP_DEV_INCLUDES$NGINX_SERVER_DEV_INCLUDES$FQDN$OPENRESTY_DEVELOPMENT$OPENRESTY_CACHE_BYPASS$REDIS_PASSWORD$OPENRESTY_SESSION_SECRET'
+env_vars='$NGINX_HTTP_DEV_INCLUDES$NGINX_SERVER_DEV_INCLUDES$FQDN$NAKED_FQDN$OPENRESTY_DEVELOPMENT$OPENRESTY_CACHE_BYPASS$REDIS_PASSWORD$OPENRESTY_SESSION_SECRET'
 envsubst $env_vars </usr/local/openresty/nginx/conf/nginx.conf.tmpl |tee /usr/local/openresty/nginx/conf/nginx.conf
 
 (
 old_hash=$(find /etc/letsencrypt/live/ -type f,l  -print0 -exec sha1sum "{}" \;|sha1sum -|cut -f1 -d' ')
 while true
 do
-    sleep 10
+    sleep 60
     new_hash=$(find /etc/letsencrypt/live/ -type f,l  -print0 -exec sha1sum "{}" \;|sha1sum -|cut -f1 -d' ')
     if [ "$new_hash" != "$old_hash" ]; then
         echo "Detected change in letsencrypt directory. Reloading openresty."
