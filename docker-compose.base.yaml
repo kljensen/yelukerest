@@ -56,6 +56,10 @@ services:
         volumes:
             - yelukerest-letsencrypt:/etc/letsencrypt/
             - './certbot/entrypoint.sh:/entrypoint.sh'
+        environment:
+            - AWS_ACCESS_KEY_ID=${CERTBOT_AWS_ACCESS_KEY_ID}
+            - AWS_SECRET_ACCESS_KEY=${CERTBOT_AWS_SECRET_ACCESS_KEY}
+
     # OpenResty (Nginx + Lua) instance that sits in front of PostgREST.
     # All the requests comming into the system are first hitting this component.
     # After some processing/checks and transformation, the request is forwarded
