@@ -15,7 +15,6 @@ import Html exposing (Html)
 import Html.Attributes as Attrs
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
-import RemoteData exposing (WebData)
 import Time exposing (Posix, Zone, ZoneName(..))
 
 
@@ -28,14 +27,11 @@ type alias DateTitleHrefRecord =
 
 showDraftStatus : Bool -> Html.Html Msg
 showDraftStatus is_draft =
-    case is_draft of
-        True ->
-            Html.span [ Attrs.class "meeting-draft" ]
-                [ Html.text "[draft]" ]
-
-        False ->
-            Html.text ""
-
+    if is_draft then
+        Html.span [ Attrs.class "meeting-draft" ]
+            [ Html.text "[draft]" ]
+    else
+        Html.text ""
 
 dateTitleHrefRow : TimeZone -> DateTitleHrefRecord -> Html Msg
 dateTitleHrefRow timeZone dth =
@@ -149,12 +145,10 @@ formatZoneName zoneName =
         Time.Offset o ->
             let
                 sign =
-                    case o > 0 of
-                        True ->
-                            "+"
-
-                        False ->
-                            "-"
+                    if o > 0 then
+                        "+"
+                    else
+                        "-"
 
                 numMinutes =
                     abs o
@@ -166,12 +160,10 @@ formatZoneName zoneName =
                     modBy 60 numMinutes
 
                 minSuffix =
-                    case minutes == 0 of
-                        True ->
-                            ""
-
-                        False ->
-                            ":" ++ String.fromInt minutes
+                    if minutes == 0 then
+                        ""
+                    else
+                        ":" ++ String.fromInt minutes
             in
             "UTC " ++ sign ++ hours ++ minSuffix
 
@@ -222,15 +214,13 @@ dateDeltaToString d =
         seconds =
             d4 // msInSecond
     in
-    case days > 0 of
-        True ->
-            String.fromInt days
-                ++ " days and "
-                ++ String.fromInt hours
-                ++ " hours"
-
-        False ->
-            [ hours, minutes, seconds ]
-                |> List.map String.fromInt
-                |> List.map (String.padLeft 2 '0')
-                |> String.join ":"
+    if days > 0 then
+        String.fromInt days
+            ++ " days and "
+            ++ String.fromInt hours
+            ++ " hours"
+    else
+        [ hours, minutes, seconds ]
+            |> List.map String.fromInt
+            |> List.map (String.padLeft 2 '0')
+            |> String.join ":"
