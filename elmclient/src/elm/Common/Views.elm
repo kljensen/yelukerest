@@ -89,7 +89,7 @@ longDateFormatter timeZone =
                 Name theName ->
                     theName
 
-                Offset offset ->
+                Offset _ ->
                     "an offset"
     in
     DateFormat.format
