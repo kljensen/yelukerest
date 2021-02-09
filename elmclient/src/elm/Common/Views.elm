@@ -61,7 +61,11 @@ piazzaLink : Maybe String -> Html Msg
 piazzaLink piazzaURL =
     case piazzaURL of
         Just url ->
-            Html.a [ Attrs.href url ] [ Html.text "Piazza" ]
+            case url of 
+                "" ->
+                    Html.text ""
+                _  ->
+                    Html.a [ Attrs.href url ] [ Html.text "Piazza" ]
 
         Nothing ->
             Html.text ""
