@@ -387,6 +387,11 @@ def nonchild(d):
     """
     return {k: v for k, v in d.items() if not k.startswith('child:')}
 
+def get_column_names(cursor, table):
+    """ Finds the column names for a table
+    """
+    cursor.execute(f"Select * FROM {table} LIMIT 0")
+    return [desc[0] for desc in cursor.description]
 
 def do_upsert(cursor, table, conflict_condition, rows):
     """ Upserts rows.
@@ -405,8 +410,12 @@ def do_upsert(cursor, table, conflict_condition, rows):
         SET {};
     """
 
-    def make_query(assignment):
-        keys = assignment.keys()
+    columns = get_column_names(cursor, table)
+    def make_query(data_dict):
+        key_candidates = data_dict.keys()
+        # Only keep keys that are present in the dict
+        # and also are valid columns
+        keys = list(set(key_candidates) & set(columns))
         return base_query.format(
             table,
             ','.join(keys),
@@ -429,7 +438,6 @@ def prepare_content(class_number, key, obj):
     """
     template = Template(obj[key])
     obj[key] = template.render(class_number=class_number)
-    print(obj[key])
     return nonchild(obj)
 
 
@@ -460,28 +468,42 @@ def upsert_assignments(cursor, class_number, assignments):
     """
     keys = tuple(
         (f["slug"], f["assignment_slug"]) for f in all_fields)
-    cursor.execute(delete_query, (keys, ))
+    if len(keys) > 0:
+        cursor.execute(delete_query, (keys, ))
 
     do_upsert(cursor, 'data.assignment_field',
               'slug, assignment_slug', all_fields)
+
+def is_single_assignment_list(data):
+    """ Check if this looks like a single assignment
+    """
+    return len(data) == 1 and isinstance(data, list) \
+           and isinstance(data[0], list) and getattr(data[0][0], 'slug')
 
 
 @database.command()
 @click.pass_context
 @click.argument('class_number')
-@click.argument('infile', type=click.File('r'))
-def update_assignments(ctx, class_number, infile):
+@click.argument('infiles', nargs=-1, required=True, type=click.File('r'))
+@click.option('--delete/--no-delete', default=False)
+def update_assignments(ctx, class_number, infiles, delete):
     """ Updates all assignments in the database. This takes a YAML-formatted
         list of assignments. Any assignments in the database with slugs that are
         not in the input YAML file will be deleted. Those that exist will
         be updated. Those that are new will be added.
     """
     conn = ctx.obj['conn']
-    assignments = read_yaml(infile)
+    assignments = [read_yaml(infile) for infile in infiles]
+
+    # Support having all assignments in a single yaml file. Check
+    # if we got just one file and it is a list of assignments.
+    if is_single_assignment_list(assignments):
+        assignments = assignments[0]
 
     try:
         with conn.cursor() as cur:
-            delete_missing_assignments(cur, [m['slug'] for m in assignments])
+            if delete:
+                delete_missing_assignments(cur, [m['slug'] for m in assignments])
             upsert_assignments(cur, class_number, assignments)
         conn.commit()
     except (Exception, psycopg2.DatabaseError) as error:
@@ -501,6 +523,8 @@ def delete_missing_quiz_questions(cur, quiz_id, slugs):
         quiz_id {int} -- Id for the quiz
         slugs {iterable of strings} -- List of slugs for this quiz's questions
     """
+    if len(slugs) == 0:
+        return
     query = """
         DELETE FROM data.quiz_question
         WHERE quiz_id=%s AND slug NOT IN %s;
