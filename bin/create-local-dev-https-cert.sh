@@ -22,7 +22,7 @@ make_cert() {
 EOF
 }
 
-for domain in "$NAKED_FQDN" "$FDQN" "$1"
+for domain in "$NAKED_FQDN" "$FQDN" "$1"
 do
    if [ -n "$domain" ]; then
        make_cert $domain
