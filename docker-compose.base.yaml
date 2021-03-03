@@ -22,6 +22,7 @@ services:
             - PIAZZA_URL=${ELMCLIENT_PIAZZA_URL}
             - ABOUT_URL=${ELMCLIENT_ABOUT_URL}
             - CANVAS_URL=${ELMCLIENT_CANVAS_URL}
+            - SLACK_URL=${ELMCLIENT_SLACK_URL}
             - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
         volumes:
             # Note that the package.json-like files were moved into the

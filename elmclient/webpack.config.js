@@ -72,6 +72,7 @@ const commonConfig = {
             PIAZZA_URL: JSON.stringify(process.env.PIAZZA_URL),
             ABOUT_URL: JSON.stringify(process.env.ABOUT_URL),
             CANVAS_URL: JSON.stringify(process.env.CANVAS_URL),
+            SLACK_URL: JSON.stringify(process.env.SLACK_URL),
         }),
         new MiniCssExtractPlugin({
             // Options similar to the same options in webpackOptions.output
