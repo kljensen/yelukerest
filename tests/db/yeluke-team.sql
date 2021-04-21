@@ -13,7 +13,7 @@ set request.jwt.claim.role = 'anonymous';
 SELECT throws_ok(
     'select nickname from api.teams',
     '42501',
-    'permission denied for relation teams',
+    'permission denied for view teams',
     'anonymous users should not be able to use the api.teams view'
 );
 

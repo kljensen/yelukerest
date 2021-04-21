@@ -28,7 +28,7 @@ set request.jwt.claim.role = 'anonymous';
 SELECT throws_ok(
     'select (meeting_slug) from api.quizzes',
     '42501',
-    'permission denied for relation quizzes',
+    'permission denied for view quizzes',
     'anonymous users should not be able to use the api.quizzes view'
 );
 
@@ -46,7 +46,7 @@ PREPARE doinsert AS INSERT INTO api.quizzes (meeting_slug, points_possible, is_d
 SELECT throws_ok(
     'doinsert',
     '42501',
-    'permission denied for relation quizzes',
+    'permission denied for view quizzes',
     'students should not be able to insert'
 );
 

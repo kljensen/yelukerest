@@ -13,7 +13,7 @@ set request.jwt.claim.role = 'anonymous';
 SELECT throws_ok(
     'select (user_id, meeting_slug) from api.engagements',
     '42501',
-    'permission denied for relation engagements',
+    'permission denied for view engagements',
     'anonymous users should not be able to use the api.engagements view'
 );
 

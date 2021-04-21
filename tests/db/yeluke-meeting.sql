@@ -22,7 +22,7 @@ SELECT throws_ok(
 SELECT throws_ok(
     'INSERT INTO api.meetings (slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''intro'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
     '42501',
-    'permission denied for relation meetings',
+    'permission denied for view meetings',
     'anonymous user should not be able to insert into the api.meetings view'
 );
 

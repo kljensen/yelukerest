@@ -13,7 +13,7 @@ set request.jwt.claim.role = 'anonymous';
 SELECT throws_ok(
     'select (id) from api.users',
     '42501',
-    'permission denied for relation users',
+    'permission denied for view users',
     'anonymous users should not be able to use the api.users view'
 );
 
