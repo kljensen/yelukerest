@@ -41,7 +41,9 @@ SELECT roles_are(ARRAY[
     'pg_read_all_settings',
     'pg_signal_backend',
     'pg_read_all_stats',
-    'postgres'
+    'pg_execute_server_program',
+    'pg_write_server_files',
+    'pg_read_server_files'
 ]);
 
 select * from finish();
