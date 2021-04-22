@@ -1,7 +1,7 @@
 # This is from here
 # https://github.com/schickling/dockerfiles/tree/master/postgres-backup-s3
 # originally. 
-FROM alpine:3.8
+FROM alpine:3.13
 
 ADD install.sh install.sh
 RUN sh install.sh && rm install.sh
