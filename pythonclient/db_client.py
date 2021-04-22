@@ -526,7 +526,9 @@ def delete_missing_quiz_questions(cur, quiz_id, slugs):
     if len(slugs) == 0:
         return
     query = """
-        DELETE FROM data.quiz_question
+        SELECT api.delete_quiz_question(quiz_id, slug)
+        FROM
+        data.quiz_question
         WHERE quiz_id=%s AND slug NOT IN %s;
     """
     cur.execute(query, (quiz_id, tuple(slugs),))
