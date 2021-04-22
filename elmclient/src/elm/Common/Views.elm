@@ -7,6 +7,7 @@ module Common.Views exposing
     , piazzaLink
     , shortDateToString
     , showDraftStatus
+    , slackLink
     , stringDateDelta
     )
 
@@ -55,17 +56,24 @@ divWithText theText =
 
 piazzaLink : Maybe String -> Html Msg
 piazzaLink piazzaURL =
-    case piazzaURL of
+    maybeLink piazzaURL "Piazza"
+
+slackLink : Maybe String -> Html Msg
+slackLink slackURL =
+    maybeLink slackURL "Slack"
+
+maybeLink : Maybe String -> String -> Html Msg
+maybeLink theURL theText =
+    case theURL of
         Just url ->
             case url of 
                 "" ->
                     Html.text ""
                 _  ->
-                    Html.a [ Attrs.href url ] [ Html.text "Piazza" ]
+                    Html.a [ Attrs.href url ] [ Html.text theText ]
 
         Nothing ->
             Html.text ""
-
 
 shortDayOfWeek : Posix -> Zone -> String
 shortDayOfWeek t z =

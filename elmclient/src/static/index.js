@@ -1,5 +1,5 @@
 /* eslint-env browser */
-/* global PIAZZA_URL COURSE_TITLE ABOUT_URL CANVAS_URL */
+/* global SLACK_URL PIAZZA_URL COURSE_TITLE ABOUT_URL CANVAS_URL */
 // pull in desired CSS/SASS files
 // Inject bundled Elm app into div#main
 
@@ -23,6 +23,7 @@ const app = Elm.Main.init({
         piazzaURL: PIAZZA_URL,
         aboutURL: ABOUT_URL,
         canvasURL: CANVAS_URL,
+        slackURL: SLACK_URL,
         // eslint-disable-next-line no-restricted-globals
         location: location.href,
     },

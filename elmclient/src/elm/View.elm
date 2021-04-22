@@ -4,14 +4,14 @@ import Assignments.Views
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Browser exposing (Document)
-import Common.Views exposing (piazzaLink)
+import Common.Views exposing (piazzaLink, slackLink)
 import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
 import Html.Lazy exposing (lazy2, lazy5, lazy6)
 import Meetings.Views
-import Models exposing (Model)
+import Models exposing (Model, UIElements)
 import Msgs exposing (Msg)
 import Quizzes.Views
 import RemoteData exposing (WebData)
@@ -30,7 +30,7 @@ page : Model -> Html Msg
 page model =
     case model.route of
         Models.IndexRoute ->
-            lazy5 indexView model.currentUser model.uiElements.courseTitle model.uiElements.aboutURL model.uiElements.canvasURL model.uiElements.piazzaURL
+            lazy2 indexView model.currentUser model.uiElements
 
         Models.CurrentUserDashboardRoute ->
             Dashboard.Views.dashboard model
@@ -57,15 +57,16 @@ page model =
             notFoundView
 
 
-indexView : WebData CurrentUser -> String -> String -> String -> Maybe String -> Html Msg
-indexView currentUser courseTitle aboutURL canvasURL piazzaURL =
+indexView : WebData CurrentUser -> UIElements -> Html Msg
+indexView currentUser uiElements =
     div []
-        [ h1 [] [ text courseTitle ]
-        , div [] [ a [ href aboutURL ] [ text "About" ] ]
+        [ h1 [] [ text uiElements.courseTitle ]
+        , div [] [ a [ href uiElements.aboutURL ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
-        , div [] [ Html.a [ href canvasURL ] [ Html.text "Canvas" ] ]
-        , piazzaLink piazzaURL
+        , div [] [ Html.a [ href uiElements.canvasURL ] [ Html.text "Canvas" ] ]
+        , piazzaLink uiElements.piazzaURL
+        , slackLink uiElements.slackURL
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard currentUser ]
         ]

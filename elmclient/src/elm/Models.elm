@@ -41,6 +41,7 @@ type alias Flags =
     , piazzaURL : Maybe String
     , aboutURL : String
     , canvasURL : String
+    , slackURL : Maybe String
     , location : String
     }
 
@@ -50,6 +51,7 @@ type alias UIElements =
     , piazzaURL : Maybe String
     , aboutURL : String
     , canvasURL : String
+    , slackURL : Maybe String
     }
 
 
@@ -130,6 +132,7 @@ initialModel flags route key =
         , piazzaURL = flags.piazzaURL
         , aboutURL = flags.aboutURL
         , canvasURL = flags.canvasURL
+        , slackURL = flags.slackURL
         }
     , assignmentGradeExceptions = RemoteData.NotAsked
     , assignmentSubmissions = RemoteData.NotAsked
