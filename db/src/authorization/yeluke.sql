@@ -9,12 +9,14 @@
 \ir ./yeluke/quiz_question.sql
 \ir ./yeluke/quiz_question_option.sql
 \ir ./yeluke/quiz_answer.sql
+\ir ./yeluke/quiz_answer_details.sql
 \ir ./yeluke/ui_element.sql
 \ir ./yeluke/assignment.sql
 \ir ./yeluke/assignment_field.sql
 \ir ./yeluke/assignment_submission.sql
 \ir ./yeluke/assignment_field_submission.sql
 \ir ./yeluke/quiz_grade.sql
+\ir ./yeluke/quiz_grade_details.sql
 \ir ./yeluke/assignment_grade.sql
 \ir ./yeluke/quiz_grade_distributions.sql
 \ir ./yeluke/assignment_grade_distributions.sql

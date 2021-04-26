@@ -37,3 +37,5 @@ ORDER BY
     quiz_question_id,
     quiz_question_option_id;
 
+alter view quiz_answer_details owner to api;
+
