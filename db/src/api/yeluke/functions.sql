@@ -14,9 +14,9 @@ AS $$
             qq.slug quiz_question_slug,
             qqo.id quiz_question_option_id
         FROM
-            data.quiz_answer qa
-            JOIN data.quiz_question_option qqo ON qa.quiz_question_option_id = qqo.id
-            JOIN data.quiz_question qq ON qq.id = qqo.quiz_question_id
+            data.quiz_question qq
+            LEFT JOIN data.quiz_question_option qqo ON qq.id = qqo.quiz_question_id
+            LEFT JOIN data.quiz_answer qa ON qqo.id = qa.quiz_question_option_id
         WHERE
             -- Match only the input arguments
             qq.quiz_id = $1 and qq.slug = $2
@@ -49,10 +49,22 @@ $$ LANGUAGE SQL;
 -- ├─────────────────────┼──────────────────────────────┼───────────────────────┤
 -- │                   3 │                            2 │                     1 │
 
+CREATE OR REPLACE FUNCTION delete_quiz_question(integer)
+RETURNS
+TABLE (
+    num_deleted_answers int,
+    num_deleted_question_options int,
+    num_deleted_questions int
+)
+AS $$
+    select delete_quiz_question(quiz_id, slug) from data.quiz_question where id=$1;
+$$ LANGUAGE SQL;
 
 COMMENT ON FUNCTION delete_quiz_question (integer, text) IS 'Deletes quiz_answers, quiz_question_options, and quiz_question for quiz question matching quiz_id and slug arguments';
 revoke all privileges on function delete_quiz_question(integer, text) from public;
 
+COMMENT ON FUNCTION delete_quiz_question (integer) IS 'Deletes quiz_answers, quiz_question_options, and quiz_question for quiz question matching id';
+revoke all privileges on function delete_quiz_question(integer) from public;
 
 CREATE OR REPLACE FUNCTION delete_quiz_question_option(integer, text, text)
 RETURNS
