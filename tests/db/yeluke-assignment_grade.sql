@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(12);
 
 SELECT view_owner_is(
     'api', 'assignment_grades', 'api',
@@ -74,6 +74,16 @@ SELECT throws_like(
     '%violates foreign key%',
     'cannot have a grade for an assignment where there is no submission'
 );
+
+DELETE FROM api.assignment_grades where assignment_submission_id=4;
+SELECT lives_ok(
+    $$
+        INSERT INTO api.assignment_grades (assignment_submission_id, points) VALUES (4,  0)
+    $$,
+    'assignment_slug should be automatically populated via trigger when assignment_submission_id is specified'
+);
+
+
 
 
 select * from finish();
