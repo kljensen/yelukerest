@@ -6,7 +6,7 @@ import Dict exposing (Dict)
 import Html exposing (Html)
 import Html.Attributes as Attrs
 import Html.Events as Events
-import Markdown
+import Markdown exposing (toHtmlWith)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
@@ -21,6 +21,17 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
+
+markdownToHTML : List (Html.Attribute msg) -> String -> Html msg 
+markdownToHTML attributes md =
+    let 
+        options = { githubFlavored = Just { tables = True, breaks = True }
+            , defaultHighlighting = Nothing
+            , sanitize = True
+            , smartypants = False
+            }
+    in
+    toHtmlWith options attributes md
 
 
 listView : TimeZone -> WebData (List Meeting) -> Html Msg
@@ -107,7 +118,7 @@ detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQu
         , Html.p []
             [ Html.time [] [ Html.text (longDateToString meeting.begins_at timeZone) ]
             ]
-        , Markdown.toHtml [] meeting.description
+        , markdownToHTML [] meeting.description
         , case currentUser of
             RemoteData.Success user ->
                 showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz
