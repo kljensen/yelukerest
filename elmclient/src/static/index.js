@@ -11,6 +11,10 @@ import { // eslint-disable-line object-curly-newline
 // eslint-disable-next-line import/no-unresolved
 require('ace-css/css/ace.css');
 require('./styles/main.scss');
+require('./styles/github.min.css');
+
+
+const hljs = require('./highlight.min.js');
 
 
 const initElmPorts = require('./elm-ports.js')
@@ -32,3 +36,7 @@ const app = Elm.Main.init({
 
 // Inform app o
 initElmPorts(app);
+
+hljs.highlightAll();
+console.log('woot');
+setTimeout(function(){hljs.highlightAll(); console.log('highlighted');}, 3000);

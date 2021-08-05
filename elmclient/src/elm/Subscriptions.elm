@@ -9,6 +9,6 @@ import Time exposing (Posix)
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Time.every 5000 Msgs.Tick
+        [ Time.every 500000 Msgs.Tick
         , serverSideEvents model.sse
         ]
