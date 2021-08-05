@@ -9,7 +9,7 @@ BEGIN;
 --
 
 -- Dumped from database version 13.1
--- Dumped by pg_dump version 13.2
+-- Dumped by pg_dump version 13.3
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -153,6 +153,26 @@ CREATE TYPE public._time_trial_type AS (
 ALTER TYPE public._time_trial_type OWNER TO superuser;
 
 --
+-- Name: delete_quiz_question(integer); Type: FUNCTION; Schema: api; Owner: superuser
+--
+
+CREATE FUNCTION api.delete_quiz_question(integer) RETURNS TABLE(num_deleted_answers integer, num_deleted_question_options integer, num_deleted_questions integer)
+    LANGUAGE sql
+    AS $_$
+    select delete_quiz_question(quiz_id, slug) from data.quiz_question where id=$1;
+$_$;
+
+
+ALTER FUNCTION api.delete_quiz_question(integer) OWNER TO superuser;
+
+--
+-- Name: FUNCTION delete_quiz_question(integer); Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON FUNCTION api.delete_quiz_question(integer) IS 'Deletes quiz_answers, quiz_question_options, and quiz_question for quiz question matching id';
+
+
+--
 -- Name: delete_quiz_question(integer, text); Type: FUNCTION; Schema: api; Owner: superuser
 --
 
@@ -167,9 +187,9 @@ CREATE FUNCTION api.delete_quiz_question(integer, text) RETURNS TABLE(num_delete
             qq.slug quiz_question_slug,
             qqo.id quiz_question_option_id
         FROM
-            data.quiz_answer qa
-            JOIN data.quiz_question_option qqo ON qa.quiz_question_option_id = qqo.id
-            JOIN data.quiz_question qq ON qq.id = qqo.quiz_question_id
+            data.quiz_question qq
+            LEFT JOIN data.quiz_question_option qqo ON qq.id = qqo.quiz_question_id
+            LEFT JOIN data.quiz_answer qa ON qqo.id = qa.quiz_question_option_id
         WHERE
             -- Match only the input arguments
             qq.quiz_id = $1 and qq.slug = $2
@@ -5833,6 +5853,13 @@ GRANT USAGE ON SCHEMA request TO PUBLIC;
 
 
 --
+-- Name: FUNCTION delete_quiz_question(integer); Type: ACL; Schema: api; Owner: superuser
+--
+
+REVOKE ALL ON FUNCTION api.delete_quiz_question(integer) FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION delete_quiz_question(integer, text); Type: ACL; Schema: api; Owner: superuser
 --
 
@@ -5879,7 +5906,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment_field_submission TO a
 GRANT SELECT,INSERT,UPDATE ON TABLE api.assignment_field_submissions TO student;
 GRANT SELECT,INSERT,UPDATE ON TABLE api.assignment_field_submissions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_field_submissions TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_field_submissions TO superuser;
 
 
 --
@@ -5896,7 +5922,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment_field TO api;
 GRANT SELECT ON TABLE api.assignment_fields TO student;
 GRANT SELECT ON TABLE api.assignment_fields TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_fields TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_fields TO superuser;
 
 
 --
@@ -5943,7 +5968,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment_grade_exception TO ap
 GRANT SELECT ON TABLE api.assignment_grade_exceptions TO student;
 GRANT SELECT ON TABLE api.assignment_grade_exceptions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grade_exceptions TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grade_exceptions TO superuser;
 
 
 --
@@ -5953,7 +5977,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grade_exceptions TO su
 GRANT SELECT ON TABLE api.assignment_grades TO student;
 GRANT SELECT ON TABLE api.assignment_grades TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grades TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grades TO superuser;
 
 
 --
@@ -5963,7 +5986,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grades TO superuser;
 GRANT SELECT,INSERT ON TABLE api.assignment_submissions TO student;
 GRANT SELECT,INSERT ON TABLE api.assignment_submissions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_submissions TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_submissions TO superuser;
 
 
 --
@@ -5980,7 +6002,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment TO api;
 GRANT SELECT ON TABLE api.assignments TO student;
 GRANT SELECT ON TABLE api.assignments TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignments TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignments TO superuser;
 
 
 --
@@ -5997,7 +6018,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.engagement TO api;
 GRANT SELECT ON TABLE api.engagements TO student;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.engagements TO faculty;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.engagements TO ta;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.engagements TO superuser;
 
 
 --
@@ -6014,7 +6034,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.grade_snapshot TO api;
 GRANT SELECT ON TABLE api.grade_snapshots TO student;
 GRANT SELECT ON TABLE api.grade_snapshots TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.grade_snapshots TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.grade_snapshots TO superuser;
 
 
 --
@@ -6031,7 +6050,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.grade TO api;
 GRANT SELECT ON TABLE api.grades TO student;
 GRANT SELECT ON TABLE api.grades TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.grades TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.grades TO superuser;
 
 
 --
@@ -6049,7 +6067,6 @@ GRANT SELECT ON TABLE api.meetings TO student;
 GRANT SELECT ON TABLE api.meetings TO ta;
 GRANT SELECT ON TABLE api.meetings TO anonymous;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.meetings TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.meetings TO superuser;
 
 
 --
@@ -6093,7 +6110,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_submission TO api;
 
 GRANT SELECT ON TABLE api.quiz_answer_details TO ta;
 GRANT SELECT ON TABLE api.quiz_answer_details TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_answer_details TO superuser;
 
 
 --
@@ -6103,7 +6119,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_answer_details TO superuser;
 GRANT SELECT,INSERT,DELETE ON TABLE api.quiz_answers TO student;
 GRANT SELECT,INSERT,DELETE ON TABLE api.quiz_answers TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_answers TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_answers TO superuser;
 
 
 --
@@ -6112,7 +6127,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_answers TO superuser;
 
 GRANT SELECT ON TABLE api.quiz_grade_details TO ta;
 GRANT SELECT ON TABLE api.quiz_grade_details TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grade_details TO superuser;
 
 
 --
@@ -6138,7 +6152,6 @@ GRANT SELECT ON TABLE api.quiz_grade_distributions TO faculty;
 GRANT SELECT ON TABLE api.quiz_grade_exceptions TO student;
 GRANT SELECT ON TABLE api.quiz_grade_exceptions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grade_exceptions TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grade_exceptions TO superuser;
 
 
 --
@@ -6148,7 +6161,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grade_exceptions TO superuse
 GRANT SELECT ON TABLE api.quiz_grades TO student;
 GRANT SELECT ON TABLE api.quiz_grades TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grades TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grades TO superuser;
 
 
 --
@@ -6156,7 +6168,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grades TO superuser;
 --
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_question_options TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_question_options TO superuser;
 
 
 --
@@ -6222,7 +6233,6 @@ GRANT SELECT(updated_at) ON TABLE api.quiz_question_options TO ta;
 GRANT SELECT ON TABLE api.quiz_questions TO student;
 GRANT SELECT ON TABLE api.quiz_questions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_questions TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_questions TO superuser;
 
 
 --
@@ -6232,7 +6242,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_questions TO superuser;
 GRANT SELECT,INSERT ON TABLE api.quiz_submissions TO student;
 GRANT SELECT,INSERT ON TABLE api.quiz_submissions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_submissions TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_submissions TO superuser;
 
 
 --
@@ -6242,7 +6251,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_submissions TO superuser;
 GRANT SELECT ON TABLE api.quizzes TO student;
 GRANT SELECT ON TABLE api.quizzes TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quizzes TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quizzes TO superuser;
 
 
 --
@@ -6252,7 +6260,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quizzes TO superuser;
 GRANT SELECT ON TABLE api.quiz_submissions_info TO student;
 GRANT SELECT ON TABLE api.quiz_submissions_info TO ta;
 GRANT SELECT ON TABLE api.quiz_submissions_info TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_submissions_info TO superuser;
 
 
 --
@@ -6269,7 +6276,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.team TO api;
 GRANT SELECT ON TABLE api.teams TO student;
 GRANT SELECT ON TABLE api.teams TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.teams TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.teams TO superuser;
 
 
 --
@@ -6287,7 +6293,6 @@ GRANT SELECT ON TABLE api.ui_elements TO student;
 GRANT SELECT ON TABLE api.ui_elements TO ta;
 GRANT SELECT ON TABLE api.ui_elements TO anonymous;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.ui_elements TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.ui_elements TO superuser;
 
 
 --
@@ -6298,7 +6303,6 @@ GRANT SELECT ON TABLE api.user_jwts TO student;
 GRANT SELECT ON TABLE api.user_jwts TO ta;
 GRANT SELECT ON TABLE api.user_jwts TO faculty;
 GRANT SELECT ON TABLE api.user_jwts TO app;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.user_jwts TO superuser;
 
 
 --
@@ -6315,7 +6319,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.user_secret TO api;
 GRANT SELECT ON TABLE api.user_secrets TO student;
 GRANT SELECT ON TABLE api.user_secrets TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.user_secrets TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.user_secrets TO superuser;
 
 
 --
@@ -6326,7 +6329,6 @@ GRANT SELECT ON TABLE api.users TO student;
 GRANT SELECT ON TABLE api.users TO ta;
 GRANT SELECT ON TABLE api.users TO app;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.users TO faculty;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.users TO superuser;
 
 
 --
