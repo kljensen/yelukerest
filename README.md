@@ -97,8 +97,12 @@ run the `create-initial-migrations.sh` script to get fresh migrations.
 I'll likely want to throw out the old ones first. I only keep migrations
 for a semester then start over. Then...
 
-1. Create a docker volume for pg data
-   `docker volume create --name=yelukerest-pg-data`
+1. Create the required external docker volumes 
+   ```
+   docker volume create --name=yelukerest-pg-data
+   docker volume create --name=yelukerest-redis-data
+   docker volume create --name=yelukerest-letsencrypt
+   ```
 2. Start database `./bin/prod.sh up db`
 3. Run the migrations (make sure these are up-to-date ;P )
    `./bin/migrate.sh`
