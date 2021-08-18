@@ -36,7 +36,7 @@ else
 fi
 }
 
-for domain in "$NAKED_FQDN" "$FDQN" "$1"
+for domain in "$NAKED_FQDN" "$FQDN" "$1"
 do
     if [ -n "$domain" ]; then
         get_cert $domain
