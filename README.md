@@ -97,6 +97,7 @@ run the `create-initial-migrations.sh` script to get fresh migrations.
 I'll likely want to throw out the old ones first. I only keep migrations
 for a semester then start over. Then...
 
+0. Create your secrets. Notices that the jwt secret [must be longer than 32 chars](https://github.com/PostgREST/postgrest/issues/991).
 1. Create a docker volume for pg data
    `docker volume create --name=yelukerest-pg-data`
 2. Start database `./bin/prod.sh up db`
