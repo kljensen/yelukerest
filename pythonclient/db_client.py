@@ -672,6 +672,24 @@ def upsert_quiz(cur, quiz):
     # for question in quiz['child:quiz_questions']:
     #     question['quiz_id'] = quiz_id
 
+def each_is_unique(iterable):
+    return len(iterable) == len(set(iterable))
+
+def quiz_is_valid(quiz):
+    """ Check to see if a quiz is valid. 
+    """
+
+    # Each slug should only appear once
+    slugs = [question["slug"] for question in quiz["child:quiz_questions"]]
+    if len(slugs) < 1 or not each_is_unique(slugs):
+        return False
+
+    for question in quiz["child:quiz_questions"]:
+        slugs = [opt["slug"] for opt in question["child:quiz_question_options"]]
+        if len(slugs) < 1 or not each_is_unique(slugs):
+            return False
+    return True
+
 
 @database.command()
 @click.pass_context
@@ -682,6 +700,9 @@ def update_quiz(ctx, infile, timedelta):
     """
     conn = ctx.obj['conn']
     quiz = read_yaml(infile)
+    if not quiz_is_valid(quiz):
+        raise Exception("invalid quiz")
+    return
 
     # Usually I don't specify "closed_at" because
     # it is set by a database trigger to be the
