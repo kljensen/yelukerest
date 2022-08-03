@@ -1,35 +1,68 @@
-drop schema if exists request cascade;
-create schema request;
-grant usage on schema request to public;
+DROP SCHEMA IF EXISTS request CASCADE;
 
-create or replace function request.env_var(v text) returns text as $$
-    select current_setting(v, true);
-$$ stable language sql;
+CREATE SCHEMA request;
 
-create or replace function request.jwt_claim(c text) returns text as $$
-    select request.env_var('request.jwt.claim.' || c);
-$$ stable language sql;
+GRANT usage ON SCHEMA request TO public;
 
-create or replace function request.cookie(c text) returns text as $$
-    select request.env_var('request.cookie.' || c);
-$$ stable language sql;
+CREATE OR REPLACE FUNCTION request.above_pg14 ()
+    RETURNS bool
+    AS $$
+    SELECT
+        current_setting('server_version_num')::int >= 140000;
 
-create or replace function request.header(h text) returns text as $$
-    select request.env_var('request.header.' || h);
-$$ stable language sql;
+$$ STABLE
+LANGUAGE sql;
 
-create or replace function request.user_id() returns int as $$
-    select 
-    case request.jwt_claim('user_id') 
-    when '' then 0
-    else request.jwt_claim('user_id')::int
-	end
-$$ stable language sql;
+CREATE OR REPLACE FUNCTION request.user_id_as_text ()
+    RETURNS text
+    AS $$
+    SELECT
+        CASE WHEN request.above_pg14 () THEN
+            current_setting('request.jwt.claims', TRUE)::json ->> 'user_id'
+        ELSE
+            current_setting('request.jwt.claim.user_id', TRUE)
+        END;
 
-create or replace function request.user_role() returns text as $$
-    select request.jwt_claim('role')::text;
-$$ stable language sql;
+$$ STABLE
+LANGUAGE sql;
 
-create or replace function request.app_name() returns text as $$
-    select request.jwt_claim('app_name')::text;
-$$ stable language sql;
+CREATE OR REPLACE FUNCTION request.user_id ()
+    RETURNS int
+    AS $$
+    SELECT
+        CASE request.user_id_as_text ()
+        WHEN '' THEN
+            0
+        ELSE
+            request.user_id_as_text ()::int
+        END;
+
+$$ STABLE
+LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION request.user_role ()
+    RETURNS text
+    AS $$
+    SELECT
+        CASE WHEN request.above_pg14 () THEN
+            current_setting('request.jwt.claims', TRUE)::json ->> 'role'
+        ELSE
+            current_setting('request.jwt.claim.role', TRUE)
+        END;
+
+$$ STABLE
+LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION request.app_name ()
+    RETURNS text
+    AS $$
+    SELECT
+        CASE WHEN request.above_pg14 () THEN
+            current_setting('request.jwt.claims', TRUE)::json ->> 'app_name'
+        ELSE
+            current_setting('request.jwt.claim.app_name', TRUE)
+        END;
+
+$$ STABLE
+LANGUAGE sql;
+
