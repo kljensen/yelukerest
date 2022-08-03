@@ -46,7 +46,10 @@ SELECT roles_are(ARRAY[
     'pg_read_all_stats',
     'pg_execute_server_program',
     'pg_write_server_files',
-    'pg_read_server_files'
+    'pg_read_server_files',
+    'pg_database_owner',
+    'pg_read_all_data',
+    'pg_write_all_data'
 ]);
 
 select * from finish();
