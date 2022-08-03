@@ -36,7 +36,7 @@ services:
     # PostgREST instance, is responsible for communicating with the database
     # and providing a REST api, (almost) every request that is sent to the database goes through it
     postgrest:
-        image: postgrest/postgrest:v7.0.1
+        image: postgrest/postgrest:v9.0.1
         ports:
             - '127.0.0.1:3000:${POSTGREST_PORT}'
         links:
@@ -50,6 +50,7 @@ services:
             - PGRST_MAX_ROWS=${MAX_ROWS}
             - PGRST_PRE_REQUEST=${PRE_REQUEST}
             - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
+            - PGRST_LOG_LEVEL=${PGRST_LOG_LEVEL:-error}
 
     certbot:
         image: certbot/dns-route53:v1.12.0
