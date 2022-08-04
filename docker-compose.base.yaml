@@ -109,9 +109,10 @@ services:
             - './openresty/lualib/user_code:/usr/local/openresty/lualib/user_code'
 
     # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
-    # to RabbitMQ based on the BRIDGE_CHANNELS configuration
+    # to RabbitMQ based on the BRIDGE_CHANNELS configuration. This was originally
+    # from subzerocloud
     pg_amqp_bridge:
-        image: subzerocloud/pg-amqp-bridge:0.0.6
+        image: yellowtrex/pg-amqp-bridge:0.0.6
         links:
             - db
             - rabbitmq
