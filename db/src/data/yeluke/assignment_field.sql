@@ -14,13 +14,17 @@ $$ stable language sql;
 CREATE TABLE IF NOT EXISTS assignment_field (
     slug TEXT
         CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 30),
-    assignment_slug VARCHAR(100)
+    assignment_slug TEXT
+        CHECK (char_length(assignment_slug) < 100)
         REFERENCES assignment(slug)
         ON UPDATE CASCADE
         NOT NULL,
-    label VARCHAR(100) NOT NULL,
-    help VARCHAR(200) NOT NULL,
-    placeholder VARCHAR(100) NOT NULL,
+    label TEXT NOT NULL
+        CHECK (char_length(label) < 100),
+    help TEXT NOT NULL
+        CHECK (char_length(help) < 200),
+    placeholder TEXT NOT NULL
+        CHECK (char_length(placeholder) < 100),
     is_url BOOLEAN NOT NULL DEFAULT false,
     is_multiline BOOLEAN NOT NULL DEFAULT false,
     display_order SMALLINT NOT NULL DEFAULT 0,

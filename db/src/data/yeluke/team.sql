@@ -2,7 +2,9 @@
 -- Some of the assignments in class will be submitted
 -- as a team, hence our need to track who is on what team.
 CREATE TABLE IF NOT EXISTS team (
-    nickname VARCHAR(50) UNIQUE NOT NULL PRIMARY KEY,
+    nickname TEXT
+        UNIQUE NOT NULL PRIMARY KEY
+        CHECK (char_length(nickname) < 50),
     CONSTRAINT valid_team_nickname
         CHECK (nickname ~ '^[\w]{2,20}-[\w]{2,20}$'),
     created_at TIMESTAMP WITH TIME ZONE
@@ -20,7 +22,8 @@ CREATE TABLE IF NOT EXISTS team (
 -- to which is points changes. That is, we can change a team's
 -- name and it will be changed in the `data.user` table automatically.
 ALTER TABLE "user"
-    ADD COLUMN team_nickname VARCHAR(50)
+    ADD COLUMN team_nickname TEXT
+    CHECK (char_length(team_nickname) < 50)
     REFERENCES team
     ON UPDATE CASCADE;
 

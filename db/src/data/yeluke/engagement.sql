@@ -4,7 +4,8 @@ CREATE TABLE IF NOT EXISTS engagement (
     user_id INT
         REFERENCES "user"(id)
         ON UPDATE CASCADE,
-    meeting_slug VARCHAR(100)
+    meeting_slug TEXT
+        CHECK (char_length(meeting_slug) < 100)
         REFERENCES meeting(slug)
         ON UPDATE CASCADE, 
     participation participation_enum NOT NULL,

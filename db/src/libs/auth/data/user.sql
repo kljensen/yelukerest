@@ -14,16 +14,16 @@ CREATE TABLE IF NOT EXISTS "user" (
     id SERIAL PRIMARY KEY,
     -- Notice that the team_nickname column is missing here, it will
     -- be added later once we define the `data.team` table.
-    email VARCHAR(100) UNIQUE
-        CHECK ( email ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' ),
-    netid VARCHAR(10) UNIQUE NOT NULL
-        CHECK (netid ~ '^[a-z]+[0-9]+$'),
-    name VARCHAR(100),
-    lastname VARCHAR(100),
-    organization VARCHAR(200),
-    known_as VARCHAR(50),
-    nickname VARCHAR(50) UNIQUE NOT NULL
-        CHECK (nickname ~ '^[\w]{2,20}-[\w]{2,20}$'),
+    email TEXT UNIQUE
+        CHECK ( email ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$' and char_length(email) < 100),
+    netid TEXT UNIQUE NOT NULL
+        CHECK (netid ~ '^[a-z]+[0-9]+$' AND char_length(netid) < 10),
+    name TEXT CHECK (char_length(name) < 100),
+    lastname TEXT CHECK (char_length(lastname) < 100),
+    organization TEXT CHECK (char_length(organization) < 200),
+    known_as TEXT CHECK (char_length(known_as) < 50),
+    nickname TEXT UNIQUE NOT NULL
+        CHECK (nickname ~ '^[\w]{2,20}-[\w]{2,20}$' AND char_length(nickname) < 50),
     "role" user_role NOT NULL DEFAULT settings.get('auth.default-role')::user_role,
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL

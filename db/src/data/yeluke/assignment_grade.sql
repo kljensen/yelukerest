@@ -1,6 +1,7 @@
 
 CREATE TABLE IF NOT EXISTS assignment_grade (
-    assignment_slug VARCHAR(100) NOT NULL,
+    assignment_slug TEXT NOT NULL
+        CHECK (char_length(assignment_slug) < 100),
     points_possible smallint NOT NULL,
     assignment_submission_id INT PRIMARY KEY,
     points REAL NOT NULL,

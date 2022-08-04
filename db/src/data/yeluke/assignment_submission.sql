@@ -1,13 +1,15 @@
 
 CREATE TABLE IF NOT EXISTS assignment_submission (
     id SERIAL PRIMARY KEY,
-    assignment_slug VARCHAR(100),
+    assignment_slug TEXT NOT NULL CHECK (char_length(assignment_slug) < 100),
     is_team BOOLEAN,
     FOREIGN KEY (assignment_slug, is_team) REFERENCES assignment(slug, is_team)
         ON UPDATE CASCADE,
     user_id INT REFERENCES "user"(id)
         ON UPDATE CASCADE,
-    team_nickname VARCHAR(50) REFERENCES team(nickname)
+    team_nickname TEXT
+        CHECK (char_length(team_nickname) < 50)
+        REFERENCES team(nickname)
         ON UPDATE CASCADE,
     submitter_user_id INT REFERENCES "user"(id)
         ON UPDATE CASCADE NOT NULL DEFAULT request.user_id(),

@@ -3,7 +3,7 @@
 -- our class, usually a lecture, but sometimes an exam, or even
 -- a hack-a-thon.
 CREATE TABLE IF NOT EXISTS meeting (
-    title VARCHAR(250) NOT NULL,
+    title text NOT NULL CHECK (char_length(title) < 250),
     slug TEXT UNIQUE NOT NULL
         CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 60),
     summary TEXT,

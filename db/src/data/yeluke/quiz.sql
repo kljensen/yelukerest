@@ -1,7 +1,9 @@
 
 CREATE TABLE IF NOT EXISTS quiz (
     id SERIAL PRIMARY KEY,
-    meeting_slug VARCHAR(100) REFERENCES meeting(slug)
+    meeting_slug TEXT
+        CHECK (char_length(meeting_slug) < 100)
+        REFERENCES meeting(slug)
         ON UPDATE CASCADE
         UNIQUE NOT NULL,
     -- Number of points possible on this quiz.
