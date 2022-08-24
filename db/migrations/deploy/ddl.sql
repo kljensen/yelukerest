@@ -8,8 +8,8 @@ BEGIN;
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 13.1
--- Dumped by pg_dump version 13.3
+-- Dumped from database version 14.4
+-- Dumped by pg_dump version 14.3
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -140,17 +140,6 @@ CREATE TYPE data.user_role AS ENUM (
 
 
 ALTER TYPE data.user_role OWNER TO superuser;
-
---
--- Name: _time_trial_type; Type: TYPE; Schema: public; Owner: superuser
---
-
-CREATE TYPE public._time_trial_type AS (
-	a_time numeric
-);
-
-
-ALTER TYPE public._time_trial_type OWNER TO superuser;
 
 --
 -- Name: delete_quiz_question(integer); Type: FUNCTION; Schema: api; Owner: superuser
@@ -795,2471 +784,6 @@ $$;
 ALTER FUNCTION pgjwt.verify(token text, secret text, algorithm text) OWNER TO superuser;
 
 --
--- Name: _add(text, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._add(text, integer) RETURNS integer
-    LANGUAGE sql
-    AS $_$
-    SELECT _add($1, $2, '')
-$_$;
-
-
-ALTER FUNCTION public._add(text, integer) OWNER TO superuser;
-
---
--- Name: _add(text, integer, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._add(text, integer, text) RETURNS integer
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    EXECUTE 'INSERT INTO __tcache__ (label, value, note) values (' ||
-    quote_literal($1) || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ')';
-    RETURN $2;
-END;
-$_$;
-
-
-ALTER FUNCTION public._add(text, integer, text) OWNER TO superuser;
-
---
--- Name: _alike(boolean, anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._alike(boolean, anyelement, text, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    result ALIAS FOR $1;
-    got    ALIAS FOR $2;
-    rx     ALIAS FOR $3;
-    descr  ALIAS FOR $4;
-    output TEXT;
-BEGIN
-    output := ok( result, descr );
-    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
-       E'\n   doesn''t match: ' || COALESCE( quote_literal(rx), 'NULL' )
-    ) END;
-END;
-$_$;
-
-
-ALTER FUNCTION public._alike(boolean, anyelement, text, text) OWNER TO superuser;
-
---
--- Name: _cexists(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._cexists(name, name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT EXISTS(
-        SELECT true
-          FROM pg_catalog.pg_class c
-          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE c.relname = $1
-           AND pg_catalog.pg_table_is_visible(c.oid)
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-           AND a.attname = $2
-    );
-$_$;
-
-
-ALTER FUNCTION public._cexists(name, name) OWNER TO superuser;
-
---
--- Name: _cexists(name, name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._cexists(name, name, name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT EXISTS(
-        SELECT true
-          FROM pg_catalog.pg_namespace n
-          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE n.nspname = $1
-           AND c.relname = $2
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-           AND a.attname = $3
-    );
-$_$;
-
-
-ALTER FUNCTION public._cexists(name, name, name) OWNER TO superuser;
-
---
--- Name: _col_is_null(name, name, text, boolean); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._col_is_null(name, name, text, boolean) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    qcol CONSTANT text := quote_ident($1) || '.' || quote_ident($2);
-    c_desc CONSTANT text := coalesce(
-        $3,
-        'Column ' || qcol || ' should '
-            || CASE WHEN $4 THEN 'be NOT' ELSE 'allow' END || ' NULL'
-    );
-BEGIN
-    IF NOT _cexists( $1, $2 ) THEN
-        RETURN fail( c_desc ) || E'\n'
-            || diag ('    Column ' || qcol || ' does not exist' );
-    END IF;
-    RETURN ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_class c
-              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-             WHERE pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
-               AND a.attnum > 0
-               AND NOT a.attisdropped
-               AND a.attname    = $2
-               AND a.attnotnull = $4
-        ), c_desc
-    );
-END;
-$_$;
-
-
-ALTER FUNCTION public._col_is_null(name, name, text, boolean) OWNER TO superuser;
-
---
--- Name: _col_is_null(name, name, name, text, boolean); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._col_is_null(name, name, name, text, boolean) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    qcol CONSTANT text := quote_ident($1) || '.' || quote_ident($2) || '.' || quote_ident($3);
-    c_desc CONSTANT text := coalesce(
-        $4,
-        'Column ' || qcol || ' should '
-            || CASE WHEN $5 THEN 'be NOT' ELSE 'allow' END || ' NULL'
-    );
-BEGIN
-    IF NOT _cexists( $1, $2, $3 ) THEN
-        RETURN fail( c_desc ) || E'\n'
-            || diag ('    Column ' || qcol || ' does not exist' );
-    END IF;
-    RETURN ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_namespace n
-              JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-             WHERE n.nspname = $1
-               AND c.relname = $2
-               AND a.attnum  > 0
-               AND NOT a.attisdropped
-               AND a.attname    = $3
-               AND a.attnotnull = $5
-        ), c_desc
-    );
-END;
-$_$;
-
-
-ALTER FUNCTION public._col_is_null(name, name, name, text, boolean) OWNER TO superuser;
-
---
--- Name: _error_diag(text, text, text, text, text, text, text, text, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._error_diag(text, text, text, text, text, text, text, text, text, text) RETURNS text
-    LANGUAGE sql IMMUTABLE
-    AS $_$
-    SELECT COALESCE(
-               COALESCE( NULLIF($1, '') || ': ', '' ) || COALESCE( NULLIF($2, ''), '' ),
-               'NO ERROR FOUND'
-           )
-        || COALESCE(E'\n        DETAIL:     ' || nullif($3, ''), '')
-        || COALESCE(E'\n        HINT:       ' || nullif($4, ''), '')
-        || COALESCE(E'\n        SCHEMA:     ' || nullif($6, ''), '')
-        || COALESCE(E'\n        TABLE:      ' || nullif($7, ''), '')
-        || COALESCE(E'\n        COLUMN:     ' || nullif($8, ''), '')
-        || COALESCE(E'\n        CONSTRAINT: ' || nullif($9, ''), '')
-        || COALESCE(E'\n        TYPE:       ' || nullif($10, ''), '')
-        -- We need to manually indent all the context lines
-        || COALESCE(E'\n        CONTEXT:\n'
-               || regexp_replace(NULLIF( $5, ''), '^', '            ', 'gn'
-           ), '');
-$_$;
-
-
-ALTER FUNCTION public._error_diag(text, text, text, text, text, text, text, text, text, text) OWNER TO superuser;
-
---
--- Name: _finish(integer, integer, integer, boolean); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._finish(integer, integer, integer, boolean DEFAULT NULL::boolean) RETURNS SETOF text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    curr_test ALIAS FOR $1;
-    exp_tests INTEGER := $2;
-    num_faild ALIAS FOR $3;
-    plural    CHAR;
-    raise_ex  ALIAS FOR $4;
-BEGIN
-    plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
-
-    IF curr_test IS NULL THEN
-        RAISE EXCEPTION '# No tests run!';
-    END IF;
-
-    IF exp_tests = 0 OR exp_tests IS NULL THEN
-         -- No plan. Output one now.
-        exp_tests = curr_test;
-        RETURN NEXT '1..' || exp_tests;
-    END IF;
-
-    IF curr_test <> exp_tests THEN
-        RETURN NEXT diag(
-            'Looks like you planned ' || exp_tests || ' test' ||
-            plural || ' but ran ' || curr_test
-        );
-    ELSIF num_faild > 0 THEN
-        IF raise_ex THEN
-            RAISE EXCEPTION  '% test% failed of %', num_faild, CASE num_faild WHEN 1 THEN '' ELSE 's' END, exp_tests;
-        END IF;
-        RETURN NEXT diag(
-            'Looks like you failed ' || num_faild || ' test' ||
-            CASE num_faild WHEN 1 THEN '' ELSE 's' END
-            || ' of ' || exp_tests
-        );
-    ELSE
-
-    END IF;
-    RETURN;
-END;
-$_$;
-
-
-ALTER FUNCTION public._finish(integer, integer, integer, boolean) OWNER TO superuser;
-
---
--- Name: _get(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._get(text) RETURNS integer
-    LANGUAGE plpgsql STRICT
-    AS $_$
-DECLARE
-    ret integer;
-BEGIN
-    EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
-    RETURN ret;
-END;
-$_$;
-
-
-ALTER FUNCTION public._get(text) OWNER TO superuser;
-
---
--- Name: _get_latest(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._get_latest(text) RETURNS integer[]
-    LANGUAGE plpgsql STRICT
-    AS $_$
-DECLARE
-    ret integer[];
-BEGIN
-    EXECUTE 'SELECT ARRAY[id, value] FROM __tcache__ WHERE label = ' ||
-    quote_literal($1) || ' AND id = (SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
-    quote_literal($1) || ') LIMIT 1' INTO ret;
-    RETURN ret;
-EXCEPTION WHEN undefined_table THEN
-   RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
-END;
-$_$;
-
-
-ALTER FUNCTION public._get_latest(text) OWNER TO superuser;
-
---
--- Name: _get_latest(text, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._get_latest(text, integer) RETURNS integer
-    LANGUAGE plpgsql STRICT
-    AS $_$
-DECLARE
-    ret integer;
-BEGIN
-    EXECUTE 'SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
-    quote_literal($1) || ' AND value = ' || $2 INTO ret;
-    RETURN ret;
-END;
-$_$;
-
-
-ALTER FUNCTION public._get_latest(text, integer) OWNER TO superuser;
-
---
--- Name: _get_note(integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._get_note(integer) RETURNS text
-    LANGUAGE plpgsql STRICT
-    AS $_$
-DECLARE
-    ret text;
-BEGIN
-    EXECUTE 'SELECT note FROM __tcache__ WHERE id = ' || $1 || ' LIMIT 1' INTO ret;
-    RETURN ret;
-END;
-$_$;
-
-
-ALTER FUNCTION public._get_note(integer) OWNER TO superuser;
-
---
--- Name: _get_note(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._get_note(text) RETURNS text
-    LANGUAGE plpgsql STRICT
-    AS $_$
-DECLARE
-    ret text;
-BEGIN
-    EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
-    RETURN ret;
-END;
-$_$;
-
-
-ALTER FUNCTION public._get_note(text) OWNER TO superuser;
-
---
--- Name: _query(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._query(text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT CASE
-        WHEN $1 LIKE '"%' OR $1 !~ '[[:space:]]' THEN 'EXECUTE ' || $1
-        ELSE $1
-    END;
-$_$;
-
-
-ALTER FUNCTION public._query(text) OWNER TO superuser;
-
---
--- Name: _relexists(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._relexists(name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT EXISTS(
-        SELECT true
-          FROM pg_catalog.pg_class c
-         WHERE pg_catalog.pg_table_is_visible(c.oid)
-           AND c.relname = $1
-    );
-$_$;
-
-
-ALTER FUNCTION public._relexists(name) OWNER TO superuser;
-
---
--- Name: _relexists(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._relexists(name, name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT EXISTS(
-        SELECT true
-          FROM pg_catalog.pg_namespace n
-          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-         WHERE n.nspname = $1
-           AND c.relname = $2
-    );
-$_$;
-
-
-ALTER FUNCTION public._relexists(name, name) OWNER TO superuser;
-
---
--- Name: _rexists(character[], name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._rexists(character[], name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT EXISTS(
-        SELECT true
-          FROM pg_catalog.pg_class c
-         WHERE c.relkind = ANY($1)
-           AND pg_catalog.pg_table_is_visible(c.oid)
-           AND c.relname = $2
-    );
-$_$;
-
-
-ALTER FUNCTION public._rexists(character[], name) OWNER TO superuser;
-
---
--- Name: _rexists(character, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._rexists(character, name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-SELECT _rexists(ARRAY[$1], $2);
-$_$;
-
-
-ALTER FUNCTION public._rexists(character, name) OWNER TO superuser;
-
---
--- Name: _rexists(character[], name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._rexists(character[], name, name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT EXISTS(
-        SELECT true
-          FROM pg_catalog.pg_namespace n
-          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-         WHERE c.relkind = ANY($1)
-           AND n.nspname = $2
-           AND c.relname = $3
-    );
-$_$;
-
-
-ALTER FUNCTION public._rexists(character[], name, name) OWNER TO superuser;
-
---
--- Name: _rexists(character, name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._rexists(character, name, name) RETURNS boolean
-    LANGUAGE sql
-    AS $_$
-    SELECT _rexists(ARRAY[$1], $2, $3);
-$_$;
-
-
-ALTER FUNCTION public._rexists(character, name, name) OWNER TO superuser;
-
---
--- Name: _set(integer, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._set(integer, integer) RETURNS integer
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    EXECUTE 'UPDATE __tcache__ SET value = ' || $2
-        || ' WHERE id = ' || $1;
-    RETURN $2;
-END;
-$_$;
-
-
-ALTER FUNCTION public._set(integer, integer) OWNER TO superuser;
-
---
--- Name: _set(text, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._set(text, integer) RETURNS integer
-    LANGUAGE sql
-    AS $_$
-    SELECT _set($1, $2, '')
-$_$;
-
-
-ALTER FUNCTION public._set(text, integer) OWNER TO superuser;
-
---
--- Name: _set(text, integer, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._set(text, integer, text) RETURNS integer
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    rcount integer;
-BEGIN
-    EXECUTE 'UPDATE __tcache__ SET value = ' || $2
-        || CASE WHEN $3 IS NULL THEN '' ELSE ', note = ' || quote_literal($3) END
-        || ' WHERE label = ' || quote_literal($1);
-    GET DIAGNOSTICS rcount = ROW_COUNT;
-    IF rcount = 0 THEN
-       RETURN _add( $1, $2, $3 );
-    END IF;
-    RETURN $2;
-END;
-$_$;
-
-
-ALTER FUNCTION public._set(text, integer, text) OWNER TO superuser;
-
---
--- Name: _time_trials(text, integer, numeric); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._time_trials(text, integer, numeric) RETURNS SETOF public._time_trial_type
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    query            TEXT := _query($1);
-    iterations       ALIAS FOR $2;
-    return_percent   ALIAS FOR $3;
-    start_time       TEXT;
-    act_time         NUMERIC;
-    times            NUMERIC[];
-    offset_it        INT;
-    limit_it         INT;
-    offset_percent   NUMERIC;
-    a_time	     _time_trial_type;
-BEGIN
-    -- Execute the query over and over
-    FOR i IN 1..iterations LOOP
-        start_time := timeofday();
-        EXECUTE query;
-        -- Store the execution time for the run in an array of times
-        times[i] := extract(millisecond from timeofday()::timestamptz - start_time::timestamptz);
-    END LOOP;
-    offset_percent := (1.0 - return_percent) / 2.0;
-    -- Ensure that offset skips the bottom X% of runs, or set it to 0
-    SELECT GREATEST((offset_percent * iterations)::int, 0) INTO offset_it;
-    -- Ensure that with limit the query to returning only the middle X% of runs
-    SELECT GREATEST((return_percent * iterations)::int, 1) INTO limit_it;
-
-    FOR a_time IN SELECT times[i]
-		  FROM generate_series(array_lower(times, 1), array_upper(times, 1)) i
-                  ORDER BY 1
-                  OFFSET offset_it
-                  LIMIT limit_it LOOP
-	RETURN NEXT a_time;
-    END LOOP;
-END;
-$_$;
-
-
-ALTER FUNCTION public._time_trials(text, integer, numeric) OWNER TO superuser;
-
---
--- Name: _todo(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._todo() RETURNS text
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    todos INT[];
-    note text;
-BEGIN
-    -- Get the latest id and value, because todo() might have been called
-    -- again before the todos ran out for the first call to todo(). This
-    -- allows them to nest.
-    todos := _get_latest('todo');
-    IF todos IS NULL THEN
-        -- No todos.
-        RETURN NULL;
-    END IF;
-    IF todos[2] = 0 THEN
-        -- Todos depleted. Clean up.
-        EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || todos[1];
-        RETURN NULL;
-    END IF;
-    -- Decrement the count of counted todos and return the reason.
-    IF todos[2] <> -1 THEN
-        PERFORM _set(todos[1], todos[2] - 1);
-    END IF;
-    note := _get_note(todos[1]);
-
-    IF todos[2] = 1 THEN
-        -- This was the last todo, so delete the record.
-        EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || todos[1];
-    END IF;
-
-    RETURN note;
-END;
-$$;
-
-
-ALTER FUNCTION public._todo() OWNER TO superuser;
-
---
--- Name: _unalike(boolean, anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public._unalike(boolean, anyelement, text, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    result ALIAS FOR $1;
-    got    ALIAS FOR $2;
-    rx     ALIAS FOR $3;
-    descr  ALIAS FOR $4;
-    output TEXT;
-BEGIN
-    output := ok( result, descr );
-    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
-        E'\n         matches: ' || COALESCE( quote_literal(rx), 'NULL' )
-    ) END;
-END;
-$_$;
-
-
-ALTER FUNCTION public._unalike(boolean, anyelement, text, text) OWNER TO superuser;
-
---
--- Name: add_result(boolean, boolean, text, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.add_result(boolean, boolean, text, text, text) RETURNS integer
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    IF NOT $1 THEN PERFORM _set('failed', _get('failed') + 1); END IF;
-    RETURN nextval('__tresults___numb_seq');
-END;
-$_$;
-
-
-ALTER FUNCTION public.add_result(boolean, boolean, text, text, text) OWNER TO superuser;
-
---
--- Name: alike(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.alike(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~~ $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.alike(anyelement, text) OWNER TO superuser;
-
---
--- Name: alike(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.alike(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~~ $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.alike(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: cmp_ok(anyelement, text, anyelement); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.cmp_ok(anyelement, text, anyelement) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT cmp_ok( $1, $2, $3, NULL );
-$_$;
-
-
-ALTER FUNCTION public.cmp_ok(anyelement, text, anyelement) OWNER TO superuser;
-
---
--- Name: cmp_ok(anyelement, text, anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.cmp_ok(anyelement, text, anyelement, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    have   ALIAS FOR $1;
-    op     ALIAS FOR $2;
-    want   ALIAS FOR $3;
-    descr  ALIAS FOR $4;
-    result BOOLEAN;
-    output TEXT;
-BEGIN
-    EXECUTE 'SELECT ' ||
-            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
-            || op || ' ' ||
-            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
-       INTO result;
-    output := ok( COALESCE(result, FALSE), descr );
-    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-           E'\n        ' || op ||
-           E'\n    ' || COALESCE( quote_literal(want), 'NULL' )
-    ) END;
-END;
-$_$;
-
-
-ALTER FUNCTION public.cmp_ok(anyelement, text, anyelement, text) OWNER TO superuser;
-
---
--- Name: col_is_null(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.col_is_null(table_name name, column_name name, description text DEFAULT NULL::text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _col_is_null( $1, $2, $3, false );
-$_$;
-
-
-ALTER FUNCTION public.col_is_null(table_name name, column_name name, description text) OWNER TO superuser;
-
---
--- Name: col_is_null(name, name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.col_is_null(schema_name name, table_name name, column_name name, description text DEFAULT NULL::text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _col_is_null( $1, $2, $3, $4, false );
-$_$;
-
-
-ALTER FUNCTION public.col_is_null(schema_name name, table_name name, column_name name, description text) OWNER TO superuser;
-
---
--- Name: col_not_null(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.col_not_null(table_name name, column_name name, description text DEFAULT NULL::text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _col_is_null( $1, $2, $3, true );
-$_$;
-
-
-ALTER FUNCTION public.col_not_null(table_name name, column_name name, description text) OWNER TO superuser;
-
---
--- Name: col_not_null(name, name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.col_not_null(schema_name name, table_name name, column_name name, description text DEFAULT NULL::text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _col_is_null( $1, $2, $3, $4, true );
-$_$;
-
-
-ALTER FUNCTION public.col_not_null(schema_name name, table_name name, column_name name, description text) OWNER TO superuser;
-
---
--- Name: diag(text[]); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.diag(VARIADIC text[]) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT diag(array_to_string($1, ''));
-$_$;
-
-
-ALTER FUNCTION public.diag(VARIADIC text[]) OWNER TO superuser;
-
---
--- Name: diag(anyarray); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.diag(VARIADIC anyarray) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT diag(array_to_string($1, ''));
-$_$;
-
-
-ALTER FUNCTION public.diag(VARIADIC anyarray) OWNER TO superuser;
-
---
--- Name: diag(anyelement); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.diag(msg anyelement) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT diag($1::text);
-$_$;
-
-
-ALTER FUNCTION public.diag(msg anyelement) OWNER TO superuser;
-
---
--- Name: diag(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.diag(msg text) RETURNS text
-    LANGUAGE sql STRICT
-    AS $_$
-    SELECT '# ' || replace(
-       replace(
-            replace( $1, E'\r\n', E'\n# ' ),
-            E'\n',
-            E'\n# '
-        ),
-        E'\r',
-        E'\n# '
-    );
-$_$;
-
-
-ALTER FUNCTION public.diag(msg text) OWNER TO superuser;
-
---
--- Name: doesnt_imatch(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.doesnt_imatch(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~* $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.doesnt_imatch(anyelement, text) OWNER TO superuser;
-
---
--- Name: doesnt_imatch(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.doesnt_imatch(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~* $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.doesnt_imatch(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: doesnt_match(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.doesnt_match(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~ $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.doesnt_match(anyelement, text) OWNER TO superuser;
-
---
--- Name: doesnt_match(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.doesnt_match(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~ $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.doesnt_match(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: fail(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.fail() RETURNS text
-    LANGUAGE sql
-    AS $$
-    SELECT ok( FALSE, NULL );
-$$;
-
-
-ALTER FUNCTION public.fail() OWNER TO superuser;
-
---
--- Name: fail(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.fail(text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( FALSE, $1 );
-$_$;
-
-
-ALTER FUNCTION public.fail(text) OWNER TO superuser;
-
---
--- Name: finish(boolean); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.finish(exception_on_failure boolean DEFAULT NULL::boolean) RETURNS SETOF text
-    LANGUAGE sql
-    AS $_$
-    SELECT * FROM _finish(
-        _get('curr_test'),
-        _get('plan'),
-        num_failed(),
-        $1
-    );
-$_$;
-
-
-ALTER FUNCTION public.finish(exception_on_failure boolean) OWNER TO superuser;
-
---
--- Name: has_column(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_column(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_column( $1, $2, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_column(name, name) OWNER TO superuser;
-
---
--- Name: has_column(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_column(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _cexists( $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_column(name, name, text) OWNER TO superuser;
-
---
--- Name: has_column(name, name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_column(name, name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _cexists( $1, $2, $3 ), $4 );
-$_$;
-
-
-ALTER FUNCTION public.has_column(name, name, name, text) OWNER TO superuser;
-
---
--- Name: has_composite(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_composite(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_composite( $1, 'Composite type ' || quote_ident($1) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_composite(name) OWNER TO superuser;
-
---
--- Name: has_composite(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_composite(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'c', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.has_composite(name, text) OWNER TO superuser;
-
---
--- Name: has_composite(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_composite(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'c', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_composite(name, name, text) OWNER TO superuser;
-
---
--- Name: has_foreign_table(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_foreign_table(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_foreign_table( $1, 'Foreign table ' || quote_ident($1) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_foreign_table(name) OWNER TO superuser;
-
---
--- Name: has_foreign_table(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_foreign_table(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok(
-        _rexists( 'f', $1, $2 ),
-        'Foreign table ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
-    );
-$_$;
-
-
-ALTER FUNCTION public.has_foreign_table(name, name) OWNER TO superuser;
-
---
--- Name: has_foreign_table(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_foreign_table(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'f', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.has_foreign_table(name, text) OWNER TO superuser;
-
---
--- Name: has_foreign_table(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_foreign_table(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'f', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_foreign_table(name, name, text) OWNER TO superuser;
-
---
--- Name: has_relation(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_relation(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_relation( $1, 'Relation ' || quote_ident($1) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_relation(name) OWNER TO superuser;
-
---
--- Name: has_relation(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_relation(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _relexists( $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.has_relation(name, text) OWNER TO superuser;
-
---
--- Name: has_relation(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_relation(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _relexists( $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_relation(name, name, text) OWNER TO superuser;
-
---
--- Name: has_sequence(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_sequence(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_sequence( $1, 'Sequence ' || quote_ident($1) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_sequence(name) OWNER TO superuser;
-
---
--- Name: has_sequence(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_sequence(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok(
-        _rexists( 'S', $1, $2 ),
-        'Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
-    );
-$_$;
-
-
-ALTER FUNCTION public.has_sequence(name, name) OWNER TO superuser;
-
---
--- Name: has_sequence(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_sequence(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'S', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.has_sequence(name, text) OWNER TO superuser;
-
---
--- Name: has_sequence(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_sequence(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'S', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_sequence(name, name, text) OWNER TO superuser;
-
---
--- Name: has_table(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_table(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_table( $1, 'Table ' || quote_ident($1) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_table(name) OWNER TO superuser;
-
---
--- Name: has_table(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_table(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok(
-        _rexists( '{r,p}'::char[], $1, $2 ),
-        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
-    );
-$_$;
-
-
-ALTER FUNCTION public.has_table(name, name) OWNER TO superuser;
-
---
--- Name: has_table(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_table(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( '{r,p}'::char[], $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.has_table(name, text) OWNER TO superuser;
-
---
--- Name: has_table(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_table(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( '{r,p}'::char[], $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_table(name, name, text) OWNER TO superuser;
-
---
--- Name: has_view(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_view(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT has_view( $1, 'View ' || quote_ident($1) || ' should exist' );
-$_$;
-
-
-ALTER FUNCTION public.has_view(name) OWNER TO superuser;
-
---
--- Name: has_view(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_view(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'v', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.has_view(name, text) OWNER TO superuser;
-
---
--- Name: has_view(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.has_view(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( _rexists( 'v', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.has_view(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_column(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_column(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_column( $1, $2, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_column(name, name) OWNER TO superuser;
-
---
--- Name: hasnt_column(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_column(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _cexists( $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_column(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_column(name, name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_column(name, name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _cexists( $1, $2, $3 ), $4 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_column(name, name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_composite(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_composite(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_composite( $1, 'Composite type ' || quote_ident($1) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_composite(name) OWNER TO superuser;
-
---
--- Name: hasnt_composite(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_composite(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'c', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_composite(name, text) OWNER TO superuser;
-
---
--- Name: hasnt_composite(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_composite(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'c', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_composite(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_foreign_table(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_foreign_table(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_foreign_table( $1, 'Foreign table ' || quote_ident($1) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_foreign_table(name) OWNER TO superuser;
-
---
--- Name: hasnt_foreign_table(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_foreign_table(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok(
-        NOT _rexists( 'f', $1, $2 ),
-        'Foreign table ' || quote_ident($1) || '.' || quote_ident($2) || ' should not exist'
-    );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_foreign_table(name, name) OWNER TO superuser;
-
---
--- Name: hasnt_foreign_table(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_foreign_table(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'f', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_foreign_table(name, text) OWNER TO superuser;
-
---
--- Name: hasnt_foreign_table(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_foreign_table(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'f', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_foreign_table(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_relation(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_relation(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_relation( $1, 'Relation ' || quote_ident($1) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_relation(name) OWNER TO superuser;
-
---
--- Name: hasnt_relation(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_relation(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _relexists( $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_relation(name, text) OWNER TO superuser;
-
---
--- Name: hasnt_relation(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_relation(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _relexists( $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_relation(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_sequence(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_sequence(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_sequence( $1, 'Sequence ' || quote_ident($1) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_sequence(name) OWNER TO superuser;
-
---
--- Name: hasnt_sequence(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_sequence(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'S', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_sequence(name, text) OWNER TO superuser;
-
---
--- Name: hasnt_sequence(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_sequence(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'S', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_sequence(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_table(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_table(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_table( $1, 'Table ' || quote_ident($1) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_table(name) OWNER TO superuser;
-
---
--- Name: hasnt_table(name, name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_table(name, name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok(
-        NOT _rexists( '{r,p}'::char[], $1, $2 ),
-        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should not exist'
-    );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_table(name, name) OWNER TO superuser;
-
---
--- Name: hasnt_table(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_table(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( '{r,p}'::char[], $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_table(name, text) OWNER TO superuser;
-
---
--- Name: hasnt_table(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_table(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( '{r,p}'::char[], $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_table(name, name, text) OWNER TO superuser;
-
---
--- Name: hasnt_view(name); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_view(name) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT hasnt_view( $1, 'View ' || quote_ident($1) || ' should not exist' );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_view(name) OWNER TO superuser;
-
---
--- Name: hasnt_view(name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_view(name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'v', $1 ), $2 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_view(name, text) OWNER TO superuser;
-
---
--- Name: hasnt_view(name, name, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.hasnt_view(name, name, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( NOT _rexists( 'v', $1, $2 ), $3 );
-$_$;
-
-
-ALTER FUNCTION public.hasnt_view(name, name, text) OWNER TO superuser;
-
---
--- Name: ialike(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.ialike(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~~* $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.ialike(anyelement, text) OWNER TO superuser;
-
---
--- Name: ialike(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.ialike(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~~* $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.ialike(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: imatches(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.imatches(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~* $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.imatches(anyelement, text) OWNER TO superuser;
-
---
--- Name: imatches(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.imatches(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~* $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.imatches(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: in_todo(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.in_todo() RETURNS boolean
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    todos integer;
-BEGIN
-    todos := _get('todo');
-    RETURN CASE WHEN todos IS NULL THEN FALSE ELSE TRUE END;
-END;
-$$;
-
-
-ALTER FUNCTION public.in_todo() OWNER TO superuser;
-
---
--- Name: is(anyelement, anyelement); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public."is"(anyelement, anyelement) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT is( $1, $2, NULL);
-$_$;
-
-
-ALTER FUNCTION public."is"(anyelement, anyelement) OWNER TO superuser;
-
---
--- Name: is(anyelement, anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public."is"(anyelement, anyelement, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    result BOOLEAN;
-    output TEXT;
-BEGIN
-    -- Would prefer $1 IS NOT DISTINCT FROM, but that's not supported by 8.1.
-    result := NOT $1 IS DISTINCT FROM $2;
-    output := ok( result, $3 );
-    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '        have: ' || CASE WHEN $1 IS NULL THEN 'NULL' ELSE $1::text END ||
-        E'\n        want: ' || CASE WHEN $2 IS NULL THEN 'NULL' ELSE $2::text END
-    ) END;
-END;
-$_$;
-
-
-ALTER FUNCTION public."is"(anyelement, anyelement, text) OWNER TO superuser;
-
---
--- Name: isnt(anyelement, anyelement); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.isnt(anyelement, anyelement) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT isnt( $1, $2, NULL);
-$_$;
-
-
-ALTER FUNCTION public.isnt(anyelement, anyelement) OWNER TO superuser;
-
---
--- Name: isnt(anyelement, anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.isnt(anyelement, anyelement, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    result BOOLEAN;
-    output TEXT;
-BEGIN
-    result := $1 IS DISTINCT FROM $2;
-    output := ok( result, $3 );
-    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '        have: ' || COALESCE( $1::text, 'NULL' ) ||
-        E'\n        want: anything else'
-    ) END;
-END;
-$_$;
-
-
-ALTER FUNCTION public.isnt(anyelement, anyelement, text) OWNER TO superuser;
-
---
--- Name: lives_ok(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.lives_ok(text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT lives_ok( $1, NULL );
-$_$;
-
-
-ALTER FUNCTION public.lives_ok(text) OWNER TO superuser;
-
---
--- Name: lives_ok(text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.lives_ok(text, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    code  TEXT := _query($1);
-    descr ALIAS FOR $2;
-    detail  text;
-    hint    text;
-    context text;
-    schname text;
-    tabname text;
-    colname text;
-    chkname text;
-    typname text;
-BEGIN
-    EXECUTE code;
-    RETURN ok( TRUE, descr );
-EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
-    -- There should have been no exception.
-    GET STACKED DIAGNOSTICS
-        detail  = PG_EXCEPTION_DETAIL,
-        hint    = PG_EXCEPTION_HINT,
-        context = PG_EXCEPTION_CONTEXT,
-        schname = SCHEMA_NAME,
-        tabname = TABLE_NAME,
-        colname = COLUMN_NAME,
-        chkname = CONSTRAINT_NAME,
-        typname = PG_DATATYPE_NAME;
-    RETURN ok( FALSE, descr ) || E'\n' || diag(
-           '    died: ' || _error_diag(SQLSTATE, SQLERRM, detail, hint, context, schname, tabname, colname, chkname, typname)
-    );
-END;
-$_$;
-
-
-ALTER FUNCTION public.lives_ok(text, text) OWNER TO superuser;
-
---
--- Name: matches(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.matches(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~ $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.matches(anyelement, text) OWNER TO superuser;
-
---
--- Name: matches(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.matches(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _alike( $1 ~ $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.matches(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: no_plan(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.no_plan() RETURNS SETOF boolean
-    LANGUAGE plpgsql STRICT
-    AS $$
-BEGIN
-    PERFORM plan(0);
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.no_plan() OWNER TO superuser;
-
---
--- Name: num_failed(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.num_failed() RETURNS integer
-    LANGUAGE sql STRICT
-    AS $$
-    SELECT _get('failed');
-$$;
-
-
-ALTER FUNCTION public.num_failed() OWNER TO superuser;
-
---
--- Name: ok(boolean); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.ok(boolean) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( $1, NULL );
-$_$;
-
-
-ALTER FUNCTION public.ok(boolean) OWNER TO superuser;
-
---
--- Name: ok(boolean, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.ok(boolean, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-   aok      ALIAS FOR $1;
-   descr    text := $2;
-   test_num INTEGER;
-   todo_why TEXT;
-   ok       BOOL;
-BEGIN
-   todo_why := _todo();
-   ok       := CASE
-       WHEN aok = TRUE THEN aok
-       WHEN todo_why IS NULL THEN COALESCE(aok, false)
-       ELSE TRUE
-    END;
-    IF _get('plan') IS NULL THEN
-        RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
-    END IF;
-
-    test_num := add_result(
-        ok,
-        COALESCE(aok, false),
-        descr,
-        CASE WHEN todo_why IS NULL THEN '' ELSE 'todo' END,
-        COALESCE(todo_why, '')
-    );
-
-    RETURN (CASE aok WHEN TRUE THEN '' ELSE 'not ' END)
-           || 'ok ' || _set( 'curr_test', test_num )
-           || CASE descr WHEN '' THEN '' ELSE COALESCE( ' - ' || substr(diag( descr ), 3), '' ) END
-           || COALESCE( ' ' || diag( 'TODO ' || todo_why ), '')
-           || CASE aok WHEN TRUE THEN '' ELSE E'\n' ||
-                diag('Failed ' ||
-                CASE WHEN todo_why IS NULL THEN '' ELSE '(TODO) ' END ||
-                'test ' || test_num ||
-                CASE descr WHEN '' THEN '' ELSE COALESCE(': "' || descr || '"', '') END ) ||
-                CASE WHEN aok IS NULL THEN E'\n' || diag('    (test result was NULL)') ELSE '' END
-           END;
-END;
-$_$;
-
-
-ALTER FUNCTION public.ok(boolean, text) OWNER TO superuser;
-
---
--- Name: os_name(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.os_name() RETURNS text
-    LANGUAGE sql IMMUTABLE
-    AS $$SELECT 'linux'::text;$$;
-
-
-ALTER FUNCTION public.os_name() OWNER TO superuser;
-
---
--- Name: pass(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.pass() RETURNS text
-    LANGUAGE sql
-    AS $$
-    SELECT ok( TRUE, NULL );
-$$;
-
-
-ALTER FUNCTION public.pass() OWNER TO superuser;
-
---
--- Name: pass(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.pass(text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( TRUE, $1 );
-$_$;
-
-
-ALTER FUNCTION public.pass(text) OWNER TO superuser;
-
---
--- Name: performs_ok(text, numeric); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.performs_ok(text, numeric) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT performs_ok(
-        $1, $2, 'Should run in less than ' || $2 || ' ms'
-    );
-$_$;
-
-
-ALTER FUNCTION public.performs_ok(text, numeric) OWNER TO superuser;
-
---
--- Name: performs_ok(text, numeric, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.performs_ok(text, numeric, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    query     TEXT := _query($1);
-    max_time  ALIAS FOR $2;
-    descr     ALIAS FOR $3;
-    starts_at TEXT;
-    act_time  NUMERIC;
-BEGIN
-    starts_at := timeofday();
-    EXECUTE query;
-    act_time := extract( millisecond from timeofday()::timestamptz - starts_at::timestamptz);
-    IF act_time < max_time THEN RETURN ok(TRUE, descr); END IF;
-    RETURN ok( FALSE, descr ) || E'\n' || diag(
-           '      runtime: ' || act_time || ' ms' ||
-        E'\n      exceeds: ' || max_time || ' ms'
-    );
-END;
-$_$;
-
-
-ALTER FUNCTION public.performs_ok(text, numeric, text) OWNER TO superuser;
-
---
--- Name: performs_within(text, numeric, numeric); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.performs_within(text, numeric, numeric) RETURNS text
-    LANGUAGE sql
-    AS $_$
-SELECT performs_within(
-          $1, $2, $3, 10,
-          'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
-$_$;
-
-
-ALTER FUNCTION public.performs_within(text, numeric, numeric) OWNER TO superuser;
-
---
--- Name: performs_within(text, numeric, numeric, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.performs_within(text, numeric, numeric, integer) RETURNS text
-    LANGUAGE sql
-    AS $_$
-SELECT performs_within(
-          $1, $2, $3, $4,
-          'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
-$_$;
-
-
-ALTER FUNCTION public.performs_within(text, numeric, numeric, integer) OWNER TO superuser;
-
---
--- Name: performs_within(text, numeric, numeric, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.performs_within(text, numeric, numeric, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-SELECT performs_within(
-          $1, $2, $3, 10, $4
-        );
-$_$;
-
-
-ALTER FUNCTION public.performs_within(text, numeric, numeric, text) OWNER TO superuser;
-
---
--- Name: performs_within(text, numeric, numeric, integer, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.performs_within(text, numeric, numeric, integer, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    query          TEXT := _query($1);
-    expected_avg   ALIAS FOR $2;
-    within         ALIAS FOR $3;
-    iterations     ALIAS FOR $4;
-    descr          ALIAS FOR $5;
-    avg_time       NUMERIC;
-BEGIN
-  SELECT avg(a_time) FROM _time_trials(query, iterations, 0.8) t1 INTO avg_time;
-  IF abs(avg_time - expected_avg) < within THEN RETURN ok(TRUE, descr); END IF;
-  RETURN ok(FALSE, descr) || E'\n' || diag(' average runtime: ' || avg_time || ' ms'
-     || E'\n desired average: ' || expected_avg || ' +/- ' || within || ' ms'
-    );
-END;
-$_$;
-
-
-ALTER FUNCTION public.performs_within(text, numeric, numeric, integer, text) OWNER TO superuser;
-
---
--- Name: pg_version(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.pg_version() RETURNS text
-    LANGUAGE sql IMMUTABLE
-    AS $$SELECT current_setting('server_version')$$;
-
-
-ALTER FUNCTION public.pg_version() OWNER TO superuser;
-
---
--- Name: pg_version_num(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.pg_version_num() RETURNS integer
-    LANGUAGE sql IMMUTABLE
-    AS $$
-    SELECT current_setting('server_version_num')::integer;
-$$;
-
-
-ALTER FUNCTION public.pg_version_num() OWNER TO superuser;
-
---
--- Name: pgtap_version(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.pgtap_version() RETURNS numeric
-    LANGUAGE sql IMMUTABLE
-    AS $$SELECT 1.1;$$;
-
-
-ALTER FUNCTION public.pgtap_version() OWNER TO superuser;
-
---
--- Name: plan(integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.plan(integer) RETURNS text
-    LANGUAGE plpgsql STRICT
-    AS $_$
-DECLARE
-    rcount INTEGER;
-BEGIN
-    BEGIN
-        EXECUTE '
-            CREATE TEMP SEQUENCE __tcache___id_seq;
-            CREATE TEMP TABLE __tcache__ (
-                id    INTEGER NOT NULL DEFAULT nextval(''__tcache___id_seq''),
-                label TEXT    NOT NULL,
-                value INTEGER NOT NULL,
-                note  TEXT    NOT NULL DEFAULT ''''
-            );
-            CREATE UNIQUE INDEX __tcache___key ON __tcache__(id);
-            GRANT ALL ON TABLE __tcache__ TO PUBLIC;
-            GRANT ALL ON TABLE __tcache___id_seq TO PUBLIC;
-
-            CREATE TEMP SEQUENCE __tresults___numb_seq;
-            GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
-        ';
-
-    EXCEPTION WHEN duplicate_table THEN
-        -- Raise an exception if there's already a plan.
-        EXECUTE 'SELECT TRUE FROM __tcache__ WHERE label = ''plan''';
-      GET DIAGNOSTICS rcount = ROW_COUNT;
-        IF rcount > 0 THEN
-           RAISE EXCEPTION 'You tried to plan twice!';
-        END IF;
-    END;
-
-    -- Save the plan and return.
-    PERFORM _set('plan', $1 );
-    PERFORM _set('failed', 0 );
-    RETURN '1..' || $1;
-END;
-$_$;
-
-
-ALTER FUNCTION public.plan(integer) OWNER TO superuser;
-
---
--- Name: skip(integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.skip(integer) RETURNS text
-    LANGUAGE sql
-    AS $_$SELECT skip(NULL, $1)$_$;
-
-
-ALTER FUNCTION public.skip(integer) OWNER TO superuser;
-
---
--- Name: skip(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.skip(text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE(' ' || $1, '') );
-$_$;
-
-
-ALTER FUNCTION public.skip(text) OWNER TO superuser;
-
---
--- Name: skip(integer, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.skip(integer, text) RETURNS text
-    LANGUAGE sql
-    AS $_$SELECT skip($2, $1)$_$;
-
-
-ALTER FUNCTION public.skip(integer, text) OWNER TO superuser;
-
---
--- Name: skip(text, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.skip(why text, how_many integer) RETURNS text
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    output TEXT[];
-BEGIN
-    output := '{}';
-    FOR i IN 1..how_many LOOP
-        output = array_append(
-            output,
-            ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE( ' ' || why, '') )
-        );
-    END LOOP;
-    RETURN array_to_string(output, E'\n');
-END;
-$$;
-
-
-ALTER FUNCTION public.skip(why text, how_many integer) OWNER TO superuser;
-
---
--- Name: throws_ok(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT throws_ok( $1, NULL, NULL, NULL );
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text) OWNER TO superuser;
-
---
--- Name: throws_ok(text, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text, integer) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT throws_ok( $1, $2::char(5), NULL, NULL );
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text, integer) OWNER TO superuser;
-
---
--- Name: throws_ok(text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    IF octet_length($2) = 5 THEN
-        RETURN throws_ok( $1, $2::char(5), NULL, NULL );
-    ELSE
-        RETURN throws_ok( $1, NULL, $2, NULL );
-    END IF;
-END;
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text, text) OWNER TO superuser;
-
---
--- Name: throws_ok(text, integer, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text, integer, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT throws_ok( $1, $2::char(5), $3, NULL );
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text, integer, text) OWNER TO superuser;
-
---
--- Name: throws_ok(text, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text, text, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    IF octet_length($2) = 5 THEN
-        RETURN throws_ok( $1, $2::char(5), $3, NULL );
-    ELSE
-        RETURN throws_ok( $1, NULL, $2, $3 );
-    END IF;
-END;
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text, text, text) OWNER TO superuser;
-
---
--- Name: throws_ok(text, character, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text, character, text, text) RETURNS text
-    LANGUAGE plpgsql
-    AS $_$
-DECLARE
-    query     TEXT := _query($1);
-    errcode   ALIAS FOR $2;
-    errmsg    ALIAS FOR $3;
-    desctext  ALIAS FOR $4;
-    descr     TEXT;
-BEGIN
-    descr := COALESCE(
-          desctext,
-          'threw ' || errcode || ': ' || errmsg,
-          'threw ' || errcode,
-          'threw ' || errmsg,
-          'threw an exception'
-    );
-    EXECUTE query;
-    RETURN ok( FALSE, descr ) || E'\n' || diag(
-           '      caught: no exception' ||
-        E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
-    );
-EXCEPTION WHEN OTHERS OR ASSERT_FAILURE THEN
-    IF (errcode IS NULL OR SQLSTATE = errcode)
-        AND ( errmsg IS NULL OR SQLERRM = errmsg)
-    THEN
-        -- The expected errcode and/or message was thrown.
-        RETURN ok( TRUE, descr );
-    ELSE
-        -- This was not the expected errcode or errmsg.
-        RETURN ok( FALSE, descr ) || E'\n' || diag(
-               '      caught: ' || SQLSTATE || ': ' || SQLERRM ||
-            E'\n      wanted: ' || COALESCE( errcode, 'an exception' ) ||
-            COALESCE( ': ' || errmsg, '')
-        );
-    END IF;
-END;
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text, character, text, text) OWNER TO superuser;
-
---
--- Name: throws_ok(text, integer, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.throws_ok(text, integer, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT throws_ok( $1, $2::char(5), $3, $4 );
-$_$;
-
-
-ALTER FUNCTION public.throws_ok(text, integer, text, text) OWNER TO superuser;
-
---
--- Name: todo(integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo(how_many integer) RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    PERFORM _add('todo', COALESCE(how_many, 1), '');
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.todo(how_many integer) OWNER TO superuser;
-
---
--- Name: todo(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo(why text) RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    PERFORM _add('todo', 1, COALESCE(why, ''));
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.todo(why text) OWNER TO superuser;
-
---
--- Name: todo(integer, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo(how_many integer, why text) RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    PERFORM _add('todo', COALESCE(how_many, 1), COALESCE(why, ''));
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.todo(how_many integer, why text) OWNER TO superuser;
-
---
--- Name: todo(text, integer); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo(why text, how_many integer) RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    PERFORM _add('todo', COALESCE(how_many, 1), COALESCE(why, ''));
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.todo(why text, how_many integer) OWNER TO superuser;
-
---
--- Name: todo_end(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo_end() RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-    id integer;
-BEGIN
-    id := _get_latest( 'todo', -1 );
-    IF id IS NULL THEN
-        RAISE EXCEPTION 'todo_end() called without todo_start()';
-    END IF;
-    EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || id;
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.todo_end() OWNER TO superuser;
-
---
--- Name: todo_start(); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo_start() RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    PERFORM _add('todo', -1, '');
-    RETURN;
-END;
-$$;
-
-
-ALTER FUNCTION public.todo_start() OWNER TO superuser;
-
---
--- Name: todo_start(text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.todo_start(text) RETURNS SETOF boolean
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    PERFORM _add('todo', -1, COALESCE($1, ''));
-    RETURN;
-END;
-$_$;
-
-
-ALTER FUNCTION public.todo_start(text) OWNER TO superuser;
-
---
--- Name: unalike(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.unalike(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~~ $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.unalike(anyelement, text) OWNER TO superuser;
-
---
--- Name: unalike(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.unalike(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~~ $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.unalike(anyelement, text, text) OWNER TO superuser;
-
---
--- Name: unialike(anyelement, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.unialike(anyelement, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~~* $2, $1, $2, NULL );
-$_$;
-
-
-ALTER FUNCTION public.unialike(anyelement, text) OWNER TO superuser;
-
---
--- Name: unialike(anyelement, text, text); Type: FUNCTION; Schema: public; Owner: superuser
---
-
-CREATE FUNCTION public.unialike(anyelement, text, text) RETURNS text
-    LANGUAGE sql
-    AS $_$
-    SELECT _unalike( $1 !~~* $2, $1, $2, $3 );
-$_$;
-
-
-ALTER FUNCTION public.unialike(anyelement, text, text) OWNER TO superuser;
-
---
 -- Name: on_row_change(); Type: FUNCTION; Schema: rabbitmq; Owner: superuser
 --
 
@@ -3312,63 +836,13 @@ ALTER FUNCTION rabbitmq.send_message(channel text, routing_key text, message tex
 CREATE FUNCTION request.app_name() RETURNS text
     LANGUAGE sql STABLE
     AS $$
-    select request.jwt_claim('app_name')::text;
+    SELECT
+        coalesce(current_setting('request.jwt.claim.app_name', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'app_name'));
+
 $$;
 
 
 ALTER FUNCTION request.app_name() OWNER TO superuser;
-
---
--- Name: cookie(text); Type: FUNCTION; Schema: request; Owner: superuser
---
-
-CREATE FUNCTION request.cookie(c text) RETURNS text
-    LANGUAGE sql STABLE
-    AS $$
-    select request.env_var('request.cookie.' || c);
-$$;
-
-
-ALTER FUNCTION request.cookie(c text) OWNER TO superuser;
-
---
--- Name: env_var(text); Type: FUNCTION; Schema: request; Owner: superuser
---
-
-CREATE FUNCTION request.env_var(v text) RETURNS text
-    LANGUAGE sql STABLE
-    AS $$
-    select current_setting(v, true);
-$$;
-
-
-ALTER FUNCTION request.env_var(v text) OWNER TO superuser;
-
---
--- Name: header(text); Type: FUNCTION; Schema: request; Owner: superuser
---
-
-CREATE FUNCTION request.header(h text) RETURNS text
-    LANGUAGE sql STABLE
-    AS $$
-    select request.env_var('request.header.' || h);
-$$;
-
-
-ALTER FUNCTION request.header(h text) OWNER TO superuser;
-
---
--- Name: jwt_claim(text); Type: FUNCTION; Schema: request; Owner: superuser
---
-
-CREATE FUNCTION request.jwt_claim(c text) RETURNS text
-    LANGUAGE sql STABLE
-    AS $$
-    select request.env_var('request.jwt.claim.' || c);
-$$;
-
-
-ALTER FUNCTION request.jwt_claim(c text) OWNER TO superuser;
 
 --
 -- Name: user_id(); Type: FUNCTION; Schema: request; Owner: superuser
@@ -3377,15 +851,33 @@ ALTER FUNCTION request.jwt_claim(c text) OWNER TO superuser;
 CREATE FUNCTION request.user_id() RETURNS integer
     LANGUAGE sql STABLE
     AS $$
-    select 
-    case request.jwt_claim('user_id') 
-    when '' then 0
-    else request.jwt_claim('user_id')::int
-	end
+    SELECT
+        CASE request.user_id_as_text ()
+        WHEN '' THEN
+            0
+        ELSE
+            request.user_id_as_text ()::int
+        END;
+
 $$;
 
 
 ALTER FUNCTION request.user_id() OWNER TO superuser;
+
+--
+-- Name: user_id_as_text(); Type: FUNCTION; Schema: request; Owner: superuser
+--
+
+CREATE FUNCTION request.user_id_as_text() RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT
+        coalesce(current_setting('request.jwt.claim.user_id', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'user_id'));
+
+$$;
+
+
+ALTER FUNCTION request.user_id_as_text() OWNER TO superuser;
 
 --
 -- Name: user_role(); Type: FUNCTION; Schema: request; Owner: superuser
@@ -3394,7 +886,9 @@ ALTER FUNCTION request.user_id() OWNER TO superuser;
 CREATE FUNCTION request.user_role() RETURNS text
     LANGUAGE sql STABLE
     AS $$
-    select request.jwt_claim('role')::text;
+    SELECT
+        coalesce(current_setting('request.jwt.claim.role', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'role'));
+
 $$;
 
 
@@ -3475,10 +969,10 @@ ALTER TABLE api.assignment_field_submissions OWNER TO api;
 
 CREATE TABLE data.assignment_field (
     slug text NOT NULL,
-    assignment_slug character varying(100) NOT NULL,
-    label character varying(100) NOT NULL,
-    help character varying(200) NOT NULL,
-    placeholder character varying(100) NOT NULL,
+    assignment_slug text NOT NULL,
+    label text NOT NULL,
+    help text NOT NULL,
+    placeholder text NOT NULL,
     is_url boolean DEFAULT false NOT NULL,
     is_multiline boolean DEFAULT false NOT NULL,
     display_order smallint DEFAULT 0 NOT NULL,
@@ -3486,6 +980,10 @@ CREATE TABLE data.assignment_field (
     example text DEFAULT ''::text NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT assignment_field_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
+    CONSTRAINT assignment_field_help_check CHECK ((char_length(help) < 200)),
+    CONSTRAINT assignment_field_label_check CHECK ((char_length(label) < 100)),
+    CONSTRAINT assignment_field_placeholder_check CHECK ((char_length(placeholder) < 100)),
     CONSTRAINT assignment_field_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 30))),
     CONSTRAINT pattern_matches_example CHECK (data.text_matches(example, pattern)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at)),
@@ -3523,13 +1021,14 @@ ALTER TABLE api.assignment_fields OWNER TO api;
 --
 
 CREATE TABLE data.assignment_grade (
-    assignment_slug character varying(100) NOT NULL,
+    assignment_slug text NOT NULL,
     points_possible smallint NOT NULL,
     assignment_submission_id integer NOT NULL,
     points real NOT NULL,
     description text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT assignment_grade_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
     CONSTRAINT points_in_range CHECK (((points >= (0)::double precision) AND (points <= (points_possible)::double precision))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -3543,13 +1042,15 @@ ALTER TABLE data.assignment_grade OWNER TO superuser;
 
 CREATE TABLE data.assignment_submission (
     id integer NOT NULL,
-    assignment_slug character varying(100),
+    assignment_slug text NOT NULL,
     is_team boolean,
     user_id integer,
-    team_nickname character varying(50),
+    team_nickname text,
     submitter_user_id integer DEFAULT request.user_id() NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT assignment_submission_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
+    CONSTRAINT assignment_submission_team_nickname_check CHECK ((char_length(team_nickname) < 50)),
     CONSTRAINT matches_assignment_is_team CHECK (((is_team AND (team_nickname IS NOT NULL) AND (user_id IS NULL)) OR ((NOT is_team) AND (team_nickname IS NULL) AND (user_id IS NOT NULL)))),
     CONSTRAINT submitter_matches_user_id CHECK ((is_team OR ((NOT is_team) AND (user_id = submitter_user_id)))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
@@ -3564,21 +1065,26 @@ ALTER TABLE data.assignment_submission OWNER TO superuser;
 
 CREATE TABLE data."user" (
     id integer NOT NULL,
-    email character varying(100),
-    netid character varying(10) NOT NULL,
-    name character varying(100),
-    lastname character varying(100),
-    organization character varying(200),
-    known_as character varying(50),
-    nickname character varying(50) NOT NULL,
+    email text,
+    netid text NOT NULL,
+    name text,
+    lastname text,
+    organization text,
+    known_as text,
+    nickname text NOT NULL,
     role data.user_role DEFAULT (settings.get('auth.default-role'::text))::data.user_role NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    team_nickname character varying(50),
+    team_nickname text,
     CONSTRAINT user_check CHECK ((updated_at >= created_at)),
-    CONSTRAINT user_email_check CHECK (((email)::text ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'::text)),
-    CONSTRAINT user_netid_check CHECK (((netid)::text ~ '^[a-z]+[0-9]+$'::text)),
-    CONSTRAINT user_nickname_check CHECK (((nickname)::text ~ '^[\w]{2,20}-[\w]{2,20}$'::text))
+    CONSTRAINT user_email_check CHECK (((email ~ '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$'::text) AND (char_length(email) < 100))),
+    CONSTRAINT user_known_as_check CHECK ((char_length(known_as) < 50)),
+    CONSTRAINT user_lastname_check CHECK ((char_length(lastname) < 100)),
+    CONSTRAINT user_name_check CHECK ((char_length(name) < 100)),
+    CONSTRAINT user_netid_check CHECK (((netid ~ '^[a-z]+[0-9]+$'::text) AND (char_length(netid) < 10))),
+    CONSTRAINT user_nickname_check CHECK (((nickname ~ '^[\w]{2,20}-[\w]{2,20}$'::text) AND (char_length(nickname) < 50))),
+    CONSTRAINT user_organization_check CHECK ((char_length(organization) < 200)),
+    CONSTRAINT user_team_nickname_check CHECK ((char_length(team_nickname) < 50))
 );
 
 
@@ -3599,7 +1105,7 @@ CREATE VIEW api.assignment_grade_distributions AS
     array_agg(assignment_grade.points ORDER BY assignment_grade.points) AS grades
    FROM ((data.assignment_grade
      JOIN data.assignment_submission sub ON ((assignment_grade.assignment_submission_id = sub.id)))
-     JOIN data."user" u ON (((sub.user_id = u.id) OR ((sub.team_nickname)::text = (u.team_nickname)::text))))
+     JOIN data."user" u ON (((sub.user_id = u.id) OR (sub.team_nickname = u.team_nickname))))
   WHERE (u.role = 'student'::data.user_role)
   GROUP BY sub.assignment_slug;
 
@@ -3675,15 +1181,17 @@ COMMENT ON COLUMN api.assignment_grade_distributions.grades IS 'The grades recei
 
 CREATE TABLE data.assignment_grade_exception (
     id integer NOT NULL,
-    assignment_slug character varying(100),
+    assignment_slug text,
     is_team boolean NOT NULL,
     user_id integer,
-    team_nickname character varying(50),
+    team_nickname text,
     fractional_credit numeric DEFAULT 1 NOT NULL,
     closed_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT assignment_grade_exception_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
     CONSTRAINT assignment_grade_exception_fractional_credit_check CHECK (((fractional_credit >= (0)::numeric) AND (fractional_credit <= (1)::numeric))),
+    CONSTRAINT assignment_grade_exception_team_nickname_check CHECK ((char_length(team_nickname) < 50)),
     CONSTRAINT matches_assignment_is_team CHECK (((is_team AND (team_nickname IS NOT NULL) AND (user_id IS NULL)) OR ((NOT is_team) AND (team_nickname IS NULL) AND (user_id IS NOT NULL)))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -3755,13 +1263,14 @@ CREATE TABLE data.assignment (
     is_draft boolean DEFAULT true NOT NULL,
     is_markdown boolean DEFAULT false,
     is_team boolean DEFAULT false,
-    title character varying(100) NOT NULL,
+    title text NOT NULL,
     body text NOT NULL,
     closed_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT assignment_points_possible_check CHECK ((points_possible >= 0)),
     CONSTRAINT assignment_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 60))),
+    CONSTRAINT assignment_title_check CHECK ((char_length(title) < 100)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -3795,10 +1304,11 @@ ALTER TABLE api.assignments OWNER TO api;
 
 CREATE TABLE data.engagement (
     user_id integer NOT NULL,
-    meeting_slug character varying(100) NOT NULL,
+    meeting_slug text NOT NULL,
     participation data.participation_enum NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT engagement_meeting_slug_check CHECK ((char_length(meeting_slug) < 100)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -3924,7 +1434,7 @@ ALTER TABLE api.grades OWNER TO api;
 --
 
 CREATE TABLE data.meeting (
-    title character varying(250) NOT NULL,
+    title text NOT NULL,
     slug text NOT NULL,
     summary text,
     description text NOT NULL,
@@ -3934,6 +1444,7 @@ CREATE TABLE data.meeting (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT meeting_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 60))),
+    CONSTRAINT meeting_title_check CHECK ((char_length(title) < 250)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -4028,7 +1539,7 @@ COMMENT ON COLUMN api.meetings.updated_at IS 'The most recent time this database
 
 CREATE TABLE data.quiz (
     id integer NOT NULL,
-    meeting_slug character varying(100) NOT NULL,
+    meeting_slug text NOT NULL,
     points_possible smallint NOT NULL,
     is_draft boolean DEFAULT true NOT NULL,
     duration interval DEFAULT '00:15:00'::interval NOT NULL,
@@ -4037,6 +1548,7 @@ CREATE TABLE data.quiz (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT closed_after_open CHECK ((closed_at > open_at)),
+    CONSTRAINT quiz_meeting_slug_check CHECK ((char_length(meeting_slug) < 100)),
     CONSTRAINT quiz_points_possible_check CHECK ((points_possible >= 0)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -4448,11 +1960,12 @@ ALTER TABLE api.quiz_submissions_info OWNER TO api;
 --
 
 CREATE TABLE data.team (
-    nickname character varying(50) NOT NULL,
+    nickname text NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT team_nickname_check CHECK ((char_length(nickname) < 50)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at)),
-    CONSTRAINT valid_team_nickname CHECK (((nickname)::text ~ '^[\w]{2,20}-[\w]{2,20}$'::text))
+    CONSTRAINT valid_team_nickname CHECK ((nickname ~ '^[\w]{2,20}-[\w]{2,20}$'::text))
 );
 
 
@@ -4476,12 +1989,12 @@ ALTER TABLE api.teams OWNER TO api;
 --
 
 CREATE TABLE data.ui_element (
-    key character varying(50) NOT NULL,
+    key text NOT NULL,
     body text,
     is_markdown boolean DEFAULT false,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT ui_element_key_check CHECK (((key)::text ~ '^[a-z0-9\-]+$'::text)),
+    CONSTRAINT ui_element_key_check CHECK (((key ~ '^[a-z0-9\-]+$'::text) AND (char_length(key) < 50))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -5608,13 +3121,13 @@ ALTER TABLE data.assignment_field_submission ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY assignment_field_submission_access_policy ON data.assignment_field_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((submitter_user_id = request.user_id()) OR (EXISTS ( SELECT ass_sub.id
    FROM (api.assignment_submissions ass_sub
-     JOIN api.users ON (((ass_sub.user_id = users.id) OR ((ass_sub.team_nickname)::text = (users.team_nickname)::text))))
+     JOIN api.users ON (((ass_sub.user_id = users.id) OR (ass_sub.team_nickname = users.team_nickname))))
   WHERE ((users.id = request.user_id()) AND (ass_sub.id = assignment_field_submission.assignment_submission_id)))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND ((submitter_user_id = request.user_id()) AND (EXISTS ( SELECT ass_sub.id
    FROM (((api.assignment_submissions ass_sub
-     JOIN api.users ON (((ass_sub.user_id = users.id) OR ((ass_sub.team_nickname)::text = (users.team_nickname)::text))))
-     JOIN api.assignments ON ((assignments.slug = (ass_sub.assignment_slug)::text)))
-     LEFT JOIN api.assignment_grade_exceptions ge ON ((((ge.assignment_slug)::text = (ass_sub.assignment_slug)::text) AND ((ass_sub.is_team AND ((ge.team_nickname)::text = (ass_sub.team_nickname)::text)) OR ((NOT ass_sub.is_team) AND (ge.user_id = ass_sub.user_id))))))
-  WHERE ((users.id = request.user_id()) AND (ass_sub.id = assignment_field_submission.assignment_submission_id) AND ((assignments.is_open = true) OR (((ge.user_id = ass_sub.user_id) OR ((ge.team_nickname)::text = (ass_sub.team_nickname)::text)) AND (ge.closed_at > CURRENT_TIMESTAMP))))))))));
+     JOIN api.users ON (((ass_sub.user_id = users.id) OR (ass_sub.team_nickname = users.team_nickname))))
+     JOIN api.assignments ON ((assignments.slug = ass_sub.assignment_slug)))
+     LEFT JOIN api.assignment_grade_exceptions ge ON (((ge.assignment_slug = ass_sub.assignment_slug) AND ((ass_sub.is_team AND (ge.team_nickname = ass_sub.team_nickname)) OR ((NOT ass_sub.is_team) AND (ge.user_id = ass_sub.user_id))))))
+  WHERE ((users.id = request.user_id()) AND (ass_sub.id = assignment_field_submission.assignment_submission_id) AND ((assignments.is_open = true) OR (((ge.user_id = ass_sub.user_id) OR (ge.team_nickname = ass_sub.team_nickname)) AND (ge.closed_at > CURRENT_TIMESTAMP))))))))));
 
 
 --
@@ -5644,7 +3157,7 @@ ALTER TABLE data.assignment_grade_exception ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY assignment_grade_exception_access_policy ON data.assignment_grade_exception TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((NOT is_team) AND (request.user_id() = user_id))) OR (is_team AND (EXISTS ( SELECT u.id
    FROM api.users u
-  WHERE ((u.id = request.user_id()) AND ((u.team_nickname)::text = (assignment_grade_exception.team_nickname)::text))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
+  WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_grade_exception.team_nickname))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
 
 
 --
@@ -5659,13 +3172,13 @@ ALTER TABLE data.assignment_submission ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY assignment_submission_access_policy ON data.assignment_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (EXISTS ( SELECT u.id
    FROM api.users u
-  WHERE ((u.id = request.user_id()) AND ((u.team_nickname)::text = (assignment_submission.team_nickname)::text))))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (EXISTS ( SELECT a.slug
+  WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_submission.team_nickname))))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (EXISTS ( SELECT a.slug
    FROM ((api.assignments a
-     LEFT JOIN api.assignment_grade_exceptions e ON ((a.slug = (e.assignment_slug)::text)))
-     LEFT JOIN api.users u ON (((e.user_id = u.id) OR ((e.team_nickname)::text = (u.team_nickname)::text))))
-  WHERE ((a.slug = (assignment_submission.assignment_slug)::text) AND (a.is_open OR ((e.closed_at > CURRENT_TIMESTAMP) AND (a.is_draft = false) AND ((e.user_id = assignment_submission.user_id) OR ((e.team_nickname)::text = (assignment_submission.team_nickname)::text))))))) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (EXISTS ( SELECT u.id
+     LEFT JOIN api.assignment_grade_exceptions e ON ((a.slug = e.assignment_slug)))
+     LEFT JOIN api.users u ON (((e.user_id = u.id) OR (e.team_nickname = u.team_nickname))))
+  WHERE ((a.slug = assignment_submission.assignment_slug) AND (a.is_open OR ((e.closed_at > CURRENT_TIMESTAMP) AND (a.is_draft = false) AND ((e.user_id = assignment_submission.user_id) OR (e.team_nickname = assignment_submission.team_nickname))))))) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (EXISTS ( SELECT u.id
    FROM api.users u
-  WHERE ((u.id = request.user_id()) AND ((u.team_nickname)::text = (assignment_submission.team_nickname)::text)))))))));
+  WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_submission.team_nickname)))))))));
 
 
 --
@@ -5794,9 +3307,9 @@ ALTER TABLE data.team ENABLE ROW LEVEL SECURITY;
 -- Name: team team_access_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY team_access_policy ON data.team TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((nickname)::text = (( SELECT users.team_nickname
+CREATE POLICY team_access_policy ON data.team TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (nickname = ( SELECT users.team_nickname
    FROM api.users
-  WHERE (users.id = request.user_id())))::text)) OR (request.user_role() = 'faculty'::text)));
+  WHERE (users.id = request.user_id())))) OR (request.user_role() = 'faculty'::text)));
 
 
 --
@@ -5824,7 +3337,7 @@ ALTER TABLE data.user_secret ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY user_secret_access_policy ON data.user_secret TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((request.user_id() = user_id) OR (EXISTS ( SELECT u.id
    FROM api.users u
-  WHERE ((u.id = request.user_id()) AND ((u.team_nickname)::text = user_secret.team_nickname)))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
+  WHERE ((u.id = request.user_id()) AND (u.team_nickname = user_secret.team_nickname)))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
 
 
 --
