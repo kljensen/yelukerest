@@ -702,7 +702,6 @@ def update_quiz(ctx, infile, timedelta):
     quiz = read_yaml(infile)
     if not quiz_is_valid(quiz):
         raise Exception("invalid quiz")
-    return
 
     # Usually I don't specify "closed_at" because
     # it is set by a database trigger to be the
