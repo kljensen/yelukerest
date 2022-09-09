@@ -682,11 +682,13 @@ def quiz_is_valid(quiz):
     # Each slug should only appear once
     slugs = [question["slug"] for question in quiz["child:quiz_questions"]]
     if len(slugs) < 1 or not each_is_unique(slugs):
+        print("Non unique slug")
         return False
 
     for question in quiz["child:quiz_questions"]:
         slugs = [opt["slug"] for opt in question["child:quiz_question_options"]]
         if len(slugs) < 1 or not each_is_unique(slugs):
+            print("Non unique option slug")
             return False
     return True
 
