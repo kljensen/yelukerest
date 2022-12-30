@@ -22,7 +22,7 @@
         "dirty-chai": "^2.0.1",
         "dotenv": "^8.2.0",
         "eslint-plugin-mocha": "^6.3.0",
-        "mocha": "^7.1.2",
+        "mocha": "^10.2.0",
         "should": "^13.2.3",
         "supertest": "^4.0.2"
     },
