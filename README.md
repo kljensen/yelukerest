@@ -183,17 +183,6 @@ pg_restore --host $HOST -U superuser -d app --port $PORT --clean --exit-on-error
 
 The `--clean` will drop (or truncate?) tables.
 
-### Getting the initial letsencrypt certificate in production
-
-To get certificates _issued_ do something like the following
-
-```
-docker run -p 80:80 -it -v yelukerest-letsencrypt:/etc/letsencrypt certbot/certbot  certonly
- --standalone --preferred-challenges http -d www.660.mba
-```
-
-Run that when not running anything else. Data are persisted to the yelukerest-letsencrypt data volume.
-
 ### Adding a table when working on the database
 
 1. Add the table in `db/src/data/yeluke.sql`
