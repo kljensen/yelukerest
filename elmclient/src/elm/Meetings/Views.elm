@@ -25,7 +25,7 @@ import Time exposing (Posix)
 markdownToHTML : List (Html.Attribute msg) -> String -> Html msg 
 markdownToHTML attributes md =
     let 
-        options = { githubFlavored = Just { tables = True, breaks = True }
+        options = { githubFlavored = Just { tables = True, breaks = False }
             , defaultHighlighting = Nothing
             , sanitize = True
             , smartypants = False
