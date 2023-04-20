@@ -6,6 +6,7 @@ import Assignments.Model
         , AssignmentField
         , AssignmentFieldSubmission
         , AssignmentGradeException
+        , AssignmentGrade
         , AssignmentSlug
         , AssignmentSubmission
         , NotSubmissibleReason(..)
@@ -45,9 +46,9 @@ listView timeZone wdAssignments =
         RemoteData.Failure error ->
             loginToViewAssignments
 
-gradeView : WebData (List Assignment) -> AssignmentSlug -> Html Msg
-gradeView wdAssignments assignmentSlug =
-    case wdAssignments of
+gradeView : WebData (List AssignmentGrade) -> AssignmentSlug -> Html Msg
+gradeView wdAssignmentGrades assignmentSlug =
+    case wdAssignmentGrades of
         RemoteData.NotAsked ->
             loginToViewAssignments
 
@@ -55,11 +56,37 @@ gradeView wdAssignments assignmentSlug =
             Html.text "Loading..."
 
         RemoteData.Success assignments ->
-            Html.text "...todo..."
+            gradeViewForAssignment assignments assignmentSlug
 
         RemoteData.Failure _ ->
             loginToViewAssignments
 
+gradeViewForAssignment : List AssignmentGrade -> AssignmentSlug -> Html Msg
+gradeViewForAssignment assignmentGrades assignmentSlug =
+    let
+        maybeAssignmentGrade =
+            assignmentGrades
+                |> List.filter (\assignmentGrade -> assignmentGrade.assignment_slug == assignmentSlug)
+                |> List.head
+    in
+    case maybeAssignmentGrade of
+        Just assignmentGrade ->
+            gradeViewForAssignmentGrade assignmentGrade
+
+        Nothing ->
+            Html.text "No such assignment"
+
+gradeViewForAssignmentGrade : AssignmentGrade -> Html Msg
+gradeViewForAssignmentGrade assignmentGrade =
+    case assignmentGrade.description of 
+        Just description ->
+            Html.div []
+                [
+                    Html.pre [] [Html.text description]
+                ]
+
+        Nothing ->
+            Html.text "No grade"
 
 loginToViewAssignments : Html Msg
 loginToViewAssignments =

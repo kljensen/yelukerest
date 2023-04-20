@@ -48,7 +48,7 @@ page model =
             Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.assignmentGradeExceptions model.pendingBeginAssignments slug model.current_date
         
         Models.AssignmentGradeDetailRoute slug ->
-            Assignments.Views.gradeView model.assignments slug
+            Assignments.Views.gradeView model.assignmentGrades slug
 
         Models.TakeQuizRoute quizID ->
             Quizzes.Views.takeQuizView model.currentUser model.current_date model.timeZone quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.quizGradeExceptions model.pendingSubmitQuizzes model.quizQuestionOptionInputs
