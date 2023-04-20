@@ -28,8 +28,8 @@ import Auth.Model exposing (CurrentUser)
 import Common.Comparisons exposing (dateIsLessThan)
 import Dict exposing (Dict)
 import Json.Decode as Decode
-import Json.Decode.Extra exposing (datetime)
-import Json.Decode.Pipeline exposing (hardcoded, optional, required)
+import Json.Decode.Extra
+import Json.Decode.Pipeline exposing (optional, required)
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
 
@@ -99,7 +99,7 @@ valuesForSubmissionID submissionID afsi =
     afsi
         |> Dict.filter (\k -> \_ -> Tuple.first k == submissionID)
         |> Dict.toList
-        |> List.map (\( ( a, b ), c ) -> ( b, c ))
+        |> List.map (\( ( _, b ), c ) -> ( b, c ))
 
 
 type alias AssignmentFieldSubmissionInputs =
