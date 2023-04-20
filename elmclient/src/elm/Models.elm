@@ -162,6 +162,7 @@ type Route
     | MeetingDetailRoute MeetingSlug
     | AssignmentListRoute
     | AssignmentDetailRoute AssignmentSlug
+    | AssignmentGradeDetailRoute AssignmentSlug
     | EditEngagementsRoute String
     | TakeQuizRoute Int
     | NotFoundRoute

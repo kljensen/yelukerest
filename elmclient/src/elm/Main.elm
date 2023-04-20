@@ -15,7 +15,7 @@ import View exposing (view)
 
 
 init : Flags -> Url -> Key -> ( Model, Cmd Msg )
-init flags url key =
+init flags _ key =
     let
         currentRoute =
             Routing.parseLocation (StringLocation flags.location)

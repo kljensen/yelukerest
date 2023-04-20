@@ -1,4 +1,4 @@
-module Assignments.Views exposing (detailView, listView)
+module Assignments.Views exposing (detailView, listView, gradeView)
 
 import Assignments.Model
     exposing
@@ -43,6 +43,21 @@ listView timeZone wdAssignments =
             listAssignments timeZone assignments
 
         RemoteData.Failure error ->
+            loginToViewAssignments
+
+gradeView : WebData (List Assignment) -> AssignmentSlug -> Html Msg
+gradeView wdAssignments assignmentSlug =
+    case wdAssignments of
+        RemoteData.NotAsked ->
+            loginToViewAssignments
+
+        RemoteData.Loading ->
+            Html.text "Loading..."
+
+        RemoteData.Success assignments ->
+            Html.text "...todo..."
+
+        RemoteData.Failure _ ->
             loginToViewAssignments
 
 

@@ -12,7 +12,7 @@ import Auth.Model exposing (CurrentUser)
 import Auth.Views exposing (loginLink)
 import Common.Comparisons exposing (sortByDate)
 import Common.Views exposing (shortDateToString)
-import Html exposing (Html)
+import Html
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Meetings.Model exposing (Meeting)
@@ -29,7 +29,6 @@ import RemoteData exposing (WebData)
 import Round
 import Set exposing (Set)
 import String
-import Time exposing (Posix)
 import Users.Model exposing (UserSecret)
 
 
@@ -154,7 +153,7 @@ dashboard webDataGradeData =
                 , showGradeTable gd
                 ]
 
-        RemoteData.Failure e ->
+        RemoteData.Failure _ ->
             loginLink
 
         _ ->
@@ -193,18 +192,16 @@ secretRowMarkup secretsToShow slug body =
             Events.onClick (Msgs.ToggleShowUserSecret slug)
 
         bodyMarkup =
-            case Set.member slug secretsToShow of
-                True ->
-                    Html.span []
-                        [ Html.text (body ++ " ")
-                        , Html.button
-                            [ onClick
-                            ]
-                            [ Html.text "hide" ]
+            if Set.member slug secretsToShow then
+                Html.span []
+                    [ Html.text (body ++ " ")
+                    , Html.button
+                        [ onClick
                         ]
-
-                False ->
-                    Html.span [] [ Html.text "...hidden... ", Html.button [ onClick ] [ Html.text "show" ] ]
+                        [ Html.text "hide" ]
+                    ]
+            else
+                Html.span [] [ Html.text "...hidden... ", Html.button [ onClick ] [ Html.text "show" ] ]
     in
     Html.tr []
         [ Html.td [] [ Html.text slug ]
@@ -220,8 +217,8 @@ userSecretTable user secrets secretsToShow =
         [ Html.h2 [] [ Html.text "Your user secrets" ]
         , Html.table [ Attrs.class "dashboard" ]
             [ Html.tbody []
-                ([ secretRowMarkup secretsToShow "jwt" user.jwt ]
-                    ++ List.map
+                ( secretRowMarkup secretsToShow "jwt" user.jwt 
+                    :: List.map
                         (secretRow secretsToShow)
                         secrets
                 )
@@ -262,8 +259,8 @@ quizGradeTable gd =
 
 quizGradeTableContents : QuizGradeData a -> List (Html.Html Msg)
 quizGradeTableContents gd =
-    [ quizGradeTableHeader ]
-        ++ [ Html.tbody [] (quizGradeTableBodyContents gd) ]
+    [quizGradeTableHeader 
+        ,Html.tbody [] (quizGradeTableBodyContents gd) ]
 
 
 quizGradeTableBodyContents : QuizGradeData a -> List (Html.Html Msg)
@@ -458,11 +455,15 @@ showGradeForAssignment gd assignment =
                     Nothing ->
                         False
 
-        grade =
+        maybeFloatgrade =
             gd.assignmentGrades
                 |> List.filter (matchesMaybeSubmission maybeSub)
                 |> List.head
-                |> maybeToStringWithDefault "Not graded" (\x -> prettyFloat x.points)
+        grade = case maybeFloatgrade of
+            Nothing -> Html.text "Not graded"
+            Just assGrade ->
+                Html.a [ Attrs.href ("#/assignments/" ++ assGrade.assignment_slug ++ "/grade" )] [Html.text (prettyFloat assGrade.points)]
+
 
         maybeGdist =
             gd.assignmentGradeDistributions
@@ -481,7 +482,7 @@ showGradeForAssignment gd assignment =
         [ td2 (shortDateToString assignment.closed_at gd.timeZone)
         , td assignment.title
         , td2 subInfo
-        , td grade
+        , Html.td [] [grade]
         , td2 (String.fromInt assignment.points_possible)
         , td average
         , td2 stddev

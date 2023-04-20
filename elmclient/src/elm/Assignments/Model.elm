@@ -254,10 +254,10 @@ type alias AssignmentGrade =
     , assignment_submission_id : Int
     , points : Float
     , points_possible : Int
+    , description : Maybe String
     , created_at : Posix
     , updated_at : Posix
     }
-
 
 assignmentGradeDecoder : Decode.Decoder AssignmentGrade
 assignmentGradeDecoder =
@@ -266,6 +266,7 @@ assignmentGradeDecoder =
         |> required "assignment_submission_id" Decode.int
         |> required "points" Decode.float
         |> required "points_possible" Decode.int
+        |> required "description" (Decode.nullable Decode.string)
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
 

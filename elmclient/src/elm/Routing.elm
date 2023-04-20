@@ -4,6 +4,7 @@ import Models exposing (Route(..))
 import Msgs exposing (BrowserLocation(..))
 import Url exposing (Url)
 import Url.Parser exposing ((</>), Parser, int, map, oneOf, parse, s, string, top)
+import Assignments.Views exposing (gradeView)
 
 
 matchers : Parser (Route -> a) a
@@ -15,6 +16,7 @@ matchers =
         , map MeetingDetailRoute (s "meetings" </> string)
         , map AssignmentListRoute (s "assignments")
         , map AssignmentDetailRoute (s "assignments" </> string)
+        , map AssignmentGradeDetailRoute (s "assignments" </> string </> s "grade" )
         , map TakeQuizRoute (s "quiz-submissions" </> int)
         , map EditEngagementsRoute (s "engagements" </> string)
         ]
