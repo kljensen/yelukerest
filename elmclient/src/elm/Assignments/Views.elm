@@ -46,24 +46,63 @@ listView timeZone wdAssignments =
         RemoteData.Failure error ->
             loginToViewAssignments
 
-gradeView : WebData (List AssignmentGrade) -> AssignmentSlug -> Html Msg
-gradeView wdAssignmentGrades assignmentSlug =
-    case wdAssignmentGrades of
-        RemoteData.NotAsked ->
+-- Function takes two WebData values and returns a WebData value
+-- that is the result of combining the two values. If either is
+-- a failure, the result is a failure. If either is Loading, the
+-- result is Loading. If either is NotAsked, the result is NotAsked.
+-- If both are Success, the result is Success.
+combineWebData : WebData a -> WebData b -> WebData (a, b)
+combineWebData wd1 wd2 =
+    case (wd1, wd2) of
+        (RemoteData.Success a, RemoteData.Success b) ->
+            RemoteData.Success (a, b)
+
+        (RemoteData.Failure error, _) ->
+            RemoteData.Failure error
+
+        (_, RemoteData.Failure error) ->
+            RemoteData.Failure error
+
+        (RemoteData.Loading, _) ->
+            RemoteData.Loading
+
+        (_, RemoteData.Loading) ->
+            RemoteData.Loading
+
+        (RemoteData.NotAsked, _) ->
+            RemoteData.NotAsked
+
+        (_, RemoteData.NotAsked) ->
+            RemoteData.NotAsked
+
+gradeView : WebData (List AssignmentGrade) -> WebData (List AssignmentSubmission) -> AssignmentSlug ->WebData (CurrentUser) -> Html Msg
+gradeView wdAssignmentGrades wdAssignmentSubmissions assignmentSlug wdCurrentUser =
+    let 
+        wd = combineWebData wdAssignmentGrades wdAssignmentSubmissions
+    in 
+    case wdCurrentUser of 
+        RemoteData.Success currentUser ->
+            case wd of
+                RemoteData.NotAsked ->
+                    loginToViewAssignments
+
+                RemoteData.Loading ->
+                    Html.text "Loading..."
+
+                RemoteData.Success (grades, submissions) ->
+                    gradeViewForAssignment grades submissions assignmentSlug currentUser
+
+                RemoteData.Failure _ ->
+                    loginToViewAssignments
+
+        _ ->
             loginToViewAssignments
 
-        RemoteData.Loading ->
-            Html.text "Loading..."
-
-        RemoteData.Success assignments ->
-            gradeViewForAssignment assignments assignmentSlug
-
-        RemoteData.Failure _ ->
-            loginToViewAssignments
-
-gradeViewForAssignment : List AssignmentGrade -> AssignmentSlug -> Html Msg
-gradeViewForAssignment assignmentGrades assignmentSlug =
+gradeViewForAssignment : List AssignmentGrade -> List AssignmentSubmission -> AssignmentSlug -> CurrentUser -> Html Msg
+gradeViewForAssignment assignmentGrades assignmentSubmissions assignmentSlug currentUser =
     let
+        maybeAssignmentSubmission =
+            getSubmissionForSlug assignmentSubmissions assignmentSlug (RemoteData.Success currentUser)
         maybeAssignmentGrade =
             assignmentGrades
                 |> List.filter (\assignmentGrade -> assignmentGrade.assignment_slug == assignmentSlug)
