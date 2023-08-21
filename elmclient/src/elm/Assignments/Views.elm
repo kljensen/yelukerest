@@ -106,6 +106,15 @@ gradeViewForAssignment assignmentGrades assignmentSubmissions assignmentSlug cur
         maybeAssignmentGrade =
             assignmentGrades
                 |> List.filter (\assignmentGrade -> assignmentGrade.assignment_slug == assignmentSlug)
+                -- Get only hte assignments that have submissions
+                |> List.filter (\assignmentGrade -> 
+                    case maybeAssignmentSubmission of 
+                        Just assignmentSubmission ->
+                            assignmentSubmission.id == assignmentGrade.assignment_submission_id
+
+                        Nothing ->
+                            False
+                    )
                 |> List.head
     in
     case maybeAssignmentGrade of
