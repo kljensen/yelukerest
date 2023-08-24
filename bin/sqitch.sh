@@ -17,6 +17,13 @@ set -a
 . ./.env
 set +a
 
+# Check value of $JWT_SECRET. It must be at least 32 characters long.
+if [ ${#JWT_SECRET} -lt 32 ]; then
+  echo "Error: JWT_SECRET must be at least 32 characters long."
+  exit 1
+fi
+
+
 MIGRATIONS_DIR="db/migrations"
 export PGUSER="$SUPER_USER"
 export PGPASS="$SUPER_USER_PASSWORD"
