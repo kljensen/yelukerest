@@ -110,7 +110,30 @@ for a semester then start over. Then...
 4. Stop database
 5. Get letsencrypt certs (see below)
 6. Get AWS S3 bucket permissions all set up for backups.
-7. Good to go.
+7. Insert the klj39 user
+   ```
+   insert into data.user(email, netid, name, lastname, nickname, role)
+   values ('kyle.jensen@yale.edu', 'klj39', 'Kyle Jensen', 'Jensen', 'bald-chicken', 'faculty');
+   ```
+7. Update the JWTs in your .env
+8. Restart. Good to go.
+
+If you get a CAS error it is because you didn't set up the JWTs. You will need at least the following.
+
+For `AUTHAPP_JWT`
+```
+./bin/jwt.sh {"role": "app", "app_name": "authapp"}'
+```
+
+For `YELUKEREST_CLIENT_JWT` (user klj39's user id)
+```
+./bin/jwt.sh '{"user_id": "1", "role": "faculty"}
+```
+
+For `SWAGGER_JWT`
+```
+./bin/jwt.sh '{"role": "student"}'
+```
 
 ## Random notes
 
