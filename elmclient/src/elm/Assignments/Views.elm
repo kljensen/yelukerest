@@ -151,7 +151,7 @@ listAssignments : TimeZone -> List Assignment -> Html Msg
 listAssignments timeZone assignments =
     let
         assignmentDetails =
-            List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug }) assignments
+            List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug, isDraft = a.is_draft }) assignments
     in
     Html.div [] (List.map (Common.Views.dateTitleHrefRow timeZone) assignmentDetails)
 

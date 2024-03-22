@@ -325,6 +325,11 @@ listMeetings : TimeZone -> List Meeting -> Html Msg
 listMeetings timeZone meetings =
     let
         meetingDetails =
-            List.map (\m -> { date = m.begins_at, title = m.title, href = "#meetings/" ++ m.slug }) meetings
+            List.map (\m -> {
+                date = m.begins_at
+                , title = m.title
+                , href = "#meetings/" ++ m.slug
+                , isDraft = m.is_draft
+            }) meetings
     in
     Html.div [] (List.map (Common.Views.dateTitleHrefRow timeZone) meetingDetails)

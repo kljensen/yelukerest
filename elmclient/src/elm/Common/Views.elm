@@ -17,12 +17,14 @@ import Html.Attributes as Attrs
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import Time exposing (Posix, Zone, ZoneName(..))
+import Assignments.Model exposing (NotSubmissibleReason(..))
 
 
 type alias DateTitleHrefRecord =
     { date : Posix
     , title : String
     , href : String
+    , isDraft : Bool
     }
 
 
@@ -45,6 +47,7 @@ dateTitleHrefRow timeZone dth =
             [ Html.a
                 [ Attrs.href dth.href ]
                 [ Html.text dth.title ]
+            , showDraftStatus dth.isDraft
             ]
         ]
 
