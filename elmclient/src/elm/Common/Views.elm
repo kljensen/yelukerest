@@ -140,45 +140,6 @@ shortDateToString t z =
     -- DateFormat.format "%a %d%b" date
     shortDateFormatter z.zone t
 
-
-{-| Format the time zone name. See
-<https://discourse.elm-lang.org/t/how-to-get-a-zone-name-from-the-time-package/2180/4>
--}
-formatZoneName : Time.ZoneName -> String
-formatZoneName zoneName =
-    case zoneName of
-        Time.Name n ->
-            n
-
-        Time.Offset 0 ->
-            "UTC"
-
-        Time.Offset o ->
-            let
-                sign =
-                    if o > 0 then
-                        "+"
-                    else
-                        "-"
-
-                numMinutes =
-                    abs o
-
-                hours =
-                    String.fromInt (numMinutes // 60)
-
-                minutes =
-                    modBy 60 numMinutes
-
-                minSuffix =
-                    if minutes == 0 then
-                        ""
-                    else
-                        ":" ++ String.fromInt minutes
-            in
-            "UTC " ++ sign ++ hours ++ minSuffix
-
-
 dateDelta : Posix -> Posix -> Int
 dateDelta d2 d1 =
     Time.posixToMillis d2 - Time.posixToMillis d1

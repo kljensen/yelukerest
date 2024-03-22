@@ -18,11 +18,10 @@ import Assignments.Model
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Common.Views exposing (longDateToString)
-import Dict exposing (Dict)
-import Html exposing (Html, a, div, h1, text)
+import Dict
+import Html exposing (Html, a, div)
 import Html.Attributes as Attrs
 import Html.Events as Events
-import Http exposing (Error)
 import Json.Decode as Decode
 import Markdown
 import Models exposing (TimeZone)
@@ -43,7 +42,7 @@ listView timeZone wdAssignments =
         RemoteData.Success assignments ->
             listAssignments timeZone assignments
 
-        RemoteData.Failure error ->
+        RemoteData.Failure _ ->
             loginToViewAssignments
 
 -- Function takes two WebData values and returns a WebData value
@@ -187,9 +186,6 @@ mergeDetailViewData wdCurrentUser maybeDate wdAssignments wdAssignmentSubmission
     let
         buildData =
             \user assignments submissions date -> { user = user, date = date, assignments = assignments, submissions = submissions }
-
-        d =
-            RemoteData.fromMaybe Result.Err maybeDate
     in
     Just buildData
         |> maybeAndMap (RemoteData.toMaybe wdCurrentUser)
@@ -218,7 +214,7 @@ exceptionMatches slug user_id maybeNickname exception =
 
 
 detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments slug current_date =
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments slug _ =
     case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
         Just data ->
             let
@@ -257,7 +253,7 @@ meetingNotFoundView slug =
 
 
 showDueDate : Posix -> TimeZone -> Maybe AssignmentGradeException -> AssignmentSlug -> CurrentUser -> String
-showDueDate dueDate timeZone maybeException slug user =
+showDueDate dueDate timeZone maybeException _ _ =
     let
         dueString =
             longDateToString dueDate timeZone ++ "."
@@ -308,13 +304,8 @@ showPreviousAssignment assignment submission =
             showPreviousSubmissionField submission.fields
     in
     Html.div []
-        ([ Html.h3
-            []
-            [ Html.text "Your existing submission" ]
-         ]
-            ++ List.map
-                show
-                assignment.fields
+        (Html.h3 [] [ Html.text "Your existing submission" ]
+            :: List.map show assignment.fields
         )
 
 
@@ -338,7 +329,7 @@ beginSubmission currentDate assignment maybeException maybeBeginAssignment =
 
 
 showBeginAssignmentButton : Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-showBeginAssignmentButton assignment maybeException maybeBeginAssignment =
+showBeginAssignmentButton assignment _ maybeBeginAssignment =
     case maybeBeginAssignment of
         Nothing ->
             Html.button
@@ -356,18 +347,11 @@ showBeginAssignmentButton assignment maybeException maybeBeginAssignment =
                 [ Html.text "Begin assignment"
                 ]
 
-        Just (RemoteData.Failure error) ->
+        Just (RemoteData.Failure _) ->
             Html.div [ Attrs.class "red" ] [ Html.text "HTTP error!" ]
 
         _ ->
             Html.text "other error"
-
-
-spinner : Html.Html Msg
-spinner =
-    Html.span [ Attrs.class "btn-icon" ]
-        [ Html.i [ Attrs.class "fas fa-sync fa-spin" ] []
-        ]
 
 
 submissionInstructions : Posix -> Assignment -> Maybe AssignmentGradeException -> AssignmentSubmission -> Html.Html Msg
@@ -465,8 +449,7 @@ showPreviousSubmissionField fieldSubmissions field =
     in
     Html.div []
         [ Html.label [] [ Html.text field.label ]
-        , case field.is_multiline of
-            True ->
+        , if field.is_multiline then
                 Html.textarea
                     [ Attrs.class "textarea"
                     , Attrs.placeholder field.placeholder
@@ -475,8 +458,7 @@ showPreviousSubmissionField fieldSubmissions field =
                     , Attrs.disabled True
                     ]
                     []
-
-            False ->
+            else
                 Html.input
                     [ Attrs.type_ fieldType
                     , Attrs.class "input field"

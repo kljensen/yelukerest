@@ -55,18 +55,6 @@ getQuizForMeetingSlug slug wdQuizzes =
             Nothing
 
 
-getQuizSubmissionForQuizID : Int -> WebData (List QuizSubmission) -> Maybe QuizSubmission
-getQuizSubmissionForQuizID quizID wdQuizSubmissionList =
-    case wdQuizSubmissionList of
-        RemoteData.Success submissions ->
-            submissions
-                |> List.filter (\qs -> qs.quiz_id == quizID)
-                |> List.head
-
-        _ ->
-            Nothing
-
-
 detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
 detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions quizGradeExceptions pendingBeginQuizzes =
     case maybeCurrentDate of
@@ -95,7 +83,7 @@ detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSub
                         Nothing ->
                             meetingNotFoundView slug
 
-                RemoteData.Failure err ->
+                RemoteData.Failure _ ->
                     Html.text "Error loading meetings!"
 
 
@@ -172,26 +160,13 @@ showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQ
         RemoteData.Loading ->
             Html.text "Loading quizzes."
 
-        RemoteData.Failure error ->
+        RemoteData.Failure _ ->
             Html.text "Failed to load quizzes!"
 
 
 pText : String -> Html.Html Msg
 pText theString =
     Html.p [] [ Html.text theString ]
-
-
-quizDueDateView : Posix -> TimeZone -> Quiz -> QuizOpenState -> SubmissionEditableState -> Maybe QuizGradeException -> String
-quizDueDateView currentDate timeZone quiz quizOpenState submissionEditableState maybeQuizGradeExecption =
-    case submissionEditableState of
-        EditableSubmission submission ->
-            stringDateDelta submission.closed_at currentDate
-
-        NotEditableSubmission submission ->
-            "Nothing"
-
-        NoSubmission ->
-            "Nothing"
 
 
 showQuizSubmissionStatus : Posix -> CurrentUser -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
@@ -259,7 +234,7 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
                         , Html.p [] [ Html.button btnAttrs [ Html.text btnText ] ]
                         ]
 
-                ( _, NotEditableSubmission submission ) ->
+                ( _, NotEditableSubmission _ ) ->
                     let
                         exceptionNote =
                             case maybeException of
@@ -294,7 +269,7 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
         RemoteData.Loading ->
             pText "Loading quiz submissions."
 
-        RemoteData.Failure error ->
+        RemoteData.Failure _ ->
             pText "Failed to load quiz submissions!"
 
 
@@ -317,7 +292,7 @@ listOrStatus timeZone wdMeetings =
         RemoteData.Success meetings ->
             listMeetings timeZone meetings
 
-        RemoteData.Failure error ->
+        RemoteData.Failure _ ->
             Html.text "HTTP Error!"
 
 
