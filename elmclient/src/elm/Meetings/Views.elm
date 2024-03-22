@@ -21,6 +21,7 @@ import Quizzes.Model
         )
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
+import Quizzes.Model exposing (QuizType(..))
 
 markdownToHTML : List (Html.Attribute msg) -> String -> Html msg 
 markdownToHTML attributes md =
@@ -200,11 +201,13 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
                         Nothing ->
                             "The quiz is due by " ++ longDateToString quiz.closed_at timeZone ++ "."
 
-                submitablity =
+                quizType =
                     quizSubmitability currentDate quiz maybeSubmission maybeException
             in
-            case submitablity of
-                ( QuizOpen, EditableSubmission submission ) ->
+            case quizType of
+                Offline ->
+                    pText ("There is an in-person quiz for this meeting.")
+                Online ( QuizOpen, EditableSubmission submission ) ->
                     Html.div []
                         [ Html.p [] [ Html.text ("You already started the quiz. You have roughly " ++ stringDateDelta submission.closed_at currentDate ++ " to finish it.") ]
                         , Html.p []
@@ -216,7 +219,7 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
                             ]
                         ]
 
-                ( QuizOpen, NoSubmission ) ->
+                Online( QuizOpen, NoSubmission ) ->
                     let
                         defaultAttrs =
                             [ Attrs.class "btn btn-primary" ]
@@ -234,7 +237,7 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
                         , Html.p [] [ Html.button btnAttrs [ Html.text btnText ] ]
                         ]
 
-                ( _, NotEditableSubmission _ ) ->
+                Online( _, NotEditableSubmission _ ) ->
                     let
                         exceptionNote =
                             case maybeException of
@@ -246,7 +249,7 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
                     in
                     pText ("You already submitted this quiz." ++ exceptionNote)
 
-                ( AfterQuizClosed, _ ) ->
+                Online( AfterQuizClosed, _ ) ->
                     case maybeException of
                         Just exception ->
                             pText ("This quiz is now closed. It was due by " ++ longDateToString exception.closed_at timeZone ++ ". You had an extention. The quiz was originally due by " ++ longDateToString quiz.closed_at timeZone)
@@ -254,13 +257,13 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
                         Nothing ->
                             pText ("This quiz is now closed. It was due by " ++ longDateToString quiz.closed_at timeZone ++ ".")
 
-                ( QuizIsDraft, _ ) ->
+                Online( QuizIsDraft, _ ) ->
                     pText
-                        ("This quiz is still in draft mode. The instructor needs to finize the quiz.  "
+                        ("This quiz is still in draft mode. The instructor needs to finalize the quiz.  "
                             ++ dueString
                         )
 
-                ( BeforeQuizOpen, _ ) ->
+                Online( BeforeQuizOpen, _ ) ->
                     pText ("This quiz is not yet open for submissions. It opens at " ++ longDateToString quiz.open_at timeZone ++ ".  " ++ dueString)
 
         RemoteData.NotAsked ->

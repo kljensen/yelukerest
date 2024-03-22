@@ -1,7 +1,7 @@
 module Meetings.Model exposing (Meeting, MeetingSlug, meetingsDecoder)
 
 import Json.Decode as Decode
-import Json.Decode.Extra exposing (datetime)
+import Json.Decode.Extra
 import Json.Decode.Pipeline exposing (required)
 import Time exposing (Posix)
 

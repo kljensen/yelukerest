@@ -8,6 +8,7 @@ module Quizzes.Model exposing
     , QuizQuestion
     , QuizQuestionOption
     , QuizSubmission
+    , QuizType(..)
     , SubmissionEditableState(..)
     , quizAnswersDecoder
     , quizGradeDistributionsDecoder
@@ -25,7 +26,7 @@ module Quizzes.Model exposing
 import Set exposing (Set)
 import Common.Comparisons exposing (dateIsLessThan)
 import Json.Decode as Decode exposing (Decoder)
-import Json.Decode.Extra exposing (datetime)
+import Json.Decode.Extra
 import Json.Decode.Pipeline exposing (required)
 import Time exposing (Posix)
 
@@ -41,6 +42,7 @@ type alias Quiz =
     , is_open : Bool
     , created_at : Posix
     , updated_at : Posix
+    , is_offline : Bool
     }
 
 
@@ -62,13 +64,13 @@ quizDecoder =
         |> required "is_open" Decode.bool
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
+        |> required "is_offline" Decode.bool
 
 
 
 -- ----------------
 -- Quiz submissions
 -- ----------------
-
 
 type QuizOpenState
     = BeforeQuizOpen
@@ -82,8 +84,13 @@ type SubmissionEditableState
     | NotEditableSubmission QuizSubmission
     | NoSubmission
 
+type QuizType
+    =
+    Online (QuizOpenState, SubmissionEditableState)
+    | Offline
 
-quizSubmitability : Posix -> Quiz -> Maybe QuizSubmission -> Maybe QuizGradeException -> ( QuizOpenState, SubmissionEditableState )
+
+quizSubmitability : Posix -> Quiz -> Maybe QuizSubmission -> Maybe QuizGradeException -> QuizType
 quizSubmitability currentDate quiz maybeQuizSubmission maybeException =
     let
         quizOpenState =
@@ -111,17 +118,18 @@ quizSubmitability currentDate quiz maybeQuizSubmission maybeException =
         submissionEditableState =
             case maybeQuizSubmission of
                 Just quizSubmission ->
-                    case dateIsLessThan currentDate quizSubmission.closed_at of
-                        True ->
-                            EditableSubmission quizSubmission
-
-                        False ->
-                            NotEditableSubmission quizSubmission
+                    if dateIsLessThan currentDate quizSubmission.closed_at then
+                        EditableSubmission quizSubmission
+                    else
+                        NotEditableSubmission quizSubmission
 
                 Nothing ->
                     NoSubmission
     in
-    ( quizOpenState, submissionEditableState )
+    if quiz.is_offline then
+        Offline
+    else
+        Online ( quizOpenState, submissionEditableState )
 
 
 type alias QuizSubmission =

@@ -5,7 +5,7 @@ module Quizzes.Views exposing (takeQuizView)
 import Auth.Model exposing (CurrentUser)
 import Common.Views exposing (longDateToString, stringDateDelta)
 import Dict exposing (Dict)
-import Html exposing (Html, a, div, h1, text)
+import Html exposing (a)
 import Html.Attributes as Attrs
 import Html.Events as Events
 import Json.Decode as Decode
@@ -23,10 +23,11 @@ import Quizzes.Model
         , QuizSubmission
         , SubmissionEditableState(..)
         , quizSubmitability
+        , QuizType(..)
         )
 import RemoteData exposing (WebData)
 import Set
-import Time exposing (Posix, utc)
+import Time exposing (Posix)
 
 
 getOrNotAsked : comparable -> Dict comparable (WebData b) -> WebData b
@@ -87,12 +88,12 @@ takeQuizView wdUser maybeDate timeZone quizID quizSubmissions quizzes quizQuesti
             mergeQuizViewData quizSubmissions quizzes theseQuizQuestions theseQuizAnswers
     in
     case ( wdUser, maybeDate ) of
-        ( RemoteData.Failure e, _ ) ->
+        ( RemoteData.Failure _, _ ) ->
             Html.div [] [ Html.text "You must be logged in to see quizzes." ]
 
         ( RemoteData.Success user, Just currentDate ) ->
             case wdQuizData of
-                RemoteData.Failure error ->
+                RemoteData.Failure _ ->
                     Html.div [] [ Html.text "HTTP Error!" ]
 
                 RemoteData.Loading ->
@@ -136,7 +137,7 @@ isLoading x =
 showSubmitError : WebData a -> Html.Html Msg
 showSubmitError x =
     case x of
-        RemoteData.Failure e ->
+        RemoteData.Failure _ ->
             let
                 errorMessage =
                     "HTTP error!"
@@ -185,28 +186,19 @@ showQuizForm user currentDate timeZone quizID quizSubmission quiz quizQuestions 
                ]
         )
 
-
-toUtcString : Time.Posix -> String
-toUtcString time =
-    String.fromInt (Time.toHour utc time)
-        ++ ":"
-        ++ String.fromInt (Time.toMinute utc time)
-        ++ ":"
-        ++ String.fromInt (Time.toSecond utc time)
-        ++ " (UTC)"
-
-
 showSubmitButton : Posix -> TimeZone -> Quiz -> QuizSubmission -> Maybe QuizGradeException -> WebData a -> Html.Html Msg
 showSubmitButton currentDate timeZone quiz quizSubmission maybeException pendingSubmit =
     let
-        submitablity =
+        quizType =
             quizSubmitability currentDate quiz (Just quizSubmission) maybeException
     in
-    case submitablity of
-        ( BeforeQuizOpen, _ ) ->
+    case quizType of 
+        Offline ->
+            Html.div [] [ Html.text "This quiz is offline." ]
+        Online( BeforeQuizOpen, _ ) ->
             Html.div [] [ Html.text "This quiz is not open yet." ]
 
-        ( QuizOpen, EditableSubmission submission ) ->
+        Online( QuizOpen, EditableSubmission submission ) ->
             Html.div []
                 [ Html.p []
                     [ Html.button
@@ -225,7 +217,7 @@ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pending
                             ++ stringDateDelta submission.closed_at currentDate
                             ++ " left."
                             ++ (case maybeException of
-                                    Just exception ->
+                                    Just _ ->
                                         " (That includes your quiz grade exception/extension.)"
 
                                     Nothing ->
@@ -236,7 +228,7 @@ showSubmitButton currentDate timeZone quiz quizSubmission maybeException pending
                 , showSubmitError pendingSubmit
                 ]
 
-        ( _, _ ) ->
+        Online( _, _ ) ->
             Html.div [] [ Html.text "This quiz is now closed and can no longer be submitted." ]
 
 
