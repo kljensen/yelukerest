@@ -1,0 +1,20 @@
+:80 {
+	# Set this path to your site's directory.
+	root * /var/elmclient
+
+    # Pass /rest/ to Postgrest docker container.
+    # Use the $POSTGREST_PORT environment variable to set the port.
+    route /rest/* {
+        uri strip_prefix /rest
+        reverse_proxy postgrest:{$POSTGREST_PORT}
+    }
+
+    # Route /auth to authapp
+    route /auth/* {
+        uri strip_prefix /auth
+        reverse_proxy authapp:{$AUTHAPP_PORT}
+    }
+
+	# Enable the static file server.
+	file_server
+}
