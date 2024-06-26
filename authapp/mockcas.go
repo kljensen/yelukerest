@@ -3,23 +3,38 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 )
 
 var ticketStore = make(map[string]string)
 
 func getCASLoginForm(user_id, service string) string {
 	var casForm = `
-	<html><head><title>MockCAS</title></head><body>
-	<h1>Fill in the netid with with you want to authenticate!</h1>
-	<form method="GET">
-	<div>
-	<div><label for="id">Netid:</label></div><div>
-		<input type="text" name="id" value="%s">
-	</div></div>
-	<div><div><label for="service">Service:</label></div><div>
-		<input type="text" name="service" value="%s">
-	</div></div><div><button type="submit">Submit</button></div></form></body></html>
+	<html>
+		<head>
+			<title>MockCAS</title>
+		</head>
+		<body>
+			<h1>Fill in the netid with with you want to authenticate!</h1>
+			<form method="GET">
+				<div>
+					<label for="id">Netid:</label>
+				</div>
+				<div>
+					<input type="text" name="id" value="%s">
+				</div>
+				<div>
+					<label for="service">Service:</label>
+				</div>
+				<div>
+					<input type="text" name="service" value="%s">
+				</div>
+				<button type="submit">Submit</button>
+			</form>
+		</body>
+	</html>
 	`
 	return fmt.Sprintf(casForm, user_id, service)
 }
@@ -35,7 +50,26 @@ func getSuccessHTML(user_id string) string {
 func redirectToService(w http.ResponseWriter, r *http.Request, user_id, service string) {
 	ticket := "mock-ticket-" + user_id
 	ticketStore[ticket] = user_id
-	http.Redirect(w, r, service+"?ticket="+ticket, http.StatusMovedPermanently)
+
+	// Parse the service string as URL
+	log.Println("Redirecting to service:", service)
+	serviceURL, err := url.Parse(service)
+	if err != nil {
+		http.Error(w, "Bad request. Invalid 'service' parameter.", http.StatusBadRequest)
+		return
+	}
+	// Add the ticket
+	serviceParams := url.Values{}
+	serviceParams.Add("ticket", ticket)
+
+	// Add the next parameter if it exists
+	next := serviceURL.Query().Get("next")
+	if next != "" {
+		serviceParams.Add("next", next)
+	}
+	serviceURL.RawQuery = serviceParams.Encode()
+
+	http.Redirect(w, r, serviceURL.String(), http.StatusTemporaryRedirect)
 }
 
 // Login handler

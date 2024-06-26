@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -27,13 +28,44 @@ func getCASValidationURL(ticket string, r *http.Request) string {
 	return casURI + "/serviceValidate?ticket=" + ticket + "&service=" + uriWithoutTicket(r)
 }
 
-func authenticateHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: do not hardcode this. Also, allow a "next" parameter
-	// that we will use in the /auth/validate handler to redirect
-	// the user back to the original page. STOPPED HERE WIP.
-	service := "http://localhost:5009/auth/validate"
-	// Redirect to the CAS login page
-	http.Redirect(w, r, casURI+"/login?service="+service, http.StatusTemporaryRedirect)
+func getLoginHandler(casBaseURI, servicePath string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		scheme := "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+		// Check for X-Forwarded-Proto if behind a reverse proxy
+		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+			scheme = proto
+		}
+
+		port := ""
+		if r.URL.Port() != "" {
+			port = ":" + r.URL.Port()
+		}
+
+		// Build up the service URL. This is the place
+		// to which the CAS server will redirect the user
+		// after they have authenticated.
+		serviceURI := url.URL{
+			Scheme: scheme,
+			Host:   r.Host + port,
+			Path:   servicePath,
+		}
+		serviceURIValues := url.Values{}
+		next := r.URL.Query().Get("next")
+		if next != "" {
+			serviceURIValues.Add("next", next)
+		}
+		serviceURI.RawQuery = serviceURIValues.Encode()
+
+		// Now add this onto our CAS login URL
+		urlValues := url.Values{}
+		urlValues.Add("service", serviceURI.String())
+		fullCASURI := casBaseURI + "/login?" + urlValues.Encode()
+
+		http.Redirect(w, r, fullCASURI, http.StatusTemporaryRedirect)
+	}
 }
 
 // Parse the user from the XML response, which looks like this:
@@ -103,5 +135,10 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	// Set the netid in the session
 	sessionManager.RenewToken(r.Context())
 	sessionManager.Put(r.Context(), "netid", netid)
+	next := r.URL.Query().Get("next")
+	if next != "" {
+		http.Redirect(w, r, next, http.StatusTemporaryRedirect)
+		return
+	}
 	io.WriteString(w, "You are authenticated as "+netid)
 }

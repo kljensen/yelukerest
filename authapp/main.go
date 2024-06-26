@@ -34,9 +34,13 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/put", putHandler)
 	mux.HandleFunc("/get", getHandler)
-	mux.HandleFunc("/auth/login", authenticateHandler)
-	mux.HandleFunc("/auth/validate", validateHandler)
+	authValidatePath := "/auth/validate"
+	loginHandler := getLoginHandler(casURI, authValidatePath)
+	mux.HandleFunc("/auth/login", loginHandler)
+	mux.HandleFunc(authValidatePath, validateHandler)
 
+	// In development, run the mock CAS server, acting
+	// like we are Yale's CAS for testing purposes.
 	isDevelopment := os.Getenv("DEVELOPMENT") != ""
 	if isDevelopment {
 		// Routes for the MockCAS server
