@@ -12,6 +12,8 @@ import (
 
 var sessionManager *scs.SessionManager
 var casURI string
+var authValidatePath string = "/auth/validate"
+var loginPath string = "/auth/login"
 
 func main() {
 
@@ -34,7 +36,6 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/put", putHandler)
 	mux.HandleFunc("/get", getHandler)
-	authValidatePath := "/auth/validate"
 	loginHandler := getLoginHandler(casURI, authValidatePath)
 	mux.HandleFunc("/auth/login", loginHandler)
 	mux.HandleFunc(authValidatePath, validateHandler)
