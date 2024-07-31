@@ -50,11 +50,11 @@ func main() {
 	}
 
 	// Wrap your handlers with the LoadAndSave() middleware.
+	log.Println("Starting server on...", port)
 	err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux))
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println("Starting server on", port)
 }
 
 func putHandler(w http.ResponseWriter, r *http.Request) {

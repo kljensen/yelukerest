@@ -76,6 +76,7 @@ services:
             - sse:sse
             - certbot:certbot
             - redis:redis
+            - authapp:authapp
         restart: on-failure
         environment:
             - DEVELOPMENT=${DEVELOPMENT}
@@ -134,7 +135,7 @@ services:
         environment:
             - DEVELOPMENT=${DEVELOPMENT}
             - PORT=${AUTHAPP_PORT}
-            - AUTHAPP_CAS_URI=${CAS_URI}
+            - AUTHAPP_CAS_URI=${AUTHAPP_CAS_URI}
     sse:
         build: sse
         ports:

@@ -1,6 +1,20 @@
+{
+    debug
+}
 :80 {
-	# Set this path to your site's directory.
-	root * /var/elmclient
+    log {
+    }
+    # Redirect to https
+    redir https://{host}{uri} permanent
+}
+
+# localhost https
+localhost:443, host.docker.internal:443 {
+    log {
+    }
+    tls internal
+    root * /var/elmclient
+    file_server
 
     # Pass /rest/ to Postgrest docker container.
     # Use the $POSTGREST_PORT environment variable to set the port.
@@ -11,10 +25,11 @@
 
     # Route /auth to authapp
     route /auth/* {
-        uri strip_prefix /auth
+        # uri strip_prefix /auth
         reverse_proxy authapp:{$AUTHAPP_PORT}
     }
-
-	# Enable the static file server.
-	file_server
+    route /cas/* {
+        # uri strip_prefix /auth
+        reverse_proxy authapp:{$AUTHAPP_PORT}
+    }
 }
