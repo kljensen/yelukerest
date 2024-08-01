@@ -137,6 +137,9 @@ services:
             - PORT=${AUTHAPP_PORT}
             - CAS_URI=${AUTHAPP_CAS_URI}
             - CAS_VALIDATION_URI=${AUTHAPP_CAS_VALIDATION_URI}
+            - POSTGREST_HOST=${POSTGREST_HOST}
+            - POSTGREST_PORT=${POSTGREST_PORT}
+            - AUTHAPP_JWT=${AUTHAPP_JWT}
     sse:
         build: sse
         ports:

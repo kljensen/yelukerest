@@ -17,6 +17,22 @@ var loginPath string = "/auth/login"
 
 func main() {
 
+	// Get configuration from the environment
+	var postgrestHost = os.Getenv("POSTGREST_HOST")
+	if postgrestHost == "" {
+		log.Panicln("POSTGREST_HOST environment variable not set")
+	}
+
+	var postgrestPort = os.Getenv("POSTGREST_PORT")
+	if postgrestPort == "" {
+		log.Panicln("POSTGREST_PORT environment variable not set")
+	}
+
+	var authappJWT = os.Getenv("AUTHAPP_JWT")
+	if authappJWT == "" {
+		log.Panicln("AUTHAPP_JWT environment variable not set")
+	}
+
 	var port = os.Getenv("PORT")
 	if port == "" {
 		log.Panicln("PORT environment variable not set")
@@ -58,6 +74,15 @@ func main() {
 		mux.HandleFunc("/cas/login", login)
 		mux.HandleFunc("/cas/serviceValidate", serviceValidate)
 	}
+
+	// Set up the JWT stuff
+	fetchJWTConfig := FetchJWTConfig{
+		PostgrestHost: postgrestHost,
+		PostgrestPort: postgrestPort,
+		AuthappJWT:    os.Getenv("AUTHAPP_JWT"),
+	}
+	mux.HandleFunc("/auth/me", getMeHandler(fetchJWTConfig))
+	mux.HandleFunc("/auth/jwt", getJWTHandler(fetchJWTConfig))
 
 	// Wrap your handlers with the LoadAndSave() middleware.
 	log.Println("Starting server on...", port)
