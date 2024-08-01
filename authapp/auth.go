@@ -18,14 +18,6 @@ func isValidCASURI() bool {
 	return strings.HasPrefix(casURI, "http")
 }
 
-func replaceLocalhostInDevelopment(s string) string {
-	isDevelopment := os.Getenv("DEVELOPMENT") != ""
-	if isDevelopment && s == "localhost" {
-		return "host.docker.internal"
-	}
-	return s
-}
-
 func getRequestScheme(r *http.Request) string {
 	scheme := "http"
 	// Check X-Forwarded-Proto header
@@ -73,18 +65,16 @@ func uriWithoutTicket(r *http.Request) string {
 
 }
 
-func getCASValidationURL(ticket string, r *http.Request) (string, error) {
+func getCASValidationURL(config CASConfig, ticket string, r *http.Request) (string, error) {
 	// Parse the casURI string to object
 	// and add the ticket and service parameters
 	// to it.
-	url, err := url.Parse(casURI)
+	url, err := url.Parse(config.RemoteValidationURI)
 	if err != nil {
 		return "", err
 	}
-	url.Host = replaceLocalhostInDevelopment(url.Host)
 	service := uriWithoutTicket(r)
 	// TODO: i'm losing the /cas here! need to keep it
-	url.Path = "/serviceValidate"
 	query := url.Query()
 	query.Add("ticket", ticket)
 	query.Add("service", service)
@@ -92,7 +82,14 @@ func getCASValidationURL(ticket string, r *http.Request) (string, error) {
 	return url.String(), nil
 }
 
-func getLoginHandler(casBaseURI, servicePath string) http.HandlerFunc {
+// Struct to hold CAS config
+type CASConfig struct {
+	RemoteURI           string
+	RemoteValidationURI string
+	ReturnPath          string
+}
+
+func getLoginHandler(config CASConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		scheme := getRequestScheme(r)
 		host := getRequestHost(r)
@@ -103,7 +100,7 @@ func getLoginHandler(casBaseURI, servicePath string) http.HandlerFunc {
 		serviceURI := url.URL{
 			Scheme: scheme,
 			Host:   host,
-			Path:   servicePath,
+			Path:   config.ReturnPath,
 		}
 		serviceURIValues := url.Values{}
 		next := r.URL.Query().Get("next")
@@ -115,7 +112,7 @@ func getLoginHandler(casBaseURI, servicePath string) http.HandlerFunc {
 		// Now add this onto our CAS login URL
 		urlValues := url.Values{}
 		urlValues.Add("service", serviceURI.String())
-		fullCASURI := casBaseURI + "/login?" + urlValues.Encode()
+		fullCASURI := config.RemoteURI + "?" + urlValues.Encode()
 
 		http.Redirect(w, r, fullCASURI, http.StatusTemporaryRedirect)
 	}
@@ -140,78 +137,81 @@ func getCASUserFromXML(xml string) string {
 	return ""
 }
 
-// Validate handler
-func validateHandler(w http.ResponseWriter, r *http.Request) {
-	ticket := r.URL.Query().Get("ticket")
-	if ticket == "" {
-		http.Error(w, "Bad request", http.StatusBadRequest)
-		return
-	}
-	// We're going to use http.Get to validate the ticket
-	// by contacting the CAS server.
-	var timeout = 5 * time.Second
-	isDevelopment := os.Getenv("DEVELOPMENT") != ""
-	tr := http.DefaultTransport
-	if isDevelopment {
-		tr = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+func getValidateHandler(config CASConfig) http.HandlerFunc {
+
+	// Validate handler
+	return func(w http.ResponseWriter, r *http.Request) {
+		ticket := r.URL.Query().Get("ticket")
+		if ticket == "" {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
 		}
-	}
-	client := http.Client{
-		Timeout:   timeout,
-		Transport: tr,
-	}
-	url, err := getCASValidationURL(ticket, r)
-	log.Println("Validating ticket at URL:", url)
-	if err != nil {
-		log.Println("CAS server error 0:", err)
-		http.Error(w, "CAS server error 0:", http.StatusInternalServerError)
-		return
-	}
-	resp, err := client.Get(url)
-	if err != nil {
-		log.Println("URL is ", url)
-		log.Println("CAS server error 1:", err)
-		log.Println(resp)
-		http.Error(w, "CAS server error 1:", http.StatusInternalServerError)
-		return
-	}
+		// We're going to use http.Get to validate the ticket
+		// by contacting the CAS server.
+		var timeout = 5 * time.Second
+		isDevelopment := os.Getenv("DEVELOPMENT") != ""
+		tr := http.DefaultTransport
+		if isDevelopment {
+			tr = &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			}
+		}
+		client := http.Client{
+			Timeout:   timeout,
+			Transport: tr,
+		}
+		url, err := getCASValidationURL(config, ticket, r)
+		log.Println("Validating ticket at URL:", url)
+		if err != nil {
+			log.Println("CAS server error 0:", err)
+			http.Error(w, "CAS server error 0:", http.StatusInternalServerError)
+			return
+		}
+		resp, err := client.Get(url)
+		if err != nil {
+			log.Println("URL is ", url)
+			log.Println("CAS server error 1:", err)
+			log.Println(resp)
+			http.Error(w, "CAS server error 1:", http.StatusInternalServerError)
+			return
+		}
 
-	// Check the response status code
-	if resp.StatusCode != http.StatusOK {
-		log.Println("CAS server error 2:", err)
-		log.Println(resp)
-		http.Error(w, "CAS server error 2:", http.StatusInternalServerError)
-		return
-	}
+		// Check the response status code
+		if resp.StatusCode != http.StatusOK {
+			log.Println("CAS server error 2:", err)
+			log.Println(resp)
+			http.Error(w, "CAS server error 2:", http.StatusInternalServerError)
+			return
+		}
 
-	// Read the response body as string
-	maxSize := int64(1 << 20) // 1 MB in bytes
-	limitedReader := io.LimitReader(resp.Body, maxSize)
+		// Read the response body as string
+		maxSize := int64(1 << 20) // 1 MB in bytes
+		limitedReader := io.LimitReader(resp.Body, maxSize)
 
-	body, err := io.ReadAll(limitedReader)
-	if err != nil {
-		log.Println("CAS server error 3:", err)
-		http.Error(w, "CAS server error 3:", http.StatusInternalServerError)
-		return
-	}
+		body, err := io.ReadAll(limitedReader)
+		if err != nil {
+			log.Println("CAS server error 3:", err)
+			http.Error(w, "CAS server error 3:", http.StatusInternalServerError)
+			return
+		}
 
-	defer resp.Body.Close()
+		defer resp.Body.Close()
 
-	// Parse the user from the XML response
-	netid := getCASUserFromXML(string(body))
-	if netid == "" {
-		// not authenticated
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
+		// Parse the user from the XML response
+		netid := getCASUserFromXML(string(body))
+		if netid == "" {
+			// not authenticated
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		// Set the netid in the session
+		sessionManager.RenewToken(r.Context())
+		sessionManager.Put(r.Context(), "netid", netid)
+		next := r.URL.Query().Get("next")
+		if next != "" {
+			http.Redirect(w, r, next, http.StatusTemporaryRedirect)
+			return
+		}
+		io.WriteString(w, "You are authenticated as "+netid)
 	}
-	// Set the netid in the session
-	sessionManager.RenewToken(r.Context())
-	sessionManager.Put(r.Context(), "netid", netid)
-	next := r.URL.Query().Get("next")
-	if next != "" {
-		http.Redirect(w, r, next, http.StatusTemporaryRedirect)
-		return
-	}
-	io.WriteString(w, "You are authenticated as "+netid)
 }

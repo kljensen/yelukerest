@@ -22,9 +22,13 @@ func main() {
 		log.Panicln("PORT environment variable not set")
 	}
 
-	casURI = os.Getenv("AUTHAPP_CAS_URI")
+	casURI = os.Getenv("CAS_URI")
 	if !isValidCASURI() {
-		log.Panicln("AUTHAPP_CAS_URI environment variable not set or invalid")
+		log.Panicln("CAS_URI environment variable not set or invalid")
+	}
+	casValidationURI := os.Getenv("CAS_VALIDATION_URI")
+	if casValidationURI == "" {
+		casValidationURI = casURI
 	}
 
 	// Initialize a new session manager and configure the session lifetime.
@@ -36,8 +40,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/put", putHandler)
 	mux.HandleFunc("/get", getHandler)
-	loginHandler := getLoginHandler(casURI, authValidatePath)
-	mux.HandleFunc("/auth/login", loginHandler)
+	config := CASConfig{
+		RemoteURI:           casURI,
+		RemoteValidationURI: casValidationURI,
+		ReturnPath:          authValidatePath,
+	}
+	loginHandler := getLoginHandler(config)
+	mux.HandleFunc(loginPath, loginHandler)
+	validateHandler := getValidateHandler(config)
 	mux.HandleFunc(authValidatePath, validateHandler)
 
 	// In development, run the mock CAS server, acting

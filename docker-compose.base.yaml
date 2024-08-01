@@ -135,7 +135,8 @@ services:
         environment:
             - DEVELOPMENT=${DEVELOPMENT}
             - PORT=${AUTHAPP_PORT}
-            - AUTHAPP_CAS_URI=${AUTHAPP_CAS_URI}
+            - CAS_URI=${AUTHAPP_CAS_URI}
+            - CAS_VALIDATION_URI=${AUTHAPP_CAS_VALIDATION_URI}
     sse:
         build: sse
         ports:
