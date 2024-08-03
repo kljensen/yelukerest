@@ -3,8 +3,6 @@ volumes:
     # A named volume to share data between containers
     elmclient-build:
         external: false
-    yelukerest-letsencrypt:
-        external: true
     yelukerest-redis-data:
         external: true
 services:
@@ -52,16 +50,6 @@ services:
             - PGRST_SERVER_PROXY_URI=${SERVER_PROXY_URI}
             - PGRST_LOG_LEVEL=${PGRST_LOG_LEVEL:-error}
 
-    certbot:
-        image: certbot/dns-route53:v1.12.0
-        entrypoint: /entrypoint.sh
-        volumes:
-            - yelukerest-letsencrypt:/etc/letsencrypt/
-            - './certbot/entrypoint.sh:/entrypoint.sh'
-        environment:
-            - AWS_ACCESS_KEY_ID=${CERTBOT_AWS_ACCESS_KEY_ID}
-            - AWS_SECRET_ACCESS_KEY=${CERTBOT_AWS_SECRET_ACCESS_KEY}
-
     # Caddy instance that sits in front of PostgREST.
     # All the requests coming into the system are first hitting this component.
     # After some processing/checks and transformation, the request is forwarded
@@ -74,7 +62,6 @@ services:
         links:
             - postgrest:postgrest
             - sse:sse
-            - certbot:certbot
             - redis:redis
             - authapp:authapp
         restart: on-failure
@@ -98,7 +85,6 @@ services:
             - AUTHAPP_PORT=${AUTHAPP_PORT}
         volumes:
             - elmclient-build:/var/elmclient/
-            - yelukerest-letsencrypt:/etc/letsencrypt/
             - './caddy/Caddyfile:/etc/caddy/Caddyfile'
             - './caddy/html:/usr/share/caddy/html'
             - './caddy/user_code:/usr/share/caddy/user_code'
