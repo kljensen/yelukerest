@@ -54,10 +54,6 @@ The roles of the most important components are as follows:
 - _[pg_amqp_bridge](https://github.com/subzerocloud/pg-amqp-bridge)_ -
   sends NOTIFY events from postgres to rabbitmq.
 - _postgrest_ - provides a RESTful API over the postgres application database.
-- _[openresty](https://openresty.org)_ - the webserver that accepts incoming
-  HTTP requests and proxies them to relevant backend services, such as postgrest.
-- _[certbot](https://certbot.eff.org/)_ - obtains and renews SSL certificates
-  for openresty.
 - _elmclient_ - a front-end client that runs in web browsers and communicates
   with the API. This is the main way in which students interact with the
   API.
@@ -81,10 +77,6 @@ tests and tests of the REST API using [supertest](https://github.com/visionmedia
 When you checkout this repo anew and wish to work on yelukerest you'll
 need to complete a few steps.
 
-1. Create the letsencrypt volume
-   `docker volume create --name=yelukerest-letsencrypt`
-2. Create local certs for https
-   `./bin/create-local-dev-https-certs.sh`
 3. Create the `.env` file with all the variables you need. Likely best to get this from another
    machine on which the code is working.
 4. Start the server
@@ -108,7 +100,6 @@ for a semester then start over. Then...
 3. Run the migrations (make sure these are up-to-date ;P )
    `./bin/migrate.sh`
 4. Stop database
-5. Get letsencrypt certs (see below)
 6. Get AWS S3 bucket permissions all set up for backups.
 7. Insert the klj39 user
    ```
@@ -148,20 +139,6 @@ pg_restore --host $HOST -U superuser -d app --port $PORT --clean --exit-on-error
 
 The `--clean` will drop (or truncate?) tables.
 
-### Getting the initial letsencrypt certificate in production
-
-To get certificates _issued_ do something like the following
-
-```
-bin/create-initial-certbot-https-cert.sh
-```
-
-Run that when not running anything else. Data are persisted to the yelukerest-letsencrypt data volume.
-You must have the `FDQN` environment variable set to your fully qualified domain name and obviously
-your DNS records should be set such that that domain name resolves to the IP address of the machine
-on which you run the command. The command will spin up a temporary http server and therefore your
-firewall in need to be open on ports 80 and 443 for inbound connections.
-
 ### Adding a table when working on the database
 
 1. Add the table in `db/src/data/yeluke.sql`
@@ -171,26 +148,6 @@ firewall in need to be open on ports 80 and 443 for inbound connections.
 5. Add sample data in `db/src/sample_data/yeluke/data.sql`
 6. Add the tests in `tests/db/`
 
-### Thoughts on the auth flow
-
-1. Most requests will go through OpenResty to the PostgREST instance
-   and require JWT tokens---very few of the API endpoints have information
-   for anonymous users. The JWT was signed using our private key,
-   so we know we created it and we're going to trust it. For most of
-   those, the JWT specifies a database "role" we wish to assume and
-   also the "user_id" of the person. For more, read
-   [here](https://github.com/subzerocloud/postgrest-starter-kit/wiki/Athentication-Authorization-Flow).
-2. Our database will generate the JWT tokens for us, as described above.
-   Or, we could use node to do this for us. See
-   [node-jsonwebtoken](https://github.com/auth0/node-jsonwebtoken).
-3. We use the node app to verify that the person logging-in is a Yale
-   affiliate. We need to verify that the person who authenticates with
-   CAS is also in our database. (We get their netid directly from Yale's
-   CAS server via https, so it is sufficient to check for the existance
-   of this user.) Once we do that, we should get them some JWT tokens
-   whenever their client---likely an ELM app in the browser---needs to
-   interact with the API. We should give those JWT tokens short expiration
-   times and refresh them as needed.
 
 
 ## Random notes
@@ -215,23 +172,3 @@ The `--clean` will drop (or truncate?) tables.
 5. Add sample data in `db/src/sample_data/yeluke/data.sql`
 6. Add the tests in `tests/db/`
 
-### Thoughts on the auth flow
-
-1. Most requests will go through OpenResty to the PostgREST instance
-   and require JWT tokens---very few of the API endpoints have information
-   for anonymous users. The JWT was signed using our private key,
-   so we know we created it and we're going to trust it. For most of
-   those, the JWT specifies a database "role" we wish to assume and
-   also the "user_id" of the person. For more, read
-   [here](https://github.com/subzerocloud/postgrest-starter-kit/wiki/Athentication-Authorization-Flow).
-2. Our database will generate the JWT tokens for us, as described above.
-   Or, we could use node to do this for us. See
-   [node-jsonwebtoken](https://github.com/auth0/node-jsonwebtoken).
-3. We use the node app to verify that the person logging-in is a Yale
-   affiliate. We need to verify that the person who authenticates with
-   CAS is also in our database. (We get their netid directly from Yale's
-   CAS server via https, so it is sufficient to check for the existance
-   of this user.) Once we do that, we should get them some JWT tokens
-   whenever their client---likely an ELM app in the browser---needs to
-   interact with the API. We should give those JWT tokens short expiration
-   times and refresh them as needed.
