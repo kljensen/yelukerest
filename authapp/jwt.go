@@ -81,7 +81,11 @@ func fetchUserJWT(netID string, config FetchJWTConfig) (string, error, int) {
 func getJWTHandler(config FetchJWTConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Triggered the getJWTHandler")
-		netID := r.URL.Query().Get("netid")
+		netID := r.Context().Value("netid").(string)
+		if netID == "" {
+			http.Error(w, "netid is nil", http.StatusUnauthorized)
+			return
+		}
 		jwt, err, statusCode := fetchUserJWT(netID, config)
 		if err != nil {
 			log.Printf("Error fetching JWT: %v", err)
@@ -97,11 +101,17 @@ func getJWTHandler(config FetchJWTConfig) http.HandlerFunc {
 func getMeHandler(config FetchJWTConfig) http.HandlerFunc {
 	log.Println("Triggered the getMeHandler")
 	return func(w http.ResponseWriter, r *http.Request) {
-		netID := r.URL.Query().Get("netid")
+
+		// The netid is passed in the context by the middleware.
+		// If the netid is not present, return an error.
+		netID := r.Context().Value("netid").(string)
 		if netID == "" {
-			http.Error(w, "netid is nil", http.StatusBadRequest)
+			http.Error(w, "netid is nil", http.StatusUnauthorized)
 			return
 		}
+
+		// Fetch the user's JWT info from the database.
+		//
 		data, err, statusCode := fetchUserJWTInfo(netID, config)
 		if err != nil {
 			log.Printf("Error fetching JWT: %v", err)

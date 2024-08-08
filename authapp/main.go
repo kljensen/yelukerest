@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io"
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -10,12 +10,10 @@ import (
 	"github.com/alexedwards/scs/v2"
 )
 
-var sessionManager *scs.SessionManager
-var casURI string
-var authValidatePath string = "/auth/validate"
-var loginPath string = "/auth/login"
-
 func main() {
+	var authValidatePath string = "/auth/validate"
+	var loginPath string = "/auth/login"
+	var logoutPath string = "/auth/logout"
 
 	// Get configuration from the environment
 	var postgrestHost = os.Getenv("POSTGREST_HOST")
@@ -38,42 +36,25 @@ func main() {
 		log.Panicln("PORT environment variable not set")
 	}
 
-	casURI = os.Getenv("CAS_URI")
-	if !isValidCASURI() {
+	casURI := os.Getenv("CAS_URI")
+	if !isValidCASURI(casURI) {
 		log.Panicln("CAS_URI environment variable not set or invalid")
 	}
 	casValidationURI := os.Getenv("CAS_VALIDATION_URI")
 	if casValidationURI == "" {
 		casValidationURI = casURI
+	} else if !isValidCASURI(casValidationURI) {
+		log.Panicln("CAS_VALIDATION_URI environment variable is invalid")
 	}
 
-	// Initialize a new session manager and configure the session lifetime.
-	// Notice that there is no session secret because we are using an in-memory
-	// store and it is set automatically. But, everything is lost on restart.
-	sessionManager = scs.New()
-	sessionManager.Lifetime = 24 * time.Hour
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/put", putHandler)
-	mux.HandleFunc("/get", getHandler)
-	config := CASConfig{
+	casConfig := CASConfig{
 		RemoteURI:           casURI,
 		RemoteValidationURI: casValidationURI,
 		ReturnPath:          authValidatePath,
+		IsDevelopment:       os.Getenv("DEVELOPMENT") != "",
 	}
-	loginHandler := getLoginHandler(config)
-	mux.HandleFunc(loginPath, loginHandler)
-	validateHandler := getValidateHandler(config)
-	mux.HandleFunc(authValidatePath, validateHandler)
-
-	// In development, run the mock CAS server, acting
-	// like we are Yale's CAS for testing purposes.
-	isDevelopment := os.Getenv("DEVELOPMENT") != ""
-	if isDevelopment {
-		// Routes for the MockCAS server
-		mux.HandleFunc("/cas/login", login)
-		mux.HandleFunc("/cas/serviceValidate", serviceValidate)
-	}
+	sessionManager := scs.New()
+	sessionManager.Lifetime = 24 * time.Hour
 
 	// Set up the JWT stuff
 	fetchJWTConfig := FetchJWTConfig{
@@ -81,10 +62,34 @@ func main() {
 		PostgrestPort: postgrestPort,
 		AuthappJWT:    os.Getenv("AUTHAPP_JWT"),
 	}
-	mux.HandleFunc("/auth/me", getMeHandler(fetchJWTConfig))
-	mux.HandleFunc("/auth/jwt", getJWTHandler(fetchJWTConfig))
 
-	// Wrap your handlers with the LoadAndSave() middleware.
+	// Set up the routes
+	mux := http.NewServeMux()
+
+	// Add login
+	loginHandler := getLoginHandler(casConfig)
+	mux.HandleFunc(loginPath, loginHandler)
+
+	// Add logout
+	logoutHandler := getLogoutHandler(sessionManager)
+	mux.HandleFunc(logoutPath, logoutHandler)
+
+	// Add validate
+	validateHandler := getValidateHandler(casConfig, fetchJWTConfig, sessionManager)
+	mux.HandleFunc(authValidatePath, validateHandler)
+
+	// Add the user details endpoints
+	getMe := getSessionMiddleware(sessionManager, getMeHandler(fetchJWTConfig))
+	getJWT := getSessionMiddleware(sessionManager, getJWTHandler(fetchJWTConfig))
+	mux.Handle("/auth/me", getMe)
+	mux.Handle("/auth/jwt", getJWT)
+
+	// In development, add endpoints for a mock CAS server.
+	if casConfig.IsDevelopment {
+		mux.HandleFunc("/cas/login", casLoginHandler)
+		mux.HandleFunc("/cas/serviceValidate", casServiceValidateHandler)
+	}
+
 	log.Println("Starting server on...", port)
 	err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux))
 	if err != nil {
@@ -92,14 +97,22 @@ func main() {
 	}
 }
 
-func putHandler(w http.ResponseWriter, r *http.Request) {
-	// Store a new key and value in the session data.
-	sessionManager.Put(r.Context(), "message", "Hello from a session!")
+func getLogoutHandler(sessionManager *scs.SessionManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sessionManager.Destroy(r.Context())
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
 }
 
-func getHandler(w http.ResponseWriter, r *http.Request) {
-	// Use the GetString helper to retrieve the string value associated with a
-	// key. The zero value is returned if the key does not exist.
-	msg := sessionManager.GetString(r.Context(), "message")
-	io.WriteString(w, msg)
+func getSessionMiddleware(sessionManager *scs.SessionManager, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		netid := sessionManager.GetString(r.Context(), "netid")
+		if netid == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		// set the netid in the context
+		ctx := context.WithValue(r.Context(), "netid", netid)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

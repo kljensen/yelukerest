@@ -73,7 +73,7 @@ func redirectToService(w http.ResponseWriter, r *http.Request, user_id, service 
 }
 
 // Login handler
-func login(w http.ResponseWriter, r *http.Request) {
+func casLoginHandler(w http.ResponseWriter, r *http.Request) {
 	args := r.URL.Query()
 	user_id := args.Get("id")
 	service := args.Get("service")
@@ -86,7 +86,7 @@ func login(w http.ResponseWriter, r *http.Request) {
 }
 
 // service validate handler
-func serviceValidate(w http.ResponseWriter, r *http.Request) {
+func casServiceValidateHandler(w http.ResponseWriter, r *http.Request) {
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
 		http.Error(w, "Bad request. Missing 'ticket' parameter.", http.StatusBadRequest)

@@ -6,16 +6,23 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/alexedwards/scs/v2"
 )
 
 var casUserRegexp = regexp.MustCompile("<cas:user>(.*?)</cas:user>")
 
-func isValidCASURI() bool {
-	return strings.HasPrefix(casURI, "http")
+func isValidCASURI(casURI string) bool {
+	validPrefixes := []string{"http://", "https://"}
+	for _, prefix := range validPrefixes {
+		if strings.HasPrefix(casURI, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func getRequestScheme(r *http.Request) string {
@@ -87,6 +94,7 @@ type CASConfig struct {
 	RemoteURI           string
 	RemoteValidationURI string
 	ReturnPath          string
+	IsDevelopment       bool
 }
 
 func getLoginHandler(config CASConfig) http.HandlerFunc {
@@ -137,7 +145,7 @@ func getCASUserFromXML(xml string) string {
 	return ""
 }
 
-func getValidateHandler(config CASConfig) http.HandlerFunc {
+func getValidateHandler(casConfig CASConfig, jwtConfig FetchJWTConfig, sessionManager *scs.SessionManager) http.HandlerFunc {
 
 	// Validate handler
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -149,9 +157,8 @@ func getValidateHandler(config CASConfig) http.HandlerFunc {
 		// We're going to use http.Get to validate the ticket
 		// by contacting the CAS server.
 		var timeout = 5 * time.Second
-		isDevelopment := os.Getenv("DEVELOPMENT") != ""
 		tr := http.DefaultTransport
-		if isDevelopment {
+		if casConfig.IsDevelopment {
 			tr = &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}
@@ -160,7 +167,7 @@ func getValidateHandler(config CASConfig) http.HandlerFunc {
 			Timeout:   timeout,
 			Transport: tr,
 		}
-		url, err := getCASValidationURL(config, ticket, r)
+		url, err := getCASValidationURL(casConfig, ticket, r)
 		log.Println("Validating ticket at URL:", url)
 		if err != nil {
 			log.Println("CAS server error 0:", err)
@@ -204,14 +211,33 @@ func getValidateHandler(config CASConfig) http.HandlerFunc {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
+
+		// See if this netid corresponds to a valid user
+		// in the database. If not, then we should not
+		// allow them to log in.
+		jwtInfo, err, httpStatus := fetchUserJWTInfo(netid, jwtConfig)
+		if err != nil || jwtInfo == nil {
+			http.Error(w, "Unauthorized", httpStatus)
+			return
+		}
+		if httpStatus != http.StatusOK {
+			http.Error(w, http.StatusText(httpStatus), httpStatus)
+			return
+		}
+
 		// Set the netid in the session
 		sessionManager.RenewToken(r.Context())
 		sessionManager.Put(r.Context(), "netid", netid)
+
+		// See if there is a next parameter to which we should redirect
+		// the user after they have authenticated.
 		next := r.URL.Query().Get("next")
 		if next != "" {
 			http.Redirect(w, r, next, http.StatusTemporaryRedirect)
 			return
 		}
+
+		// If there is no next parameter, then just show a message.
 		io.WriteString(w, "You are authenticated as "+netid)
 	}
 }
