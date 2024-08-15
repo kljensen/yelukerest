@@ -66,6 +66,7 @@ services:
             - authapp:authapp
         restart: on-failure
         environment:
+            - FQDN=${FQDN}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
         volumes:

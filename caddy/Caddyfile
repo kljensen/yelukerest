@@ -9,7 +9,7 @@
 }
 
 # localhost https
-localhost:443, host.docker.internal:443 {
+localhost:443, host.docker.internal:443, $FQDN:443 {
     log {
     }
     tls internal
