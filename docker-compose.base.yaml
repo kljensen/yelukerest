@@ -55,7 +55,7 @@ services:
     # After some processing/checks and transformation, the request is forwarded
     # to PostgREST down the stack.
     caddy:
-        image: caddy:2.4.5-alpine
+        build: caddy
         ports:
             - '${CADDY_LISTEN_HOST}:80:80'
             - '${CADDY_LISTEN_HOST}:443:443'
