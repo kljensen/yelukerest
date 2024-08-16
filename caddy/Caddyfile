@@ -49,4 +49,10 @@ localhost:443, host.docker.internal:443 {
 
 {$FQDN} {
     import app
+    tls {
+        dns route53 {
+            access_key_id {$ACME_ACCESS_KEY_ID}
+            secret_access_key {$ACME_SECRET_ACCESS_KEY}
+        }
+    }
 }
