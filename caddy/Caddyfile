@@ -8,28 +8,45 @@
     redir https://{host}{uri} permanent
 }
 
-# localhost https
-localhost:443, host.docker.internal:443, $FQDN:443 {
-    log {
-    }
-    tls internal
+(elmclient) {
     root * /var/elmclient
     file_server
+}
 
+(postgrest) {
     # Pass /rest/ to Postgrest docker container.
     # Use the $POSTGREST_PORT environment variable to set the port.
     route /rest/* {
         uri strip_prefix /rest
         reverse_proxy postgrest:{$POSTGREST_PORT}
     }
+}
 
-    # Route /auth to authapp
+(authapp) {
+    # Pass /auth/ to AuthApp docker container.
+    # Use the $AUTHAPP_PORT environment variable to set the port.
     route /auth/* {
-        # uri strip_prefix /auth
+        uri strip_prefix /auth
         reverse_proxy authapp:{$AUTHAPP_PORT}
     }
     route /cas/* {
-        # uri strip_prefix /auth
+        uri strip_prefix /cas
         reverse_proxy authapp:{$AUTHAPP_PORT}
     }
+}
+
+(app) {
+    import elmclient
+    import postgrest
+    import authapp
+}
+
+# localhost https
+localhost:443, host.docker.internal:443 {
+    tls internal
+    import app
+}
+
+{$FQDN} {
+    import app
 }
