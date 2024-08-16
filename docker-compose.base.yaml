@@ -69,7 +69,7 @@ services:
             - FQDN=${FQDN}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
-            - ACME_ACCESS_KEY_ID==${CADDY_ACME_ACCESS_KEY_ID}
+            - ACME_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - ACME_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
 
         volumes:
