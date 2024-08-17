@@ -69,8 +69,9 @@ services:
             - FQDN=${FQDN}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
-            - ACME_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
-            - ACME_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
+            - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
+            - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
+            - AWS_REGION=${CADDY_ACME_AWS_REGION}
 
         volumes:
             - elmclient-build:/var/elmclient/
