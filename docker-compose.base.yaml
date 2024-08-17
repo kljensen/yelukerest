@@ -5,6 +5,8 @@ volumes:
         external: false
     yelukerest-redis-data:
         external: true
+    caddy_data:
+    caddy_config:
 services:
     redis:
         image: redis:6.0.9-alpine
@@ -59,6 +61,7 @@ services:
         ports:
             - '${CADDY_LISTEN_HOST}:80:80'
             - '${CADDY_LISTEN_HOST}:443:443'
+            - '${CADDY_LISTEN_HOST}:443:443/udp'
         links:
             - postgrest:postgrest
             - sse:sse
@@ -78,6 +81,9 @@ services:
             - './caddy/Caddyfile:/etc/caddy/Caddyfile'
             - './caddy/html:/usr/share/caddy/html'
             - './caddy/user_code:/usr/share/caddy/user_code'
+            - caddy_data:/data
+            - caddy_config:/config
+
 
     # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
     # to RabbitMQ based on the BRIDGE_CHANNELS configuration. This was originally
