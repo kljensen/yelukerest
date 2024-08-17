@@ -15,6 +15,6 @@ if [ -x "$(command -v psql)" ]; then
 else
     # Connect through psql in the docker container
     PGPASSWORD=$SUPER_USER_PASSWORD \
-        docker exec -it "${COMPOSE_PROJECT_NAME}_db_1" \
+        docker exec -it "${COMPOSE_PROJECT_NAME}-db-1" \
         psql -U $SUPER_USER  $DB_NAME 
 fi
