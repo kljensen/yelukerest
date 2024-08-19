@@ -13,12 +13,4 @@ INSERT INTO secrets (key, value) VALUES ('auth.data-schema','data');
 INSERT INTO secrets (key, value) VALUES ('auth.api-schema','api');
 INSERT INTO secrets (key, value) VALUES ('jwt_secret',:'jwt_secret');
 
--- Check that jwt_secret is set and greater than 32 characters
-DO $$ 
-BEGIN
-  IF (SELECT length(value) FROM secrets WHERE key = 'jwt_secret') < 32 THEN
-    RAISE EXCEPTION 'jwt_secret must be set and greater than 32 characters';
-  END IF;
-END $$;
-
 COMMIT;

@@ -9,7 +9,7 @@ BEGIN;
 --
 
 -- Dumped from database version 14.4
--- Dumped by pg_dump version 14.3
+-- Dumped by pg_dump version 14.13 (Homebrew)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -1541,6 +1541,7 @@ CREATE TABLE data.quiz (
     id integer NOT NULL,
     meeting_slug text NOT NULL,
     points_possible smallint NOT NULL,
+    is_offline boolean DEFAULT false NOT NULL,
     is_draft boolean DEFAULT true NOT NULL,
     duration interval DEFAULT '00:15:00'::interval NOT NULL,
     open_at timestamp with time zone NOT NULL,
@@ -1925,6 +1926,7 @@ CREATE VIEW api.quizzes AS
  SELECT quiz.id,
     quiz.meeting_slug,
     quiz.points_possible,
+    quiz.is_offline,
     quiz.is_draft,
     quiz.duration,
     quiz.open_at,
