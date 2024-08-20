@@ -1,0 +1,5 @@
+# localhost https
+localhost:443, host.docker.internal:443 {
+    tls internal
+    import app
+}

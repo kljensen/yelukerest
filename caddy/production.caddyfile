@@ -1,0 +1,12 @@
+
+{$FQDN} {
+    import app
+    tls {
+        dns route53 {
+            # Notice that the plug-in will read
+            # AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY
+            # https://github.com/libdns/route53/blob/5afde8b82bff9494c83a6ed5a58c5ca3a6b0b93f/provider.go#L18C62-L18C72
+            wait_for_propagation true
+        }
+    }
+}

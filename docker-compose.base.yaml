@@ -70,6 +70,7 @@ services:
         restart: on-failure
         environment:
             - FQDN=${FQDN}
+            - CADDY_ENV=${CADDY_ENV}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
@@ -79,6 +80,8 @@ services:
         volumes:
             - elmclient-build:/var/elmclient/
             - './caddy/Caddyfile:/etc/caddy/Caddyfile'
+            - './caddy/development.caddyfile:/etc/caddy/development.caddyfile'
+            - './caddy/production.caddyfile:/etc/caddy/production.caddyfile'
             - './caddy/html:/usr/share/caddy/html'
             - './caddy/user_code:/usr/share/caddy/user_code'
             - caddy_data:/data
