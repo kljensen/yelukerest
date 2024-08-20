@@ -70,7 +70,7 @@ services:
         restart: on-failure
         environment:
             - FQDN=${FQDN}
-            - CADDY_ENV=${CADDY_ENV}
+            - CADDY_ENV=${CADDY_ENV:-production}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
