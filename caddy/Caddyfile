@@ -40,7 +40,7 @@
     route /openapi/* {
         uri strip_prefix /openapi
         file_server {
-            root * /usr/share/caddy/html/swagger
+            root /usr/share/caddy/html/swagger
             index index.html
         }
     }
