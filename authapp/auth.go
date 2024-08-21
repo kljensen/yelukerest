@@ -236,7 +236,6 @@ func getValidateHandler(casConfig CASConfig, jwtConfig FetchJWTConfig, sessionMa
 			next = "/"
 		}
 		// If there is no next parameter, then just show a message.
-		io.WriteString(w, "You are authenticated as "+netid)
 		http.Redirect(w, r, next, http.StatusTemporaryRedirect)
 	}
 }
