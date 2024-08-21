@@ -10,3 +10,14 @@
         }
     }
 }
+
+{$NAKED_FQDN} {
+    # This is a naked domain, so we need to redirect it to the www subdomain
+    redir https://{$FQDN}{uri}
+    tls {
+        dns route53 {
+            wait_for_propagation true
+        }
+    }
+}
+```

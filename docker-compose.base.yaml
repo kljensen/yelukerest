@@ -71,6 +71,7 @@ services:
         environment:
             - FQDN=${FQDN}
             - CADDY_ENV=${CADDY_ENV:-production}
+            - NAKED_FQDN=${NAKED_FQDN}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
@@ -86,7 +87,6 @@ services:
             - './caddy/user_code:/usr/share/caddy/user_code'
             - caddy_data:/data
             - caddy_config:/config
-
 
     # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
     # to RabbitMQ based on the BRIDGE_CHANNELS configuration. This was originally
