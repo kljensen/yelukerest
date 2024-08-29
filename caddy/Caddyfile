@@ -37,6 +37,10 @@
     import elmclient
     import postgrest
     import authapp
+    route /events/* {
+        uri strip_prefix /events
+        reverse_proxy sse:{$SSE_PORT}
+    }
     route /openapi/* {
         uri strip_prefix /openapi
         file_server {
