@@ -93,7 +93,7 @@ services:
     # to RabbitMQ based on the BRIDGE_CHANNELS configuration. This was originally
     # from subzerocloud
     pg_amqp_bridge:
-        image: yellowtrex/pg-amqp-bridge:0.0.6
+        build: pg-amqp-bridge
         links:
             - db
             - rabbitmq
