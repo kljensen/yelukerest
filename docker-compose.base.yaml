@@ -67,6 +67,7 @@ services:
             - sse:sse
             - redis:redis
             - authapp:authapp
+            - codeframe:codeframe
         restart: on-failure
         environment:
             - FQDN=${FQDN}
@@ -78,6 +79,7 @@ services:
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
             - AWS_REGION=${CADDY_ACME_AWS_REGION}
+            - CODEFRAME_PORT=4556
 
         volumes:
             - elmclient-build:/var/elmclient/
@@ -137,3 +139,6 @@ services:
             - DEVELOPMENT=${DEVELOPMENT}
             - PORT=${SSE_PORT}
             - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
+
+    codeframe:
+        image: ghcr.io/kljensen/codeframe-docker:0.2.0
