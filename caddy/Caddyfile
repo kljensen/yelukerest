@@ -54,4 +54,8 @@ code.{$NAKED_FQDN} {
     reverse_proxy codeframe:{$CODEFRAME_PORT}
 }
 
+cats.{$NAKED_FQDN} {
+    reverse_proxy cats:{$CATS_PORT}
+}
+
 import {$CADDY_ENV:production}.caddyfile

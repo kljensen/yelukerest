@@ -68,6 +68,7 @@ services:
             - redis:redis
             - authapp:authapp
             - codeframe:codeframe
+            - cats:cats
         restart: on-failure
         environment:
             - FQDN=${FQDN}
@@ -80,6 +81,7 @@ services:
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
             - AWS_REGION=${CADDY_ACME_AWS_REGION}
             - CODEFRAME_PORT=4556
+            - CATS_PORT=8080
 
         volumes:
             - elmclient-build:/var/elmclient/
@@ -142,3 +144,5 @@ services:
 
     codeframe:
         image: ghcr.io/kljensen/codeframe-docker:0.2.0
+    cats:
+        image: ghcr.io/kljensen/catgifs:0.2.0
