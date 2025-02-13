@@ -13,7 +13,7 @@
         "expect-cookies": "^0.1.2",
         "jsonwebtoken": "^8.5.1",
         "lodash": "^4.17.19",
-        "npm": "^6.14.6",
+        "npm": "^11.1.0",
         "subzero-cli": "^0.1.41"
     },
     "devDependencies": {
