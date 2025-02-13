@@ -375,10 +375,15 @@ def delete_missing_assignments(cursor, slugs):
         slugs {list} -- List of assignment slugs we want to keep
     """
     query = """
-        DELETE FROM data.assignment
+        WITH field_delete AS (
+            DELETE FROM data.assignment_field 
+            WHERE assignment_slug NOT IN %s
+            RETURNING assignment_slug
+        )
+        DELETE FROM data.assignment 
         WHERE slug NOT IN %s;
     """
-    cursor.execute(query, (tuple(slugs),))
+    cursor.execute(query, (tuple(slugs),tuple(slugs)))
 
 
 def nonchild(d):
