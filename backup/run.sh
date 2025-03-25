@@ -10,5 +10,5 @@ if [ "${SCHEDULE}" = "**None**" ]; then
   sh backup.sh
 else
   echo "$SCHEDULE /bin/sh /backup.sh" > /etc/crontab
-  exec supercronic /etc/crontab
+  exec /usr/local/bin/supercronic /etc/crontab
 fi
