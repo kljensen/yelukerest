@@ -89,6 +89,12 @@ run the `create-initial-migrations.sh` script to get fresh migrations.
 I'll likely want to throw out the old ones first. I only keep migrations
 for a semester then start over. Then...
 
+0. If you're using tailscale, make sure you do not use tailscale
+   DNS or it will screw with the container DNS systems (docker 
+   will copy the tailscale resolv.conf into the containers!).
+   Start tailscale with
+   `doas tailscale up --accept-dns=false`
+
 0. Create your secrets. Notices that the jwt secret [must be longer than 32 chars](https://github.com/PostgREST/postgrest/issues/991).
 1. Create the required external docker volumes 
    ```
