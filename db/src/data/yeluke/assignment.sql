@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS assignment (
     -- If this assignment is still being worked on by the faculty
     is_draft BOOLEAN NOT NULL DEFAULT true NOT NULL,
     is_markdown BOOLEAN DEFAULT false,
-    is_team BOOLEAN DEFAULT false,
+    is_team BOOLEAN NOT NULL DEFAULT false,
     title TEXT NOT NULL
         CHECK (char_length(title) < 100),
     body text NOT NULL,

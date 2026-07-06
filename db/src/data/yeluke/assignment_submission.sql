@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS assignment_submission (
     id SERIAL PRIMARY KEY,
     assignment_slug TEXT NOT NULL CHECK (char_length(assignment_slug) < 100),
-    is_team BOOLEAN,
+    is_team BOOLEAN NOT NULL,
     FOREIGN KEY (assignment_slug, is_team) REFERENCES assignment(slug, is_team)
         ON UPDATE CASCADE,
     user_id INT REFERENCES "user"(id)

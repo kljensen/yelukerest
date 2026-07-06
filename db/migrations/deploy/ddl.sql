@@ -1043,7 +1043,7 @@ ALTER TABLE data.assignment_grade OWNER TO superuser;
 CREATE TABLE data.assignment_submission (
     id integer NOT NULL,
     assignment_slug text NOT NULL,
-    is_team boolean,
+    is_team boolean NOT NULL,
     user_id integer,
     team_nickname text,
     submitter_user_id integer DEFAULT request.user_id() NOT NULL,
@@ -1262,7 +1262,7 @@ CREATE TABLE data.assignment (
     points_possible smallint NOT NULL,
     is_draft boolean DEFAULT true NOT NULL,
     is_markdown boolean DEFAULT false,
-    is_team boolean DEFAULT false,
+    is_team boolean DEFAULT false NOT NULL,
     title text NOT NULL,
     body text NOT NULL,
     closed_at timestamp with time zone NOT NULL,

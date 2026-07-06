@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(22);
 
 -- We test exceptions elsewhere.
 DELETE FROM api.assignment_grade_exceptions;
@@ -22,6 +22,45 @@ SELECT table_privs_are(
 SELECT table_privs_are(
     'data', 'assignment_submission', 'faculty', ARRAY[]::text[],
     'faculty should only be granted nothing on "data.assignment_submission"'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment'
+        AND a.attname = 'is_team'
+        AND a.attnotnull
+    ),
+    1,
+    'assignment.is_team should be NOT NULL'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_submission'
+        AND a.attname = 'is_team'
+        AND a.attnotnull
+    ),
+    1,
+    'assignment_submission.is_team should be NOT NULL'
+);
+
+SELECT throws_like(
+    $$
+        INSERT INTO data.assignment_submission (assignment_slug, user_id, submitter_user_id)
+        VALUES ('missing-assignment', 4, 4)
+    $$,
+    '%null value in column "is_team"%',
+    'assignment submissions for unknown assignments cannot bypass ownership constraints with NULL is_team'
 );
 
 set local role faculty;
@@ -109,6 +148,16 @@ SELECT set_eq(
     'students shoud only be able to see their newly created individual assignment submission'
 );
 
+SELECT results_eq(
+    $$
+        INSERT INTO api.assignment_submissions (assignment_slug)
+        VALUES ('exam-1')
+        RETURNING is_team, user_id, team_nickname
+    $$,
+    $$VALUES (FALSE, 4, NULL::text)$$,
+    'minimal assignment submission insert should fill individual assignment ownership'
+);
+
 SELECT throws_like(
     'EXECUTE doinsert_noid(''team-selection'', FALSE, 4, NULL, 4)',
     '%duplicate key%',
@@ -123,6 +172,24 @@ SELECT throws_like(
     'students should NOT be able to insert team assignment submission if they are not on a team'
 );
 
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '2';
+
+SELECT results_eq(
+    $$
+        INSERT INTO api.assignment_submissions (assignment_slug)
+        VALUES ('project-update-1')
+        RETURNING is_team, user_id, team_nickname
+    $$,
+    $$VALUES (TRUE, NULL::int, 'hazy-mountain'::text)$$,
+    'minimal assignment submission insert should fill team assignment ownership'
+);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+DELETE FROM api.assignment_submissions WHERE team_nickname='hazy-mountain' AND assignment_slug='project-update-1';
 
 set local role student;
 set request.jwt.claim.role = 'student';
