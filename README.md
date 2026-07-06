@@ -10,7 +10,7 @@ functions of the software include:
 - storing student grades on assignments and quizzes.
 
 The core of the application is a RESTful API built on top of
-[postgrest](https://postgrest.readthedocs.io). In addition, the application
+[postgrest](https://postgrest.org/en/stable/). In addition, the application
 includes a web front-end for interacting with the API. For me, Yelukerest
 replaces Canvas and allows me to do many things that I cannot do easily with
 Canvas, particularly manipulating class information in an automatic fashion,
@@ -55,7 +55,7 @@ The roles of the most important components are as follows:
   direct binary URLs in `elmclient/Dockerfile`.
 
 It will likely be necessary to read the documentation of
-[Postgrest](https://postgrest.com/en/v4.3/) and the
+[PostgREST](https://postgrest.org/en/stable/) and the
 [Postgrest starter kit](https://github.com/subzerocloud/postgrest-starter-kit/wiki)
 to understand how all this fits together.
 
