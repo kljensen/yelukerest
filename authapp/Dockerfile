@@ -1,4 +1,4 @@
-FROM golang:1.22.4-alpine3.20 as builder
+FROM golang:1.25.11-alpine3.24 AS builder
 RUN apk --no-cache add ca-certificates
 
 # install xz

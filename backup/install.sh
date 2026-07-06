@@ -1,19 +1,11 @@
 #! /bin/sh
 
-# exit if a command fails
 set -e
 
-apk update
-
-# install pg_dump
-apk add postgresql
-
-# install s3 tools
-apk add python3 py3-pip
-pip install awscli
-
-# install supercronic
-apk add curl
+apk add --no-cache \
+  aws-cli \
+  curl \
+  postgresql-client
 
 # Detect architecture and set appropriate supercronic binary
 ARCH=$(uname -m)
@@ -32,7 +24,3 @@ curl -fsSLO "$SUPERCRONIC_URL" \
   && chmod +x ${SUPERCRONIC_BIN} \
   && mv ${SUPERCRONIC_BIN} /usr/local/bin/supercronic
 apk del curl
-
-# cleanup
-rm -rf /var/cache/apk/*
-

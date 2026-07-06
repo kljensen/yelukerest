@@ -3,12 +3,12 @@
 set -e
 set -o pipefail
 
-if [ "${S3_ACCESS_KEY_ID}" = "**None**" ]; then
+if [ -z "${S3_ACCESS_KEY_ID:-}" ] || [ "${S3_ACCESS_KEY_ID}" = "**None**" ]; then
   echo "You need to set the S3_ACCESS_KEY_ID environment variable."
   exit 1
 fi
 
-if [ "${S3_SECRET_ACCESS_KEY}" = "**None**" ]; then
+if [ -z "${S3_SECRET_ACCESS_KEY:-}" ] || [ "${S3_SECRET_ACCESS_KEY}" = "**None**" ]; then
   echo "You need to set the S3_SECRET_ACCESS_KEY environment variable."
   exit 1
 fi
@@ -38,7 +38,7 @@ if [ "${POSTGRES_USER}" = "**None**" ]; then
   exit 1
 fi
 
-if [ "${POSTGRES_PASSWORD}" = "**None**" ]; then
+if [ -z "${POSTGRES_PASSWORD:-}" ] || [ "${POSTGRES_PASSWORD}" = "**None**" ]; then
   echo "You need to set the POSTGRES_PASSWORD environment variable or link to a container named POSTGRES."
   exit 1
 fi
