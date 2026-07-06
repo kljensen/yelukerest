@@ -9,10 +9,10 @@ RUN set -eux; \
     arch=$(uname -m); \
     case "$arch" in \
         'x86_64') \
-            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.1/binary-for-linux-64-bit.gz' \
+            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-x64.gz' \
             ;; \
         'aarch64') \
-            ELM_URL='https://github.com/lydell/compiler/releases/download/0.19.1/binary-for-linux-arm-64-bit-recommended.gz' \
+            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-arm.gz' \
             ;; \
         *) \
             echo "Unsupported architecture: $arch"; \
