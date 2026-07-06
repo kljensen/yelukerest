@@ -99,7 +99,6 @@ for a semester then start over. Then...
 1. Create the required external docker volumes 
    ```
    docker volume create --name=yelukerest-pg-data
-   docker volume create --name=yelukerest-redis-data
    docker volume create --name=yelukerest-letsencrypt
    ```
 2. Start database `./bin/prod.sh up db`
@@ -177,4 +176,3 @@ The `--clean` will drop (or truncate?) tables.
 4. Add the auth in `db/src/authorization/yeluke.sql`
 5. Add sample data in `db/src/sample_data/yeluke/data.sql`
 6. Add the tests in `tests/db/`
-
