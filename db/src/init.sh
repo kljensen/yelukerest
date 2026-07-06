@@ -18,5 +18,5 @@ EOF
 set -e
 
 if [ "$DEVELOPMENT" = '1' ]; then
-	echo "${CUSTOM_CONFIG}" >> /var/lib/postgresql/data/postgresql.conf
+	echo "${CUSTOM_CONFIG}" >> "${PGDATA}/postgresql.conf"
 fi

@@ -91,6 +91,12 @@ for a semester then start over. These Sqitch migrations are a verified
 bootstrap for a new course database, not a reversible production history:
 `./bin/migrate.sh` deploys with verification, and rollback is restore from
 backup or rebuild/drop the disposable database rather than `sqitch revert`.
+PostgreSQL major upgrades are the same kind of operation: dump/restore,
+`pg_upgrade`, or create a fresh course database, but do not expect an old data
+volume to start in place under a new major version. PostgreSQL 18 Docker images
+also store data under `/var/lib/postgresql/18/docker` by default, so the
+production volume mounts `/var/lib/postgresql`, not the old
+`/var/lib/postgresql/data` path.
 Then...
 
 0. If you're using tailscale, make sure you do not use tailscale
