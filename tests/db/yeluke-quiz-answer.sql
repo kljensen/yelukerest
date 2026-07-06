@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(22);
 
 SELECT view_owner_is(
     'api', 'quiz_answers', 'api',
@@ -19,6 +19,26 @@ SELECT table_privs_are(
 SELECT table_privs_are(
     'data', 'quiz', 'faculty', ARRAY[]::text[],
     'faculty should only be granted nothing on "data.quiz_answer"'
+);
+
+SELECT function_privs_are(
+    'api', 'save_quiz', ARRAY['int', 'int[]'], 'anonymous', ARRAY[]::text[],
+    'anonymous users should have no privileges on api.save_quiz(int, int[])'
+);
+
+SELECT function_privs_are(
+    'api', 'save_quiz', ARRAY['int', 'int[]'], 'student', ARRAY['EXECUTE'],
+    'students should only be granted EXECUTE on api.save_quiz(int, int[])'
+);
+
+SELECT function_privs_are(
+    'api', 'save_quiz', ARRAY['int', 'int[]'], 'ta', ARRAY['EXECUTE'],
+    'TAs should only be granted EXECUTE on api.save_quiz(int, int[])'
+);
+
+SELECT function_privs_are(
+    'api', 'save_quiz', ARRAY['int', 'int[]'], 'faculty', ARRAY[]::text[],
+    'faculty should have no privileges on api.save_quiz(int, int[])'
 );
 
 set local role faculty;
@@ -133,6 +153,27 @@ SELECT throws_like(
     'EXECUTE insertanswer(2, 3, 5)', 
     '%row-level security%',
     'students cannot submit quiz answers after the quiz duration passes'
+);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+EXECUTE insertanswer(2, 3, 5);
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '3';
+
+SELECT results_eq(
+    $$
+        WITH attempted_delete AS (
+            DELETE FROM api.quiz_answers
+            WHERE user_id = 3 AND quiz_question_option_id = 5
+            RETURNING quiz_question_option_id
+        )
+        SELECT count(*)::int FROM attempted_delete
+    $$,
+    ARRAY[0],
+    'students cannot delete their own quiz answers after the quiz duration passes'
 );
 
 

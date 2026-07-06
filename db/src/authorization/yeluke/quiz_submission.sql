@@ -29,7 +29,10 @@ using (
 			EXISTS(
 				SELECT q.id
 				FROM api.quizzes q
-				LEFT JOIN api.quiz_grade_exceptions qge ON (q.id = qge.quiz_id)
+				LEFT JOIN api.quiz_grade_exceptions qge ON (
+					q.id = qge.quiz_id
+					AND data.quiz_submission.user_id = qge.user_id
+				)
 				WHERE (
 					q.id = data.quiz_submission.quiz_id and
 					(

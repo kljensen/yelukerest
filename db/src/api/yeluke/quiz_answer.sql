@@ -18,3 +18,5 @@ BEGIN
         SELECT * FROM api.quiz_answers qa WHERE qa.quiz_id = $1 AND qa.user_id=request.user_id();
 END; $$ 
 LANGUAGE 'plpgsql';
+
+revoke all privileges on function save_quiz(INT, INT[]) from public;
