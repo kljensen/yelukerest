@@ -15,12 +15,13 @@ begin
     if usr is NULL then
     	raise exception 'user not found';
     else
-    	select auth.sign_jwt(auth.get_jwt_payload(usr.j))
-    	into token;
-    	return token;
+        select auth.sign_jwt(auth.get_jwt_payload(usr.j))
+        into token;
+        return token;
     end if;
 end
-$$ stable security definer language plpgsql;
+$$ stable security definer language plpgsql
+set search_path = pg_catalog, api, auth, settings, request, public, pg_temp;
 
 -- by default all functions are accessible to the public, we need to remove that and define our specific access rules
 revoke all privileges on function refresh_token() from public;

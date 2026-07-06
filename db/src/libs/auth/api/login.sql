@@ -9,7 +9,7 @@ begin
     EXECUTE format(
 		' select row_to_json(u.*) as j'
         ' from %I."user" as u'
-        ' where u.email = $1 and u.password = crypt($2, u.password)'
+        ' where u.email = $1 and u.password = public.crypt($2, u.password)'
 		, quote_ident(settings.get('auth.data-schema')))
    	INTO usr
    	USING $1, $2;
@@ -30,6 +30,7 @@ begin
         return result;
     end if;
 end
-$$ stable security definer language plpgsql;
+$$ stable security definer language plpgsql
+set search_path = pg_catalog, api, auth, settings, request, public, pg_temp;
 -- by default all functions are accessible to the public, we need to remove that and define our specific access rules
 revoke all privileges on function login(text, text) from public;

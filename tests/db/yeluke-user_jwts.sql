@@ -6,7 +6,8 @@ create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, paylo
       jwt,
       settings.get('jwt_secret')
     )).*
-$$ stable security definer language sql;
+$$ stable security definer language sql
+set search_path = pg_catalog, pgjwt, settings, pg_temp;
 
 SELECT view_owner_is(
     'api', 'user_jwts', 'api',

@@ -310,6 +310,7 @@ ALTER FUNCTION api.save_quiz(quiz_id integer, quiz_question_option_ids integer[]
 
 CREATE FUNCTION auth.sign_jwt(user_id integer, role data.user_role) RETURNS text
     LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'auth', 'settings', 'pgjwt', 'pg_temp'
     AS $$
     select pgjwt.sign(
       json_build_object(
@@ -900,6 +901,7 @@ ALTER FUNCTION request.user_role() OWNER TO superuser;
 
 CREATE FUNCTION settings.get(text) RETURNS text
     LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'settings', 'pg_temp'
     AS $_$
     select value from settings.secrets where key = $1
 $_$;
@@ -913,6 +915,7 @@ ALTER FUNCTION settings.get(text) OWNER TO superuser;
 
 CREATE FUNCTION settings.set(text, text) RETURNS void
     LANGUAGE sql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'settings', 'pg_temp'
     AS $_$
 	insert into settings.secrets (key, value)
 	values ($1, $2)

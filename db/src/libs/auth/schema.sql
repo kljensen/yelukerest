@@ -17,5 +17,6 @@ create or replace function sign_jwt(user_id int, "role" data.user_role) returns 
         'exp', extract(epoch from now())::integer + settings.get('jwt_lifetime')::int -- token expires in 1 hour
       ),
       settings.get('jwt_secret'))
-$$ stable security definer language sql;
+$$ stable security definer language sql
+set search_path = pg_catalog, auth, settings, pgjwt, pg_temp;
 revoke all privileges on function sign_jwt(int, data.user_role) from public;

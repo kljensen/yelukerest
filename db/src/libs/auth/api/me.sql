@@ -19,6 +19,7 @@ begin
 
 	return usr.r;
 end
-$$ stable security definer language plpgsql;
+$$ stable security definer language plpgsql
+set search_path = pg_catalog, api, auth, settings, request, public, pg_temp;
 
 revoke all privileges on function me() from public;

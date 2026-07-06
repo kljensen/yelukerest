@@ -26,6 +26,7 @@ begin
 
     return result;
 end
-$$ security definer language plpgsql;
+$$ security definer language plpgsql
+set search_path = pg_catalog, api, auth, settings, request, public, pg_temp;
 
 revoke all privileges on function signup(text, text, text) from public;
