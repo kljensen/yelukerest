@@ -1,4 +1,5 @@
 .claude/
+.forge/
 .agents/
 .agent-sync/
 .pi/
