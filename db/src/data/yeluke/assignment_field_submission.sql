@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
         DEFAULT current_timestamp,
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
-        DEFAULT current_timestamp
+        DEFAULT current_timestamp,
     CONSTRAINT body_matches_pattern CHECK ( text_matches(body, assignment_field_pattern)),
     CONSTRAINT body_matches_is_url CHECK (
         (assignment_field_is_url IS FALSE)
