@@ -73,6 +73,13 @@ To run the tests, do `npm test` from the root of this project.
 The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
 tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
 
+To run the Elm client tests:
+
+```
+docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmclient
+docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml run --rm --entrypoint elm-test-rs elmclient
+```
+
 ## Starting in a new development environment
 
 When you checkout this repo anew and wish to work on yelukerest you'll

@@ -22,6 +22,7 @@ services:
             # container as specified by the elmclient/Dockerfile.
             - elmclient-build:/opt/app/dist
             - './elmclient/src:/opt/app/src'
+            - './elmclient/tests:/opt/app/tests'
             - './elmclient/run.sh:/opt/app/run.sh'
             - './elmclient/webpack.config.js:/opt/app/webpack.config.js'
         entrypoint: '/opt/app/run.sh'

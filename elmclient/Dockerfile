@@ -4,15 +4,17 @@
 # Docker image https://hub.docker.com/_/node/.
 FROM node:12.16.3-stretch
 
-# Install the elm binary dynamically based on architecture
+# Install Elm and elm-test-rs binaries dynamically based on architecture.
 RUN set -eux; \
     arch=$(uname -m); \
     case "$arch" in \
         'x86_64') \
-            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-x64.gz' \
+            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-x64.gz'; \
+            ELM_TEST_RS_URL='https://github.com/mpizenberg/elm-test-rs/releases/download/v3.1.0/elm-test-rs_linux.tar.gz' \
             ;; \
         'aarch64') \
-            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-arm.gz' \
+            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-arm.gz'; \
+            ELM_TEST_RS_URL='https://github.com/mpizenberg/elm-test-rs/releases/download/v3.1.0/elm-test-rs_linux-arm-64.tar.gz' \
             ;; \
         *) \
             echo "Unsupported architecture: $arch"; \
@@ -22,7 +24,12 @@ RUN set -eux; \
     curl -L -o elm.gz $ELM_URL \
     && gunzip elm.gz \
     && chmod a+x elm \
-    && mv elm /usr/local/bin
+    && mv elm /usr/local/bin; \
+    curl -L -o elm-test-rs.tar.gz $ELM_TEST_RS_URL \
+    && tar -xzf elm-test-rs.tar.gz \
+    && chmod a+x elm-test-rs \
+    && mv elm-test-rs /usr/local/bin \
+    && rm elm-test-rs.tar.gz
 
 RUN mkdir -p /opt/app
 ADD package.json /opt/app/package.json
