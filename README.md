@@ -95,7 +95,11 @@ need to complete a few steps.
 When I begin a new school year, I'll likely want to
 run the `create-initial-migrations.sh` script to get fresh migrations.
 I'll likely want to throw out the old ones first. I only keep migrations
-for a semester then start over. Then...
+for a semester then start over. These Sqitch migrations are a verified
+bootstrap for a new course database, not a reversible production history:
+`./bin/migrate.sh` deploys with verification, and rollback is restore from
+backup or rebuild/drop the disposable database rather than `sqitch revert`.
+Then...
 
 0. If you're using tailscale, make sure you do not use tailscale
    DNS or it will screw with the container DNS systems (docker 

@@ -90,6 +90,54 @@ $ROLES
 COMMIT;
 EOF
 
+cat << EOF > $MIGRATIONS_DIRECTORY/verify/roles.sql
+-- Verify yelukerest:roles on pg
+
+BEGIN;
+
+\set authenticator_user \`echo \$DB_USER\`
+\set super_user \`echo \$SUPER_USER\`
+
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = :'super_user';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = :'authenticator_user';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'anonymous';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'api';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'app';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'faculty';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'observer';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'student';
+SELECT 1 / count(*) FROM pg_roles WHERE rolname = 'ta';
+
+SELECT 1 / count(*)
+FROM pg_auth_members m
+JOIN pg_roles role_granted ON role_granted.oid = m.roleid
+JOIN pg_roles member ON member.oid = m.member
+WHERE role_granted.rolname = 'student'
+AND member.rolname = :'authenticator_user';
+
+SELECT 1 / count(*)
+FROM pg_auth_members m
+JOIN pg_roles role_granted ON role_granted.oid = m.roleid
+JOIN pg_roles member ON member.oid = m.member
+WHERE role_granted.rolname = 'faculty'
+AND member.rolname = :'authenticator_user';
+
+ROLLBACK;
+EOF
+
+cat << EOF > $MIGRATIONS_DIRECTORY/revert/roles.sql
+-- Revert yelukerest:roles from pg
+
+BEGIN;
+
+DO \$\$
+BEGIN
+    RAISE EXCEPTION 'Yelukerest bootstrap migrations are irreversible; rebuild or drop the disposable database instead.';
+END \$\$;
+
+COMMIT;
+EOF
+
 # Create a migration for our initial DDL
 #
 DDL=$(PGPASSWORD=$SUPER_USER_PASSWORD pg_dump \
@@ -113,6 +161,130 @@ $DDL
 COMMIT;
 EOF
 
+cat << EOF > $MIGRATIONS_DIRECTORY/verify/ddl.sql
+-- Verify yelukerest:ddl on pg
+
+BEGIN;
+
+DO \$\$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'api') THEN
+        RAISE EXCEPTION 'missing api schema';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'data') THEN
+        RAISE EXCEPTION 'missing data schema';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'auth') THEN
+        RAISE EXCEPTION 'missing auth schema';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'settings') THEN
+        RAISE EXCEPTION 'missing settings schema';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'request') THEN
+        RAISE EXCEPTION 'missing request schema';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'pgjwt') THEN
+        RAISE EXCEPTION 'missing pgjwt schema';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_submission'
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_submission table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_submission'
+        AND a.attname = 'is_team'
+        AND a.attnotnull
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_submission.is_team is not NOT NULL';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment'
+        AND a.attname = 'is_team'
+        AND a.attnotnull
+    ) THEN
+        RAISE EXCEPTION 'data.assignment.is_team is not NOT NULL';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz_answer'
+        AND c.relrowsecurity
+    ) THEN
+        RAISE EXCEPTION 'data.quiz_answer row security is not enabled';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_policy p
+        JOIN pg_class c ON c.oid = p.polrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz_answer'
+        AND p.polname = 'quiz_answer_delete_policy'
+    ) THEN
+        RAISE EXCEPTION 'missing quiz_answer_delete_policy';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'auth'
+        AND p.proname = 'sign_jwt'
+        AND p.proconfig @> ARRAY['search_path=pg_catalog, auth, settings, pgjwt, pg_temp']
+    ) THEN
+        RAISE EXCEPTION 'auth.sign_jwt search_path is not pinned';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'settings'
+        AND p.proname = 'get'
+        AND p.proconfig @> ARRAY['search_path=pg_catalog, settings, pg_temp']
+    ) THEN
+        RAISE EXCEPTION 'settings.get search_path is not pinned';
+    END IF;
+END \$\$;
+
+ROLLBACK;
+EOF
+
+cat << EOF > $MIGRATIONS_DIRECTORY/revert/ddl.sql
+-- Revert yelukerest:ddl from pg
+
+BEGIN;
+
+DO \$\$
+BEGIN
+    RAISE EXCEPTION 'Yelukerest bootstrap migrations are irreversible; rebuild or drop the disposable database instead.';
+END \$\$;
+
+COMMIT;
+EOF
+
 #
 # Create the migration for our inital data
 #
@@ -132,6 +304,70 @@ INSERT INTO secrets (key, value) VALUES ('auth.default-role','anonymous');
 INSERT INTO secrets (key, value) VALUES ('auth.data-schema','data');
 INSERT INTO secrets (key, value) VALUES ('auth.api-schema','api');
 INSERT INTO secrets (key, value) VALUES ('jwt_secret',:'jwt_secret');
+
+COMMIT;
+EOF
+
+cat << EOF > $MIGRATIONS_DIRECTORY/verify/data.sql
+-- Verify yelukerest:data on pg
+
+BEGIN;
+
+DO \$\$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM settings.secrets
+        WHERE key = 'jwt_lifetime'
+        AND value = '3600'
+    ) THEN
+        RAISE EXCEPTION 'missing jwt_lifetime setting';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM settings.secrets
+        WHERE key = 'auth.default-role'
+        AND value = 'anonymous'
+    ) THEN
+        RAISE EXCEPTION 'missing auth.default-role setting';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM settings.secrets
+        WHERE key = 'auth.data-schema'
+        AND value = 'data'
+    ) THEN
+        RAISE EXCEPTION 'missing auth.data-schema setting';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM settings.secrets
+        WHERE key = 'auth.api-schema'
+        AND value = 'api'
+    ) THEN
+        RAISE EXCEPTION 'missing auth.api-schema setting';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM settings.secrets
+        WHERE key = 'jwt_secret'
+        AND value <> ''
+    ) THEN
+        RAISE EXCEPTION 'missing jwt_secret setting';
+    END IF;
+END \$\$;
+
+ROLLBACK;
+EOF
+
+cat << EOF > $MIGRATIONS_DIRECTORY/revert/data.sql
+-- Revert yelukerest:data from pg
+
+BEGIN;
+
+DO \$\$
+BEGIN
+    RAISE EXCEPTION 'Yelukerest bootstrap migrations are irreversible; rebuild or drop the disposable database instead.';
+END \$\$;
 
 COMMIT;
 EOF

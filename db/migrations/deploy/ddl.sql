@@ -3219,13 +3219,37 @@ CREATE POLICY grade_access_policy ON data.grade TO api USING ((((request.user_ro
 ALTER TABLE data.quiz_answer ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: quiz_answer quiz_answer_access_policy; Type: POLICY; Schema: data; Owner: superuser
+-- Name: quiz_answer quiz_answer_select_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY quiz_answer_access_policy ON data.quiz_answer TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id) AND (EXISTS ( SELECT qsi.quiz_id,
+CREATE POLICY quiz_answer_select_policy ON data.quiz_answer FOR SELECT TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text)));
+
+
+--
+-- Name: quiz_answer quiz_answer_insert_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY quiz_answer_insert_policy ON data.quiz_answer FOR INSERT TO api WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id) AND (EXISTS ( SELECT qsi.quiz_id,
     qsi.user_id
    FROM api.quiz_submissions_info qsi
-  WHERE ((qsi.quiz_id = qsi.quiz_id) AND qsi.is_open AND (qsi.user_id = qsi.user_id)))))));
+  WHERE ((qsi.quiz_id = quiz_answer.quiz_id) AND qsi.is_open AND (qsi.user_id = quiz_answer.user_id)))))));
+
+
+--
+-- Name: quiz_answer quiz_answer_update_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY quiz_answer_update_policy ON data.quiz_answer FOR UPDATE TO api USING ((request.user_role() = 'faculty'::text)) WITH CHECK ((request.user_role() = 'faculty'::text));
+
+
+--
+-- Name: quiz_answer quiz_answer_delete_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY quiz_answer_delete_policy ON data.quiz_answer FOR DELETE TO api USING (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id) AND (EXISTS ( SELECT qsi.quiz_id,
+    qsi.user_id
+   FROM api.quiz_submissions_info qsi
+  WHERE ((qsi.quiz_id = quiz_answer.quiz_id) AND qsi.is_open AND (qsi.user_id = quiz_answer.user_id)))))));
 
 
 --
