@@ -62,9 +62,9 @@ CREATE TABLE IF NOT EXISTS assignment_field (
 );
 
 
-DROP TRIGGER IF EXISTS tg_assignment_default ON assignment;
-CREATE TRIGGER tg_assignment_default
+DROP TRIGGER IF EXISTS tg_assignment_field_default ON assignment_field;
+CREATE TRIGGER tg_assignment_field_default
     BEFORE INSERT OR UPDATE
-    ON assignment
+    ON assignment_field
     FOR EACH ROW
 EXECUTE PROCEDURE update_updated_at_column();

@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(15);
 
 SELECT view_owner_is(
     'api', 'assignment_fields', 'api',
@@ -19,6 +19,21 @@ SELECT table_privs_are(
 SELECT table_privs_are(
     'data', 'quiz', 'faculty', ARRAY[]::text[],
     'faculty should only be granted nothing on "data.quiz"'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE t.tgname = 'tg_assignment_field_default'
+        AND n.nspname = 'data'
+        AND c.relname = 'assignment_field'
+        AND NOT t.tgisinternal
+    ),
+    1,
+    'assignment_field should have its own updated_at trigger'
 );
 
 -- switch to a anonymous application user
