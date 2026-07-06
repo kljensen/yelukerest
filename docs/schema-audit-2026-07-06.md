@@ -72,8 +72,8 @@ components to skip checking, and nullable checks can evaluate to unknown.
 Why it matters: direct/faculty writes can create assignment submissions with no
 valid assignment/team/user shape if defaults fail or are bypassed.
 
-Status: needs a follow-up issue. Likely fix is `is_team BOOLEAN NOT NULL`, and
-probably `data.assignment.is_team BOOLEAN NOT NULL`.
+Status: #245. Likely fix is `is_team BOOLEAN NOT NULL`, and probably
+`data.assignment.is_team BOOLEAN NOT NULL`.
 
 ### P1: SECURITY DEFINER Functions Do Not Pin search_path
 
@@ -83,8 +83,8 @@ function-level `SET search_path`.
 Why it matters: privileged functions should not depend on the caller/session
 search path. This is especially sensitive for auth and JWT helpers.
 
-Status: needs a follow-up issue. Add `SET search_path = ... , pg_temp`, schema
-qualify extension calls, and catalog tests over `pg_proc.proconfig`.
+Status: #246. Add `SET search_path = ... , pg_temp`, schema qualify extension
+calls, and catalog tests over `pg_proc.proconfig`.
 
 ### P2: auth.sign_jwt Has Broader Grants Than Needed
 
@@ -103,8 +103,8 @@ join through current `api.users.team_nickname`.
 Why it matters: moving a student between teams can change historical access and
 grade distribution membership.
 
-Status: needs a follow-up issue. Choose either team membership history or
-submission participant snapshots.
+Status: #250. Choose either team membership history or submission participant
+snapshots.
 
 ### P2: Assignment Field Submission Edits Lose History
 
@@ -122,15 +122,15 @@ created-by and updated-by.
 `api.delete_quiz_question_option` starts from `data.quiz_answer JOIN
 data.quiz_question_option`, so an option with no answers is not deleted.
 
-Status: needs a small bugfix and pgTAP regression.
+Status: #247.
 
 ### P2: Sqitch Verify/Revert Scripts Are Placeholders
 
 The generated `verify` and `revert` migrations contain `XXX`, so Sqitch cannot
 verify grants/policies/function security or actually revert the bootstrap.
 
-Status: needs a follow-up issue. Either implement real catalog-level verify
-checks and reverts or document the bootstrap as irreversible and reproducible.
+Status: #249. Either implement real catalog-level verify checks and reverts or
+document the bootstrap as irreversible and reproducible.
 
 ### P2: Source DDL Shape Drifts From Generated Deploy
 
@@ -138,7 +138,7 @@ checks and reverts or document the bootstrap as irreversible and reproducible.
 `CONSTRAINT body_matches_pattern`. PostgreSQL accepts this as a column
 constraint, while generated deploy has a table constraint.
 
-Status: small cleanup. Existing pgTAP pattern tests cover the behavior.
+Status: #248. Existing pgTAP pattern tests cover the behavior.
 
 ### Mapped Existing Debt
 
