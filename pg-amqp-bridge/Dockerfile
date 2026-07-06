@@ -1,4 +1,4 @@
-FROM rust:1.80.1-slim-bookworm AS builder
+FROM rust:1.82-slim-bookworm AS builder
 
 WORKDIR /usr/src/pg-amqp-bridge
 COPY . .

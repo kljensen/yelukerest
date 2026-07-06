@@ -1,3 +1,9 @@
+.claude/
+.agents/
+.agent-sync/
+.pi/
+__pycache__/
+.metadata_never_index
 node_modules
 .env
 .env.*

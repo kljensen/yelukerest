@@ -289,11 +289,11 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                     [ showPreviousAssignment assignment submission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
-                    , submissionInstructions currentDate assignment maybeException submission
+                    , submissionInstructions user currentDate assignment maybeException submission
                     ]
 
             Nothing ->
-                beginSubmission currentDate assignment maybeException maybeBeginAssignment
+                beginSubmission user currentDate assignment maybeException maybeBeginAssignment
         ]
 
 
@@ -309,9 +309,9 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : Posix -> Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-beginSubmission currentDate assignment maybeException maybeBeginAssignment =
-    case isSubmissible currentDate maybeException assignment of
+beginSubmission : CurrentUser -> Posix -> Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+beginSubmission user currentDate assignment maybeException maybeBeginAssignment =
+    case isSubmissible currentDate maybeException assignment user of
         Submissible assignment2 ->
             showBeginAssignmentButton assignment2 maybeException maybeBeginAssignment
 
@@ -324,6 +324,9 @@ beginSubmission currentDate assignment maybeException maybeBeginAssignment =
 
                         IsDraft ->
                             "This assignment is still in draft mode and cannot yet be submitted."
+
+                        MissingTeam ->
+                            "This is a team assignment. You must join a team before you can submit. Please complete the team selection assignment first."
             in
             Common.Views.divWithText message
 
@@ -354,9 +357,9 @@ showBeginAssignmentButton assignment _ maybeBeginAssignment =
             Html.text "other error"
 
 
-submissionInstructions : Posix -> Assignment -> Maybe AssignmentGradeException -> AssignmentSubmission -> Html.Html Msg
-submissionInstructions currentDate assignment maybeException submission =
-    case isSubmissible currentDate maybeException assignment of
+submissionInstructions : CurrentUser -> Posix -> Assignment -> Maybe AssignmentGradeException -> AssignmentSubmission -> Html.Html Msg
+submissionInstructions user currentDate assignment maybeException submission =
+    case isSubmissible currentDate maybeException assignment user of
         Submissible assignment2 ->
             showSubmissionForm submission assignment2
 
@@ -369,6 +372,9 @@ submissionInstructions currentDate assignment maybeException submission =
 
                         IsDraft ->
                             "This assignment is still in draft mode and cannot yet be submitted."
+
+                        MissingTeam ->
+                            "This is a team assignment. You must join a team before you can submit. Please complete the team selection assignment first."
             in
             Common.Views.divWithText message
 

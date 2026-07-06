@@ -218,6 +218,7 @@ assignmentFieldSubmissionDecoder =
 type NotSubmissibleReason
     = IsDraft
     | IsAfterClosed
+    | MissingTeam
 
 
 type SubmissibleState
@@ -225,10 +226,13 @@ type SubmissibleState
     | NotSubmissible NotSubmissibleReason
 
 
-isSubmissible : Posix -> Maybe AssignmentGradeException -> Assignment -> SubmissibleState
-isSubmissible currentDate maybeException assignment =
+isSubmissible : Posix -> Maybe AssignmentGradeException -> Assignment -> CurrentUser -> SubmissibleState
+isSubmissible currentDate maybeException assignment user =
     if assignment.is_draft then
         NotSubmissible IsDraft
+
+    else if assignment.is_team && user.team_nickname == Nothing then
+        NotSubmissible MissingTeam
 
     else if assignment.is_open == False then
         case maybeException of
