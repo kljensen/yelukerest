@@ -16,9 +16,7 @@ import Auth.Model exposing (CurrentUser)
 import Browser.Navigation exposing (Key)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
-import Json.Decode
 import Meetings.Model exposing (Meeting, MeetingSlug)
-import Msgs exposing (Msg, SSEMsg(..))
 import Quizzes.Model
     exposing
         ( Quiz
@@ -30,7 +28,6 @@ import Quizzes.Model
         , QuizSubmission
         )
 import RemoteData exposing (WebData)
-import SSE exposing (SseAccess)
 import Set exposing (Set)
 import Time exposing (Posix, Zone, ZoneName(..), utc)
 import Users.Model exposing (User, UserSecret)
@@ -102,8 +99,6 @@ type alias Model =
     , quizAnswers : Dict Int (WebData (List QuizAnswer))
     , quizQuestions : Dict Int (WebData (List QuizQuestion))
     , quizQuestionOptionInputs : Set Int
-    , sse : SseAccess Msgs.Msg
-    , latestMessage : Result Json.Decode.Error String
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
     , pendingSubmitEngagements : Dict ( String, Int ) (WebData Engagement)
@@ -146,8 +141,6 @@ initialModel flags route key =
     , quizAnswers = Dict.empty
     , quizQuestions = Dict.empty
     , quizQuestionOptionInputs = Set.empty
-    , sse = SSE.create "/events/events/" (Msgs.OnSSE Msgs.Noop)
-    , latestMessage = Ok "nothing"
     , engagements = RemoteData.NotAsked
     , users = RemoteData.NotAsked
     , pendingSubmitEngagements = Dict.empty

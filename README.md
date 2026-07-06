@@ -48,19 +48,11 @@ The roles of the most important components are as follows:
   of the application data and enforces
   relational integrity.
 - _backup_ - Saves backups of the production postgres database to S3, usually hourly.
-- _[rabbitmq](https://www.rabbitmq.com/)_ - subscription/notification
-  service generally used to alert applications
-  to changes in the database, such as new rows.
-- _[pg_amqp_bridge](https://github.com/subzerocloud/pg-amqp-bridge)_ -
-  sends NOTIFY events from postgres to rabbitmq.
 - _postgrest_ - provides a RESTful API over the postgres application database.
 - _elmclient_ - a front-end client that runs in web browsers and communicates
   with the API. This is the main way in which students interact with the
   API. The Elm compiler version is pinned in `elmclient/elm.json` and in the
   direct binary URLs in `elmclient/Dockerfile`.
-- _sse_ - a backend service that accepts
-  [sse](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) connections so that the elmclient
-  can subscribe to table changes in postgres (via rabbitmq and pg_amqp_bridge).
 
 It will likely be necessary to read the documentation of
 [Postgrest](https://postgrest.com/en/v4.3/) and the

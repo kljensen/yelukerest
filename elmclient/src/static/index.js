@@ -13,11 +13,8 @@ require('ace-css/css/ace.css');
 require('./styles/main.scss');
 
 
-const initElmPorts = require('./elm-ports.js')
-    .default;
-
 // See https://github.com/elm/browser/blob/1.0.0/notes/navigation-in-elements.md
-const app = Elm.Main.init({
+Elm.Main.init({
     flags: {
         courseTitle: COURSE_TITLE,
         piazzaURL: PIAZZA_URL,
@@ -29,6 +26,3 @@ const app = Elm.Main.init({
     },
     node: document.getElementById('main'),
 });
-
-// Inform app o
-initElmPorts(app);

@@ -58,7 +58,6 @@ services:
             - '${CADDY_LISTEN_HOST}:443:443/udp'
         links:
             - postgrest:postgrest
-            - sse:sse
             - authapp:authapp
             - codeframe:codeframe
         restart: on-failure
@@ -68,7 +67,6 @@ services:
             - NAKED_FQDN=${NAKED_FQDN}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
-            - SSE_PORT=${SSE_PORT}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
             - AWS_REGION=${CADDY_ACME_AWS_REGION}
@@ -84,31 +82,6 @@ services:
             - caddy_data:/data
             - caddy_config:/config
 
-    # pg-amqp-bridge instance is responsible for forwarding NOTIFY events in PostgreSQL
-    # to RabbitMQ based on the BRIDGE_CHANNELS configuration. This was originally
-    # from subzerocloud
-    pg_amqp_bridge:
-        build: pg-amqp-bridge
-        links:
-            - db
-            - rabbitmq
-        environment:
-            - RUST_LOG=info # output forwarded messages
-            - POSTGRESQL_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
-            - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
-            - BRIDGE_CHANNELS=events:amq.topic
-
-    # RabbitMQ instance can be used to consolidate events that originated in your database/application.
-    # You can connect here with different consumers and take actions based on those events (like sending signup emails)
-    rabbitmq:
-        image: rabbitmq:3.8.3
-        ports:
-            - '127.0.0.1:5671:5671'
-            - '127.0.0.1:5672:5672'
-            - '127.0.0.1:15672:15672'
-        environment:
-            - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER}
-            - RABBITMQ_DEFAULT_PASS=${RABBITMQ_DEFAULT_PASS}
     authapp:
         build: authapp
         ports:
@@ -121,17 +94,5 @@ services:
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
-    sse:
-        build: sse
-        ports:
-            - '127.0.0.1:${SSE_HOST_PORT}:${SSE_PORT}'
-        links:
-            - db
-            - rabbitmq
-        environment:
-            - DEVELOPMENT=${DEVELOPMENT}
-            - PORT=${SSE_PORT}
-            - AMQP_URI=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq//
-
     codeframe:
         image: ghcr.io/kljensen/codeframe-docker:0.2.0

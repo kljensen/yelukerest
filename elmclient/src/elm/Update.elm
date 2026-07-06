@@ -1,4 +1,4 @@
-module Update exposing (listToDict, setSseAndDo, sseMessageDecoder, update, valuesFromDict)
+module Update exposing (listToDict, update, valuesFromDict)
 
 import Assignments.Commands
     exposing
@@ -25,8 +25,6 @@ import Engagements.Commands
         ( fetchEngagements
         , submitEngagement
         )
-import Engagements.Updates exposing (onSSETableChange)
-import Json.Decode exposing (decodeString, string)
 import Models exposing (Model, Route(..))
 import Msgs exposing (BrowserLocation(..), Msg)
 import Quizzes.Commands
@@ -55,7 +53,6 @@ import Quizzes.Updates
 import Quizzes.Model exposing (updateIntSet)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
-import SSE exposing (SseAccess, withListener)
 import Set exposing (Set)
 import Time exposing (Posix)
 import Url
@@ -138,14 +135,11 @@ update msg model =
                                 , fetchUserSecrets user
                                 ]
 
-                        ( sseUserModel, sseCmd ) =
-                            setSseAndDo newUserModel (withListener "tablechange" sseMessageDecoder)
                     in
                     if isFacultyOrTA user.role then
-                        ( sseUserModel
+                        ( newUserModel
                         , Cmd.batch
                             [ newUserCmds
-                            , sseCmd
                             , fetchEngagements user
                             , fetchUsers user
                             ]
@@ -299,19 +293,6 @@ update msg model =
             in
             ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
 
-        Msgs.OnSSE sseMsgType ->
-            case sseMsgType of
-                Msgs.Noop ->
-                    ( model, Cmd.none )
-
-                Msgs.SSETableChange result ->
-                    case result of
-                        Ok routingKey ->
-                            onSSETableChange routingKey ( { model | latestMessage = result }, Cmd.none )
-
-                        _ ->
-                            ( model, Cmd.none )
-
         Msgs.OnFetchEngagements response ->
             ( { model | engagements = response }, Cmd.none )
 
@@ -379,19 +360,3 @@ update msg model =
 
         Msgs.OnChangeEngagementUserQuery userQuery ->
             ( { model | engagementUserQuery = Just userQuery }, Cmd.none )
-
-
-setSseAndDo : Model -> (SseAccess Msg -> ( SseAccess Msg, Cmd Msg )) -> ( Model, Cmd Msg )
-setSseAndDo model f =
-    let
-        ( sse, cmd ) =
-            f model.sse
-    in
-    ( { model | sse = sse }
-    , cmd
-    )
-
-
-sseMessageDecoder : SSE.SsEvent -> Msg
-sseMessageDecoder event =
-    Msgs.OnSSE (Msgs.SSETableChange (decodeString string event.data))

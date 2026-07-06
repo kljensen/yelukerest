@@ -39,17 +39,14 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
 - **`api/yeluke/`**: API views and functions exposed through PostgREST
 - **`authorization/yeluke/`**: Row-level security policies and permissions
 - **`sample_data/yeluke/`**: Sample data for development/testing
-- **`libs/`**: Shared database libraries (auth, pgjwt, rabbitmq integration)
+- **`libs/`**: Shared database libraries (auth, pgjwt, settings, request context)
 
 **Services (Docker containers)**
 - **`postgrest`**: Auto-generates REST API from PostgreSQL schema
 - **`db`**: PostgreSQL database with all business logic
 - **`elmclient`**: Elm-based web frontend for students/faculty
 - **`authapp`**: Go-based CAS authentication service  
-- **`sse`**: Server-sent events service for real-time updates
 - **`caddy`**: Reverse proxy and web server
-- **`rabbitmq`**: Message broker for database notifications
-- **`pg_amqp_bridge`**: Forwards PostgreSQL NOTIFY events to RabbitMQ
 
 **Client Applications**
 - **`elmclient/`**: Main web interface (Elm + Webpack)
@@ -76,8 +73,6 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
 2. The system uses Sqitch for database migrations (`db/migrations/`)
 
 3. All API access goes through PostgREST which enforces PostgreSQL's row-level security
-
-4. Real-time updates flow: PostgreSQL NOTIFY → pg_amqp_bridge → RabbitMQ → SSE → Elm frontend
 
 ### Environment Configuration
 

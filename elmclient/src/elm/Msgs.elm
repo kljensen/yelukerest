@@ -1,4 +1,4 @@
-module Msgs exposing (BrowserLocation(..), Msg(..), SSEMsg(..))
+module Msgs exposing (BrowserLocation(..), Msg(..))
 
 import Assignments.Model
     exposing
@@ -13,7 +13,6 @@ import Assignments.Model
 import Auth.Model exposing (CurrentUser)
 import Browser exposing (UrlRequest(..))
 import Engagements.Model exposing (Engagement)
-import Json.Decode
 import Meetings.Model exposing (Meeting)
 import Quizzes.Model
     exposing
@@ -34,11 +33,6 @@ import Users.Model exposing (User, UserSecret)
 type BrowserLocation
     = StringLocation String
     | UrlLocation Url
-
-
-type SSEMsg
-    = Noop
-    | SSETableChange (Result Json.Decode.Error String)
 
 
 type Msg
@@ -71,7 +65,6 @@ type Msg
     | OnSubmitQuizAnswersComplete Int (WebData (List QuizAnswer))
     | OnToggleQuizQuestionOption Int Bool
     | OnSelectQuizQuestionOption Int (List Int) Bool
-    | OnSSE SSEMsg
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))
     | OnFetchUserSecrets (WebData (List UserSecret))

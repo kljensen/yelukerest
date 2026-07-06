@@ -58,16 +58,6 @@ CREATE SCHEMA pgjwt;
 
 ALTER SCHEMA pgjwt OWNER TO superuser;
 
---
--- Name: rabbitmq; Type: SCHEMA; Schema: -; Owner: superuser
---
-
-CREATE SCHEMA rabbitmq;
-
-
-ALTER SCHEMA rabbitmq OWNER TO superuser;
-
---
 -- Name: request; Type: SCHEMA; Schema: -; Owner: superuser
 --
 
@@ -784,53 +774,6 @@ $$;
 
 ALTER FUNCTION pgjwt.verify(token text, secret text, algorithm text) OWNER TO superuser;
 
---
--- Name: on_row_change(); Type: FUNCTION; Schema: rabbitmq; Owner: superuser
---
-
-CREATE FUNCTION rabbitmq.on_row_change() RETURNS trigger
-    LANGUAGE plpgsql STABLE
-    AS $$
-  declare
-    routing_key text;
-    row record;
-  begin
-    routing_key := 'row_change'
-                   '.table-'::text || TG_TABLE_NAME::text || 
-                   '.event-'::text || TG_OP::text;
-    if (TG_OP = 'DELETE') then
-        row := old;
-    elsif (TG_OP = 'UPDATE') then
-        row := new;
-    elsif (TG_OP = 'INSERT') then
-        row := new;
-    end if;
-    perform rabbitmq.send_message('events', routing_key, row_to_json(row)::text);
-    return null;
-  end;
-$$;
-
-
-ALTER FUNCTION rabbitmq.on_row_change() OWNER TO superuser;
-
---
--- Name: send_message(text, text, text); Type: FUNCTION; Schema: rabbitmq; Owner: superuser
---
-
-CREATE FUNCTION rabbitmq.send_message(channel text, routing_key text, message text) RETURNS void
-    LANGUAGE sql STABLE
-    AS $$
-     
-  select  pg_notify(
-    channel,  
-    routing_key || '|' || message
-  );
-$$;
-
-
-ALTER FUNCTION rabbitmq.send_message(channel text, routing_key text, message text) OWNER TO superuser;
-
---
 -- Name: app_name(); Type: FUNCTION; Schema: request; Owner: superuser
 --
 
@@ -2688,21 +2631,6 @@ CREATE UNIQUE INDEX secret_unique_slug_team ON data.user_secret USING btree (tea
 CREATE UNIQUE INDEX secret_unique_slug_user ON data.user_secret USING btree (user_id, slug) WHERE (team_nickname IS NULL);
 
 
---
--- Name: engagement engagement_rabbitmq_tg; Type: TRIGGER; Schema: data; Owner: superuser
---
-
-CREATE TRIGGER engagement_rabbitmq_tg AFTER INSERT OR DELETE OR UPDATE ON data.engagement FOR EACH ROW EXECUTE FUNCTION rabbitmq.on_row_change();
-
-
---
--- Name: todo send_change_event; Type: TRIGGER; Schema: data; Owner: superuser
---
-
-CREATE TRIGGER send_change_event AFTER INSERT OR DELETE OR UPDATE ON data.todo FOR EACH ROW EXECUTE FUNCTION rabbitmq.on_row_change();
-
-
---
 -- Name: assignment tg_assignment_default; Type: TRIGGER; Schema: data; Owner: superuser
 --
 
@@ -3380,14 +3308,6 @@ GRANT USAGE ON SCHEMA api TO faculty;
 GRANT USAGE ON SCHEMA api TO app;
 
 
---
--- Name: SCHEMA rabbitmq; Type: ACL; Schema: -; Owner: superuser
---
-
-GRANT USAGE ON SCHEMA rabbitmq TO PUBLIC;
-
-
---
 -- Name: SCHEMA request; Type: ACL; Schema: -; Owner: superuser
 --
 

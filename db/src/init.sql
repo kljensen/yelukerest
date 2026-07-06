@@ -22,8 +22,6 @@ create extension if not exists pgcrypto;
 \ir libs/settings/schema.sql
 -- functions for reading different http request properties exposed by PostgREST
 \ir libs/request/schema.sql
--- functions for sending messages to RabbitMQ entities
-\ir libs/rabbitmq/schema.sql
 
 -- save app settings
 select settings.set('jwt_secret', :quoted_jwt_secret);

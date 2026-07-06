@@ -6,7 +6,3 @@ create table todo (
 		ON UPDATE CASCADE ON DELETE CASCADE
 		default request.user_id()
 );
-
-create trigger send_change_event
-after insert or update or delete on todo
-for each row execute procedure rabbitmq.on_row_change();
