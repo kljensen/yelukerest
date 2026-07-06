@@ -81,8 +81,8 @@ AS $$
             qq.slug quiz_question_slug,
             qqo.id quiz_question_option_id
         FROM
-            data.quiz_answer qa
-            JOIN data.quiz_question_option qqo ON qa.quiz_question_option_id = qqo.id
+            data.quiz_question_option qqo
+            LEFT JOIN data.quiz_answer qa ON qa.quiz_question_option_id = qqo.id
             JOIN data.quiz_question qq ON qq.id = qqo.quiz_question_id
         WHERE
             -- Match only the input arguments
