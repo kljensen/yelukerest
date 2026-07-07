@@ -9,10 +9,10 @@ import Assignments.Model
         , AssignmentGrade
         , AssignmentSlug
         , AssignmentSubmission
-        , NotSubmissibleReason(..)
+        , AssignmentSubmissionAction(..)
         , PendingBeginAssignments
-        , SubmissibleState(..)
-        , isSubmissible
+        , assignmentSubmissionAction
+        , notSubmissibleMessage
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
@@ -289,11 +289,13 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                     [ showPreviousAssignment assignment submission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
-                    , submissionInstructions user currentDate assignment maybeException submission
+                    , renderAssignmentSubmissionAction maybeBeginAssignment
+                        (assignmentSubmissionAction currentDate maybeException assignment user (Just submission))
                     ]
 
             Nothing ->
-                beginSubmission user currentDate assignment maybeException maybeBeginAssignment
+                renderAssignmentSubmissionAction maybeBeginAssignment
+                    (assignmentSubmissionAction currentDate maybeException assignment user Nothing)
         ]
 
 
@@ -309,30 +311,21 @@ showPreviousAssignment assignment submission =
         )
 
 
-beginSubmission : CurrentUser -> Posix -> Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-beginSubmission user currentDate assignment maybeException maybeBeginAssignment =
-    case isSubmissible currentDate maybeException assignment user of
-        Submissible assignment2 ->
-            showBeginAssignmentButton assignment2 maybeException maybeBeginAssignment
+renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> AssignmentSubmissionAction -> Html.Html Msg
+renderAssignmentSubmissionAction maybeBeginAssignment action =
+    case action of
+        CanBeginAssignment assignment2 ->
+            showBeginAssignmentButton assignment2 maybeBeginAssignment
 
-        NotSubmissible reason ->
-            let
-                message =
-                    case reason of
-                        IsAfterClosed ->
-                            "This assignment is now closed for submissions."
+        CanUpdateAssignment assignment2 submission ->
+            showSubmissionForm submission assignment2
 
-                        IsDraft ->
-                            "This assignment is still in draft mode and cannot yet be submitted."
-
-                        MissingTeam ->
-                            "This is a team assignment. You must join a team before you can submit. Please complete the team selection assignment first."
-            in
-            Common.Views.divWithText message
+        CannotSubmitAssignment reason ->
+            Common.Views.divWithText (notSubmissibleMessage reason)
 
 
-showBeginAssignmentButton : Assignment -> Maybe AssignmentGradeException -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-showBeginAssignmentButton assignment _ maybeBeginAssignment =
+showBeginAssignmentButton : Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
+showBeginAssignmentButton assignment maybeBeginAssignment =
     case maybeBeginAssignment of
         Nothing ->
             Html.button
@@ -355,28 +348,6 @@ showBeginAssignmentButton assignment _ maybeBeginAssignment =
 
         _ ->
             Html.text "other error"
-
-
-submissionInstructions : CurrentUser -> Posix -> Assignment -> Maybe AssignmentGradeException -> AssignmentSubmission -> Html.Html Msg
-submissionInstructions user currentDate assignment maybeException submission =
-    case isSubmissible currentDate maybeException assignment user of
-        Submissible assignment2 ->
-            showSubmissionForm submission assignment2
-
-        NotSubmissible reason ->
-            let
-                message =
-                    case reason of
-                        IsAfterClosed ->
-                            "This assignment is now closed for submissions."
-
-                        IsDraft ->
-                            "This assignment is still in draft mode and cannot yet be submitted."
-
-                        MissingTeam ->
-                            "This is a team assignment. You must join a team before you can submit. Please complete the team selection assignment first."
-            in
-            Common.Views.divWithText message
 
 
 showSubmissionForm : AssignmentSubmission -> Assignment -> Html.Html Msg

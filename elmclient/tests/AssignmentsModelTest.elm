@@ -5,9 +5,12 @@ import Assignments.Model
         ( Assignment
         , AssignmentGradeException
         , AssignmentSubmission
+        , AssignmentSubmissionAction(..)
         , NotSubmissibleReason(..)
         , SubmissibleState(..)
+        , assignmentSubmissionAction
         , isSubmissible
+        , notSubmissibleMessage
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
@@ -40,6 +43,42 @@ tests =
                 \_ ->
                     isSubmissible (millis 3000) (Just baseException) { baseAssignment | is_open = False } currentUser
                         |> Expect.equal (NotSubmissible IsAfterClosed)
+            , test "rejects a closed assignment without an extension" <|
+                \_ ->
+                    isSubmissible (millis 3000) Nothing { baseAssignment | is_open = False } currentUser
+                        |> Expect.equal (NotSubmissible IsAfterClosed)
+            ]
+        , describe "assignmentSubmissionAction"
+            [ test "begins an assignment when there is no existing submission" <|
+                \_ ->
+                    assignmentSubmissionAction (millis 1000) Nothing baseAssignment currentUser Nothing
+                        |> Expect.equal (CanBeginAssignment baseAssignment)
+            , test "updates an assignment when there is an existing submission" <|
+                \_ ->
+                    assignmentSubmissionAction (millis 1000) Nothing baseAssignment currentUser (Just baseSubmission)
+                        |> Expect.equal (CanUpdateAssignment baseAssignment baseSubmission)
+            , test "blocks an existing submission when the assignment is no longer writable" <|
+                \_ ->
+                    assignmentSubmissionAction (millis 3000) Nothing { baseAssignment | is_open = False } currentUser (Just baseSubmission)
+                        |> Expect.equal (CannotSubmitAssignment IsAfterClosed)
+            , test "allows updates when an extension is still open" <|
+                \_ ->
+                    assignmentSubmissionAction (millis 1000) (Just baseException) { baseAssignment | is_open = False } currentUser (Just baseSubmission)
+                        |> Expect.equal (CanUpdateAssignment { baseAssignment | is_open = False } baseSubmission)
+            ]
+        , describe "notSubmissibleMessage"
+            [ test "describes a draft assignment" <|
+                \_ ->
+                    notSubmissibleMessage IsDraft
+                        |> Expect.equal "This assignment is still in draft mode and cannot yet be submitted."
+            , test "describes a closed assignment" <|
+                \_ ->
+                    notSubmissibleMessage IsAfterClosed
+                        |> Expect.equal "This assignment is now closed for submissions."
+            , test "describes a missing team" <|
+                \_ ->
+                    notSubmissibleMessage MissingTeam
+                        |> Expect.equal "This is a team assignment. You must join a team before you can submit. Please complete the team selection assignment first."
             ]
         , describe "submissionBelongsToUser"
             [ test "matches individual submissions by user id" <|

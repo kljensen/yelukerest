@@ -8,6 +8,7 @@ module Assignments.Model exposing
     , AssignmentGradeException
     , AssignmentSlug
     , AssignmentSubmission
+    , AssignmentSubmissionAction(..)
     , NotSubmissibleReason(..)
     , PendingAssignmentFieldSubmissionRequests
     , PendingBeginAssignments
@@ -19,7 +20,9 @@ module Assignments.Model exposing
     , assignmentSubmissionDecoder
     , assignmentSubmissionsDecoder
     , assignmentsDecoder
+    , assignmentSubmissionAction
     , isSubmissible
+    , notSubmissibleMessage
     , submissionBelongsToUser
     , valuesForSubmissionID
     )
@@ -226,6 +229,12 @@ type SubmissibleState
     | NotSubmissible NotSubmissibleReason
 
 
+type AssignmentSubmissionAction
+    = CanBeginAssignment Assignment
+    | CanUpdateAssignment Assignment AssignmentSubmission
+    | CannotSubmitAssignment NotSubmissibleReason
+
+
 isSubmissible : Posix -> Maybe AssignmentGradeException -> Assignment -> CurrentUser -> SubmissibleState
 isSubmissible currentDate maybeException assignment user =
     if assignment.is_draft then
@@ -251,6 +260,34 @@ isSubmissible currentDate maybeException assignment user =
 
     else
         NotSubmissible IsAfterClosed
+
+
+assignmentSubmissionAction : Posix -> Maybe AssignmentGradeException -> Assignment -> CurrentUser -> Maybe AssignmentSubmission -> AssignmentSubmissionAction
+assignmentSubmissionAction currentDate maybeException assignment user maybeSubmission =
+    case isSubmissible currentDate maybeException assignment user of
+        Submissible assignment2 ->
+            case maybeSubmission of
+                Just submission ->
+                    CanUpdateAssignment assignment2 submission
+
+                Nothing ->
+                    CanBeginAssignment assignment2
+
+        NotSubmissible reason ->
+            CannotSubmitAssignment reason
+
+
+notSubmissibleMessage : NotSubmissibleReason -> String
+notSubmissibleMessage reason =
+    case reason of
+        IsAfterClosed ->
+            "This assignment is now closed for submissions."
+
+        IsDraft ->
+            "This assignment is still in draft mode and cannot yet be submitted."
+
+        MissingTeam ->
+            "This is a team assignment. You must join a team before you can submit. Please complete the team selection assignment first."
 
 
 type alias AssignmentGrade =
