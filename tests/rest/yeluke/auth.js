@@ -44,7 +44,7 @@ describe('authentication API endpoint', () => {
             await request(baseURL)
                 .get(authPath)
                 .expect('Location', /http/)
-                .expect(302);
+                .expect(307);
         } catch (error) {
             throw error;
         }

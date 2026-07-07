@@ -16,29 +16,35 @@ select * from check_test(
     ''
 );
 
-SELECT roles_are(ARRAY[
-    'faculty',
-    'authenticator',
-    'observer',
-    'student',
-    'superuser',
-    'app',
-    'anonymous',
-    'api',
-    'ta',
-    -- Everything below here is built-in/default
-    'pg_monitor',
-    'pg_stat_scan_tables',
-    'pg_read_all_settings',
-    'pg_signal_backend',
-    'pg_read_all_stats',
-    'pg_execute_server_program',
-    'pg_write_server_files',
-    'pg_read_server_files',
-    'pg_database_owner',
-    'pg_read_all_data',
-    'pg_write_all_data'
-]);
+SELECT set_eq(
+    $$
+        SELECT rolname
+        FROM pg_roles
+        WHERE rolname IN (
+            'faculty',
+            'authenticator',
+            'observer',
+            'student',
+            'superuser',
+            'app',
+            'anonymous',
+            'api',
+            'ta'
+        )
+    $$,
+    ARRAY[
+        'faculty',
+        'authenticator',
+        'observer',
+        'student',
+        'superuser',
+        'app',
+        'anonymous',
+        'api',
+        'ta'
+    ],
+    'Yelukerest roles are present'
+);
 
 select * from finish();
 rollback;

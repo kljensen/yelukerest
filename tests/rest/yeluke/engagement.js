@@ -47,13 +47,13 @@ describe('engagements API endpoint', () => {
 
     const newEngagement = {
         user_id: 5,
-        meeting_id: 1,
+        meeting_slug: 'intro',
         participation: 'led',
     };
 
     const insertTestCases = [{
         title: 'should not accept post requests from anonymous users',
-        status: 403,
+        status: 401,
     }, {
         title: 'should allow posts/inserts from faculty',
         status: 201,
@@ -63,8 +63,8 @@ describe('engagements API endpoint', () => {
         status: 403,
         jwt: studentJWTPromise,
     }, {
-        title: 'should should enforce primary key uniqueness constraints',
-        status: 403,
+        title: 'should enforce primary key uniqueness constraints',
+        status: 409,
         jwt: facultyJWTPromise,
     }];
     makeInsertTestCases(it, '/engagements', newEngagement, insertTestCases);

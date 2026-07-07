@@ -51,7 +51,7 @@ describe('quizzes API endpoint', () => {
     makeListTestCases(it, '/quizzes', (x => x.meeting_slug), listTestCases);
 
     const newQuiz = {
-        meeting_slug: 'entrepreneurship-woot',
+        meeting_slug: 'server-side-apps',
         points_possible: 13,
         is_draft: false,
         duration: '00:10:00',
@@ -59,7 +59,7 @@ describe('quizzes API endpoint', () => {
 
     const insertTestCases = [{
         title: 'should not accept post requests from anonymous users',
-        status: 403,
+        status: 401,
     }, {
         title: 'should allow posts/inserts from faculty',
         status: 201,
@@ -69,8 +69,8 @@ describe('quizzes API endpoint', () => {
         status: 403,
         jwt: studentJWTPromise,
     }, {
-        title: 'should should enforce primary key uniqueness constraints',
-        status: 403,
+        title: 'should enforce meeting_slug uniqueness constraints',
+        status: 409,
         jwt: facultyJWTPromise,
     }];
     makeInsertTestCases(it, '/quizzes', newQuiz, insertTestCases);

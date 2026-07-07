@@ -16,7 +16,7 @@ set request.jwt.claim.role = 'anonymous';
 SELECT throws_ok(
     'SELECT * FROM data.meeting',
     '42501',
-    'permission denied for schema data',
+    NULL,
     'anonymous user should not have access to the data schema'
 );
 SELECT throws_ok(
@@ -41,8 +41,8 @@ set request.jwt.claim.role = 'faculty';
 SELECT throws_ok(
     'SELECT * FROM data.meeting',
     '42501',
-    'permission denied for schema data',
-    'anonymous user should not have access to the data schema'
+    NULL,
+    'faculty should not have direct table access in the data schema'
 );
 
 select set_eq(

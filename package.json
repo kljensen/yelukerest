@@ -11,7 +11,7 @@
         "supertest": "^4.0.2"
     },
     "scripts": {
-        "test_rest": "bun test --preload ./tests/bun-rest-setup.js ./tests/rest/*.js ./tests/rest/**/*.js",
+        "test_rest": "bun test --max-concurrency=1 --preload ./tests/bun-rest-setup.js ./tests/rest/*.js ./tests/rest/**/*.js",
         "test_db": "./bin/test-db.sh",
         "test": "bun run test_db && bun run test_rest"
     },

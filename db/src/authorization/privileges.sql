@@ -13,6 +13,7 @@ grant execute on function auth.sign_jwt to api, student, ta, faculty, app;
 -- specify which application roles can access this api (you'll probably list them all)
 -- remember to list all the values of user_role type here
 grant usage on schema api to anonymous, student, ta, faculty, app;
+grant usage on schema data to ta, faculty;
 
 
 \ir ./yeluke.sql

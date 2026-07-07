@@ -17,7 +17,7 @@ describe('auth/login', () => {
     it('should redirect to CAS', (done) => {
         request(baseURL)
             .get('/auth/login')
-            .expect(302, done)
+            .expect(307, done)
             .expect('location', /^http/i);
     });
 

@@ -1,5 +1,5 @@
 begin;
-select plan(5);
+select plan(6);
 
 SELECT view_owner_is(
     'api', 'engagements', 'api',
@@ -29,6 +29,11 @@ SELECT set_eq(
     'SELECT user_id FROM api.engagements ORDER BY (meeting_slug, user_id)',
     ARRAY[1, 2, 3, 1, 2, 3, 1, 2, 3],
     'faculty should be able to select from the api.engagements view'
+);
+
+SELECT lives_ok(
+    $$ INSERT INTO api.engagements (user_id, meeting_slug, participation) VALUES (5, 'intro', 'led') $$,
+    'faculty should be able to insert into the api.engagements view'
 );
 
 
