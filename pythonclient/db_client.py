@@ -8,7 +8,6 @@ import click
 import ldap3
 import psycopg2
 from names import get_student_nickname
-from models import quiz
 import ruamel.yaml as ruamel_yaml
 import datetime
 from jinja2 import Template
@@ -292,27 +291,6 @@ def add_list_of_students(conn, students):
         conn.commit()
 
 
-@database.command()
-@click.pass_context
-@click.argument('quiz_id', type=click.INT)
-def grade_quiz(ctx, quiz_id):
-    """ Grades a quiz
-    """
-    conn = ctx.obj['conn']
-    quiz.grade(conn, quiz_id)
-
-
-@database.command()
-@click.pass_context
-def grade_quizzes(ctx):
-    """ Grades all quizzes that are closed and not draft
-    """
-    conn = ctx.obj['conn']
-    gradable_quiz_ids = quiz.get_gradable_quiz_ids(conn)
-    for quiz_id in gradable_quiz_ids:
-        quiz.grade(conn, quiz_id)
-
-
 def delete_missing_meetings(cursor, slugs):
     """ Deletes all meetings that are not in a list of slugs
 
@@ -519,183 +497,14 @@ def update_assignments(ctx, class_number, infiles, delete):
         conn.close()
 
 
-def delete_missing_quiz_questions(cur, quiz_id, slugs):
-    """ Deletes any questions for a quiz that do not have slugs
-        in the `slugs` list.
-
-    Arguments:
-        cur {psygopg2 cursor} -- A database cursor
-        quiz_id {int} -- Id for the quiz
-        slugs {iterable of strings} -- List of slugs for this quiz's questions
-    """
-    if len(slugs) == 0:
-        return
-    query = """
-        SELECT api.delete_quiz_question(quiz_id, slug)
-        FROM
-        data.quiz_question
-        WHERE quiz_id=%s AND slug NOT IN %s;
-    """
-    cur.execute(query, (quiz_id, tuple(slugs),))
-
-
-def get_quiz_id(cur, meeting_slug):
-    """ Gets the id for the quiz with meeting slug equal to `meeting_slug`
-
-    Arguments:
-        cur {psygopg2 cursor} -- A database cursor
-        meeting_slug {string} -- The slug for the meeting to which this quiz corresponds
-    """
-    cur.execute("SELECT id from data.quiz WHERE meeting_slug=%s",
-                (meeting_slug,))
-    quiz_id = cur.fetchone()[0]
-    return quiz_id
-
-
-def comma_params(x):
-    """ Returns "%s,%s,%s", where there are `x` or `len(x)`
-        members in the string.
-
-    Arguments:
-        x {int or iterable} -- Number of times we should do this thing
-
-    Returns:
-        [string] -- something like "%s,%s,%s,%s"
-    """
-    if isinstance(x, int):
-        y = x
-    else:
-        y = len(x)
-    return ",".join(["%s"]*y)
-
-
-def delete_missing_quiz_question_options(cur, quiz_id, slugs):
-    """ Deletes the quiz question options that ought to be deleted :)
-
-    Arguments:
-        cur {psygopg2 cursor} -- A database cursor
-        quiz_id {int} -- id of the quiz to which the questions correspond
-        slugs {list of two-tuples of strings} -- A list where each member is a
-          tuple of quiz_question slug quiz_question_option slug.
-    """
-    query = """
-        WITH keepers (question_slug, option_slug) AS (VALUES {0}),
-        existing (id, quiz_question_id, question_slug, option_slug) AS (
-            SELECT qqo.id, qq.id, qq.slug, qqo.slug FROM data.quiz_question qq
-            JOIN data.quiz_question_option qqo
-            ON qqo.quiz_question_id = qq.id
-            WHERE qq.quiz_id=%s
-        ),
-        todelete AS (
-            select * from
-            existing LEFT OUTER JOIN keepers
-            ON keepers.question_slug=existing.question_slug
-            AND keepers.option_slug=existing.option_slug
-            WHERE keepers.option_slug IS NULL
-        )
-        DELETE FROM data.quiz_question_option
-        WHERE id in (SELECT id from todelete)
-    """.format(comma_params(slugs))
-    try:
-        cur.execute(query, slugs+(quiz_id,))
-    except psycopg2.ProgrammingError as err:
-        print(err)
-        raise
-
-
-def upsert_quiz_question_options(cur, quiz_id, option_tups):
-    """ Upserts the quiz questions options. Requires some SQL-foo
-        since we don't know the quiz_question_id for each option.
-        Instead, we know the slug.
-
-    Arguments:
-        cur {psygopg2 cursor} -- A database cursor
-        quiz_id {int} -- id of the quiz to which the questions correspond
-        option_tups {iterable of tuples} -- Each tuple is (quiz_question_slug, slug, is_correct, body)
-    """
-    query = """
-        WITH options (question_slug, slug, is_correct, body) AS (VALUES {0}),
-        data_to_insert (quiz_question_id, slug, is_correct, body) AS (
-            SELECT qq.id, options.slug, options.is_correct, options.body FROM
-                options JOIN data.quiz_question qq
-                ON options.question_slug = qq.slug
-                WHERE qq.quiz_id = %s
-        )
-        INSERT INTO data.quiz_question_option (quiz_id, quiz_question_id, slug, is_correct, body)
-            SELECT %s, quiz_question_id, slug, is_correct, body FROM data_to_insert
-        ON CONFLICT (quiz_question_id, slug)
-        DO UPDATE SET
-            is_correct=EXCLUDED.is_correct,
-            body=EXCLUDED.body
-    """.format(comma_params(option_tups))
-    try:
-        # print(str(cur.mogrify(query, option_tups+(quiz_id,))))
-        cur.execute(query, option_tups+(quiz_id, quiz_id))
-    except psycopg2.ProgrammingError as err:
-        print(err)
-        raise
-
-
 def upsert_quiz(cur, quiz):
-    """ Upserts a quiz and deletes questions associated with this
-        quiz that are no longer present, and quiz question options
-        associated with those questions that are no longer present.
-        Upserts the questions and quiz question options.
+    """ Upserts paper quiz metadata.
 
     Arguments:
         cur {psygopg2 cursor} -- A database cursor
         quiz {Object} -- The quiz info
     """
     do_upsert(cur, "data.quiz", "meeting_slug", [nonchild(quiz)])
-    quiz_id = get_quiz_id(cur, quiz['meeting_slug'])
-
-    delete_missing_quiz_questions(
-        cur,
-        quiz_id,
-        [q['slug'] for q in quiz['child:quiz_questions']]
-    )
-
-    questions = quiz['child:quiz_questions']
-    for q in questions:
-        q['quiz_id'] = quiz_id
-
-    do_upsert(
-        cur,
-        "data.quiz_question",
-        "quiz_id, slug",
-        [nonchild(qq) for qq in questions]
-    )
-
-    option_tups = tuple(
-        (qq['slug'], qqo['slug'], qqo['is_correct'], qqo['body'])
-        for qq in questions
-        for qqo in qq['child:quiz_question_options']
-    )
-    option_slug_tups = tuple((x[0], x[1]) for x in option_tups)
-    delete_missing_quiz_question_options(cur, quiz_id, option_slug_tups)
-    upsert_quiz_question_options(cur, quiz_id, option_tups)
-    # for question in quiz['child:quiz_questions']:
-    #     question['quiz_id'] = quiz_id
-
-def each_is_unique(iterable):
-    return len(iterable) == len(set(iterable))
-
-def quiz_is_valid(quiz):
-    """ Check to see if a quiz is valid. 
-    """
-
-    # Each slug should only appear once
-    slugs = [question["slug"] for question in quiz["child:quiz_questions"]]
-    if len(slugs) < 1 or not each_is_unique(slugs):
-        print("Non unique slug")
-        return False
-
-    for question in quiz["child:quiz_questions"]:
-        slugs = [opt["slug"] for opt in question["child:quiz_question_options"]]
-        if len(slugs) < 1 or not each_is_unique(slugs):
-            print("Non unique option slug")
-            return False
-    return True
 
 
 @database.command()
@@ -707,8 +516,6 @@ def update_quiz(ctx, infile, timedelta):
     """
     conn = ctx.obj['conn']
     quiz = read_yaml(infile)
-    if not quiz_is_valid(quiz):
-        raise Exception("invalid quiz")
 
     # Usually I don't specify "closed_at" because
     # it is set by a database trigger to be the

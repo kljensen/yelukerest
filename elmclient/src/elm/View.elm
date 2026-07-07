@@ -9,11 +9,10 @@ import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
-import Html.Lazy exposing (lazy2, lazy5, lazy6)
+import Html.Lazy exposing (lazy2, lazy6)
 import Meetings.Views
 import Models exposing (Model, UIElements)
 import Msgs exposing (Msg)
-import Quizzes.Views
 import RemoteData exposing (WebData)
 
 
@@ -39,7 +38,7 @@ page model =
             lazy2 Meetings.Views.listView model.timeZone model.meetings
 
         Models.MeetingDetailRoute slug ->
-            Meetings.Views.detailView model.current_date model.timeZone model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.quizGradeExceptions model.pendingBeginQuizzes
+            Meetings.Views.detailView model.current_date model.timeZone model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.quizGradeExceptions
 
         Models.AssignmentListRoute ->
             lazy2 Assignments.Views.listView model.timeZone model.assignments
@@ -49,9 +48,6 @@ page model =
         
         Models.AssignmentGradeDetailRoute slug ->
             Assignments.Views.gradeView model.assignmentGrades model.assignmentSubmissions slug model.currentUser
-
-        Models.TakeQuizRoute quizID ->
-            Quizzes.Views.takeQuizView model.currentUser model.current_date model.timeZone quizID model.quizSubmissions model.quizzes model.quizQuestions model.quizAnswers model.quizGradeExceptions model.pendingSubmitQuizzes model.quizQuestionOptionInputs
 
         Models.EditEngagementsRoute meetingSlug ->
             lazy6 maybeEditEngagements model.currentUser model.engagementUserQuery model.users model.engagements model.meetings meetingSlug

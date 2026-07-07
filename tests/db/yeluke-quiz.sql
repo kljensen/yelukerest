@@ -1,5 +1,5 @@
 begin;
-select plan(10);
+select plan(11);
 
 SELECT view_owner_is(
     'api', 'quizzes', 'api',
@@ -68,6 +68,11 @@ SELECT lives_ok(
     'triggers fill in default values for quizzes'
 );
 
+SELECT results_eq(
+    'SELECT is_offline FROM api.quizzes WHERE meeting_slug = ''server-side-apps''',
+    ARRAY[true],
+    'quizzes default to paper/offline workflow'
+);
 
 -- set request.jwt.claim.user_id = '1';
 

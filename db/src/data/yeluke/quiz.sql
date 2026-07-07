@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS quiz (
     -- Number of points possible on this quiz.
     points_possible smallint NOT NULL
         CHECK (points_possible >= 0),
-    is_offline BOOLEAN NOT NULL DEFAULT false,
+    -- Quizzes are paper-only; this flag remains for API compatibility.
+    is_offline BOOLEAN NOT NULL DEFAULT true,
     -- If this quiz is still being worked on by the faculty
     is_draft BOOLEAN NOT NULL DEFAULT true NOT NULL,
     -- The duration of time students have to finish

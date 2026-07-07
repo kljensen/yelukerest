@@ -18,19 +18,25 @@
 # https://sqitch.org/docs/manual/sqitchtutorial/
 #
 
-# Source environment variables
+# Source environment variables. Allow callers to override the host port used
+# for local development when another service already owns .env's DB_PORT.
+DB_PORT_OVERRIDE="${DB_PORT:-}"
 set -a
 . ./.env
 set +a
+if [ -n "$DB_PORT_OVERRIDE" ]; then
+    DB_PORT="$DB_PORT_OVERRIDE"
+fi
 
 MIGRATIONS_DIRECTORY="db/migrations"
 echo "Removing old migrations directory at $MIGRATIONS_DIRECTORY"
 rm -rf $MIGRATIONS_DIRECTORY/*
 
 #
-# Initialize sqitch
+# Initialize sqitch. Prefer the historical Docker wrapper, but allow local
+# sqitch for environments where passing secrets into Docker is undesirable.
 #
-SQITCH="./bin/sqitch.sh -C $MIGRATIONS_DIRECTORY"
+SQITCH="${YELUKEREST_SQITCH_BIN:-./bin/sqitch.sh} -C $MIGRATIONS_DIRECTORY"
 $SQITCH init yelukerest --uri https://github.com/kljensen/yelukerest --engine pg
 
 #
@@ -225,25 +231,27 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz'
+        AND a.attname = 'is_offline'
+        AND a.attnotnull
+        AND pg_get_expr(d.adbin, d.adrelid) = 'true'
+    ) THEN
+        RAISE EXCEPTION 'data.quiz.is_offline must be NOT NULL DEFAULT true';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'data'
         AND c.relname = 'quiz_answer'
-        AND c.relrowsecurity
     ) THEN
-        RAISE EXCEPTION 'data.quiz_answer row security is not enabled';
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_policy p
-        JOIN pg_class c ON c.oid = p.polrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'data'
-        AND c.relname = 'quiz_answer'
-        AND p.polname = 'quiz_answer_delete_policy'
-    ) THEN
-        RAISE EXCEPTION 'missing quiz_answer_delete_policy';
+        RAISE EXCEPTION 'data.quiz_answer should not exist for paper-only quizzes';
     END IF;
 
     IF NOT EXISTS (

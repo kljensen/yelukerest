@@ -1,29 +1,22 @@
 module Quizzes.Model exposing
     ( Quiz
-    , QuizAnswer
     , QuizGrade
     , QuizGradeDistribution
     , QuizGradeException
     , QuizOpenState(..)
-    , QuizQuestion
-    , QuizQuestionOption
     , QuizSubmission
     , QuizType(..)
     , SubmissionEditableState(..)
-    , quizAnswersDecoder
     , quizGradeDistributionsDecoder
     , quizGradeExceptionDecoder
     , quizGradeExceptionsDecoder
     , quizGradesDecoder
-    , quizQuestionsDecoder
     , quizSubmissionDecoder
     , quizSubmissionsDecoder
     , quizSubmitability
     , quizzesDecoder
-    , updateIntSet
     )
 
-import Set exposing (Set)
 import Common.Comparisons exposing (dateIsLessThan)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Extra
@@ -159,71 +152,6 @@ quizSubmissionDecoder =
 
 
 
--- Encoder not yet needed
-
-
-type alias QuizQuestion =
-    { id : Int
-    , body : String
-    , slug : String
-    , multiple_correct : Bool
-    , options : List QuizQuestionOption
-    }
-
-
-type alias QuizQuestionOption =
-    { id : Int
-    , body : String
-    }
-
-
-type alias QuizAnswer =
-    { user_id : Int
-    , quiz_question_option_id : Int
-    , quiz_id : Int
-    }
-
-
-quizAnswerDecoder : Decode.Decoder QuizAnswer
-quizAnswerDecoder =
-    Decode.succeed QuizAnswer
-        |> required "user_id" Decode.int
-        |> required "quiz_question_option_id" Decode.int
-        |> required "quiz_id" Decode.int
-
-
-quizAnswersDecoder : Decode.Decoder (List QuizAnswer)
-quizAnswersDecoder =
-    Decode.list quizAnswerDecoder
-
-
-quizQuestionDecoder : Decode.Decoder QuizQuestion
-quizQuestionDecoder =
-    Decode.succeed QuizQuestion
-        |> required "id" Decode.int
-        |> required "body" Decode.string
-        |> required "slug" Decode.string
-        |> required "multiple_correct" Decode.bool
-        |> required "options" quizQuestionOptionsDecoder
-
-
-quizQuestionsDecoder : Decode.Decoder (List QuizQuestion)
-quizQuestionsDecoder =
-    Decode.list quizQuestionDecoder
-
-
-quizQuestionOptionDecoder : Decode.Decoder QuizQuestionOption
-quizQuestionOptionDecoder =
-    Decode.succeed QuizQuestionOption
-        |> required "id" Decode.int
-        |> required "body" Decode.string
-
-
-quizQuestionOptionsDecoder : Decode.Decoder (List QuizQuestionOption)
-quizQuestionOptionsDecoder =
-    Decode.list quizQuestionOptionDecoder
-
-
 type alias QuizGrade =
     { quiz_id : Int
     , points : Float
@@ -306,12 +234,3 @@ quizGradeExceptionDecoder =
 quizGradeExceptionsDecoder : Decode.Decoder (List QuizGradeException)
 quizGradeExceptionsDecoder =
     Decode.list quizGradeExceptionDecoder
-
-{-|
-    Updates a set of integers, first removing a list of
-    values and then adding a list of values.
--}
-updateIntSet : (Set Int) -> (List Int) -> (List Int) -> (Set Int)
-updateIntSet theSet toRemove toAdd =
-    Set.diff theSet (Set.fromList toRemove)
-    |> Set.union (Set.fromList toAdd)

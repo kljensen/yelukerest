@@ -17,11 +17,9 @@ import Meetings.Model exposing (Meeting)
 import Quizzes.Model
     exposing
         ( Quiz
-        , QuizAnswer
         , QuizGrade
         , QuizGradeDistribution
         , QuizGradeException
-        , QuizQuestion
         , QuizSubmission
         )
 import RemoteData exposing (WebData)
@@ -56,15 +54,6 @@ type Msg
     | OnSubmitAssignmentFieldSubmissions AssignmentSubmission
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String String
-    | OnBeginQuiz Int
-    | OnBeginQuizComplete Int (WebData (List QuizSubmission))
-    | OnFetchQuizQuestions Int (WebData (List QuizQuestion))
-    | TakeQuiz Int
-    | OnFetchQuizAnswers Int (WebData (List QuizAnswer))
-    | OnSubmitQuizAnswers Int (List Int)
-    | OnSubmitQuizAnswersComplete Int (WebData (List QuizAnswer))
-    | OnToggleQuizQuestionOption Int Bool
-    | OnSelectQuizQuestionOption Int (List Int) Bool
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))
     | OnFetchUserSecrets (WebData (List UserSecret))

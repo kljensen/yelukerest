@@ -8,12 +8,15 @@ BEGIN;
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 14.4
--- Dumped by pg_dump version 14.13 (Homebrew)
+\restrict fq9xhGLKGBw7n8qQ11b3ZINXaqhGdpK8yLfDcTHUAq0ea2fg7KvmM8pEI2BWlF7
+
+-- Dumped from database version 18.4
+-- Dumped by pg_dump version 18.3 (Homebrew)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -58,6 +61,7 @@ CREATE SCHEMA pgjwt;
 
 ALTER SCHEMA pgjwt OWNER TO superuser;
 
+--
 -- Name: request; Type: SCHEMA; Schema: -; Owner: superuser
 --
 
@@ -132,169 +136,6 @@ CREATE TYPE data.user_role AS ENUM (
 ALTER TYPE data.user_role OWNER TO superuser;
 
 --
--- Name: delete_quiz_question(integer); Type: FUNCTION; Schema: api; Owner: superuser
---
-
-CREATE FUNCTION api.delete_quiz_question(integer) RETURNS TABLE(num_deleted_answers integer, num_deleted_question_options integer, num_deleted_questions integer)
-    LANGUAGE sql
-    AS $_$
-    select delete_quiz_question(quiz_id, slug) from data.quiz_question where id=$1;
-$_$;
-
-
-ALTER FUNCTION api.delete_quiz_question(integer) OWNER TO superuser;
-
---
--- Name: FUNCTION delete_quiz_question(integer); Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON FUNCTION api.delete_quiz_question(integer) IS 'Deletes quiz_answers, quiz_question_options, and quiz_question for quiz question matching id';
-
-
---
--- Name: delete_quiz_question(integer, text); Type: FUNCTION; Schema: api; Owner: superuser
---
-
-CREATE FUNCTION api.delete_quiz_question(integer, text) RETURNS TABLE(num_deleted_answers integer, num_deleted_question_options integer, num_deleted_questions integer)
-    LANGUAGE sql
-    AS $_$
-    WITH answer_details as (
-        -- Get a full list of answers, options, and questions
-        SELECT
-            qq.quiz_id,
-            qq.id quiz_question_id,
-            qq.slug quiz_question_slug,
-            qqo.id quiz_question_option_id
-        FROM
-            data.quiz_question qq
-            LEFT JOIN data.quiz_question_option qqo ON qq.id = qqo.quiz_question_id
-            LEFT JOIN data.quiz_answer qa ON qqo.id = qa.quiz_question_option_id
-        WHERE
-            -- Match only the input arguments
-            qq.quiz_id = $1 and qq.slug = $2
-    ), deleted_answers as (
-        DELETE FROM data.quiz_answer
-        using answer_details where
-        quiz_answer.quiz_question_option_id = answer_details.quiz_question_option_id
-        returning *
-    ), deleted_question_options as (
-        DELETE FROM data.quiz_question_option
-        using answer_details where
-        quiz_question_option.id = answer_details.quiz_question_option_id
-        returning *
-    ), deleted_questions as (
-        DELETE FROM data.quiz_question
-        using answer_details where
-        quiz_question.id = answer_details.quiz_question_id
-        returning *
-    )
-    select
-        (select count(*) from deleted_answers) as num_deleted_answers,
-        (select count(*) from deleted_question_options) as num_deleted_question_options,
-        (select count(*) from deleted_questions) as num_deleted_questions
-    ;
-$_$;
-
-
-ALTER FUNCTION api.delete_quiz_question(integer, text) OWNER TO superuser;
-
---
--- Name: FUNCTION delete_quiz_question(integer, text); Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON FUNCTION api.delete_quiz_question(integer, text) IS 'Deletes quiz_answers, quiz_question_options, and quiz_question for quiz question matching quiz_id and slug arguments';
-
-
---
--- Name: delete_quiz_question_option(integer, text, text); Type: FUNCTION; Schema: api; Owner: superuser
---
-
-CREATE FUNCTION api.delete_quiz_question_option(integer, text, text) RETURNS TABLE(num_deleted_answers integer, num_deleted_question_options integer)
-    LANGUAGE sql
-    AS $_$
-    WITH answer_details as (
-        -- Get a full list of answers, options, and questions
-        SELECT
-            qq.quiz_id,
-            qq.id quiz_question_id,
-            qq.slug quiz_question_slug,
-            qqo.id quiz_question_option_id
-        FROM
-            data.quiz_answer qa
-            JOIN data.quiz_question_option qqo ON qa.quiz_question_option_id = qqo.id
-            JOIN data.quiz_question qq ON qq.id = qqo.quiz_question_id
-        WHERE
-            -- Match only the input arguments
-            qq.quiz_id = $1 and qq.slug = $2 and qqo.slug = $3
-    ), deleted_answers as (
-        DELETE FROM data.quiz_answer
-        using answer_details where
-        quiz_answer.quiz_question_option_id = answer_details.quiz_question_option_id
-        returning *
-    ), deleted_question_options as (
-        DELETE FROM data.quiz_question_option
-        using answer_details where
-        quiz_question_option.id = answer_details.quiz_question_option_id
-        returning *
-    )
-    select
-        (select count(*) from deleted_answers) as num_deleted_answers,
-        (select count(*) from deleted_question_options) as num_deleted_question_options
-    ;
-$_$;
-
-
-ALTER FUNCTION api.delete_quiz_question_option(integer, text, text) OWNER TO superuser;
-
---
--- Name: FUNCTION delete_quiz_question_option(integer, text, text); Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON FUNCTION api.delete_quiz_question_option(integer, text, text) IS 'Deletes quiz_answers for a quiz_question_options for quiz question option matching quiz_id question slug and quiz question option slug arguments';
-
-
-SET default_tablespace = '';
-
-SET default_table_access_method = heap;
-
---
--- Name: quiz_answer; Type: TABLE; Schema: data; Owner: superuser
---
-
-CREATE TABLE data.quiz_answer (
-    quiz_id integer NOT NULL,
-    user_id integer NOT NULL,
-    quiz_question_option_id integer NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
-);
-
-
-ALTER TABLE data.quiz_answer OWNER TO superuser;
-
---
--- Name: save_quiz(integer, integer[]); Type: FUNCTION; Schema: api; Owner: superuser
---
-
-CREATE FUNCTION api.save_quiz(quiz_id integer, quiz_question_option_ids integer[]) RETURNS SETOF data.quiz_answer
-    LANGUAGE plpgsql
-    AS $_$
-BEGIN
-    -- Functions are executed in a transaction.
-    -- Delete all quiz_answers for this user's quiz_submission for this quiz_id.
-    DELETE FROM api.quiz_answers qa WHERE qa.quiz_id = $1 AND qa.user_id = request.user_id();
-    -- Insert the submitted quiz answers.
-    INSERT INTO api.quiz_answers(quiz_question_option_id, user_id, quiz_id) select unnest($2), request.user_id(), $1;
-    -- Return all quiz answers for this quiz_id.
-    RETURN QUERY
-        SELECT * FROM api.quiz_answers qa WHERE qa.quiz_id = $1 AND qa.user_id=request.user_id();
-END; $_$;
-
-
-ALTER FUNCTION api.save_quiz(quiz_id integer, quiz_question_option_ids integer[]) OWNER TO superuser;
-
---
 -- Name: sign_jwt(integer, data.user_role); Type: FUNCTION; Schema: auth; Owner: superuser
 --
 
@@ -332,31 +173,6 @@ $$;
 
 
 ALTER FUNCTION data.clean_user_fields() OWNER TO superuser;
-
---
--- Name: fill_answer_defaults(); Type: FUNCTION; Schema: data; Owner: superuser
---
-
-CREATE FUNCTION data.fill_answer_defaults() RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-BEGIN
-    -- Fill in the quiz_id if it is null
-    IF (NEW.quiz_id IS NULL) THEN
-        SELECT quiz_id INTO NEW.quiz_id
-        FROM api.quiz_question_options
-        WHERE id = NEW.quiz_question_option_id;
-    END IF;
-    IF (NEW.user_id IS NULL and request.user_id() IS NOT NULL) THEN
-        NEW.user_id = request.user_id();
-    END IF;
-    NEW.updated_at = current_timestamp;
-    RETURN NEW;
-END;
-$$;
-
-
-ALTER FUNCTION data.fill_answer_defaults() OWNER TO superuser;
 
 --
 -- Name: fill_assignment_field_submission_defaults(); Type: FUNCTION; Schema: data; Owner: superuser
@@ -774,6 +590,7 @@ $$;
 
 ALTER FUNCTION pgjwt.verify(token text, secret text, algorithm text) OWNER TO superuser;
 
+--
 -- Name: app_name(); Type: FUNCTION; Schema: request; Owner: superuser
 --
 
@@ -869,6 +686,10 @@ $_$;
 
 ALTER FUNCTION settings.set(text, text) OWNER TO superuser;
 
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
 --
 -- Name: assignment_field_submission; Type: TABLE; Schema: data; Owner: superuser
 --
@@ -895,19 +716,19 @@ ALTER TABLE data.assignment_field_submission OWNER TO superuser;
 --
 
 CREATE VIEW api.assignment_field_submissions AS
- SELECT assignment_field_submission.assignment_submission_id,
-    assignment_field_submission.assignment_field_slug,
-    assignment_field_submission.assignment_slug,
-    assignment_field_submission.assignment_field_is_url,
-    assignment_field_submission.assignment_field_pattern,
-    assignment_field_submission.body,
-    assignment_field_submission.submitter_user_id,
-    assignment_field_submission.created_at,
-    assignment_field_submission.updated_at
+ SELECT assignment_submission_id,
+    assignment_field_slug,
+    assignment_slug,
+    assignment_field_is_url,
+    assignment_field_pattern,
+    body,
+    submitter_user_id,
+    created_at,
+    updated_at
    FROM data.assignment_field_submission;
 
 
-ALTER TABLE api.assignment_field_submissions OWNER TO api;
+ALTER VIEW api.assignment_field_submissions OWNER TO api;
 
 --
 -- Name: assignment_field; Type: TABLE; Schema: data; Owner: superuser
@@ -945,22 +766,22 @@ ALTER TABLE data.assignment_field OWNER TO superuser;
 --
 
 CREATE VIEW api.assignment_fields AS
- SELECT assignment_field.slug,
-    assignment_field.assignment_slug,
-    assignment_field.label,
-    assignment_field.help,
-    assignment_field.placeholder,
-    assignment_field.is_url,
-    assignment_field.is_multiline,
-    assignment_field.display_order,
-    assignment_field.pattern,
-    assignment_field.example,
-    assignment_field.created_at,
-    assignment_field.updated_at
+ SELECT slug,
+    assignment_slug,
+    label,
+    help,
+    placeholder,
+    is_url,
+    is_multiline,
+    display_order,
+    pattern,
+    example,
+    created_at,
+    updated_at
    FROM data.assignment_field;
 
 
-ALTER TABLE api.assignment_fields OWNER TO api;
+ALTER VIEW api.assignment_fields OWNER TO api;
 
 --
 -- Name: assignment_grade; Type: TABLE; Schema: data; Owner: superuser
@@ -1056,7 +877,7 @@ CREATE VIEW api.assignment_grade_distributions AS
   GROUP BY sub.assignment_slug;
 
 
-ALTER TABLE api.assignment_grade_distributions OWNER TO superuser;
+ALTER VIEW api.assignment_grade_distributions OWNER TO superuser;
 
 --
 -- Name: VIEW assignment_grade_distributions; Type: COMMENT; Schema: api; Owner: superuser
@@ -1150,54 +971,54 @@ ALTER TABLE data.assignment_grade_exception OWNER TO superuser;
 --
 
 CREATE VIEW api.assignment_grade_exceptions AS
- SELECT assignment_grade_exception.id,
-    assignment_grade_exception.assignment_slug,
-    assignment_grade_exception.is_team,
-    assignment_grade_exception.user_id,
-    assignment_grade_exception.team_nickname,
-    assignment_grade_exception.fractional_credit,
-    assignment_grade_exception.closed_at,
-    assignment_grade_exception.created_at,
-    assignment_grade_exception.updated_at
+ SELECT id,
+    assignment_slug,
+    is_team,
+    user_id,
+    team_nickname,
+    fractional_credit,
+    closed_at,
+    created_at,
+    updated_at
    FROM data.assignment_grade_exception;
 
 
-ALTER TABLE api.assignment_grade_exceptions OWNER TO api;
+ALTER VIEW api.assignment_grade_exceptions OWNER TO api;
 
 --
 -- Name: assignment_grades; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.assignment_grades AS
- SELECT assignment_grade.assignment_slug,
-    assignment_grade.points_possible,
-    assignment_grade.assignment_submission_id,
-    assignment_grade.points,
-    assignment_grade.description,
-    assignment_grade.created_at,
-    assignment_grade.updated_at
+ SELECT assignment_slug,
+    points_possible,
+    assignment_submission_id,
+    points,
+    description,
+    created_at,
+    updated_at
    FROM data.assignment_grade;
 
 
-ALTER TABLE api.assignment_grades OWNER TO api;
+ALTER VIEW api.assignment_grades OWNER TO api;
 
 --
 -- Name: assignment_submissions; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.assignment_submissions AS
- SELECT assignment_submission.id,
-    assignment_submission.assignment_slug,
-    assignment_submission.is_team,
-    assignment_submission.user_id,
-    assignment_submission.team_nickname,
-    assignment_submission.submitter_user_id,
-    assignment_submission.created_at,
-    assignment_submission.updated_at
+ SELECT id,
+    assignment_slug,
+    is_team,
+    user_id,
+    team_nickname,
+    submitter_user_id,
+    created_at,
+    updated_at
    FROM data.assignment_submission;
 
 
-ALTER TABLE api.assignment_submissions OWNER TO api;
+ALTER VIEW api.assignment_submissions OWNER TO api;
 
 --
 -- Name: assignment; Type: TABLE; Schema: data; Owner: superuser
@@ -1228,21 +1049,21 @@ ALTER TABLE data.assignment OWNER TO superuser;
 --
 
 CREATE VIEW api.assignments AS
- SELECT assignment.slug,
-    assignment.points_possible,
-    assignment.is_draft,
-    assignment.is_markdown,
-    assignment.is_team,
-    assignment.title,
-    assignment.body,
-    assignment.closed_at,
-    assignment.created_at,
-    assignment.updated_at,
-    ((assignment.is_draft = false) AND (CURRENT_TIMESTAMP < assignment.closed_at)) AS is_open
+ SELECT slug,
+    points_possible,
+    is_draft,
+    is_markdown,
+    is_team,
+    title,
+    body,
+    closed_at,
+    created_at,
+    updated_at,
+    ((is_draft = false) AND (CURRENT_TIMESTAMP < closed_at)) AS is_open
    FROM data.assignment;
 
 
-ALTER TABLE api.assignments OWNER TO api;
+ALTER VIEW api.assignments OWNER TO api;
 
 --
 -- Name: engagement; Type: TABLE; Schema: data; Owner: superuser
@@ -1266,15 +1087,15 @@ ALTER TABLE data.engagement OWNER TO superuser;
 --
 
 CREATE VIEW api.engagements AS
- SELECT engagement.user_id,
-    engagement.meeting_slug,
-    engagement.participation,
-    engagement.created_at,
-    engagement.updated_at
+ SELECT user_id,
+    meeting_slug,
+    participation,
+    created_at,
+    updated_at
    FROM data.engagement;
 
 
-ALTER TABLE api.engagements OWNER TO api;
+ALTER VIEW api.engagements OWNER TO api;
 
 --
 -- Name: grade_snapshot; Type: TABLE; Schema: data; Owner: superuser
@@ -1297,14 +1118,14 @@ ALTER TABLE data.grade_snapshot OWNER TO superuser;
 --
 
 CREATE VIEW api.grade_snapshots AS
- SELECT grade_snapshot.slug,
-    grade_snapshot.description,
-    grade_snapshot.created_at,
-    grade_snapshot.updated_at
+ SELECT slug,
+    description,
+    created_at,
+    updated_at
    FROM data.grade_snapshot;
 
 
-ALTER TABLE api.grade_snapshots OWNER TO api;
+ALTER VIEW api.grade_snapshots OWNER TO api;
 
 --
 -- Name: VIEW grade_snapshots; Type: COMMENT; Schema: api; Owner: api
@@ -1347,7 +1168,7 @@ COMMENT ON COLUMN api.grade_snapshots.updated_at IS 'When this snapshot was last
 
 CREATE TABLE data.grade (
     points real NOT NULL,
-    snapshot_slug text NOT NULL,
+    snapshot_slug text CONSTRAINT grade_snapshot_slug_not_null1 NOT NULL,
     user_id integer NOT NULL,
     description text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -1364,16 +1185,16 @@ ALTER TABLE data.grade OWNER TO superuser;
 --
 
 CREATE VIEW api.grades AS
- SELECT grade.points,
-    grade.snapshot_slug,
-    grade.user_id,
-    grade.description,
-    grade.created_at,
-    grade.updated_at
+ SELECT points,
+    snapshot_slug,
+    user_id,
+    description,
+    created_at,
+    updated_at
    FROM data.grade;
 
 
-ALTER TABLE api.grades OWNER TO api;
+ALTER VIEW api.grades OWNER TO api;
 
 --
 -- Name: meeting; Type: TABLE; Schema: data; Owner: superuser
@@ -1402,19 +1223,19 @@ ALTER TABLE data.meeting OWNER TO superuser;
 --
 
 CREATE VIEW api.meetings AS
- SELECT meeting.title,
-    meeting.slug,
-    meeting.summary,
-    meeting.description,
-    meeting.begins_at,
-    meeting.duration,
-    meeting.is_draft,
-    meeting.created_at,
-    meeting.updated_at
+ SELECT title,
+    slug,
+    summary,
+    description,
+    begins_at,
+    duration,
+    is_draft,
+    created_at,
+    updated_at
    FROM data.meeting;
 
 
-ALTER TABLE api.meetings OWNER TO api;
+ALTER VIEW api.meetings OWNER TO api;
 
 --
 -- Name: VIEW meetings; Type: COMMENT; Schema: api; Owner: api
@@ -1480,201 +1301,6 @@ COMMENT ON COLUMN api.meetings.updated_at IS 'The most recent time this database
 
 
 --
--- Name: quiz; Type: TABLE; Schema: data; Owner: superuser
---
-
-CREATE TABLE data.quiz (
-    id integer NOT NULL,
-    meeting_slug text NOT NULL,
-    points_possible smallint NOT NULL,
-    is_offline boolean DEFAULT false NOT NULL,
-    is_draft boolean DEFAULT true NOT NULL,
-    duration interval DEFAULT '00:15:00'::interval NOT NULL,
-    open_at timestamp with time zone NOT NULL,
-    closed_at timestamp with time zone NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT closed_after_open CHECK ((closed_at > open_at)),
-    CONSTRAINT quiz_meeting_slug_check CHECK ((char_length(meeting_slug) < 100)),
-    CONSTRAINT quiz_points_possible_check CHECK ((points_possible >= 0)),
-    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
-);
-
-
-ALTER TABLE data.quiz OWNER TO superuser;
-
---
--- Name: quiz_grade_exception; Type: TABLE; Schema: data; Owner: superuser
---
-
-CREATE TABLE data.quiz_grade_exception (
-    id integer NOT NULL,
-    quiz_id integer NOT NULL,
-    user_id integer NOT NULL,
-    fractional_credit numeric DEFAULT 1 NOT NULL,
-    closed_at timestamp with time zone NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT quiz_grade_exception_fractional_credit_check CHECK (((fractional_credit >= (0)::numeric) AND (fractional_credit <= (1)::numeric))),
-    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
-);
-
-
-ALTER TABLE data.quiz_grade_exception OWNER TO superuser;
-
---
--- Name: quiz_question; Type: TABLE; Schema: data; Owner: superuser
---
-
-CREATE TABLE data.quiz_question (
-    id integer NOT NULL,
-    quiz_id integer NOT NULL,
-    slug text NOT NULL,
-    is_markdown boolean DEFAULT false,
-    body text NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT quiz_question_slug_check CHECK (((slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$'::text) AND (char_length(slug) < 100))),
-    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
-);
-
-
-ALTER TABLE data.quiz_question OWNER TO superuser;
-
---
--- Name: quiz_question_option; Type: TABLE; Schema: data; Owner: superuser
---
-
-CREATE TABLE data.quiz_question_option (
-    id integer NOT NULL,
-    quiz_question_id integer NOT NULL,
-    slug text NOT NULL,
-    quiz_id integer NOT NULL,
-    body text NOT NULL,
-    is_markdown boolean DEFAULT false NOT NULL,
-    is_correct boolean DEFAULT false NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT quiz_question_option_slug_check CHECK (((slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$'::text) AND (char_length(slug) < 100))),
-    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
-);
-
-
-ALTER TABLE data.quiz_question_option OWNER TO superuser;
-
---
--- Name: quiz_submission; Type: TABLE; Schema: data; Owner: superuser
---
-
-CREATE TABLE data.quiz_submission (
-    quiz_id integer NOT NULL,
-    user_id integer DEFAULT request.user_id() NOT NULL,
-    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
-);
-
-
-ALTER TABLE data.quiz_submission OWNER TO superuser;
-
---
--- Name: quiz_answer_details; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.quiz_answer_details AS
- SELECT "user".id AS user_id,
-    quiz.id AS quiz_id,
-    qge.closed_at AS extension_deadline,
-    (COALESCE(qge.fractional_credit, (1)::numeric))::double precision AS fractional_credit,
-    (qs.quiz_id IS NOT NULL) AS has_submission,
-    qqo.quiz_question_id,
-    qq.body AS quiz_question_body,
-    qqo.id AS quiz_question_option_id,
-    qqo.body AS quiz_question_option_body,
-    qqo.is_correct,
-    (qa.quiz_question_option_id IS NOT NULL) AS is_selected
-   FROM ((((((data.quiz
-     CROSS JOIN data."user")
-     LEFT JOIN data.quiz_question_option qqo ON ((qqo.quiz_id = quiz.id)))
-     LEFT JOIN data.quiz_answer qa ON (((qa.quiz_id = qqo.quiz_id) AND (qa.user_id = "user".id) AND (qa.quiz_question_option_id = qqo.id))))
-     LEFT JOIN data.quiz_submission qs ON (((qs.quiz_id = qqo.quiz_id) AND (qs.user_id = "user".id))))
-     LEFT JOIN data.quiz_grade_exception qge ON (((qge.quiz_id = qs.quiz_id) AND (qge.user_id = "user".id))))
-     LEFT JOIN data.quiz_question qq ON ((qqo.quiz_question_id = qq.id)))
-  ORDER BY "user".id, qqo.quiz_id, qqo.quiz_question_id, qqo.id;
-
-
-ALTER TABLE api.quiz_answer_details OWNER TO api;
-
---
--- Name: quiz_answers; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.quiz_answers AS
- SELECT quiz_answer.quiz_id,
-    quiz_answer.user_id,
-    quiz_answer.quiz_question_option_id,
-    quiz_answer.created_at,
-    quiz_answer.updated_at
-   FROM data.quiz_answer;
-
-
-ALTER TABLE api.quiz_answers OWNER TO api;
-
---
--- Name: quiz_grade_details; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.quiz_grade_details AS
- WITH graded_questions AS (
-         SELECT quiz_answer_details.user_id,
-            quiz_answer_details.quiz_id,
-            quiz_answer_details.has_submission,
-            quiz_answer_details.quiz_question_id,
-            quiz_answer_details.quiz_question_body,
-            quiz_answer_details.extension_deadline,
-            quiz_answer_details.fractional_credit,
-            bool_and((quiz_answer_details.is_selected = quiz_answer_details.is_correct)) AS answered_correctly,
-            COALESCE(json_agg(json_build_object('id', quiz_answer_details.quiz_question_option_id, 'body', quiz_answer_details.quiz_question_option_body, 'is_selected', quiz_answer_details.is_selected, 'is_correct', quiz_answer_details.is_correct) ORDER BY quiz_answer_details.quiz_question_option_id) FILTER (WHERE (quiz_answer_details.quiz_question_option_body IS NOT NULL)), '[]'::json) AS options
-           FROM api.quiz_answer_details
-          GROUP BY quiz_answer_details.user_id, quiz_answer_details.quiz_id, quiz_answer_details.has_submission, quiz_answer_details.quiz_question_id, quiz_answer_details.quiz_question_body, quiz_answer_details.extension_deadline, quiz_answer_details.fractional_credit
-          ORDER BY quiz_answer_details.quiz_id, quiz_answer_details.user_id, quiz_answer_details.quiz_question_id
-        ), graded_quizzes AS (
-         SELECT graded_questions.user_id,
-            graded_questions.quiz_id,
-            graded_questions.has_submission,
-            graded_questions.extension_deadline,
-            graded_questions.fractional_credit,
-            count(*) AS num_questions,
-            count(*) FILTER (WHERE graded_questions.answered_correctly) AS num_correct,
-            count(*) FILTER (WHERE (NOT graded_questions.answered_correctly)) AS num_wrong,
-            COALESCE(json_agg(json_build_object('id', graded_questions.quiz_question_id, 'body', graded_questions.quiz_question_body, 'answered_correctly', graded_questions.answered_correctly, 'options', graded_questions.options)) FILTER (WHERE (graded_questions.quiz_question_body IS NOT NULL)), '[]'::json) AS questions
-           FROM graded_questions
-          GROUP BY graded_questions.user_id, graded_questions.quiz_id, graded_questions.has_submission, graded_questions.extension_deadline, graded_questions.fractional_credit
-        )
- SELECT graded_quizzes.user_id,
-    u.name AS user_name,
-    u.nickname AS user_nickname,
-    u.email AS user_email,
-    quiz.id AS quiz_id,
-    quiz.meeting_slug,
-    graded_quizzes.has_submission,
-    graded_quizzes.extension_deadline,
-    graded_quizzes.num_questions,
-    graded_quizzes.num_correct,
-    graded_quizzes.num_wrong,
-    graded_quizzes.fractional_credit,
-    quiz.points_possible,
-    (((graded_quizzes.fractional_credit * (quiz.points_possible)::double precision) * (graded_quizzes.num_correct)::double precision) / (graded_quizzes.num_questions)::double precision) AS points,
-    graded_quizzes.questions
-   FROM ((graded_quizzes
-     JOIN data.quiz ON ((quiz.id = graded_quizzes.quiz_id)))
-     JOIN data."user" u ON ((graded_quizzes.user_id = u.id)))
-  ORDER BY quiz.id, graded_quizzes.user_id;
-
-
-ALTER TABLE api.quiz_grade_details OWNER TO api;
-
---
 -- Name: quiz_grade; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -1712,7 +1338,7 @@ CREATE VIEW api.quiz_grade_distributions AS
   GROUP BY quiz_grade.quiz_id;
 
 
-ALTER TABLE api.quiz_grade_distributions OWNER TO superuser;
+ALTER VIEW api.quiz_grade_distributions OWNER TO superuser;
 
 --
 -- Name: VIEW quiz_grade_distributions; Type: COMMENT; Schema: api; Owner: superuser
@@ -1778,112 +1404,131 @@ COMMENT ON COLUMN api.quiz_grade_distributions.grades IS 'The grades received by
 
 
 --
+-- Name: quiz_grade_exception; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.quiz_grade_exception (
+    id integer NOT NULL,
+    quiz_id integer NOT NULL,
+    user_id integer NOT NULL,
+    fractional_credit numeric DEFAULT 1 NOT NULL,
+    closed_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT quiz_grade_exception_fractional_credit_check CHECK (((fractional_credit >= (0)::numeric) AND (fractional_credit <= (1)::numeric))),
+    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
+);
+
+
+ALTER TABLE data.quiz_grade_exception OWNER TO superuser;
+
+--
 -- Name: quiz_grade_exceptions; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.quiz_grade_exceptions AS
- SELECT quiz_grade_exception.id,
-    quiz_grade_exception.quiz_id,
-    quiz_grade_exception.user_id,
-    quiz_grade_exception.fractional_credit,
-    quiz_grade_exception.closed_at,
-    quiz_grade_exception.created_at,
-    quiz_grade_exception.updated_at
+ SELECT id,
+    quiz_id,
+    user_id,
+    fractional_credit,
+    closed_at,
+    created_at,
+    updated_at
    FROM data.quiz_grade_exception;
 
 
-ALTER TABLE api.quiz_grade_exceptions OWNER TO api;
+ALTER VIEW api.quiz_grade_exceptions OWNER TO api;
 
 --
 -- Name: quiz_grades; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.quiz_grades AS
- SELECT quiz_grade.quiz_id,
-    quiz_grade.points,
-    quiz_grade.points_possible,
-    quiz_grade.description,
-    quiz_grade.user_id,
-    quiz_grade.created_at,
-    quiz_grade.updated_at
+ SELECT quiz_id,
+    points,
+    points_possible,
+    description,
+    user_id,
+    created_at,
+    updated_at
    FROM data.quiz_grade;
 
 
-ALTER TABLE api.quiz_grades OWNER TO api;
+ALTER VIEW api.quiz_grades OWNER TO api;
 
 --
--- Name: quiz_question_options; Type: VIEW; Schema: api; Owner: api
+-- Name: quiz_submission; Type: TABLE; Schema: data; Owner: superuser
 --
 
-CREATE VIEW api.quiz_question_options AS
- SELECT quiz_question_option.id,
-    quiz_question_option.quiz_question_id,
-    quiz_question_option.slug,
-    quiz_question_option.quiz_id,
-    quiz_question_option.body,
-    quiz_question_option.is_markdown,
-    quiz_question_option.is_correct,
-    quiz_question_option.created_at,
-    quiz_question_option.updated_at
-   FROM data.quiz_question_option;
+CREATE TABLE data.quiz_submission (
+    quiz_id integer NOT NULL,
+    user_id integer DEFAULT request.user_id() NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
+);
 
 
-ALTER TABLE api.quiz_question_options OWNER TO api;
-
---
--- Name: quiz_questions; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.quiz_questions AS
- SELECT qq.id,
-    qq.quiz_id,
-    qq.slug,
-    qq.is_markdown,
-    qq.body,
-    qq.created_at,
-    qq.updated_at,
-    ( SELECT (count(quiz_question_option.id) > 1)
-           FROM data.quiz_question_option
-          WHERE ((quiz_question_option.is_correct = true) AND (quiz_question_option.quiz_question_id = qq.id))) AS multiple_correct
-   FROM data.quiz_question qq;
-
-
-ALTER TABLE api.quiz_questions OWNER TO api;
+ALTER TABLE data.quiz_submission OWNER TO superuser;
 
 --
 -- Name: quiz_submissions; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.quiz_submissions AS
- SELECT quiz_submission.quiz_id,
-    quiz_submission.user_id,
-    quiz_submission.created_at,
-    quiz_submission.updated_at
+ SELECT quiz_id,
+    user_id,
+    created_at,
+    updated_at
    FROM data.quiz_submission;
 
 
-ALTER TABLE api.quiz_submissions OWNER TO api;
+ALTER VIEW api.quiz_submissions OWNER TO api;
+
+--
+-- Name: quiz; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.quiz (
+    id integer NOT NULL,
+    meeting_slug text NOT NULL,
+    points_possible smallint NOT NULL,
+    is_offline boolean DEFAULT true NOT NULL,
+    is_draft boolean DEFAULT true NOT NULL,
+    duration interval DEFAULT '00:15:00'::interval NOT NULL,
+    open_at timestamp with time zone NOT NULL,
+    closed_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT closed_after_open CHECK ((closed_at > open_at)),
+    CONSTRAINT quiz_meeting_slug_check CHECK ((char_length(meeting_slug) < 100)),
+    CONSTRAINT quiz_points_possible_check CHECK ((points_possible >= 0)),
+    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
+);
+
+
+ALTER TABLE data.quiz OWNER TO superuser;
 
 --
 -- Name: quizzes; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.quizzes AS
- SELECT quiz.id,
-    quiz.meeting_slug,
-    quiz.points_possible,
-    quiz.is_offline,
-    quiz.is_draft,
-    quiz.duration,
-    quiz.open_at,
-    quiz.closed_at,
-    quiz.created_at,
-    quiz.updated_at,
-    ((quiz.is_draft = false) AND (quiz.open_at < CURRENT_TIMESTAMP) AND (CURRENT_TIMESTAMP < quiz.closed_at)) AS is_open
+ SELECT id,
+    meeting_slug,
+    points_possible,
+    is_offline,
+    is_draft,
+    duration,
+    open_at,
+    closed_at,
+    created_at,
+    updated_at,
+    ((is_draft = false) AND (open_at < CURRENT_TIMESTAMP) AND (CURRENT_TIMESTAMP < closed_at)) AS is_open
    FROM data.quiz;
 
 
-ALTER TABLE api.quizzes OWNER TO api;
+ALTER VIEW api.quizzes OWNER TO api;
 
 --
 -- Name: quiz_submissions_info; Type: VIEW; Schema: api; Owner: api
@@ -1894,14 +1539,14 @@ CREATE VIEW api.quiz_submissions_info AS
     qs.user_id,
     qs.created_at,
     qs.updated_at,
-    ((q.is_draft = false) AND (q.open_at < CURRENT_TIMESTAMP) AND (CURRENT_TIMESTAMP < LEAST(COALESCE(qge.closed_at, q.closed_at), (qs.created_at + q.duration)))) AS is_open,
-    LEAST(COALESCE(qge.closed_at, q.closed_at), (qs.created_at + q.duration)) AS closed_at
+    false AS is_open,
+    COALESCE(qge.closed_at, q.closed_at) AS closed_at
    FROM ((api.quiz_submissions qs
      JOIN api.quizzes q ON ((qs.quiz_id = q.id)))
      LEFT JOIN api.quiz_grade_exceptions qge ON (((q.id = qge.quiz_id) AND (qs.user_id = qge.user_id))));
 
 
-ALTER TABLE api.quiz_submissions_info OWNER TO api;
+ALTER VIEW api.quiz_submissions_info OWNER TO api;
 
 --
 -- Name: team; Type: TABLE; Schema: data; Owner: superuser
@@ -1924,13 +1569,13 @@ ALTER TABLE data.team OWNER TO superuser;
 --
 
 CREATE VIEW api.teams AS
- SELECT team.nickname,
-    team.created_at,
-    team.updated_at
+ SELECT nickname,
+    created_at,
+    updated_at
    FROM data.team;
 
 
-ALTER TABLE api.teams OWNER TO api;
+ALTER VIEW api.teams OWNER TO api;
 
 --
 -- Name: ui_element; Type: TABLE; Schema: data; Owner: superuser
@@ -1954,15 +1599,15 @@ ALTER TABLE data.ui_element OWNER TO superuser;
 --
 
 CREATE VIEW api.ui_elements AS
- SELECT ui_element.key,
-    ui_element.body,
-    ui_element.is_markdown,
-    ui_element.created_at,
-    ui_element.updated_at
+ SELECT key,
+    body,
+    is_markdown,
+    created_at,
+    updated_at
    FROM data.ui_element;
 
 
-ALTER TABLE api.ui_elements OWNER TO api;
+ALTER VIEW api.ui_elements OWNER TO api;
 
 --
 -- Name: user_jwts; Type: VIEW; Schema: api; Owner: api
@@ -1971,25 +1616,25 @@ ALTER TABLE api.ui_elements OWNER TO api;
 CREATE VIEW api.user_jwts AS
  SELECT
         CASE
-            WHEN ((request.user_role() = 'faculty'::text) OR (request.user_id() = "user".id) OR ((request.user_role() = 'app'::text) AND (request.app_name() = 'authapp'::text))) THEN auth.sign_jwt("user".id, "user".role)
+            WHEN ((request.user_role() = 'faculty'::text) OR (request.user_id() = id) OR ((request.user_role() = 'app'::text) AND (request.app_name() = 'authapp'::text))) THEN auth.sign_jwt(id, role)
             ELSE NULL::text
         END AS jwt,
-    "user".id,
-    "user".email,
-    "user".netid,
-    "user".name,
-    "user".lastname,
-    "user".organization,
-    "user".known_as,
-    "user".nickname,
-    "user".role,
-    "user".created_at,
-    "user".updated_at,
-    "user".team_nickname
+    id,
+    email,
+    netid,
+    name,
+    lastname,
+    organization,
+    known_as,
+    nickname,
+    role,
+    created_at,
+    updated_at,
+    team_nickname
    FROM data."user";
 
 
-ALTER TABLE api.user_jwts OWNER TO api;
+ALTER VIEW api.user_jwts OWNER TO api;
 
 --
 -- Name: user_secret; Type: TABLE; Schema: data; Owner: superuser
@@ -2017,39 +1662,39 @@ ALTER TABLE data.user_secret OWNER TO superuser;
 --
 
 CREATE VIEW api.user_secrets AS
- SELECT user_secret.id,
-    user_secret.slug,
-    user_secret.body,
-    user_secret.user_id,
-    user_secret.team_nickname,
-    user_secret.created_at,
-    user_secret.updated_at
+ SELECT id,
+    slug,
+    body,
+    user_id,
+    team_nickname,
+    created_at,
+    updated_at
    FROM data.user_secret;
 
 
-ALTER TABLE api.user_secrets OWNER TO api;
+ALTER VIEW api.user_secrets OWNER TO api;
 
 --
 -- Name: users; Type: VIEW; Schema: api; Owner: api
 --
 
 CREATE VIEW api.users AS
- SELECT "user".id,
-    "user".email,
-    "user".netid,
-    "user".name,
-    "user".lastname,
-    "user".organization,
-    "user".known_as,
-    "user".nickname,
-    "user".role,
-    "user".created_at,
-    "user".updated_at,
-    "user".team_nickname
+ SELECT id,
+    email,
+    netid,
+    name,
+    lastname,
+    organization,
+    known_as,
+    nickname,
+    role,
+    created_at,
+    updated_at,
+    team_nickname
    FROM data."user";
 
 
-ALTER TABLE api.users OWNER TO api;
+ALTER VIEW api.users OWNER TO api;
 
 --
 -- Name: assignment_grade_exception_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
@@ -2078,7 +1723,7 @@ CREATE SEQUENCE data.assignment_submission_id_seq
     CACHE 1;
 
 
-ALTER TABLE data.assignment_submission_id_seq OWNER TO superuser;
+ALTER SEQUENCE data.assignment_submission_id_seq OWNER TO superuser;
 
 --
 -- Name: assignment_submission_id_seq; Type: SEQUENCE OWNED BY; Schema: data; Owner: superuser
@@ -2114,57 +1759,13 @@ CREATE SEQUENCE data.quiz_id_seq
     CACHE 1;
 
 
-ALTER TABLE data.quiz_id_seq OWNER TO superuser;
+ALTER SEQUENCE data.quiz_id_seq OWNER TO superuser;
 
 --
 -- Name: quiz_id_seq; Type: SEQUENCE OWNED BY; Schema: data; Owner: superuser
 --
 
 ALTER SEQUENCE data.quiz_id_seq OWNED BY data.quiz.id;
-
-
---
--- Name: quiz_question_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
---
-
-CREATE SEQUENCE data.quiz_question_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE data.quiz_question_id_seq OWNER TO superuser;
-
---
--- Name: quiz_question_id_seq; Type: SEQUENCE OWNED BY; Schema: data; Owner: superuser
---
-
-ALTER SEQUENCE data.quiz_question_id_seq OWNED BY data.quiz_question.id;
-
-
---
--- Name: quiz_question_option_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
---
-
-CREATE SEQUENCE data.quiz_question_option_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER TABLE data.quiz_question_option_id_seq OWNER TO superuser;
-
---
--- Name: quiz_question_option_id_seq; Type: SEQUENCE OWNED BY; Schema: data; Owner: superuser
---
-
-ALTER SEQUENCE data.quiz_question_option_id_seq OWNED BY data.quiz_question_option.id;
 
 
 --
@@ -2194,7 +1795,7 @@ CREATE SEQUENCE data.todo_id_seq
     CACHE 1;
 
 
-ALTER TABLE data.todo_id_seq OWNER TO superuser;
+ALTER SEQUENCE data.todo_id_seq OWNER TO superuser;
 
 --
 -- Name: todo_id_seq; Type: SEQUENCE OWNED BY; Schema: data; Owner: superuser
@@ -2216,7 +1817,7 @@ CREATE SEQUENCE data.user_id_seq
     CACHE 1;
 
 
-ALTER TABLE data.user_id_seq OWNER TO superuser;
+ALTER SEQUENCE data.user_id_seq OWNER TO superuser;
 
 --
 -- Name: user_id_seq; Type: SEQUENCE OWNED BY; Schema: data; Owner: superuser
@@ -2263,20 +1864,6 @@ ALTER TABLE ONLY data.assignment_submission ALTER COLUMN id SET DEFAULT nextval(
 --
 
 ALTER TABLE ONLY data.quiz ALTER COLUMN id SET DEFAULT nextval('data.quiz_id_seq'::regclass);
-
-
---
--- Name: quiz_question id; Type: DEFAULT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question ALTER COLUMN id SET DEFAULT nextval('data.quiz_question_id_seq'::regclass);
-
-
---
--- Name: quiz_question_option id; Type: DEFAULT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question_option ALTER COLUMN id SET DEFAULT nextval('data.quiz_question_option_id_seq'::regclass);
 
 
 --
@@ -2406,14 +1993,6 @@ ALTER TABLE ONLY data.meeting
 
 
 --
--- Name: quiz_answer quiz_answer_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_answer
-    ADD CONSTRAINT quiz_answer_pkey PRIMARY KEY (quiz_id, user_id, quiz_question_option_id);
-
-
---
 -- Name: quiz_grade_exception quiz_grade_exception_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
 --
 
@@ -2459,54 +2038,6 @@ ALTER TABLE ONLY data.quiz
 
 ALTER TABLE ONLY data.quiz
     ADD CONSTRAINT quiz_pkey PRIMARY KEY (id);
-
-
---
--- Name: quiz_question quiz_question_id_quiz_id_key; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question
-    ADD CONSTRAINT quiz_question_id_quiz_id_key UNIQUE (id, quiz_id);
-
-
---
--- Name: quiz_question_option quiz_question_option_id_quiz_id_key; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question_option
-    ADD CONSTRAINT quiz_question_option_id_quiz_id_key UNIQUE (id, quiz_id);
-
-
---
--- Name: quiz_question_option quiz_question_option_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question_option
-    ADD CONSTRAINT quiz_question_option_pkey PRIMARY KEY (id);
-
-
---
--- Name: quiz_question_option quiz_question_option_quiz_question_id_slug_key; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question_option
-    ADD CONSTRAINT quiz_question_option_quiz_question_id_slug_key UNIQUE (quiz_question_id, slug);
-
-
---
--- Name: quiz_question quiz_question_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question
-    ADD CONSTRAINT quiz_question_pkey PRIMARY KEY (id);
-
-
---
--- Name: quiz_question quiz_question_quiz_id_slug_key; Type: CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question
-    ADD CONSTRAINT quiz_question_quiz_id_slug_key UNIQUE (quiz_id, slug);
 
 
 --
@@ -2631,10 +2162,18 @@ CREATE UNIQUE INDEX secret_unique_slug_team ON data.user_secret USING btree (tea
 CREATE UNIQUE INDEX secret_unique_slug_user ON data.user_secret USING btree (user_id, slug) WHERE (team_nickname IS NULL);
 
 
+--
 -- Name: assignment tg_assignment_default; Type: TRIGGER; Schema: data; Owner: superuser
 --
 
 CREATE TRIGGER tg_assignment_default BEFORE INSERT OR UPDATE ON data.assignment FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column();
+
+
+--
+-- Name: assignment_field tg_assignment_field_default; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_assignment_field_default BEFORE INSERT OR UPDATE ON data.assignment_field FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column();
 
 
 --
@@ -2694,13 +2233,6 @@ CREATE TRIGGER tg_meeting_default BEFORE INSERT OR UPDATE ON data.meeting FOR EA
 
 
 --
--- Name: quiz_answer tg_quiz_answer_default; Type: TRIGGER; Schema: data; Owner: superuser
---
-
-CREATE TRIGGER tg_quiz_answer_default BEFORE INSERT OR UPDATE ON data.quiz_answer FOR EACH ROW EXECUTE FUNCTION data.fill_answer_defaults();
-
-
---
 -- Name: quiz tg_quiz_default; Type: TRIGGER; Schema: data; Owner: superuser
 --
 
@@ -2719,20 +2251,6 @@ CREATE TRIGGER tg_quiz_grade_default BEFORE INSERT OR UPDATE ON data.quiz_grade 
 --
 
 CREATE TRIGGER tg_quiz_grade_exception_default BEFORE INSERT OR UPDATE ON data.quiz_grade_exception FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column();
-
-
---
--- Name: quiz_question tg_quiz_question_default; Type: TRIGGER; Schema: data; Owner: superuser
---
-
-CREATE TRIGGER tg_quiz_question_default BEFORE INSERT OR UPDATE ON data.quiz_question FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column();
-
-
---
--- Name: quiz_question_option tg_quiz_question_option_default; Type: TRIGGER; Schema: data; Owner: superuser
---
-
-CREATE TRIGGER tg_quiz_question_option_default BEFORE INSERT OR UPDATE ON data.quiz_question_option FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column();
 
 
 --
@@ -2907,22 +2425,6 @@ ALTER TABLE ONLY data.grade
 
 
 --
--- Name: quiz_answer quiz_answer_quiz_id_user_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_answer
-    ADD CONSTRAINT quiz_answer_quiz_id_user_id_fkey FOREIGN KEY (quiz_id, user_id) REFERENCES data.quiz_submission(quiz_id, user_id) ON UPDATE CASCADE;
-
-
---
--- Name: quiz_answer quiz_answer_quiz_question_option_id_quiz_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_answer
-    ADD CONSTRAINT quiz_answer_quiz_question_option_id_quiz_id_fkey FOREIGN KEY (quiz_question_option_id, quiz_id) REFERENCES data.quiz_question_option(id, quiz_id) ON UPDATE CASCADE;
-
-
---
 -- Name: quiz_grade_exception quiz_grade_exception_quiz_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
 --
 
@@ -2968,30 +2470,6 @@ ALTER TABLE ONLY data.quiz_grade
 
 ALTER TABLE ONLY data.quiz
     ADD CONSTRAINT quiz_meeting_slug_fkey FOREIGN KEY (meeting_slug) REFERENCES data.meeting(slug) ON UPDATE CASCADE;
-
-
---
--- Name: quiz_question_option quiz_question_option_quiz_question_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question_option
-    ADD CONSTRAINT quiz_question_option_quiz_question_id_fkey FOREIGN KEY (quiz_question_id) REFERENCES data.quiz_question(id) ON UPDATE CASCADE;
-
-
---
--- Name: quiz_question_option quiz_question_option_quiz_question_id_quiz_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question_option
-    ADD CONSTRAINT quiz_question_option_quiz_question_id_quiz_id_fkey FOREIGN KEY (quiz_question_id, quiz_id) REFERENCES data.quiz_question(id, quiz_id) ON UPDATE CASCADE;
-
-
---
--- Name: quiz_question quiz_question_quiz_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
---
-
-ALTER TABLE ONLY data.quiz_question
-    ADD CONSTRAINT quiz_question_quiz_id_fkey FOREIGN KEY (quiz_id) REFERENCES data.quiz(id) ON UPDATE CASCADE;
 
 
 --
@@ -3141,46 +2619,6 @@ CREATE POLICY grade_access_policy ON data.grade TO api USING ((((request.user_ro
 
 
 --
--- Name: quiz_answer; Type: ROW SECURITY; Schema: data; Owner: superuser
---
-
-ALTER TABLE data.quiz_answer ENABLE ROW LEVEL SECURITY;
-
---
--- Name: quiz_answer quiz_answer_select_policy; Type: POLICY; Schema: data; Owner: superuser
---
-
-CREATE POLICY quiz_answer_select_policy ON data.quiz_answer FOR SELECT TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text)));
-
-
---
--- Name: quiz_answer quiz_answer_insert_policy; Type: POLICY; Schema: data; Owner: superuser
---
-
-CREATE POLICY quiz_answer_insert_policy ON data.quiz_answer FOR INSERT TO api WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id) AND (EXISTS ( SELECT qsi.quiz_id,
-    qsi.user_id
-   FROM api.quiz_submissions_info qsi
-  WHERE ((qsi.quiz_id = quiz_answer.quiz_id) AND qsi.is_open AND (qsi.user_id = quiz_answer.user_id)))))));
-
-
---
--- Name: quiz_answer quiz_answer_update_policy; Type: POLICY; Schema: data; Owner: superuser
---
-
-CREATE POLICY quiz_answer_update_policy ON data.quiz_answer FOR UPDATE TO api USING ((request.user_role() = 'faculty'::text)) WITH CHECK ((request.user_role() = 'faculty'::text));
-
-
---
--- Name: quiz_answer quiz_answer_delete_policy; Type: POLICY; Schema: data; Owner: superuser
---
-
-CREATE POLICY quiz_answer_delete_policy ON data.quiz_answer FOR DELETE TO api USING (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id) AND (EXISTS ( SELECT qsi.quiz_id,
-    qsi.user_id
-   FROM api.quiz_submissions_info qsi
-  WHERE ((qsi.quiz_id = quiz_answer.quiz_id) AND qsi.is_open AND (qsi.user_id = quiz_answer.user_id)))))));
-
-
---
 -- Name: quiz_grade; Type: ROW SECURITY; Schema: data; Owner: superuser
 --
 
@@ -3207,38 +2645,6 @@ CREATE POLICY quiz_grade_exception_access_policy ON data.quiz_grade_exception TO
 
 
 --
--- Name: quiz_question; Type: ROW SECURITY; Schema: data; Owner: superuser
---
-
-ALTER TABLE data.quiz_question ENABLE ROW LEVEL SECURITY;
-
---
--- Name: quiz_question quiz_question_access_policy; Type: POLICY; Schema: data; Owner: superuser
---
-
-CREATE POLICY quiz_question_access_policy ON data.quiz_question TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (EXISTS ( SELECT qs.quiz_id,
-    qs.user_id
-   FROM api.quiz_submissions qs
-  WHERE ((qs.user_id = request.user_id()) AND (quiz_question.quiz_id = qs.quiz_id))))) OR (request.user_role() = 'faculty'::text)));
-
-
---
--- Name: quiz_question_option; Type: ROW SECURITY; Schema: data; Owner: superuser
---
-
-ALTER TABLE data.quiz_question_option ENABLE ROW LEVEL SECURITY;
-
---
--- Name: quiz_question_option quiz_question_option_access_policy; Type: POLICY; Schema: data; Owner: superuser
---
-
-CREATE POLICY quiz_question_option_access_policy ON data.quiz_question_option TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (EXISTS ( SELECT qs.quiz_id,
-    qs.user_id
-   FROM api.quiz_submissions qs
-  WHERE ((qs.user_id = request.user_id()) AND (quiz_question_option.quiz_id = qs.quiz_id))))) OR (request.user_role() = 'faculty'::text)));
-
-
---
 -- Name: quiz_submission; Type: ROW SECURITY; Schema: data; Owner: superuser
 --
 
@@ -3248,10 +2654,7 @@ ALTER TABLE data.quiz_submission ENABLE ROW LEVEL SECURITY;
 -- Name: quiz_submission quiz_submission_access_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY quiz_submission_access_policy ON data.quiz_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND ((request.user_id() = user_id) AND (EXISTS ( SELECT q.id
-   FROM (api.quizzes q
-     LEFT JOIN api.quiz_grade_exceptions qge ON ((q.id = qge.quiz_id)))
-  WHERE ((q.id = quiz_submission.quiz_id) AND (q.is_open OR ((qge.closed_at > CURRENT_TIMESTAMP) AND (q.is_draft = false) AND (q.open_at < CURRENT_TIMESTAMP))))))))));
+CREATE POLICY quiz_submission_access_policy ON data.quiz_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (request.user_id() = user_id)) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
 
 
 --
@@ -3308,38 +2711,11 @@ GRANT USAGE ON SCHEMA api TO faculty;
 GRANT USAGE ON SCHEMA api TO app;
 
 
+--
 -- Name: SCHEMA request; Type: ACL; Schema: -; Owner: superuser
 --
 
 GRANT USAGE ON SCHEMA request TO PUBLIC;
-
-
---
--- Name: FUNCTION delete_quiz_question(integer); Type: ACL; Schema: api; Owner: superuser
---
-
-REVOKE ALL ON FUNCTION api.delete_quiz_question(integer) FROM PUBLIC;
-
-
---
--- Name: FUNCTION delete_quiz_question(integer, text); Type: ACL; Schema: api; Owner: superuser
---
-
-REVOKE ALL ON FUNCTION api.delete_quiz_question(integer, text) FROM PUBLIC;
-
-
---
--- Name: FUNCTION delete_quiz_question_option(integer, text, text); Type: ACL; Schema: api; Owner: superuser
---
-
-REVOKE ALL ON FUNCTION api.delete_quiz_question_option(integer, text, text) FROM PUBLIC;
-
-
---
--- Name: TABLE quiz_answer; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_answer TO api;
 
 
 --
@@ -3532,66 +2908,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.meetings TO faculty;
 
 
 --
--- Name: TABLE quiz; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz TO api;
-
-
---
--- Name: TABLE quiz_grade_exception; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_grade_exception TO api;
-
-
---
--- Name: TABLE quiz_question; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_question TO api;
-
-
---
--- Name: TABLE quiz_question_option; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_question_option TO api;
-
-
---
--- Name: TABLE quiz_submission; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_submission TO api;
-
-
---
--- Name: TABLE quiz_answer_details; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT ON TABLE api.quiz_answer_details TO ta;
-GRANT SELECT ON TABLE api.quiz_answer_details TO faculty;
-
-
---
--- Name: TABLE quiz_answers; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT,INSERT,DELETE ON TABLE api.quiz_answers TO student;
-GRANT SELECT,INSERT,DELETE ON TABLE api.quiz_answers TO ta;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_answers TO faculty;
-
-
---
--- Name: TABLE quiz_grade_details; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT ON TABLE api.quiz_grade_details TO ta;
-GRANT SELECT ON TABLE api.quiz_grade_details TO faculty;
-
-
---
 -- Name: TABLE quiz_grade; Type: ACL; Schema: data; Owner: superuser
 --
 
@@ -3605,6 +2921,13 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_grade TO api;
 GRANT SELECT ON TABLE api.quiz_grade_distributions TO student;
 GRANT SELECT ON TABLE api.quiz_grade_distributions TO ta;
 GRANT SELECT ON TABLE api.quiz_grade_distributions TO faculty;
+
+
+--
+-- Name: TABLE quiz_grade_exception; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_grade_exception TO api;
 
 
 --
@@ -3626,84 +2949,26 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_grades TO faculty;
 
 
 --
--- Name: TABLE quiz_question_options; Type: ACL; Schema: api; Owner: api
+-- Name: TABLE quiz_submission; Type: ACL; Schema: data; Owner: superuser
 --
 
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_question_options TO faculty;
-
-
---
--- Name: COLUMN quiz_question_options.id; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(id) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(id) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: COLUMN quiz_question_options.quiz_question_id; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(quiz_question_id) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(quiz_question_id) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: COLUMN quiz_question_options.quiz_id; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(quiz_id) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(quiz_id) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: COLUMN quiz_question_options.body; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(body) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(body) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: COLUMN quiz_question_options.is_markdown; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(is_markdown) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(is_markdown) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: COLUMN quiz_question_options.created_at; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(created_at) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(created_at) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: COLUMN quiz_question_options.updated_at; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT(updated_at) ON TABLE api.quiz_question_options TO student;
-GRANT SELECT(updated_at) ON TABLE api.quiz_question_options TO ta;
-
-
---
--- Name: TABLE quiz_questions; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT ON TABLE api.quiz_questions TO student;
-GRANT SELECT ON TABLE api.quiz_questions TO ta;
-GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_questions TO faculty;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz_submission TO api;
 
 
 --
 -- Name: TABLE quiz_submissions; Type: ACL; Schema: api; Owner: api
 --
 
-GRANT SELECT,INSERT ON TABLE api.quiz_submissions TO student;
-GRANT SELECT,INSERT ON TABLE api.quiz_submissions TO ta;
+GRANT SELECT ON TABLE api.quiz_submissions TO student;
+GRANT SELECT ON TABLE api.quiz_submissions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quiz_submissions TO faculty;
+
+
+--
+-- Name: TABLE quiz; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz TO api;
 
 
 --
@@ -3810,32 +3075,16 @@ GRANT USAGE ON SEQUENCE data.quiz_id_seq TO faculty;
 
 
 --
--- Name: SEQUENCE quiz_question_id_seq; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT USAGE ON SEQUENCE data.quiz_question_id_seq TO student;
-GRANT USAGE ON SEQUENCE data.quiz_question_id_seq TO ta;
-GRANT USAGE ON SEQUENCE data.quiz_question_id_seq TO faculty;
-
-
---
--- Name: SEQUENCE quiz_question_option_id_seq; Type: ACL; Schema: data; Owner: superuser
---
-
-GRANT USAGE ON SEQUENCE data.quiz_question_option_id_seq TO student;
-GRANT USAGE ON SEQUENCE data.quiz_question_option_id_seq TO ta;
-GRANT USAGE ON SEQUENCE data.quiz_question_option_id_seq TO faculty;
-
-
---
 -- Name: DEFAULT PRIVILEGES FOR FUNCTIONS; Type: DEFAULT ACL; Schema: -; Owner: api
 --
 
-ALTER DEFAULT PRIVILEGES FOR ROLE api REVOKE ALL ON FUNCTIONS  FROM PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE api REVOKE ALL ON FUNCTIONS FROM PUBLIC;
 
 
 --
 -- PostgreSQL database dump complete
 --
+
+\unrestrict fq9xhGLKGBw7n8qQ11b3ZINXaqhGdpK8yLfDcTHUAq0ea2fg7KvmM8pEI2BWlF7
 
 COMMIT;

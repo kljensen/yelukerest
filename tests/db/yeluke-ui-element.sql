@@ -46,9 +46,6 @@ select set_eq(
 set local role student;
 set request.jwt.claim.role = 'student';
 
--- PREPARE insertanswer AS INSERT INTO api.quiz_answers (quiz_id,user_id,quiz_question_option_id) VALUES($1, $2, $3);
--- PREPARE deleteanswer AS DELETE FROM api.quiz_answers WHERE user_id = $1 and quiz_question_option_id = $2;
-
 select throws_like(
     'INSERT INTO api.ui_elements (key, body) VALUES (''foo'', ''bar'')',
     '%permission denied%',

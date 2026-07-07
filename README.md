@@ -5,7 +5,7 @@ functions of the software include:
 
 - recording student enrollment and participation;
 - storing class information, such as meeting times, meeting subjects, and pre-class reading;
-- storing and administering multiple choice quizzes;
+- storing paper quiz metadata and grades;
 - storing assignment information and accepting assignment submissions; and,
 - storing student grades on assignments and quizzes.
 

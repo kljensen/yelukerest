@@ -3,9 +3,6 @@
 \ir team.sql
 \ir quiz.sql
 \ir quiz_submission.sql
-\ir quiz_question.sql
-\ir quiz_question_option.sql
-\ir quiz_answer.sql
 \ir ui_element.sql
 \ir assignment.sql
 \ir assignment_field.sql

@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(13);
 
 SELECT view_owner_is(
     'api', 'quiz_submissions', 'api',
@@ -12,8 +12,8 @@ SELECT view_owner_is(
 );
 
 SELECT table_privs_are(
-    'api', 'quiz_submissions', 'student', ARRAY['SELECT', 'INSERT'],
-    'student should only be granted SELECT, INSERT on view "api.quiz_submissions"'
+    'api', 'quiz_submissions', 'student', ARRAY['SELECT'],
+    'student should only be granted SELECT on view "api.quiz_submissions"'
 );
 
 SELECT table_privs_are(
@@ -29,11 +29,6 @@ SELECT table_privs_are(
     'api', 'quiz_submissions_info', 'faculty', ARRAY['SELECT'],
     'faculty should only be granted select on view "api.quiz_submissions_info"'
 );
-SELECT table_privs_are(
-    'data', 'quiz', 'faculty', ARRAY[]::text[],
-    'faculty should only be granted nothing on "data.quiz_question"'
-);
-
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
 
@@ -58,6 +53,12 @@ SELECT set_eq(
     'students shoud only be able to see their own quiz submissions (user 1) in the quiz_submissions_info_view'
 );
 
+SELECT results_eq(
+    'SELECT is_open FROM api.quiz_submissions_info ORDER BY (quiz_id)',
+    ARRAY[false],
+    'paper quiz submissions are never open for online answer editing'
+);
+
 set request.jwt.claim.user_id = '3';
 
 SELECT set_eq(
@@ -68,89 +69,18 @@ SELECT set_eq(
 
 PREPARE startquiz AS INSERT INTO api.quiz_submissions (quiz_id, user_id) VALUES($1, $2);
 
-
-
 SELECT throws_ok(
-    'EXECUTE startquiz(1, 3)', -- Quiz 1 is closed
+    'EXECUTE startquiz(1, 3)',
     '42501',
-    'new row violates row-level security policy for table "quiz_submission"',
-    'students should not be able to create a quiz submission after the quiz is closed'
-);
-
-SELECT throws_ok(
-    'EXECUTE startquiz(3, 3)', -- Quiz 3 is in draft mode
-    '42501',
-    'new row violates row-level security policy for table "quiz_submission"',
-    'students should not be able to create quiz submissions if quiz is draft'
+    'permission denied for view quiz_submissions',
+    'students should not be able to create paper quiz submissions'
 );
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
-UPDATE api.quizzes SET open_at = current_timestamp + '1 hour' WHERE id=2;
-
-set local role student;
-set request.jwt.claim.role = 'student';
-set request.jwt.claim.user_id = '3';
 
 SELECT throws_ok(
-    'EXECUTE startquiz(2, 3)', -- Quiz 3 is in draft mode in the sample data
-    '42501',
-    'new row violates row-level security policy for table "quiz_submission"',
-    'students should not be able to create quiz submissions if quiz is not yet open'
-);
-
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-UPDATE api.quizzes SET
-    open_at = (current_timestamp - '1 hour'::INTERVAL),
-    closed_at = (current_timestamp - '30 minutes'::INTERVAL)
-    WHERE id=2;
-
-set local role student;
-set request.jwt.claim.role = 'student';
-set request.jwt.claim.user_id = '3';
-
-SELECT throws_ok(
-    'EXECUTE startquiz(2, 3)', 
-    '42501',
-    'new row violates row-level security policy for table "quiz_submission"',
-    'students should not be able to create quiz submissions if quiz is closed already'
-);
-
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-DELETE FROM api.quiz_grade_exceptions;
-UPDATE api.quizzes SET
-    open_at = (current_timestamp - '1 hour'::INTERVAL),
-    closed_at = (current_timestamp + '30 minutes'::INTERVAL)
-    WHERE id=2;
-
-set local role student;
-set request.jwt.claim.role = 'student';
-set request.jwt.claim.user_id = '3';
-
-SELECT throws_ok(
-    'EXECUTE startquiz(2, 4)', 
-    '42501',
-    'new row violates row-level security policy for table "quiz_submission"',
-    'students should not be able to create quiz submissions if it is not for them'
-);
-
-SELECT lives_ok(
-    'EXECUTE startquiz(2, 3)', 
-    'students should be able to create quiz submissions if it is for themselves, not draft, after open, and before closed'
-);
-
-SELECT set_eq(
-    'SELECT quiz_id FROM api.quiz_submissions ORDER BY (quiz_id)',
-    ARRAY[2],
-    'students shoud only be able to see their newly created quiz submissions (user 3)'
-);
-
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-SELECT throws_ok(
-    'EXECUTE startquiz(2, 3)', 
+    'EXECUTE startquiz(1, 1)',
     '23505',
     'duplicate key value violates unique constraint "quiz_submission_pkey"',
     'only one quiz is allowed per user per quiz'

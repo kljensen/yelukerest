@@ -19,6 +19,8 @@ BEGIN;
 -- PostgreSQL database cluster dump
 --
 
+\restrict gl5jagVdyGPOBeMbT1Qp0AsOTp9yZiDqUfxwEIqXLDaFwNSka3wes4Jpldrg2bY
+
 SET default_transaction_read_only = off;
 
 SET client_encoding = 'UTF8';
@@ -45,19 +47,27 @@ ALTER ROLE student WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NORE
 CREATE ROLE ta;
 ALTER ROLE ta WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 
+--
+-- User Configurations
+--
+
 
 --
 -- Role memberships
 --
 
-GRANT anonymous TO :authenticator_user GRANTED BY :super_user;
-GRANT api TO :super_user GRANTED BY :super_user;
-GRANT app TO :authenticator_user GRANTED BY :super_user;
-GRANT faculty TO :authenticator_user GRANTED BY :super_user;
-GRANT observer TO :authenticator_user GRANTED BY :super_user;
-GRANT student TO :authenticator_user GRANTED BY :super_user;
-GRANT ta TO :authenticator_user GRANTED BY :super_user;
+GRANT anonymous TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
+GRANT api TO :super_user WITH INHERIT TRUE GRANTED BY :super_user;
+GRANT app TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
+GRANT faculty TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
+GRANT observer TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
+GRANT student TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
+GRANT ta TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
 
+
+
+
+\unrestrict gl5jagVdyGPOBeMbT1Qp0AsOTp9yZiDqUfxwEIqXLDaFwNSka3wes4Jpldrg2bY
 
 --
 -- PostgreSQL database cluster dump complete

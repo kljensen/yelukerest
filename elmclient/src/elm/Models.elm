@@ -20,11 +20,9 @@ import Meetings.Model exposing (Meeting, MeetingSlug)
 import Quizzes.Model
     exposing
         ( Quiz
-        , QuizAnswer
         , QuizGrade
         , QuizGradeDistribution
         , QuizGradeException
-        , QuizQuestion
         , QuizSubmission
         )
 import RemoteData exposing (WebData)
@@ -92,13 +90,6 @@ type alias Model =
     -- assigment field submissions.
     , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
 
-    -- A dictionary tracking POST requests to the server to create
-    -- new quiz submissions.
-    , pendingBeginQuizzes : Dict Int (WebData (List QuizSubmission))
-    , pendingSubmitQuizzes : Dict Int (WebData (List QuizAnswer))
-    , quizAnswers : Dict Int (WebData (List QuizAnswer))
-    , quizQuestions : Dict Int (WebData (List QuizQuestion))
-    , quizQuestionOptionInputs : Set Int
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
     , pendingSubmitEngagements : Dict ( String, Int ) (WebData Engagement)
@@ -134,13 +125,8 @@ initialModel flags route key =
     , assignmentGrades = RemoteData.NotAsked
     , assignmentGradeDistributions = RemoteData.NotAsked
     , pendingBeginAssignments = Dict.empty
-    , pendingBeginQuizzes = Dict.empty
-    , pendingSubmitQuizzes = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
-    , quizAnswers = Dict.empty
-    , quizQuestions = Dict.empty
-    , quizQuestionOptionInputs = Set.empty
     , engagements = RemoteData.NotAsked
     , users = RemoteData.NotAsked
     , pendingSubmitEngagements = Dict.empty
@@ -157,5 +143,4 @@ type Route
     | AssignmentDetailRoute AssignmentSlug
     | AssignmentGradeDetailRoute AssignmentSlug
     | EditEngagementsRoute String
-    | TakeQuizRoute Int
     | NotFoundRoute

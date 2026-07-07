@@ -56,7 +56,7 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
 - **`user`**: Students, faculty, staff with role-based access
 - **`meeting`**: Class meeting times and subjects
 - **`engagement`**: Student participation tracking
-- **`quiz`** + **`quiz_question`** + **`quiz_answer`**: Quiz system
+- **`quiz`** + **`quiz_submission`** + **`quiz_grade`**: Paper quiz metadata, submissions, and grades
 - **`assignment`** + **`assignment_field`** + **`assignment_submission`**: Assignment management
 - **`grade`**: Grade calculations and distributions
 - **`team`**: Group/team management

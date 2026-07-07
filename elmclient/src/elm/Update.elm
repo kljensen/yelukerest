@@ -29,31 +29,20 @@ import Models exposing (Model, Route(..))
 import Msgs exposing (BrowserLocation(..), Msg)
 import Quizzes.Commands
     exposing
-        ( createQuizSubmission
-        , fetchQuizAnswers
-        , fetchQuizGradeDistributions
+        ( fetchQuizGradeDistributions
         , fetchQuizGradeExceptions
         , fetchQuizGrades
-        , fetchQuizQuestions
         , fetchQuizSubmissions
         , fetchQuizzes
         )
 import Quizzes.Updates
     exposing
-        ( onBeginQuiz
-        , onBeginQuizComplete
-        , onFetchQuizGradeDistributions
+        ( onFetchQuizGradeDistributions
         , onFetchQuizGrades
-        , onFetchQuizAnswers
         , onFetchQuizSubmissions
-        , onSubmitQuizAnswers
-        , onSubmitQuizAnswersComplete
-        , takeQuiz
         )
-import Quizzes.Model exposing (updateIntSet)
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
-import Set exposing (Set)
 import Time exposing (Posix)
 import Url
 import Users.Commands exposing (fetchUserSecrets, fetchUsers)
@@ -246,15 +235,6 @@ update msg model =
         Msgs.OnFetchAssignmentGradeDistributions response ->
             onFetchAssignmentGradeDistributions model response
 
-        Msgs.OnBeginQuiz quizID ->
-            onBeginQuiz model quizID
-
-        Msgs.OnBeginQuizComplete quizID response ->
-            onBeginQuizComplete model quizID response
-
-        Msgs.TakeQuiz quizID ->
-            takeQuiz model quizID
-
         Msgs.OnFetchAssignmentGradeExceptions assignmentGradeExceptions ->
             ( { model | assignmentGradeExceptions = assignmentGradeExceptions }, Cmd.none )
 
@@ -263,35 +243,6 @@ update msg model =
 
         Msgs.OnFetchQuizGradeExceptions quizGradeExceptions ->
             ( { model | quizGradeExceptions = quizGradeExceptions }, Cmd.none )
-
-        Msgs.OnFetchQuizQuestions quizID response ->
-            ( { model | quizQuestions = Dict.insert quizID response model.quizQuestions }, Cmd.none )
-
-        Msgs.OnFetchQuizAnswers quizID response ->
-            onFetchQuizAnswers model quizID response
-
-        Msgs.OnSubmitQuizAnswers quizID quizQuestionOptionIds ->
-            onSubmitQuizAnswers model quizID quizQuestionOptionIds
-
-        Msgs.OnSubmitQuizAnswersComplete quizID response ->
-            onSubmitQuizAnswersComplete model quizID response
-
-        --  Handle toggling of radio boxes on the quizzes
-        Msgs.OnSelectQuizQuestionOption optionID allOptionIDs _ ->
-            let
-                newQOIs = updateIntSet model.quizQuestionOptionInputs allOptionIDs [optionID] 
-            in
-            ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
-
-        --  Handle toggling of checkboxes on the quizzes
-        Msgs.OnToggleQuizQuestionOption optionID checked ->
-            let
-                newQOIs = if checked then
-                        Set.insert optionID model.quizQuestionOptionInputs
-                    else
-                        Set.remove optionID model.quizQuestionOptionInputs
-            in
-            ( { model | quizQuestionOptionInputs = newQOIs }, Cmd.none )
 
         Msgs.OnFetchEngagements response ->
             ( { model | engagements = response }, Cmd.none )

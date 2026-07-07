@@ -1,11 +1,9 @@
 module Meetings.Views exposing (detailView, listView)
 
 import Auth.Model exposing (CurrentUser, isLoggedInFacultyOrTA)
-import Common.Views exposing (longDateToString, stringDateDelta)
-import Dict exposing (Dict)
+import Common.Views exposing (longDateToString)
 import Html exposing (Html)
 import Html.Attributes as Attrs
-import Html.Events as Events
 import Markdown exposing (toHtmlWith)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Models exposing (TimeZone)
@@ -56,8 +54,8 @@ getQuizForMeetingSlug slug wdQuizzes =
             Nothing
 
 
-detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions quizGradeExceptions pendingBeginQuizzes =
+detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
+detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions quizGradeExceptions =
     case maybeCurrentDate of
         Nothing ->
             Html.text "Loding..."
@@ -79,7 +77,7 @@ detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSub
                     in
                     case maybeMeeting of
                         Just meeting ->
-                            detailViewForJustMeeting currentDate timeZone currentUser meeting quizzes quizSubmissions quizGradeExceptions pendingBeginQuizzes
+                            detailViewForJustMeeting currentDate timeZone currentUser meeting quizzes quizSubmissions quizGradeExceptions
 
                         Nothing ->
                             meetingNotFoundView slug
@@ -88,19 +86,11 @@ detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSub
                     Html.text "Error loading meetings!"
 
 
-detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Dict Int (WebData (List QuizSubmission)) -> Html.Html Msg
-detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions pendingBeginQuizzes =
+detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
+detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions =
     let
         maybeQuiz =
             getQuizForMeetingSlug meeting.slug wdQuizzes
-
-        maybePendingBeginQuiz =
-            case maybeQuiz of
-                Just quiz ->
-                    Dict.get quiz.id pendingBeginQuizzes
-
-                _ ->
-                    Nothing
     in
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
@@ -110,7 +100,7 @@ detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQu
         , markdownToHTML [] meeting.description
         , case currentUser of
             RemoteData.Success user ->
-                showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz
+                showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
@@ -132,8 +122,8 @@ recordEngagementButton meetingSlug currentUser =
             Html.text ""
 
 
-showQuizStatus : Posix -> CurrentUser -> TimeZone -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz =
+showQuizStatus : Posix -> CurrentUser -> TimeZone -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
+showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions =
     case wdQuizzes of
         RemoteData.Success quizzes ->
             let
@@ -145,7 +135,7 @@ showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQ
             case maybeQuiz of
                 Just quiz ->
                     Html.p []
-                        [ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz
+                        [ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions
                         ]
 
                 Nothing ->
@@ -170,8 +160,8 @@ pText theString =
     Html.p [] [ Html.text theString ]
 
 
-showQuizSubmissionStatus : Posix -> CurrentUser -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Maybe (WebData (List QuizSubmission)) -> Html.Html Msg
-showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions maybePendingBeginQuiz =
+showQuizSubmissionStatus : Posix -> CurrentUser -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
+showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions =
     case wdQuizSubmissions of
         RemoteData.Success submissions ->
             let
@@ -207,35 +197,8 @@ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuiz
             case quizType of
                 Offline ->
                     pText ("There is an in-person quiz for this meeting.")
-                Online ( QuizOpen, EditableSubmission submission ) ->
-                    Html.div []
-                        [ Html.p [] [ Html.text ("You already started the quiz. You have roughly " ++ stringDateDelta submission.closed_at currentDate ++ " to finish it.") ]
-                        , Html.p []
-                            [ Html.button
-                                [ Attrs.class "btn btn-primary"
-                                , Events.onClick (Msgs.TakeQuiz quiz.id)
-                                ]
-                                [ Html.text "Edit quiz" ]
-                            ]
-                        ]
-
-                Online( QuizOpen, NoSubmission ) ->
-                    let
-                        defaultAttrs =
-                            [ Attrs.class "btn btn-primary" ]
-
-                        ( btnText, btnAttrs ) =
-                            case maybePendingBeginQuiz of
-                                Nothing ->
-                                    ( "Begin quiz", defaultAttrs ++ [ Events.onClick (Msgs.OnBeginQuiz quiz.id) ] )
-
-                                _ ->
-                                    ( "Begin quiz", defaultAttrs ++ [ Attrs.disabled True ] )
-                    in
-                    Html.div []
-                        [ Html.p [] [ Html.text ("You did not yet start the quiz.  " ++ dueString) ]
-                        , Html.p [] [ Html.button btnAttrs [ Html.text btnText ] ]
-                        ]
+                Online ( QuizOpen, _ ) ->
+                    pText ("There is an in-person quiz for this meeting. " ++ dueString)
 
                 Online( _, NotEditableSubmission _ ) ->
                     let
