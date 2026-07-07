@@ -9,9 +9,11 @@ alter table data.user_secret enable row level security;
 -- particular user.
 create policy user_secret_access_policy on data.user_secret to api 
 using (
-	( 
+    (
         -- If the role is student
         request.user_role() = ANY('{student,ta}'::text[])
+        -- Faculty can keep a user/team-bound secret hidden from that user/team.
+        and is_user_visible
         -- They can see rows in the user_secrets table if
         and (
             -- The secret belongs to them
@@ -27,9 +29,9 @@ using (
             )
         )
     )
-	OR
-	-- faculty can see user_secret by all users
-	(request.user_role() = 'faculty')
+    OR
+    -- faculty can see user_secret by all users
+    (request.user_role() = 'faculty')
 ) WITH CHECK (
     -- Only faculty can write secrets
     request.user_role() = 'faculty'

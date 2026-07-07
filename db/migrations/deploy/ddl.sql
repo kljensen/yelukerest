@@ -1644,6 +1644,7 @@ CREATE TABLE data.user_secret (
     id integer NOT NULL,
     slug text NOT NULL,
     body text NOT NULL,
+    is_user_visible boolean DEFAULT true NOT NULL,
     user_id integer,
     team_nickname text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -1665,6 +1666,7 @@ CREATE VIEW api.user_secrets AS
  SELECT id,
     slug,
     body,
+    is_user_visible,
     user_id,
     team_nickname,
     created_at,
@@ -2904,7 +2906,7 @@ ALTER TABLE data.user_secret ENABLE ROW LEVEL SECURITY;
 -- Name: user_secret user_secret_access_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY user_secret_access_policy ON data.user_secret TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((request.user_id() = user_id) OR (EXISTS ( SELECT u.id
+CREATE POLICY user_secret_access_policy ON data.user_secret TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND is_user_visible AND ((request.user_id() = user_id) OR (EXISTS ( SELECT u.id
    FROM api.users u
   WHERE ((u.id = request.user_id()) AND (u.team_nickname = user_secret.team_nickname)))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
 

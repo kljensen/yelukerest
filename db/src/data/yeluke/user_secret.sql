@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS user_secret (
     slug TEXT NOT NULL
         CHECK (slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$' AND char_length(slug) < 100),
     body TEXT NOT NULL,
+    is_user_visible BOOLEAN NOT NULL DEFAULT TRUE,
     user_id INT REFERENCES "user"(id)
         ON UPDATE CASCADE,
     team_nickname TEXT REFERENCES team(nickname)

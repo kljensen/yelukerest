@@ -164,6 +164,21 @@ BEGIN
         RAISE EXCEPTION 'settings.get search_path is not pinned';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = 'data'
+        AND c.relname = 'user_secret'
+        AND a.attname = 'is_user_visible'
+        AND a.attnotnull
+        AND pg_get_expr(d.adbin, d.adrelid) = 'true'
+    ) THEN
+        RAISE EXCEPTION 'data.user_secret.is_user_visible must be NOT NULL DEFAULT true';
+    END IF;
+
     IF EXISTS (
         WITH fk AS (
             SELECT
