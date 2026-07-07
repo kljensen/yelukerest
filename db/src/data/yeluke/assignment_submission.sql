@@ -46,6 +46,22 @@ CREATE UNIQUE INDEX assignment_submission_unique_user
     ON assignment_submission (user_id, assignment_slug)
     WHERE team_nickname IS NULL;
 
+DROP INDEX IF EXISTS idx_assignment_submission_assignment_fk;
+CREATE INDEX idx_assignment_submission_assignment_fk
+    ON assignment_submission (assignment_slug, is_team);
+
+DROP INDEX IF EXISTS idx_assignment_submission_user_fk;
+CREATE INDEX idx_assignment_submission_user_fk
+    ON assignment_submission (user_id);
+
+DROP INDEX IF EXISTS idx_assignment_submission_team_fk;
+CREATE INDEX idx_assignment_submission_team_fk
+    ON assignment_submission (team_nickname);
+
+DROP INDEX IF EXISTS idx_assignment_submission_submitter_fk;
+CREATE INDEX idx_assignment_submission_submitter_fk
+    ON assignment_submission (submitter_user_id);
+
 CREATE OR REPLACE FUNCTION fill_assignment_submission_defaults()
 RETURNS TRIGGER AS $$
 BEGIN

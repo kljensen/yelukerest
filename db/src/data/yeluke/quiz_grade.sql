@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS quiz_grade (
     PRIMARY KEY (quiz_id, user_id)
 );
 
+DROP INDEX IF EXISTS idx_quiz_grade_quiz_points_fk;
+CREATE INDEX idx_quiz_grade_quiz_points_fk
+    ON quiz_grade (quiz_id, points_possible);
+
+DROP INDEX IF EXISTS idx_quiz_grade_user_id_fk;
+CREATE INDEX idx_quiz_grade_user_id_fk ON quiz_grade (user_id);
+
 CREATE OR REPLACE FUNCTION fill_quiz_grade_defaults()
 RETURNS TRIGGER AS $$
 BEGIN

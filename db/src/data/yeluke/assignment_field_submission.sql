@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
     )
 );
 
+DROP INDEX IF EXISTS idx_assignment_field_submission_submission_fk;
+CREATE INDEX idx_assignment_field_submission_submission_fk
+    ON assignment_field_submission (assignment_submission_id, assignment_slug);
+
+DROP INDEX IF EXISTS idx_assignment_field_submission_field_fk;
+CREATE INDEX idx_assignment_field_submission_field_fk
+    ON assignment_field_submission (
+        assignment_field_slug,
+        assignment_slug,
+        assignment_field_is_url,
+        assignment_field_pattern
+    );
+
+DROP INDEX IF EXISTS idx_assignment_field_submission_submitter_fk;
+CREATE INDEX idx_assignment_field_submission_submitter_fk
+    ON assignment_field_submission (submitter_user_id);
 
 CREATE OR REPLACE FUNCTION fill_assignment_field_submission_defaults()
 RETURNS TRIGGER AS $$

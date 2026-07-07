@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS quiz_submission (
     -- UNIQUE (id, quiz_id),
 );
 
+DROP INDEX IF EXISTS idx_quiz_submission_user_id_fk;
+CREATE INDEX idx_quiz_submission_user_id_fk ON quiz_submission (user_id);
 
 CREATE OR REPLACE FUNCTION fill_quiz_submission_defaults()
 RETURNS TRIGGER AS $$

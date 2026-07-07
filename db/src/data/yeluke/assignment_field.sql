@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS assignment_field (
     UNIQUE(slug, assignment_slug, is_url, pattern)
 );
 
+DROP INDEX IF EXISTS idx_assignment_field_assignment_slug_fk;
+CREATE INDEX idx_assignment_field_assignment_slug_fk
+    ON assignment_field (assignment_slug);
 
 DROP TRIGGER IF EXISTS tg_assignment_field_default ON assignment_field;
 CREATE TRIGGER tg_assignment_field_default

@@ -35,6 +35,17 @@ DROP INDEX IF EXISTS assignment_grade_exception_unique_team;
 CREATE UNIQUE INDEX assignment_grade_exception_unique_user ON assignment_grade_exception (assignment_slug, user_id) WHERE is_team=FALSE;
 CREATE UNIQUE INDEX assignment_grade_exception_unique_team ON assignment_grade_exception (assignment_slug, team_nickname) WHERE is_team=TRUE;
 
+DROP INDEX IF EXISTS idx_assignment_grade_exception_assignment_fk;
+CREATE INDEX idx_assignment_grade_exception_assignment_fk
+    ON assignment_grade_exception (assignment_slug, is_team);
+
+DROP INDEX IF EXISTS idx_assignment_grade_exception_user_fk;
+CREATE INDEX idx_assignment_grade_exception_user_fk
+    ON assignment_grade_exception (user_id);
+
+DROP INDEX IF EXISTS idx_assignment_grade_exception_team_fk;
+CREATE INDEX idx_assignment_grade_exception_team_fk
+    ON assignment_grade_exception (team_nickname);
 
 CREATE OR REPLACE FUNCTION fill_assignment_grade_exception_defaults()
 RETURNS TRIGGER AS $$

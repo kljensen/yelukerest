@@ -33,6 +33,12 @@ CREATE UNIQUE INDEX secret_unique_slug_team
     ON user_secret (team_nickname, slug)
     WHERE user_id IS NULL;
 
+DROP INDEX IF EXISTS idx_user_secret_user_id_fk;
+CREATE INDEX idx_user_secret_user_id_fk ON user_secret (user_id);
+
+DROP INDEX IF EXISTS idx_user_secret_team_nickname_fk;
+CREATE INDEX idx_user_secret_team_nickname_fk ON user_secret (team_nickname);
+
 CREATE OR REPLACE FUNCTION fill_user_secret_defaults()
 RETURNS TRIGGER AS $$
 BEGIN

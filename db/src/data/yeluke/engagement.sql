@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS engagement (
     PRIMARY KEY(user_id, meeting_slug)
 );
 
+DROP INDEX IF EXISTS idx_engagement_meeting_slug_fk;
+CREATE INDEX idx_engagement_meeting_slug_fk ON engagement (meeting_slug);
+
 -- Update the `updated_at` column when the engagement is changed.
 DROP TRIGGER IF EXISTS tg_engagement_update_timestamps ON engagement;
 CREATE TRIGGER tg_engagement_update_timestamps

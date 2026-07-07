@@ -2211,6 +2211,167 @@ CREATE UNIQUE INDEX secret_unique_slug_user ON data.user_secret USING btree (use
 
 
 --
+-- Name: idx_assignment_field_assignment_slug_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_field_assignment_slug_fk ON data.assignment_field USING btree (assignment_slug);
+
+
+--
+-- Name: idx_assignment_field_submission_field_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_field_submission_field_fk ON data.assignment_field_submission USING btree (assignment_field_slug, assignment_slug, assignment_field_is_url, assignment_field_pattern);
+
+
+--
+-- Name: idx_assignment_field_submission_submission_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_field_submission_submission_fk ON data.assignment_field_submission USING btree (assignment_submission_id, assignment_slug);
+
+
+--
+-- Name: idx_assignment_field_submission_submitter_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_field_submission_submitter_fk ON data.assignment_field_submission USING btree (submitter_user_id);
+
+
+--
+-- Name: idx_assignment_grade_assignment_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_assignment_fk ON data.assignment_grade USING btree (assignment_slug, points_possible);
+
+
+--
+-- Name: idx_assignment_grade_exception_assignment_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_exception_assignment_fk ON data.assignment_grade_exception USING btree (assignment_slug, is_team);
+
+
+--
+-- Name: idx_assignment_grade_exception_team_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_exception_team_fk ON data.assignment_grade_exception USING btree (team_nickname);
+
+
+--
+-- Name: idx_assignment_grade_exception_user_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_exception_user_fk ON data.assignment_grade_exception USING btree (user_id);
+
+
+--
+-- Name: idx_assignment_grade_submission_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_submission_fk ON data.assignment_grade USING btree (assignment_submission_id, assignment_slug);
+
+
+--
+-- Name: idx_assignment_submission_assignment_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_submission_assignment_fk ON data.assignment_submission USING btree (assignment_slug, is_team);
+
+
+--
+-- Name: idx_assignment_submission_submitter_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_submission_submitter_fk ON data.assignment_submission USING btree (submitter_user_id);
+
+
+--
+-- Name: idx_assignment_submission_team_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_submission_team_fk ON data.assignment_submission USING btree (team_nickname);
+
+
+--
+-- Name: idx_assignment_submission_user_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_submission_user_fk ON data.assignment_submission USING btree (user_id);
+
+
+--
+-- Name: idx_engagement_meeting_slug_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_engagement_meeting_slug_fk ON data.engagement USING btree (meeting_slug);
+
+
+--
+-- Name: idx_grade_user_id_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_grade_user_id_fk ON data.grade USING btree (user_id);
+
+
+--
+-- Name: idx_quiz_grade_exception_user_id_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_quiz_grade_exception_user_id_fk ON data.quiz_grade_exception USING btree (user_id);
+
+
+--
+-- Name: idx_quiz_grade_quiz_points_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_quiz_grade_quiz_points_fk ON data.quiz_grade USING btree (quiz_id, points_possible);
+
+
+--
+-- Name: idx_quiz_grade_user_id_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_quiz_grade_user_id_fk ON data.quiz_grade USING btree (user_id);
+
+
+--
+-- Name: idx_quiz_submission_user_id_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_quiz_submission_user_id_fk ON data.quiz_submission USING btree (user_id);
+
+
+--
+-- Name: idx_todo_owner_id_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_todo_owner_id_fk ON data.todo USING btree (owner_id);
+
+
+--
+-- Name: idx_user_secret_team_nickname_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_user_secret_team_nickname_fk ON data.user_secret USING btree (team_nickname);
+
+
+--
+-- Name: idx_user_secret_user_id_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_user_secret_user_id_fk ON data.user_secret USING btree (user_id);
+
+
+--
+-- Name: idx_user_team_nickname_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_user_team_nickname_fk ON data."user" USING btree (team_nickname);
+
+
+--
 -- Name: assignment tg_assignment_default; Type: TRIGGER; Schema: data; Owner: superuser
 --
 

@@ -27,6 +27,9 @@ ALTER TABLE "user"
     REFERENCES team
     ON UPDATE CASCADE;
 
+DROP INDEX IF EXISTS idx_user_team_nickname_fk;
+CREATE INDEX idx_user_team_nickname_fk ON "user" (team_nickname);
+
 -- Update the `updated_at` column when the team is changed.
 DROP TRIGGER IF EXISTS tg_team_update_timestamps ON team;
 CREATE TRIGGER tg_team_update_timestamps

@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS grade (
     UNIQUE(snapshot_slug, user_id)
 );
 
+DROP INDEX IF EXISTS idx_grade_user_id_fk;
+CREATE INDEX idx_grade_user_id_fk ON grade (user_id);
+
 CREATE OR REPLACE FUNCTION fill_grade_defaults()
 RETURNS TRIGGER AS $$
 BEGIN

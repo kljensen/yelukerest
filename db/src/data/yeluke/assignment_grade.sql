@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS assignment_grade (
         ON UPDATE CASCADE
 );
 
+DROP INDEX IF EXISTS idx_assignment_grade_assignment_fk;
+CREATE INDEX idx_assignment_grade_assignment_fk
+    ON assignment_grade (assignment_slug, points_possible);
+
+DROP INDEX IF EXISTS idx_assignment_grade_submission_fk;
+CREATE INDEX idx_assignment_grade_submission_fk
+    ON assignment_grade (assignment_submission_id, assignment_slug);
+
 CREATE OR REPLACE FUNCTION fill_assignment_grade_defaults()
 RETURNS TRIGGER AS $$
 BEGIN

@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS quiz_grade_exception (
     UNIQUE (quiz_id, user_id)
 );
 
+DROP INDEX IF EXISTS idx_quiz_grade_exception_user_id_fk;
+CREATE INDEX idx_quiz_grade_exception_user_id_fk
+    ON quiz_grade_exception (user_id);
 
 DROP TRIGGER IF EXISTS tg_quiz_grade_exception_default ON quiz_grade_exception;
 CREATE TRIGGER tg_quiz_grade_exception_default
