@@ -1,14 +1,18 @@
 #!/bin/sh
 set -e
 
-if [ -z ${COURSE_TITLE} ]
+if [ -z "${COURSE_TITLE:-}" ]
 then
-    echo "You must set the COURSE_TITLE environment variable"
+    echo "You should set the COURSE_TITLE environment variable"
 fi
 
-if [ -z ${DEVELOPMENT} ]
+if [ -z "${DEVELOPMENT:-}" ]
 then
-    npm run build
+    sh /opt/app/build.sh
 else
-    npm run build -- --watch
+    sh /opt/app/build.sh
+    while inotifywait -r -e modify,create,delete,move src elm.json
+    do
+        sh /opt/app/build.sh
+    done
 fi

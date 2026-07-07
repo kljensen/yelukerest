@@ -1,43 +1,44 @@
-# Custom docker file to make our builds a little more efficient.
-# We want to ensure the node_modules and elm_stuff are cached.
-# Otherwise, this Dockerfile is just the same as the official node
-# Docker image https://hub.docker.com/_/node/.
-FROM node:12.16.3-stretch
+FROM debian:trixie-slim
 
 # Install Elm and elm-test-rs binaries dynamically based on architecture.
+ENV ELM_VERSION=0.19.2
+ENV ELM_TEST_RS_VERSION=3.1.0
+
 RUN set -eux; \
-    arch=$(uname -m); \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl gzip inotify-tools jq nodejs tar; \
+    rm -rf /var/lib/apt/lists/*; \
+    arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-        'x86_64') \
-            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-x64.gz'; \
-            ELM_TEST_RS_URL='https://github.com/mpizenberg/elm-test-rs/releases/download/v3.1.0/elm-test-rs_linux.tar.gz' \
+        'amd64') \
+            ELM_ARCH='x64'; \
+            ELM_TEST_RS_ARCH='linux' \
             ;; \
-        'aarch64') \
-            ELM_URL='https://github.com/elm/compiler/releases/download/0.19.2/elm-0.19.2-linux-arm.gz'; \
-            ELM_TEST_RS_URL='https://github.com/mpizenberg/elm-test-rs/releases/download/v3.1.0/elm-test-rs_linux-arm-64.tar.gz' \
+        'arm64') \
+            ELM_ARCH='arm'; \
+            ELM_TEST_RS_ARCH='linux-arm-64' \
             ;; \
         *) \
             echo "Unsupported architecture: $arch"; \
             exit 1 \
             ;; \
     esac; \
-    curl -L -o elm.gz $ELM_URL \
+    curl -fsSL -o elm.gz "https://github.com/elm/compiler/releases/download/${ELM_VERSION}/elm-${ELM_VERSION}-linux-${ELM_ARCH}.gz" \
     && gunzip elm.gz \
     && chmod a+x elm \
     && mv elm /usr/local/bin; \
-    curl -L -o elm-test-rs.tar.gz $ELM_TEST_RS_URL \
+    curl -fsSL -o elm-test-rs.tar.gz "https://github.com/mpizenberg/elm-test-rs/releases/download/v${ELM_TEST_RS_VERSION}/elm-test-rs_${ELM_TEST_RS_ARCH}.tar.gz" \
     && tar -xzf elm-test-rs.tar.gz \
     && chmod a+x elm-test-rs \
     && mv elm-test-rs /usr/local/bin \
     && rm elm-test-rs.tar.gz
 
 RUN mkdir -p /opt/app
-ADD package.json /opt/app/package.json
-ADD package-lock.json /opt/app/package-lock.json
 ADD elm.json /opt/app/elm.json
-ADD postcss.config.js /opt/app/postcss.config.js
-RUN cd /opt/app && \
-    rm -rf node_modules && \
-    npm install && \
-    mkdir -p src/elm dist && \
-    elm make; true
+ADD build.sh /opt/app/build.sh
+ADD run.sh /opt/app/run.sh
+ADD src /opt/app/src
+ADD tests /opt/app/tests
+
+WORKDIR /opt/app
+RUN mkdir -p dist && elm make src/elm/Main.elm --optimize --output=/tmp/main.js && rm /tmp/main.js

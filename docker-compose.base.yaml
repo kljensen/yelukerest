@@ -18,13 +18,11 @@ services:
             - SLACK_URL=${ELMCLIENT_SLACK_URL}
             - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
         volumes:
-            # Note that the package.json-like files were moved into the
-            # container as specified by the elmclient/Dockerfile.
             - elmclient-build:/opt/app/dist
             - './elmclient/src:/opt/app/src'
             - './elmclient/tests:/opt/app/tests'
             - './elmclient/run.sh:/opt/app/run.sh'
-            - './elmclient/webpack.config.js:/opt/app/webpack.config.js'
+            - './elmclient/build.sh:/opt/app/build.sh'
         entrypoint: '/opt/app/run.sh'
 
     # PostgREST instance, is responsible for communicating with the database

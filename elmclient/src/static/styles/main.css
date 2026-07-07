@@ -1,0 +1,246 @@
+html {
+    max-width: 900px;
+}
+
+.clearfix::after {
+    clear: both;
+    content: "";
+    display: table;
+}
+
+.left {
+    float: left;
+}
+
+.overflow-hidden {
+    overflow: hidden;
+}
+
+.p1 {
+    padding: 0.5rem;
+}
+
+.px1 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+.mr1 {
+    margin-right: 0.5rem;
+}
+
+.mb2 {
+    margin-bottom: 1rem;
+}
+
+.red {
+    color: #DD514C;
+}
+
+.black {
+    color: #111;
+}
+
+.bg-silver {
+    background-color: #ddd;
+}
+
+.btn {
+    border: 1px solid #999;
+    border-radius: 0;
+    cursor: pointer;
+    display: inline-block;
+    font: inherit;
+    padding: 0.35rem 0.65rem;
+}
+
+.btn-primary {
+    background-color: #333;
+    color: #fff;
+}
+
+.input,
+.textarea,
+.field {
+    box-sizing: border-box;
+    display: block;
+    font: inherit;
+    margin: 0.25rem 0 0.75rem;
+    max-width: 100%;
+    padding: 0.35rem;
+    width: 100%;
+}
+
+/* source-code-pro-regular - latin */
+@font-face {
+    font-family: 'Source Code Pro';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../fonts/source-code-pro-v10-latin-regular.eot');
+    src: local('Source Code Pro'), local('SourceCodePro-Regular'),
+        url('../fonts/source-code-pro-v10-latin-regular.eot?#iefix') format('embedded-opentype'),
+        url('../fonts/source-code-pro-v10-latin-regular.woff2') format('woff2'),
+        url('../fonts/source-code-pro-v10-latin-regular.woff') format('woff'),
+        url('../fonts/source-code-pro-v10-latin-regular.ttf') format('truetype'),
+        url('../fonts/source-code-pro-v10-latin-regular.svg#SourceCodePro') format('svg');
+}
+
+/* source-code-pro-700 - latin */
+@font-face {
+    font-family: 'Source Code Pro';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('../fonts/source-code-pro-v10-latin-700.eot');
+    src: local('Source Code Pro Bold'), local('SourceCodePro-Bold'),
+        url('../fonts/source-code-pro-v10-latin-700.eot?#iefix') format('embedded-opentype'),
+        url('../fonts/source-code-pro-v10-latin-700.woff2') format('woff2'),
+        url('../fonts/source-code-pro-v10-latin-700.woff') format('woff'),
+        url('../fonts/source-code-pro-v10-latin-700.ttf') format('truetype'),
+        url('../fonts/source-code-pro-v10-latin-700.svg#SourceCodePro') format('svg');
+}
+
+body {
+    font-family: "Source Code Pro", fixed;
+    padding: 0.5rem;
+    padding-bottom: 2rem;
+}
+
+.meeting-draft {
+    padding-left: 1rem;
+    color: #DD514C;
+}
+
+.btn-icon {
+    padding-left: 1rem;
+}
+
+select.engagement {
+    margin-left: 1rem;
+}
+
+span.saved-quiz-option {
+    background-color: #999;
+    margin-left: 1rem;
+    color: #fff;
+    padding: 0 0.25rem;
+    font-size: small;
+}
+
+.quiz-question-option {
+    display: flex;
+    align-items: baseline;
+}
+
+.quiz-question-option input {
+    margin-right: 0.5rem;
+    min-width: 1rem;
+}
+
+.quiz-question-option label p:first-child {
+    margin-top: 0;
+}
+
+table.dashboard {
+    table-layout: auto;
+    vertical-align: top;
+    text-align: left;
+    border-collapse: collapse;
+}
+
+table.dashboard tbody tr:nth-child(odd) {
+    background-color: #f6f6f6;
+}
+
+table.dashboard td,
+table.dashboard th {
+    padding: 0.25rem 0.25rem 0 1rem;
+}
+
+pre,
+code {
+    font-size: 100%;
+}
+
+code {
+    background-color: #eee;
+}
+
+blockquote {
+    font-size: 1rem;
+    padding-left: 1.5rem;
+    border-left: 0.5rem solid lightgray;
+    font-style: normal;
+}
+
+.engagement-student-holder {
+    display: flex;
+    flex-direction: column;
+}
+
+.engagement-student-holder h1 {
+    margin-bottom: 1rem;
+}
+
+.engagement-student-holder .engagement-user-query {
+    margin-bottom: 2rem;
+    font-size: 1rem;
+}
+
+.engagement-student-holder .student {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1rem;
+}
+
+.engagement-student-holder .student span {
+    font-weight: bold;
+}
+
+.engagement-student-holder .radio-holder {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.engagement-student-holder .radio-holder label {
+    flex: 1;
+    border: 1px solid lightgray;
+    text-align: center;
+}
+
+.engagement-student-holder .radio-holder label input[type="radio"] {
+    clip: rect(1px, 1px, 1px, 1px);
+    clip-path: inset(50%);
+    height: 1px;
+    width: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+}
+
+.engagement-student-holder .radio-holder label.selected {
+    background-color: #eee;
+    font-weight: bold;
+}
+
+@media only screen and (max-width: 600px) {
+    table.dashboard th.secondary,
+    table.dashboard td.secondary {
+        display: none;
+    }
+
+    h1 {
+        font-size: 1.25rem;
+    }
+
+    ul {
+        padding-left: 1rem;
+    }
+
+    .engagement-student-holder .student {
+        font-size: 0.8rem;
+    }
+}
