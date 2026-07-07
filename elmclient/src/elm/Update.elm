@@ -19,6 +19,7 @@ import Assignments.Updates
 import Auth.Model exposing (isFacultyOrTA)
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation exposing (load, pushUrl)
+import Common.TimeZones
 import Dict exposing (Dict)
 import Engagements.Commands
     exposing
@@ -285,7 +286,7 @@ update msg model =
                     model.timeZone
 
                 tz2 =
-                    { tz1 | zone = z }
+                    { tz1 | zone = Common.TimeZones.zoneForZoneName tz1.zoneName z }
             in
             ( { model | timeZone = tz2 }, Cmd.none )
 
@@ -295,7 +296,10 @@ update msg model =
                     model.timeZone
 
                 tz2 =
-                    { tz1 | zoneName = zoneName }
+                    { tz1
+                        | zoneName = zoneName
+                        , zone = Common.TimeZones.zoneForZoneName zoneName tz1.zone
+                    }
             in
             ( { model | timeZone = tz2 }, Cmd.none )
 
