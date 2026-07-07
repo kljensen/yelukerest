@@ -92,9 +92,12 @@ User PostgREST JWT:
 
 `YELUKEREST_CLIENT_JWT`:
 
-- Used by `pythonclient`.
+- Used by `pythonclient/api_client.py` for HTTP calls to `/rest/*`.
 - Should be a user JWT with the role needed for the client operation, usually
   faculty for admin scripts.
+
+Legacy `pythonclient/db_client.py` commands use `DATABASE_URL` instead because
+they connect directly to PostgreSQL.
 
 Swagger:
 

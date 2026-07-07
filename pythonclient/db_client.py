@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-""" A client for Yelukerest, primarily to be used by faculty for
-    bulk administration connecting directly to the database.
+"""Legacy direct-database ETL client for Yelukerest.
+
+Use api_client.py for admin operations that have PostgREST RPCs. This module is
+kept for workflows that still need direct database access, such as roster/LDAP
+imports and quiz metadata upserts.
 """
 import os
 import click
@@ -13,6 +16,18 @@ import datetime
 from jinja2 import Template
 from functools import partial
 import requests
+
+
+LEGACY_MEETING_WARNING = (
+    "WARNING: update-meetings writes directly to data.meeting. "
+    "Prefer api_client.py sync-meetings for supported deployments."
+)
+
+LEGACY_ASSIGNMENT_WARNING = (
+    "WARNING: update-assignments writes directly to data.assignment and "
+    "data.assignment_field. Prefer api_client.py sync-assignments for "
+    "supported deployments."
+)
 
 
 def read_yaml(filehandle):
@@ -27,8 +42,7 @@ def read_yaml(filehandle):
 @click.group()
 @click.pass_context
 def database(ctx):
-    """ A function that groups together various commands and
-        passes along a database connection in the context.
+    """Legacy direct-DB commands for workflows not yet moved to api_client.py.
     """
     try:
         dburl = os.environ['DATABASE_URL']
@@ -321,6 +335,7 @@ def update_meetings(ctx, infile, class_number, timedelta):
         not in the input YAML file will be deleted. Those that exist will
         be updated. Those that are new will be added.
     """
+    click.echo(LEGACY_MEETING_WARNING, err=True)
     conn = ctx.obj['conn']
     meetings = read_yaml(infile)
 
@@ -475,6 +490,7 @@ def update_assignments(ctx, class_number, infiles, delete):
         not in the input YAML file will be deleted. Those that exist will
         be updated. Those that are new will be added.
     """
+    click.echo(LEGACY_ASSIGNMENT_WARNING, err=True)
     conn = ctx.obj['conn']
     assignments = [read_yaml(infile) for infile in infiles]
 
