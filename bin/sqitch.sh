@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This shell script is based on the one at https://git.io/fAX6Z
+# This shell script is based on the one at https://raw.githubusercontent.com/sqitchers/docker-sqitch/main/docker-sqitch.sh
 # created by the sqitch authors. It is a wrapper around the sqitch
 # docker image that passes in appropriate environment variables,
 # mounts appropriate directories, etc. such that the sqitch docker
