@@ -37,9 +37,9 @@ containers are started in dev and production.
 
 ```
 # For development
-docker-compose -f ./docker-compose.base.yaml -f ./docker-compose.dev.yaml up
+docker compose -f ./docker-compose.base.yaml -f ./docker-compose.dev.yaml up
 # For production
-docker-compose -f ./docker-compose.base.yaml -f ./docker-compose.prod.yaml up
+docker compose -f ./docker-compose.base.yaml -f ./docker-compose.prod.yaml up
 ```
 
 The roles of the most important components are as follows:

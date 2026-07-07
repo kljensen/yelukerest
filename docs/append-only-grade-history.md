@@ -129,9 +129,11 @@ Create current views over the event tables:
 - `data.grade_current`
 
 Each current view should return exactly the columns exposed today by the
-corresponding current table. Use the newest non-voided event per natural key.
-`DISTINCT ON (...) ORDER BY ..., created_at DESC, id DESC` is a good fit because
-the natural keys are simple and deterministic.
+corresponding current table. Use the newest event per natural key, then hide the
+row when that newest event has `event_type = 'voided'`. Do not select the
+newest non-voided event, because deleting a grade must not resurrect an older
+grade as current. `DISTINCT ON (...) ORDER BY ..., created_at DESC, id DESC` is
+a good fit because the natural keys are simple and deterministic.
 
 Timestamp compatibility:
 

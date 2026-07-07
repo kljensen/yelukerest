@@ -1871,7 +1871,7 @@ ALTER TABLE data."user" OWNER TO superuser;
 
 CREATE TABLE data.assignment_grade_exception (
     id integer NOT NULL,
-    assignment_slug text,
+    assignment_slug text NOT NULL,
     is_team boolean NOT NULL,
     user_id integer,
     team_nickname text,

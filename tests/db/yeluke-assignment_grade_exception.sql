@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(16);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_exceptions', 'api',
@@ -19,6 +19,20 @@ SELECT table_privs_are(
 SELECT table_privs_are(
     'data', 'assignment_grade_exception', 'faculty', ARRAY[]::text[],
     'faculty should only be granted nothing on "data.assignment_grade_exception"'
+);
+
+SELECT col_not_null(
+    'data', 'assignment_grade_exception', 'assignment_slug',
+    'assignment grade exceptions must be linked to an assignment'
+);
+
+SELECT throws_like(
+    $$
+        INSERT INTO data.assignment_grade_exception (assignment_slug, is_team, user_id, closed_at)
+        VALUES (NULL, FALSE, 5, current_timestamp + '1 hour'::INTERVAL)
+    $$,
+    '%null value in column "assignment_slug"%',
+    'assignment grade exceptions should reject NULL assignment slugs'
 );
 
 grant usage on schema api, data to api;
