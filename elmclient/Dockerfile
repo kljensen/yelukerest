@@ -1,37 +1,14 @@
-FROM debian:trixie-slim
+ARG ELM_TOOLS_IMAGE=ghcr.io/kljensen/docker-elm-dev-static:0.19.2@sha256:2f73527ba7e6ab55e37a9e6b9960caa5a4a658b40fd346824baa1a13933ee840
 
-# Install Elm and elm-test-rs binaries dynamically based on architecture.
-ENV ELM_VERSION=0.19.2
-ENV ELM_TEST_RS_VERSION=3.1.0
+FROM ${ELM_TOOLS_IMAGE} AS elm_tools
+FROM alpine:3.24.1 AS base
 
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl gzip inotify-tools jq nodejs tar; \
-    rm -rf /var/lib/apt/lists/*; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-        'amd64') \
-            ELM_ARCH='x64'; \
-            ELM_TEST_RS_ARCH='linux' \
-            ;; \
-        'arm64') \
-            ELM_ARCH='arm'; \
-            ELM_TEST_RS_ARCH='linux-arm-64' \
-            ;; \
-        *) \
-            echo "Unsupported architecture: $arch"; \
-            exit 1 \
-            ;; \
-    esac; \
-    curl -fsSL -o elm.gz "https://github.com/elm/compiler/releases/download/${ELM_VERSION}/elm-${ELM_VERSION}-linux-${ELM_ARCH}.gz" \
-    && gunzip elm.gz \
-    && chmod a+x elm \
-    && mv elm /usr/local/bin; \
-    curl -fsSL -o elm-test-rs.tar.gz "https://github.com/mpizenberg/elm-test-rs/releases/download/v${ELM_TEST_RS_VERSION}/elm-test-rs_${ELM_TEST_RS_ARCH}.tar.gz" \
-    && tar -xzf elm-test-rs.tar.gz \
-    && chmod a+x elm-test-rs \
-    && mv elm-test-rs /usr/local/bin \
-    && rm elm-test-rs.tar.gz
+RUN apk add --no-cache ca-certificates gzip inotify-tools jq
+
+COPY --from=elm_tools /usr/local/bin/elm /usr/local/bin/elm
+COPY --from=elm_tools /usr/local/bin/elm-format /usr/local/bin/elm-format
+COPY --from=elm_tools /usr/local/bin/elm-test-rs /usr/local/bin/elm-test-rs
+COPY --from=elm_tools /usr/local/bin/esbuild /usr/local/bin/esbuild
 
 RUN mkdir -p /opt/app
 ADD elm.json /opt/app/elm.json
@@ -42,3 +19,8 @@ ADD tests /opt/app/tests
 
 WORKDIR /opt/app
 RUN mkdir -p dist && elm make src/elm/Main.elm --optimize --output=/tmp/main.js && rm /tmp/main.js
+
+FROM base AS test
+RUN apk add --no-cache nodejs
+
+FROM base AS app

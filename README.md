@@ -51,8 +51,9 @@ The roles of the most important components are as follows:
 - _postgrest_ - provides an HTTP API over the postgres application database.
 - _elmclient_ - a front-end client that runs in web browsers and communicates
   with the API. This is the main way in which students interact with the
-  API. The Elm compiler version is pinned in `elmclient/elm.json` and in the
-  direct binary URLs in `elmclient/Dockerfile`.
+  API. The Elm compiler version is pinned in `elmclient/elm.json`; build tools
+  are copied from the pinned `ghcr.io/kljensen/docker-elm-dev-static:0.19.2`
+  image in `elmclient/Dockerfile`.
 
 It will likely be necessary to read the documentation of
 [PostgREST](https://postgrest.org/en/stable/) and the
@@ -84,7 +85,7 @@ To run the Elm client tests:
 
 ```
 docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmclient
-docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml run --rm --entrypoint elm-test-rs elmclient
+docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml run --rm elmclient-test
 ```
 
 ## Starting in a new development environment

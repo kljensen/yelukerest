@@ -1,33 +1,18 @@
-#-------------------------------------------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License. See https://go.microsoft.com/fwlink/?linkid=2090316 for license information.
-#-------------------------------------------------------------------------------------------------------------
+ARG ELM_TOOLS_IMAGE=ghcr.io/kljensen/docker-elm-dev-static:0.19.2@sha256:2f73527ba7e6ab55e37a9e6b9960caa5a4a658b40fd346824baa1a13933ee840
 
-FROM mcr.microsoft.com/vscode/devcontainers/javascript-node:0-12
+FROM ${ELM_TOOLS_IMAGE} AS elm_tools
+FROM alpine:3.24.1
 
-# Configuring Elm version
-ARG ELM_VERSION=latest-0.19.1
-ARG ELM_TEST_VERSION=latest-0.19.1
-ARG ELM_FORMAT_VERSION=latest-0.19.1
+RUN apk add --no-cache bash ca-certificates git gzip inotify-tools jq nodejs
 
-# This Dockerfile's base image has a non-root user with sudo access. Use the "remoteUser"
-# property in devcontainer.json to use it. On Linux, the container user's GID/UIDs
-# will be updated to match your local UID/GID (when using the dockerFile property).
-# See https://aka.ms/vscode-remote/containers/non-root-user for details.
-ARG USERNAME=node
+COPY --from=elm_tools /usr/local/bin/elm /usr/local/bin/elm
+COPY --from=elm_tools /usr/local/bin/elm-format /usr/local/bin/elm-format
+COPY --from=elm_tools /usr/local/bin/elm-test-rs /usr/local/bin/elm-test-rs
+COPY --from=elm_tools /usr/local/bin/esbuild /usr/local/bin/esbuild
+
+ARG USERNAME=elm
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-# Install elm, elm-test and elm-format
-RUN export DEBIAN_FRONTEND=noninteractive \
-    && sudo -u ${USERNAME} npm install --global \
-    elm@${ELM_VERSION} \
-    elm-test@${ELM_TEST_VERSION} \
-    elm-format@${ELM_FORMAT_VERSION} \
-    #
-    # [Optional] Update UID/GID if needed
-    && if [ "$USER_GID" != "1000" ] || [ "$USER_UID" != "1000" ]; then \
-        groupmod --gid $USER_GID $USERNAME \
-        && usermod --uid $USER_UID --gid $USER_GID $USERNAME \
-        && chown -R $USER_UID:$USER_GID /home/$USERNAME; \
-    fi
+RUN addgroup -g "$USER_GID" "$USERNAME" \
+    && adduser -D -u "$USER_UID" -G "$USERNAME" -s /bin/bash "$USERNAME"

@@ -7,7 +7,9 @@ volumes:
     caddy_config:
 services:
     elmclient:
-        build: elmclient
+        build:
+            context: elmclient
+            target: app
         # Set the location where docker will put our files
         working_dir: /opt/app
         environment:
@@ -24,6 +26,19 @@ services:
             - './elmclient/run.sh:/opt/app/run.sh'
             - './elmclient/build.sh:/opt/app/build.sh'
         entrypoint: '/opt/app/run.sh'
+
+    elmclient-test:
+        profiles:
+            - test
+        build:
+            context: elmclient
+            target: test
+        working_dir: /opt/app
+        volumes:
+            - './elmclient/src:/opt/app/src'
+            - './elmclient/tests:/opt/app/tests'
+            - './elmclient/elm.json:/opt/app/elm.json'
+        entrypoint: elm-test-rs
 
     # PostgREST instance, is responsible for communicating with the database
     # and providing a REST api, (almost) every request that is sent to the database goes through it

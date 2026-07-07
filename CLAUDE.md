@@ -49,7 +49,7 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
 - **`caddy`**: Reverse proxy and web server
 
 **Client Applications**
-- **`elmclient/`**: Main web interface (Elm + Webpack)
+- **`elmclient/`**: Main web interface (Elm compiled directly to static files)
 - **`pythonclient/`**: CLI tool for bulk administration operations
 
 ### Key Database Tables

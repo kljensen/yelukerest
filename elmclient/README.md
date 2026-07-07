@@ -6,8 +6,11 @@ which students interact with the yelukerest API.
 
 The Docker build compiles Elm directly and uses a small shell script to generate
 the static files served by Caddy. The normal static build does not use npm or
-Webpack. Node is present only because `elm-test-rs` still uses it as its
-JavaScript test runtime.
+Webpack. Elm, `elm-format`, `elm-test-rs`, and `esbuild` are copied from the
+pinned `ghcr.io/kljensen/docker-elm-dev-static:0.19.2` tool image. The default
+`app` image target does not include Node; the separate `test` target installs
+`nodejs` because `elm-test-rs` requires the `node` executable for its generated
+JavaScript test supervisor.
 
 The build output is written to `dist/`:
 
