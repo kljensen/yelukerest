@@ -86,7 +86,7 @@ BEGIN
     -- Set default is_team from assignment table
     IF (NEW.is_team IS NULL) THEN
         SELECT is_team INTO NEW.is_team
-        FROM api.assignments
+        FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
     -- Set default user_id from request credentials
@@ -107,14 +107,16 @@ BEGIN
     END IF;
     -- Set default team_nickname from user table
     IF (NEW.is_team AND NEW.team_nickname IS NULL) THEN
-        SELECT team_nickname INTO NEW.team_nickname
-        FROM api.users
-        WHERE api.users.id = NEW.submitter_user_id;
+        SELECT u.team_nickname INTO NEW.team_nickname
+        FROM data."user" AS u
+        WHERE u.id = NEW.submitter_user_id;
     END IF;
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, pg_temp;
 
 
 DROP TRIGGER IF EXISTS tg_assignment_submission_default ON assignment_submission;

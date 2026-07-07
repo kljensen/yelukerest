@@ -38,7 +38,7 @@ BEGIN
     -- Fill in the quiz_id if it is null
     IF (NEW.points_possible IS NULL) THEN
         SELECT points_possible INTO NEW.points_possible
-        FROM api.quizzes
+        FROM data.quiz
         WHERE id = NEW.quiz_id;
     END IF;
     IF (NEW.user_id IS NULL and request.user_id() IS NOT NULL) THEN
@@ -47,7 +47,9 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, pg_temp;
 
 
 DROP TRIGGER IF EXISTS tg_quiz_grade_default ON quiz_grade;

@@ -53,13 +53,15 @@ BEGIN
     -- Set default is_team from assignment table
     IF (NEW.is_team IS NULL) THEN
         SELECT is_team INTO NEW.is_team
-        FROM api.assignments
+        FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, pg_temp;
 
 
 DROP TRIGGER IF EXISTS tg_assignment_grade_exception_default ON assignment_grade_exception;

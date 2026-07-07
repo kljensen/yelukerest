@@ -1058,17 +1058,18 @@ ALTER FUNCTION data.fill_assignment_field_submission_defaults() OWNER TO superus
 --
 
 CREATE FUNCTION data.fill_assignment_grade_defaults() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
     AS $$
 BEGIN
     IF (NEW.assignment_slug IS NULL) THEN
         SELECT ass_sub.assignment_slug INTO NEW.assignment_slug
-        FROM api.assignment_submissions as ass_sub
+        FROM data.assignment_submission AS ass_sub
         WHERE ass_sub.id = NEW.assignment_submission_id;
     END IF;
     IF (NEW.points_possible IS NULL) THEN
         SELECT points_possible INTO NEW.points_possible
-        FROM api.assignments
+        FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
     NEW.updated_at = current_timestamp;
@@ -1084,13 +1085,14 @@ ALTER FUNCTION data.fill_assignment_grade_defaults() OWNER TO superuser;
 --
 
 CREATE FUNCTION data.fill_assignment_grade_exception_defaults() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
     AS $$
 BEGIN
     -- Set default is_team from assignment table
     IF (NEW.is_team IS NULL) THEN
         SELECT is_team INTO NEW.is_team
-        FROM api.assignments
+        FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
     NEW.updated_at = current_timestamp;
@@ -1106,13 +1108,14 @@ ALTER FUNCTION data.fill_assignment_grade_exception_defaults() OWNER TO superuse
 --
 
 CREATE FUNCTION data.fill_assignment_submission_defaults() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
     AS $$
 BEGIN
     -- Set default is_team from assignment table
     IF (NEW.is_team IS NULL) THEN
         SELECT is_team INTO NEW.is_team
-        FROM api.assignments
+        FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
     -- Set default user_id from request credentials
@@ -1133,9 +1136,9 @@ BEGIN
     END IF;
     -- Set default team_nickname from user table
     IF (NEW.is_team AND NEW.team_nickname IS NULL) THEN
-        SELECT team_nickname INTO NEW.team_nickname
-        FROM api.users
-        WHERE api.users.id = NEW.submitter_user_id;
+        SELECT u.team_nickname INTO NEW.team_nickname
+        FROM data."user" AS u
+        WHERE u.id = NEW.submitter_user_id;
     END IF;
     NEW.updated_at = current_timestamp;
     RETURN NEW;
@@ -1182,13 +1185,14 @@ ALTER FUNCTION data.fill_grade_snapshot_defaults() OWNER TO superuser;
 --
 
 CREATE FUNCTION data.fill_quiz_grade_defaults() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
     AS $$
 BEGIN
     -- Fill in the quiz_id if it is null
     IF (NEW.points_possible IS NULL) THEN
         SELECT points_possible INTO NEW.points_possible
-        FROM api.quizzes
+        FROM data.quiz
         WHERE id = NEW.quiz_id;
     END IF;
     IF (NEW.user_id IS NULL and request.user_id() IS NOT NULL) THEN
@@ -1242,17 +1246,18 @@ ALTER FUNCTION data.fill_user_secret_defaults() OWNER TO superuser;
 --
 
 CREATE FUNCTION data.quiz_set_defaults() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
     AS $$
 BEGIN
   IF (NEW.closed_at IS NULL) THEN
     SELECT begins_at INTO NEW.closed_at
-    FROM api.meetings
+    FROM data.meeting
     WHERE slug = NEW.meeting_slug;
   END IF;
   IF (NEW.open_at IS NULL) THEN
     SELECT (begins_at - '5 days'::INTERVAL) INTO NEW.open_at
-    FROM api.meetings
+    FROM data.meeting
     WHERE slug = NEW.meeting_slug;
   END IF;
   NEW.updated_at = current_timestamp;

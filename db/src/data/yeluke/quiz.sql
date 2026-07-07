@@ -37,17 +37,19 @@ CREATE OR REPLACE FUNCTION quiz_set_defaults() RETURNS trigger AS $$
 BEGIN
   IF (NEW.closed_at IS NULL) THEN
     SELECT begins_at INTO NEW.closed_at
-    FROM api.meetings
+    FROM data.meeting
     WHERE slug = NEW.meeting_slug;
   END IF;
   IF (NEW.open_at IS NULL) THEN
     SELECT (begins_at - '5 days'::INTERVAL) INTO NEW.open_at
-    FROM api.meetings
+    FROM data.meeting
     WHERE slug = NEW.meeting_slug;
   END IF;
   NEW.updated_at = current_timestamp;
   RETURN NEW;
-END; $$ LANGUAGE plpgsql;
+END; $$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, pg_temp;
 
 DROP TRIGGER IF EXISTS tg_quiz_default ON quiz;
 CREATE TRIGGER tg_quiz_default

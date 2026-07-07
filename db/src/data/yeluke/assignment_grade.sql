@@ -37,18 +37,20 @@ RETURNS TRIGGER AS $$
 BEGIN
     IF (NEW.assignment_slug IS NULL) THEN
         SELECT ass_sub.assignment_slug INTO NEW.assignment_slug
-        FROM api.assignment_submissions as ass_sub
+        FROM data.assignment_submission AS ass_sub
         WHERE ass_sub.id = NEW.assignment_submission_id;
     END IF;
     IF (NEW.points_possible IS NULL) THEN
         SELECT points_possible INTO NEW.points_possible
-        FROM api.assignments
+        FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, pg_temp;
 
 
 DROP TRIGGER IF EXISTS tg_assignment_grade_default ON assignment_grade;

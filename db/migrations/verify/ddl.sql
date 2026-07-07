@@ -175,6 +175,24 @@ BEGIN
         RAISE EXCEPTION 'data.assignment_field_submission_is_writable_by_current_user must be SECURITY DEFINER with pinned search_path';
     END IF;
 
+    IF (
+        SELECT count(*)
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND p.proname IN (
+            'fill_assignment_grade_defaults',
+            'fill_assignment_grade_exception_defaults',
+            'fill_assignment_submission_defaults',
+            'fill_quiz_grade_defaults',
+            'quiz_set_defaults'
+        )
+        AND p.prosecdef
+        AND p.proconfig @> ARRAY['search_path=data, pg_temp']
+    ) <> 5 THEN
+        RAISE EXCEPTION 'data lookup trigger functions must be SECURITY DEFINER with pinned search_path';
+    END IF;
+
     IF NOT has_table_privilege('api', 'data.assignment_submission_participant', 'SELECT')
         OR NOT has_table_privilege('api', 'data.assignment_submission_participant', 'INSERT')
         OR NOT has_table_privilege('api', 'data.assignment_submission_participant', 'UPDATE')
