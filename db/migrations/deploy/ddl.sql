@@ -3733,9 +3733,9 @@ ALTER TABLE data.assignment_grade_exception ENABLE ROW LEVEL SECURITY;
 -- Name: assignment_grade_exception assignment_grade_exception_access_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY assignment_grade_exception_access_policy ON data.assignment_grade_exception TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((NOT is_team) AND (request.user_id() = user_id))) OR (is_team AND (EXISTS ( SELECT u.id
+CREATE POLICY assignment_grade_exception_access_policy ON data.assignment_grade_exception TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((((NOT is_team) AND (request.user_id() = user_id))) OR (is_team AND (EXISTS ( SELECT u.id
    FROM api.users u
-  WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_grade_exception.team_nickname))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
+  WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_grade_exception.team_nickname))))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK ((request.user_role() = 'faculty'::text));
 
 
 --

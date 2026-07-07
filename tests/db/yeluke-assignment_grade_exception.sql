@@ -1,5 +1,5 @@
 begin;
-select plan(13);
+select plan(14);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_exceptions', 'api',
@@ -19,6 +19,17 @@ SELECT table_privs_are(
 SELECT table_privs_are(
     'data', 'assignment_grade_exception', 'faculty', ARRAY[]::text[],
     'faculty should only be granted nothing on "data.assignment_grade_exception"'
+);
+
+grant usage on schema api, data to api;
+set local role api;
+set request.jwt.claim.role = 'app';
+set request.jwt.claim.app_name = 'authapp';
+set request.jwt.claim.user_id = '2';
+SELECT set_eq(
+    'SELECT COUNT(*)::int FROM data.assignment_grade_exception',
+    ARRAY[0],
+    'non-student api request contexts should not see team assignment_grade_exceptions'
 );
 
 set local role student;

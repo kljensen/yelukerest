@@ -10,7 +10,7 @@ alter table data.assignment_grade_exception enable row level security;
 create policy assignment_grade_exception_access_policy on data.assignment_grade_exception to api 
 using (
 	-- The student users can see all her/his assignment_grade_exception items.
-	(request.user_role() = ANY('{student,ta}'::text[]) AND 
+	(request.user_role() = ANY('{student,ta}'::text[]) AND (
         (NOT is_team AND request.user_id() = user_id)
         OR
         -- It is a team assignment and they are on that team
@@ -25,7 +25,7 @@ using (
                     u.team_nickname = assignment_grade_exception.team_nickname
             )
         ))
-    )
+    ))
 
 	or
 	-- faculty can see assignment_grade_exception by all users
