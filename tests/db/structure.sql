@@ -8,6 +8,7 @@ select * from check_test(
         'quiz_submissions', 'ui_elements',
         'assignments', 'assignment_fields', 'assignment_submissions',
         'assignment_field_submissions', 'quiz_grades', 'assignment_grades',
+        'quiz_grade_events', 'assignment_grade_events', 'grade_events',
         'quiz_grade_exceptions', 'assignment_grade_exceptions',
         'quiz_grade_distributions', 'assignment_grade_distributions',
         'grade_snapshot_distributions',

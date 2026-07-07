@@ -17,4 +17,5 @@
 \ir ./yeluke/user_secret.sql
 \ir ./yeluke/grade_snapshot.sql
 \ir ./yeluke/grade.sql
+\ir ./yeluke/grade_event.sql
 -- KEEP ME FOR new-table.sh

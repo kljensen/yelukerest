@@ -13,6 +13,13 @@ The goal is to make grade changes append-only while preserving the current
 student and admin read surface: Elm and PostgREST clients should still read one
 current row per assignment submission, quiz/user, or grade snapshot/user.
 
+Status as of 2026-07-07: Yelukerest now records append-only event history for
+`data.assignment_grade`, `data.quiz_grade`, and `data.grade` through database
+triggers and exposes faculty-only `api.assignment_grade_events`,
+`api.quiz_grade_events`, and `api.grade_events` views. The current-grade tables
+remain the source of current-state reads and writes for compatibility; replacing
+them with current views over events is a follow-up source-of-truth migration.
+
 ## Research Notes
 
 - PostgreSQL trigger functions expose `NEW` and `OLD`, and the documentation

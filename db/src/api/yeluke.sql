@@ -22,6 +22,7 @@
 \ir ./yeluke/user_jwt.sql
 \ir ./yeluke/grade_snapshot.sql
 \ir ./yeluke/grade.sql
+\ir ./yeluke/grade_event.sql
 \ir ./yeluke/comments.sql
 
 \ir ./yeluke/functions.sql

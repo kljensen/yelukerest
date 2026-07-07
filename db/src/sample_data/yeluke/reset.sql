@@ -8,12 +8,15 @@ truncate data.assignment restart identity cascade;
 truncate data.assignment_field restart identity cascade;
 truncate data.assignment_submission restart identity cascade;
 truncate data.assignment_field_submission restart identity cascade;
+truncate data.quiz_grade_event restart identity cascade;
 truncate data.quiz_grade restart identity cascade;
 truncate data.artifact restart identity cascade;
+truncate data.assignment_grade_event restart identity cascade;
 truncate data.assignment_grade restart identity cascade;
 truncate data.user_secret restart identity cascade;
+truncate data.grade_event restart identity cascade;
 truncate data.grade_snapshot restart identity cascade;
-truncate data.grade restart identity cascade
+truncate data.grade restart identity cascade;
 -- KEEP ME FOR new-table.sh
 
 

@@ -77,6 +77,24 @@ COMMENT ON COLUMN assignment_grades.description IS 'Optional grading note or exp
 COMMENT ON COLUMN assignment_grades.created_at IS 'When this grade row was created';
 COMMENT ON COLUMN assignment_grades.updated_at IS 'When this grade row was last updated';
 
+COMMENT ON VIEW assignment_grade_events IS
+    'Append-only history of assignment grade inserts, corrections, and deletions';
+COMMENT ON COLUMN assignment_grade_events.id IS 'Unique assignment grade history event id';
+COMMENT ON COLUMN assignment_grade_events.event_type IS 'Grade event kind: recorded, corrected, or voided';
+COMMENT ON COLUMN assignment_grade_events.operation IS 'Table operation that produced this event';
+COMMENT ON COLUMN assignment_grade_events.assignment_submission_id IS 'Submission this grade event evaluates';
+COMMENT ON COLUMN assignment_grade_events.assignment_slug IS 'Assignment this grade event belongs to';
+COMMENT ON COLUMN assignment_grade_events.points_possible IS 'Maximum score captured when the event was recorded';
+COMMENT ON COLUMN assignment_grade_events.points IS 'Points captured for this event';
+COMMENT ON COLUMN assignment_grade_events.description IS 'Optional grading note captured for this event';
+COMMENT ON COLUMN assignment_grade_events.grade_created_at IS 'Current-grade row creation timestamp captured for this event';
+COMMENT ON COLUMN assignment_grade_events.grade_updated_at IS 'Current-grade row update timestamp captured for this event';
+COMMENT ON COLUMN assignment_grade_events.created_at IS 'When this history event was appended';
+COMMENT ON COLUMN assignment_grade_events.created_by_user_id IS 'Request user that caused this history event, when available';
+COMMENT ON COLUMN assignment_grade_events.source IS 'Source table or import path that produced this event';
+COMMENT ON COLUMN assignment_grade_events.reason IS 'Optional reason for the grade event';
+COMMENT ON COLUMN assignment_grade_events.import_id IS 'Optional import batch identifier for the grade event';
+
 COMMENT ON VIEW assignment_grade_exceptions IS
     'Per-user or per-team assignment deadline and credit exceptions';
 COMMENT ON COLUMN assignment_grade_exceptions.id IS 'Unique assignment grade exception id';
@@ -105,6 +123,23 @@ COMMENT ON COLUMN grades.user_id IS 'User whose snapshot grade is recorded';
 COMMENT ON COLUMN grades.description IS 'Optional note explaining the snapshot grade';
 COMMENT ON COLUMN grades.created_at IS 'When this grade snapshot row was created';
 COMMENT ON COLUMN grades.updated_at IS 'When this grade snapshot row was last updated';
+
+COMMENT ON VIEW grade_events IS
+    'Append-only history of grade snapshot inserts, corrections, and deletions';
+COMMENT ON COLUMN grade_events.id IS 'Unique grade snapshot history event id';
+COMMENT ON COLUMN grade_events.event_type IS 'Grade event kind: recorded, corrected, or voided';
+COMMENT ON COLUMN grade_events.operation IS 'Table operation that produced this event';
+COMMENT ON COLUMN grade_events.snapshot_slug IS 'Grade snapshot this history event belongs to';
+COMMENT ON COLUMN grade_events.user_id IS 'User whose snapshot grade event is recorded';
+COMMENT ON COLUMN grade_events.points IS 'Grade points captured for this event';
+COMMENT ON COLUMN grade_events.description IS 'Optional grade note captured for this event';
+COMMENT ON COLUMN grade_events.grade_created_at IS 'Current-grade row creation timestamp captured for this event';
+COMMENT ON COLUMN grade_events.grade_updated_at IS 'Current-grade row update timestamp captured for this event';
+COMMENT ON COLUMN grade_events.created_at IS 'When this history event was appended';
+COMMENT ON COLUMN grade_events.created_by_user_id IS 'Request user that caused this history event, when available';
+COMMENT ON COLUMN grade_events.source IS 'Source table or import path that produced this event';
+COMMENT ON COLUMN grade_events.reason IS 'Optional reason for the grade event';
+COMMENT ON COLUMN grade_events.import_id IS 'Optional import batch identifier for the grade event';
 
 COMMENT ON VIEW quizzes IS
     'Paper quiz metadata and availability windows';
@@ -136,6 +171,24 @@ COMMENT ON COLUMN quiz_grades.description IS 'Optional grading note or explanati
 COMMENT ON COLUMN quiz_grades.user_id IS 'Student whose quiz grade is recorded';
 COMMENT ON COLUMN quiz_grades.created_at IS 'When this quiz grade row was created';
 COMMENT ON COLUMN quiz_grades.updated_at IS 'When this quiz grade row was last updated';
+
+COMMENT ON VIEW quiz_grade_events IS
+    'Append-only history of quiz grade inserts, corrections, and deletions';
+COMMENT ON COLUMN quiz_grade_events.id IS 'Unique quiz grade history event id';
+COMMENT ON COLUMN quiz_grade_events.event_type IS 'Grade event kind: recorded, corrected, or voided';
+COMMENT ON COLUMN quiz_grade_events.operation IS 'Table operation that produced this event';
+COMMENT ON COLUMN quiz_grade_events.quiz_id IS 'Quiz this grade event belongs to';
+COMMENT ON COLUMN quiz_grade_events.user_id IS 'Student whose quiz grade event is recorded';
+COMMENT ON COLUMN quiz_grade_events.points IS 'Points captured for this event';
+COMMENT ON COLUMN quiz_grade_events.points_possible IS 'Maximum score captured when the event was recorded';
+COMMENT ON COLUMN quiz_grade_events.description IS 'Optional grading note captured for this event';
+COMMENT ON COLUMN quiz_grade_events.grade_created_at IS 'Current-grade row creation timestamp captured for this event';
+COMMENT ON COLUMN quiz_grade_events.grade_updated_at IS 'Current-grade row update timestamp captured for this event';
+COMMENT ON COLUMN quiz_grade_events.created_at IS 'When this history event was appended';
+COMMENT ON COLUMN quiz_grade_events.created_by_user_id IS 'Request user that caused this history event, when available';
+COMMENT ON COLUMN quiz_grade_events.source IS 'Source table or import path that produced this event';
+COMMENT ON COLUMN quiz_grade_events.reason IS 'Optional reason for the grade event';
+COMMENT ON COLUMN quiz_grade_events.import_id IS 'Optional import batch identifier for the grade event';
 
 COMMENT ON VIEW quiz_grade_exceptions IS
     'Per-user quiz deadline and credit exceptions';

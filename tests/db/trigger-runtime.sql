@@ -16,15 +16,21 @@ SELECT set_eq(
         'assignment_field.tg_assignment_field_default',
         'assignment_field_submission.tg_assignment_field_submission_default',
         'assignment_grade.tg_assignment_grade_default',
+        'assignment_grade.tg_assignment_grade_event_history',
+        'assignment_grade_event.tg_assignment_grade_event_append_only',
         'assignment_grade_exception.tg_assignment_grade_exception_default',
         'assignment_submission.tg_assignment_submission_default',
         'assignment_submission.tg_assignment_submission_participants',
         'engagement.tg_engagement_update_timestamps',
         'grade.tg_grade_default',
+        'grade.tg_grade_event_history',
+        'grade_event.tg_grade_event_append_only',
         'grade_snapshot.tg_grade_snapshot_default',
         'meeting.tg_meeting_default',
         'quiz.tg_quiz_default',
         'quiz_grade.tg_quiz_grade_default',
+        'quiz_grade.tg_quiz_grade_event_history',
+        'quiz_grade_event.tg_quiz_grade_event_append_only',
         'quiz_grade_exception.tg_quiz_grade_exception_default',
         'quiz_submission.tg_quiz_submission_default',
         'team.tg_team_update_timestamps',
@@ -48,7 +54,10 @@ SELECT set_eq(
             'fill_assignment_submission_defaults',
             'fill_quiz_grade_defaults',
             'ensure_student_engagement_rows',
-            'quiz_set_defaults'
+            'quiz_set_defaults',
+            'record_assignment_grade_event',
+            'record_grade_event',
+            'record_quiz_grade_event'
         )
         AND p.prosecdef
         AND p.proconfig @> ARRAY['search_path=data, pg_temp']
@@ -59,6 +68,9 @@ SELECT set_eq(
         'fill_assignment_grade_exception_defaults',
         'fill_assignment_submission_defaults',
         'fill_quiz_grade_defaults',
+        'record_assignment_grade_event',
+        'record_grade_event',
+        'record_quiz_grade_event',
         'quiz_set_defaults'
     ],
     'data lookup trigger functions run as security definers with pinned search_path'
