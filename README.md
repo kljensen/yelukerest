@@ -9,8 +9,8 @@ functions of the software include:
 - storing assignment information and accepting assignment submissions; and,
 - storing student grades on assignments and quizzes.
 
-The core of the application is a RESTful API built on top of
-[postgrest](https://postgrest.org/en/stable/). In addition, the application
+The core of the application is an HTTP API exposed by
+[PostgREST](https://postgrest.org/en/stable/). In addition, the application
 includes a web front-end for interacting with the API. For me, Yelukerest
 replaces Canvas and allows me to do many things that I cannot do easily with
 Canvas, particularly manipulating class information in an automatic fashion,
@@ -48,7 +48,7 @@ The roles of the most important components are as follows:
   of the application data and enforces
   relational integrity.
 - _backup_ - Saves backups of the production postgres database to S3, usually hourly.
-- _postgrest_ - provides a RESTful API over the postgres application database.
+- _postgrest_ - provides an HTTP API over the postgres application database.
 - _elmclient_ - a front-end client that runs in web browsers and communicates
   with the API. This is the main way in which students interact with the
   API. The Elm compiler version is pinned in `elmclient/elm.json` and in the

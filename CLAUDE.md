@@ -30,7 +30,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-Yelukerest is a class management system built around PostgreSQL with PostgREST providing a RESTful API. The architecture follows a database-centric approach where most business logic is implemented in PostgreSQL using row-level security and declarative constraints.
+Yelukerest is a class management system built around PostgreSQL with PostgREST providing an HTTP API. The architecture follows a database-centric approach where most business logic is implemented in PostgreSQL using row-level security and declarative constraints.
 
 ### Core Components
 
