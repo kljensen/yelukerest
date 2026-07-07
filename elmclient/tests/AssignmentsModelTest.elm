@@ -57,6 +57,10 @@ tests =
                 \_ ->
                     assignmentSubmissionAction (millis 1000) Nothing baseAssignment currentUser (Just baseSubmission)
                         |> Expect.equal (CanUpdateAssignment baseAssignment baseSubmission)
+            , test "blocks beginning a team assignment when the user has no team" <|
+                \_ ->
+                    assignmentSubmissionAction (millis 1000) Nothing { baseAssignment | is_team = True } { currentUser | team_nickname = Nothing } Nothing
+                        |> Expect.equal (CannotSubmitAssignment MissingTeam)
             , test "blocks an existing submission when the assignment is no longer writable" <|
                 \_ ->
                     assignmentSubmissionAction (millis 3000) Nothing { baseAssignment | is_open = False } currentUser (Just baseSubmission)
