@@ -59,7 +59,7 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 
 DROP TRIGGER IF EXISTS tg_assignment_grade_exception_default ON assignment_grade_exception;
@@ -67,4 +67,4 @@ CREATE TRIGGER tg_assignment_grade_exception_default
     BEFORE INSERT OR UPDATE
     ON assignment_grade_exception
     FOR EACH ROW
-EXECUTE PROCEDURE fill_assignment_grade_exception_defaults();
+EXECUTE FUNCTION fill_assignment_grade_exception_defaults();

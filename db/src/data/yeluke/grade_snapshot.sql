@@ -17,7 +17,7 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 
 DROP TRIGGER IF EXISTS tg_grade_snapshot_default ON grade_snapshot;
@@ -25,4 +25,4 @@ CREATE TRIGGER tg_grade_snapshot_default
     BEFORE INSERT OR UPDATE
     ON grade_snapshot
     FOR EACH ROW
-EXECUTE PROCEDURE fill_grade_snapshot_defaults();
+EXECUTE FUNCTION fill_grade_snapshot_defaults();

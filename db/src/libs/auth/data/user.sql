@@ -39,4 +39,4 @@ CREATE TRIGGER tg_users_default
     BEFORE INSERT OR UPDATE
     ON "user"
     FOR EACH ROW
-EXECUTE PROCEDURE clean_user_fields();
+EXECUTE FUNCTION clean_user_fields();

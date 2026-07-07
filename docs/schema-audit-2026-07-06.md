@@ -147,7 +147,9 @@ Status: #248. Existing pgTAP pattern tests cover the behavior.
 ### Mapped Existing Debt
 
 - #157: create indexes for all foreign keys.
-- #190: use modern PostgreSQL SQL function bodies.
+- #190: use modern PostgreSQL SQL function bodies. Fixed by converting
+  project-owned SQL helpers to parsed `RETURN`/`BEGIN ATOMIC` bodies and adding
+  catalog tests.
 - #240: remove stale online quiz question/answer workflow after moving quizzes
   fully to paper.
 - #242/#244: move admin imports/upserts behind tested `api` RPCs.

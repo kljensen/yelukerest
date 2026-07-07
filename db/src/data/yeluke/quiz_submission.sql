@@ -29,11 +29,11 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS tg_quiz_submission_default ON quiz_submission;
 CREATE TRIGGER tg_quiz_submission_default
     BEFORE INSERT OR UPDATE
     ON quiz_submission
     FOR EACH ROW
-EXECUTE PROCEDURE fill_quiz_submission_defaults();
+EXECUTE FUNCTION fill_quiz_submission_defaults();

@@ -29,4 +29,4 @@ CREATE TRIGGER tg_quiz_grade_exception_default
     BEFORE INSERT OR UPDATE
     ON quiz_grade_exception
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

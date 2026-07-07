@@ -31,7 +31,7 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-\$\$ language 'plpgsql';
+\$\$ LANGUAGE plpgsql;
 
 
 DROP TRIGGER IF EXISTS tg_$1_default ON $1;
@@ -39,7 +39,7 @@ CREATE TRIGGER tg_$1_default
     BEFORE INSERT OR UPDATE
     ON $1
     FOR EACH ROW
-EXECUTE PROCEDURE fill_$1_defaults();
+EXECUTE FUNCTION fill_$1_defaults();
 EOF
 
 cat << EOF >  db/src/api/yeluke/$1.sql

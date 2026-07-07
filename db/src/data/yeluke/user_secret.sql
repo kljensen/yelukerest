@@ -46,7 +46,7 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 
 DROP TRIGGER IF EXISTS tg_user_secret_default ON user_secret;
@@ -54,4 +54,4 @@ CREATE TRIGGER tg_user_secret_default
     BEFORE INSERT OR UPDATE
     ON user_secret
     FOR EACH ROW
-EXECUTE PROCEDURE fill_user_secret_defaults();
+EXECUTE FUNCTION fill_user_secret_defaults();

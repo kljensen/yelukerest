@@ -36,4 +36,4 @@ CREATE TRIGGER tg_team_update_timestamps
     BEFORE INSERT OR UPDATE
     ON team
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

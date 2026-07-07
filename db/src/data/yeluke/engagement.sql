@@ -33,4 +33,4 @@ CREATE TRIGGER tg_engagement_update_timestamps
     BEFORE INSERT OR UPDATE
     ON engagement
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

@@ -910,27 +910,6 @@ END;
 $$;
 
 
---
--- Name: sign_jwt(integer, data.user_role); Type: FUNCTION; Schema: auth; Owner: superuser
---
-
-CREATE FUNCTION auth.sign_jwt(user_id integer, role data.user_role) RETURNS text
-    LANGUAGE sql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'auth', 'settings', 'pgjwt', 'pg_temp'
-    AS $$
-    select pgjwt.sign(
-      json_build_object(
-        'user_id', user_id,
-        'role', "role"::TEXT,
-        'exp', extract(epoch from now())::integer + settings.get('jwt_lifetime')::int -- token expires in 1 hour
-      ),
-      settings.get('jwt_secret'))
-$$;
-
-
-ALTER FUNCTION auth.sign_jwt(user_id integer, role data.user_role) OWNER TO superuser;
-
---
 -- Name: assignment_field_submission_is_writable_by_current_user(integer); Type: FUNCTION; Schema: data; Owner: superuser
 --
 
@@ -1321,9 +1300,7 @@ ALTER FUNCTION data.refresh_assignment_submission_participants() OWNER TO superu
 
 CREATE FUNCTION data.text_is_url(text) RETURNS boolean
     LANGUAGE sql STABLE
-    AS $_$
-    SELECT $1 ~* '^https?://[a-z0-9]+'
-$_$;
+    RETURN $1 ~* '^https?://[a-z0-9]+';
 
 
 ALTER FUNCTION data.text_is_url(text) OWNER TO superuser;
@@ -1334,9 +1311,7 @@ ALTER FUNCTION data.text_is_url(text) OWNER TO superuser;
 
 CREATE FUNCTION data.text_matches(text, text) RETURNS boolean
     LANGUAGE sql STABLE
-    AS $_$
-    select $1 ~ ('^(?:' || $2 || ')$')
-$_$;
+    RETURN $1 ~ ('^(?:' || $2 || ')$');
 
 
 ALTER FUNCTION data.text_matches(text, text) OWNER TO superuser;
@@ -1459,14 +1434,20 @@ ALTER FUNCTION pgjwt.verify(token text, secret text, algorithm text) OWNER TO su
 
 CREATE FUNCTION request.app_name() RETURNS text
     LANGUAGE sql STABLE
-    AS $$
-    SELECT
-        coalesce(current_setting('request.jwt.claim.app_name', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'app_name'));
-
-$$;
+    RETURN coalesce(current_setting('request.jwt.claim.app_name', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'app_name'));
 
 
 ALTER FUNCTION request.app_name() OWNER TO superuser;
+
+-- Name: user_id_as_text(); Type: FUNCTION; Schema: request; Owner: superuser
+--
+
+CREATE FUNCTION request.user_id_as_text() RETURNS text
+    LANGUAGE sql STABLE
+    RETURN coalesce(current_setting('request.jwt.claim.user_id', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'user_id'));
+
+
+ALTER FUNCTION request.user_id_as_text() OWNER TO superuser;
 
 --
 -- Name: user_id(); Type: FUNCTION; Schema: request; Owner: superuser
@@ -1474,8 +1455,7 @@ ALTER FUNCTION request.app_name() OWNER TO superuser;
 
 CREATE FUNCTION request.user_id() RETURNS integer
     LANGUAGE sql STABLE
-    AS $$
-    SELECT
+    RETURN
         CASE request.user_id_as_text ()
         WHEN '' THEN
             0
@@ -1483,25 +1463,8 @@ CREATE FUNCTION request.user_id() RETURNS integer
             request.user_id_as_text ()::int
         END;
 
-$$;
-
 
 ALTER FUNCTION request.user_id() OWNER TO superuser;
-
---
--- Name: user_id_as_text(); Type: FUNCTION; Schema: request; Owner: superuser
---
-
-CREATE FUNCTION request.user_id_as_text() RETURNS text
-    LANGUAGE sql STABLE
-    AS $$
-    SELECT
-        coalesce(current_setting('request.jwt.claim.user_id', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'user_id'));
-
-$$;
-
-
-ALTER FUNCTION request.user_id_as_text() OWNER TO superuser;
 
 --
 -- Name: user_role(); Type: FUNCTION; Schema: request; Owner: superuser
@@ -1509,14 +1472,22 @@ ALTER FUNCTION request.user_id_as_text() OWNER TO superuser;
 
 CREATE FUNCTION request.user_role() RETURNS text
     LANGUAGE sql STABLE
-    AS $$
-    SELECT
-        coalesce(current_setting('request.jwt.claim.role', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'role'));
-
-$$;
+    RETURN coalesce(current_setting('request.jwt.claim.role', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'role'));
 
 
 ALTER FUNCTION request.user_role() OWNER TO superuser;
+
+--
+-- Name: secrets; Type: TABLE; Schema: settings; Owner: superuser
+--
+
+CREATE TABLE settings.secrets (
+    key text NOT NULL,
+    value text NOT NULL
+);
+
+
+ALTER TABLE settings.secrets OWNER TO superuser;
 
 --
 -- Name: get(text); Type: FUNCTION; Schema: settings; Owner: superuser
@@ -1525,9 +1496,7 @@ ALTER FUNCTION request.user_role() OWNER TO superuser;
 CREATE FUNCTION settings.get(text) RETURNS text
     LANGUAGE sql STABLE SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'settings', 'pg_temp'
-    AS $_$
-    select value from settings.secrets where key = $1
-$_$;
+    RETURN (select value from settings.secrets where key = $1);
 
 
 ALTER FUNCTION settings.get(text) OWNER TO superuser;
@@ -1539,15 +1508,33 @@ ALTER FUNCTION settings.get(text) OWNER TO superuser;
 CREATE FUNCTION settings.set(text, text) RETURNS void
     LANGUAGE sql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'settings', 'pg_temp'
-    AS $_$
+BEGIN ATOMIC
 	insert into settings.secrets (key, value)
 	values ($1, $2)
 	on conflict (key) do update
 	set value = $2;
-$_$;
+END;
 
 
 ALTER FUNCTION settings.set(text, text) OWNER TO superuser;
+
+--
+-- Name: sign_jwt(integer, data.user_role); Type: FUNCTION; Schema: auth; Owner: superuser
+--
+
+CREATE FUNCTION auth.sign_jwt(user_id integer, role data.user_role) RETURNS text
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'auth', 'settings', 'pgjwt', 'pg_temp'
+    RETURN pgjwt.sign(
+      json_build_object(
+        'user_id', user_id,
+        'role', "role"::TEXT,
+        'exp', extract(epoch from now())::integer + settings.get('jwt_lifetime')::int -- token expires in 1 hour
+      ),
+      settings.get('jwt_secret'));
+
+
+ALTER FUNCTION auth.sign_jwt(user_id integer, role data.user_role) OWNER TO superuser;
 
 SET default_tablespace = '';
 
@@ -2837,18 +2824,6 @@ ALTER TABLE data.user_secret ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTIT
     CACHE 1
 );
 
-
---
--- Name: secrets; Type: TABLE; Schema: settings; Owner: superuser
---
-
-CREATE TABLE settings.secrets (
-    key text NOT NULL,
-    value text NOT NULL
-);
-
-
-ALTER TABLE settings.secrets OWNER TO superuser;
 
 --
 -- Name: assignment_submission id; Type: DEFAULT; Schema: data; Owner: superuser

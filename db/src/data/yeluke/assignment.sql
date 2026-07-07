@@ -32,4 +32,4 @@ CREATE TRIGGER tg_assignment_default
     BEFORE INSERT OR UPDATE
     ON assignment
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

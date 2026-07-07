@@ -24,7 +24,7 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
 
 DROP TRIGGER IF EXISTS tg_grade_default ON grade;
@@ -32,4 +32,4 @@ CREATE TRIGGER tg_grade_default
     BEFORE INSERT OR UPDATE
     ON grade
     FOR EACH ROW
-EXECUTE PROCEDURE fill_grade_defaults();
+EXECUTE FUNCTION fill_grade_defaults();

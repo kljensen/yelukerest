@@ -47,4 +47,4 @@ CREATE TRIGGER tg_artifact_default
     BEFORE INSERT OR UPDATE
     ON artifact
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

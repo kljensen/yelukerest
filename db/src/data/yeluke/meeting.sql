@@ -27,4 +27,4 @@ CREATE TRIGGER tg_meeting_default
     BEFORE INSERT OR UPDATE
     ON meeting
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

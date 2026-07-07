@@ -1,13 +1,15 @@
 begin;
 select plan(17);
 
-create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean) as $$
-    select (pgjwt.verify(
-      jwt,
-      settings.get('jwt_secret')
-    )).*
-$$ stable security definer language sql
-set search_path = pg_catalog, pgjwt, settings, pg_temp;
+create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean)
+stable
+security definer
+language sql
+set search_path = pg_catalog, pgjwt, settings, pg_temp
+begin atomic
+    select *
+    from pgjwt.verify(jwt, settings.get('jwt_secret'));
+end;
 
 SELECT view_owner_is(
     'api', 'user_jwts', 'api',

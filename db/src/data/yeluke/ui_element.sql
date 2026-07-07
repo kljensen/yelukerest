@@ -19,4 +19,4 @@ CREATE TRIGGER tg_ui_element_update_timestamps
     BEFORE INSERT OR UPDATE
     ON ui_element
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

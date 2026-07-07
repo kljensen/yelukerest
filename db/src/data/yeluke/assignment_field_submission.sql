@@ -104,7 +104,7 @@ BEGIN
             )
     );
 END;
-$$ language 'plpgsql'
+$$ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = data, pg_temp;
 
@@ -167,7 +167,7 @@ BEGIN
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql'
+$$ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = data, pg_temp;
 
@@ -177,4 +177,4 @@ CREATE TRIGGER tg_assignment_field_submission_default
     BEFORE INSERT OR UPDATE
             ON assignment_field_submission
     FOR EACH ROW
-EXECUTE PROCEDURE fill_assignment_field_submission_defaults();
+EXECUTE FUNCTION fill_assignment_field_submission_defaults();

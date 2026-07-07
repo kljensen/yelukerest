@@ -54,4 +54,4 @@ CREATE TRIGGER tg_quiz_default
     BEFORE INSERT OR UPDATE
     ON quiz
     FOR EACH ROW
-EXECUTE PROCEDURE quiz_set_defaults();
+EXECUTE FUNCTION quiz_set_defaults();

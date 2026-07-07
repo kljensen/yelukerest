@@ -1,15 +1,17 @@
 -- Tests if the first argument matches the regex in
 -- the second argument.
-create or replace function text_matches(text, text) returns bool as $$
-    select $1 ~ ('^(?:' || $2 || ')$')
-$$ stable language sql;
+create or replace function text_matches(text, text) returns bool
+stable
+language sql
+return $1 ~ ('^(?:' || $2 || ')$');
 
 -- Check if a value looks like a URL. Here, I'm going to get false negatives,
 -- but for the most part I don't care. See
 -- https://mathiasbynens.be/demo/url-regex
-create or replace function text_is_url(text) returns bool as $$
-    SELECT $1 ~* '^https?://[a-z0-9]+'
-$$ stable language sql;
+create or replace function text_is_url(text) returns bool
+stable
+language sql
+return $1 ~* '^https?://[a-z0-9]+';
 
 CREATE TABLE IF NOT EXISTS assignment_field (
     slug TEXT
@@ -70,4 +72,4 @@ CREATE TRIGGER tg_assignment_field_default
     BEFORE INSERT OR UPDATE
     ON assignment_field
     FOR EACH ROW
-EXECUTE PROCEDURE update_updated_at_column();
+EXECUTE FUNCTION update_updated_at_column();

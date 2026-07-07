@@ -300,6 +300,26 @@ BEGIN
         RAISE EXCEPTION 'auth.sign_jwt search_path is not pinned';
     END IF;
 
+    IF (
+        SELECT count(*)
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE (n.nspname, p.proname) IN (
+            ('auth', 'sign_jwt'),
+            ('data', 'text_is_url'),
+            ('data', 'text_matches'),
+            ('request', 'app_name'),
+            ('request', 'user_id'),
+            ('request', 'user_id_as_text'),
+            ('request', 'user_role'),
+            ('settings', 'get'),
+            ('settings', 'set')
+        )
+        AND p.prosqlbody IS NOT NULL
+    ) <> 9 THEN
+        RAISE EXCEPTION 'project-owned SQL helper functions must use parsed SQL bodies';
+    END IF;
+
     IF NOT has_function_privilege('api', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
         RAISE EXCEPTION 'api must be able to execute auth.sign_jwt';
     END IF;
