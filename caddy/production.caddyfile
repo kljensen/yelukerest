@@ -1,22 +1,23 @@
-
 {$FQDN} {
-    import app
-    tls {
-        dns route53 {
-            # Notice that the plug-in will read
-            # AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY
-            # https://github.com/libdns/route53/blob/5afde8b82bff9494c83a6ed5a58c5ca3a6b0b93f/provider.go#L18C62-L18C72
-            wait_for_propagation true
-        }
-    }
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	import app
+	tls {
+		dns route53 {
+			# Notice that the plug-in will read
+			# AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY
+			# https://github.com/libdns/route53/blob/5afde8b82bff9494c83a6ed5a58c5ca3a6b0b93f/provider.go#L18C62-L18C72
+			wait_for_propagation true
+		}
+	}
 }
 
 {$NAKED_FQDN} {
-    # This is a naked domain, so we need to redirect it to the www subdomain
-    redir https://{$FQDN}{uri}
-    tls {
-        dns route53 {
-            wait_for_propagation true
-        }
-    }
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# This is a naked domain, so we need to redirect it to the www subdomain
+	redir https://{$FQDN}{uri}
+	tls {
+		dns route53 {
+			wait_for_propagation true
+		}
+	}
 }

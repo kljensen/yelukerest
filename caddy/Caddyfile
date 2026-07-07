@@ -1,53 +1,74 @@
 {
-    debug
+	debug
 }
 :80 {
-    log {
-    }
-    # Redirect to https
-    redir https://{host}{uri} permanent
+	log {
+	}
+	# Redirect to https
+	redir https://{host}{uri} permanent
 }
 
 (elmclient) {
-    root * /var/elmclient
-    file_server
+	root * /var/elmclient
+	file_server
+}
+
+(security_headers) {
+	header {
+		?X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"
+		X-Frame-Options "DENY"
+	}
+}
+
+(app_csp) {
+	@not_openapi not path /openapi*
+	header @not_openapi Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'"
+}
+
+(swagger_csp) {
+	header /openapi* Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'"
 }
 
 (postgrest) {
-    # Pass /rest/ to Postgrest docker container.
-    # Use the $POSTGREST_PORT environment variable to set the port.
-    route /rest/* {
-        uri strip_prefix /rest
-        reverse_proxy postgrest:{$POSTGREST_PORT}
-    }
+	# Pass /rest/ to Postgrest docker container.
+	# Use the $POSTGREST_PORT environment variable to set the port.
+	route /rest/* {
+		uri strip_prefix /rest
+		reverse_proxy postgrest:{$POSTGREST_PORT}
+	}
 }
 
 (authapp) {
-    # Pass /auth/ to AuthApp docker container.
-    # Use the $AUTHAPP_PORT environment variable to set the port.
-    route /auth/* {
-        reverse_proxy authapp:{$AUTHAPP_PORT}
-    }
-    route /cas/* {
-        reverse_proxy authapp:{$AUTHAPP_PORT}
-    }
+	# Pass /auth/ to AuthApp docker container.
+	# Use the $AUTHAPP_PORT environment variable to set the port.
+	route /auth/* {
+		reverse_proxy authapp:{$AUTHAPP_PORT}
+	}
+	route /cas/* {
+		reverse_proxy authapp:{$AUTHAPP_PORT}
+	}
 }
 
 (app) {
-    import elmclient
-    import postgrest
-    import authapp
-    route /openapi/* {
-        uri strip_prefix /openapi
-        file_server {
-            root /usr/share/caddy/html/swagger
-            index index.html
-        }
-    }
+	import security_headers
+	import app_csp
+	import swagger_csp
+	import elmclient
+	import postgrest
+	import authapp
+	route /openapi/* {
+		uri strip_prefix /openapi
+		file_server {
+			root /usr/share/caddy/html/swagger
+			index index.html
+		}
+	}
 }
 
 code.{$NAKED_FQDN} {
-    reverse_proxy codeframe:{$CODEFRAME_PORT}
+	reverse_proxy codeframe:{$CODEFRAME_PORT}
 }
 
 import {$CADDY_ENV:production}.caddyfile

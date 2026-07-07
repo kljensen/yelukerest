@@ -16,9 +16,9 @@
   is a script that targets an already-running stack. Source:
   <https://caddyserver.com/docs/caddyfile/directives/reverse_proxy>.
 - GitHub issue search found older overlapping issue #116 and related public
-  surface issues #217, #158, and #181. Those are broader than this smoke test:
-  this command checks current behavior without solving Swagger completeness,
-  HTTP header hardening, or old nginx guidance.
+  surface issues #217, #158, and #181. The smoke test now includes the HTTP
+  security headers from #158, while Swagger completeness and old nginx guidance
+  remain separate concerns.
 
 ## Usage
 
@@ -76,6 +76,11 @@ The command verifies:
   through Caddy and authapp.
 - `/auth/api.json` returns the expected unauthenticated `401 Unauthorized`
   response through Caddy and authapp.
+- `/`, `/openapi/`, `/rest/`, and `/auth/me` include the expected browser
+  hardening headers from Caddy.
+- `/` and `/openapi/` include route-appropriate Content Security Policy
+  headers.
+- production smoke targets also check `Strict-Transport-Security`.
 
 ## Scope
 

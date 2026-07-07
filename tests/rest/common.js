@@ -28,7 +28,7 @@ const streamToString = (stream) => {
     return stream.toString('utf8');
 };
 
-const baseURL = 'https://localhost';
+const baseURL = process.env.TEST_BASE_URL || 'https://localhost';
 // So that we don't raise an error on self-signed certs.
 process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = 0;
 var restService = function () {

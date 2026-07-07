@@ -18,6 +18,12 @@ COMPOSE_EXTRA_FILE=${YELUKEREST_SMOKE_COMPOSE_EXTRA_FILE:-}
 SERVICES=${YELUKEREST_SMOKE_SERVICES:-"db postgrest authapp caddy"}
 CURL_TIMEOUT=${YELUKEREST_SMOKE_CURL_TIMEOUT:-10}
 FAILURES=0
+HEADER_NOSNIFF='^x-content-type-options: nosniff'
+HEADER_REFERRER='^referrer-policy: strict-origin-when-cross-origin'
+HEADER_PERMISSIONS='^permissions-policy: camera=\(\), microphone=\(\), geolocation=\(\), payment=\(\), usb=\(\), browsing-topics=\(\)'
+HEADER_X_FRAME='^x-frame-options: DENY'
+APP_CSP="content-security-policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'"
+SWAGGER_CSP="content-security-policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'"
 
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/yelukerest-smoke.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
@@ -235,9 +241,31 @@ main() {
     check_http "OpenAPI UI" "$BASE_URL/openapi/" "200" 'swagger-ui'
     check_http "PostgREST root OpenAPI JSON" "$BASE_URL/rest/" "200" '"(swagger|openapi)"[[:space:]]*:'
     check_http "anonymous DB-backed meetings endpoint" "$BASE_URL/rest/meetings?select=slug&limit=1" "200" '^\['
+    check_http_header "frontend nosniff header" "$BASE_URL/" "200" "$HEADER_NOSNIFF"
+    check_http_header "frontend referrer policy" "$BASE_URL/" "200" "$HEADER_REFERRER"
+    check_http_header "frontend permissions policy" "$BASE_URL/" "200" "$HEADER_PERMISSIONS"
+    check_http_header "frontend frame denial" "$BASE_URL/" "200" "$HEADER_X_FRAME"
+    check_http_header "frontend CSP" "$BASE_URL/" "200" "$APP_CSP"
+    check_http_header "OpenAPI nosniff header" "$BASE_URL/openapi/" "200" "$HEADER_NOSNIFF"
+    check_http_header "OpenAPI referrer policy" "$BASE_URL/openapi/" "200" "$HEADER_REFERRER"
+    check_http_header "OpenAPI permissions policy" "$BASE_URL/openapi/" "200" "$HEADER_PERMISSIONS"
+    check_http_header "OpenAPI frame denial" "$BASE_URL/openapi/" "200" "$HEADER_X_FRAME"
+    check_http_header "OpenAPI CSP" "$BASE_URL/openapi/" "200" "$SWAGGER_CSP"
+    check_http_header "PostgREST nosniff header" "$BASE_URL/rest/" "200" "$HEADER_NOSNIFF"
+    check_http_header "PostgREST referrer policy" "$BASE_URL/rest/" "200" "$HEADER_REFERRER"
+    check_http_header "PostgREST permissions policy" "$BASE_URL/rest/" "200" "$HEADER_PERMISSIONS"
+    check_http_header "PostgREST frame denial" "$BASE_URL/rest/" "200" "$HEADER_X_FRAME"
     check_http_header "authapp login redirects to CAS" "$BASE_URL/auth/login" "307" '^[Ll]ocation: .*/cas/login\?service=.*auth%2Fvalidate'
     check_http "authapp unauthenticated /auth/me" "$BASE_URL/auth/me" "401" 'Unauthorized'
     check_http "authapp unauthenticated /auth/api.json" "$BASE_URL/auth/api.json" "401" 'Unauthorized'
+    check_http_header "authapp nosniff header" "$BASE_URL/auth/me" "401" "$HEADER_NOSNIFF"
+    check_http_header "authapp referrer policy" "$BASE_URL/auth/me" "401" "$HEADER_REFERRER"
+    check_http_header "authapp permissions policy" "$BASE_URL/auth/me" "401" "$HEADER_PERMISSIONS"
+    check_http_header "authapp frame denial" "$BASE_URL/auth/me" "401" "$HEADER_X_FRAME"
+
+    if [ "${CADDY_ENV:-}" = "production" ]; then
+        check_http_header "production HSTS" "$BASE_URL/" "200" '^strict-transport-security: max-age=31536000; includeSubDomains'
+    fi
 
     if [ "$FAILURES" -ne 0 ]; then
         printf '\nSmoke test failed with %s failure(s).\n' "$FAILURES" >&2
