@@ -2248,6 +2248,82 @@ CREATE VIEW api.grades AS
 ALTER VIEW api.grades OWNER TO api;
 
 --
+-- Name: grade_snapshot_distributions; Type: VIEW; Schema: api; Owner: superuser
+--
+
+CREATE VIEW api.grade_snapshot_distributions AS
+ SELECT snapshot_slug,
+    count(grade.user_id) AS count,
+    avg(points) AS average,
+    min(points) AS min,
+    max(points) AS max,
+    stddev_pop(points) AS stddev,
+    array_agg(points ORDER BY points) AS grades
+   FROM (data.grade
+     JOIN data."user" ON ((grade.user_id = "user".id)))
+  WHERE ("user".role = 'student'::data.user_role)
+  GROUP BY snapshot_slug
+ HAVING (count(grade.user_id) >= 3);
+
+
+ALTER VIEW api.grade_snapshot_distributions OWNER TO superuser;
+
+--
+-- Name: VIEW grade_snapshot_distributions; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON VIEW api.grade_snapshot_distributions IS 'Statistics on student grades for each grade snapshot';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.snapshot_slug; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.snapshot_slug IS 'The slug for the grade snapshot to which these statistics correspond';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.count; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.count IS 'The number of students with grades for this grade snapshot';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.average; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.average IS 'The average grade among students for this grade snapshot';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.min; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.min IS 'The minimum grade among students for this grade snapshot';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.max; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.max IS 'The maximum grade among students for this grade snapshot';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.stddev; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.stddev IS 'The population standard deviation of student grades for this grade snapshot';
+
+
+--
+-- Name: COLUMN grade_snapshot_distributions.grades; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.grade_snapshot_distributions.grades IS 'The student grades for this grade snapshot in ascending order';
+
+--
 -- Name: meeting; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -2368,7 +2444,7 @@ COMMENT ON COLUMN api.meetings.updated_at IS 'The most recent time this database
 CREATE VIEW api.platform_version AS
  SELECT 'yelukerest'::text AS platform,
     1 AS platform_compatibility_version,
-    2 AS schema_compatibility_version,
+    3 AS schema_compatibility_version,
     5 AS admin_api_version;
 
 
@@ -4250,6 +4326,15 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.grade_snapshot TO api;
 GRANT SELECT ON TABLE api.grade_snapshots TO student;
 GRANT SELECT ON TABLE api.grade_snapshots TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.grade_snapshots TO faculty;
+
+
+--
+-- Name: TABLE grade_snapshot_distributions; Type: ACL; Schema: api; Owner: superuser
+--
+
+GRANT SELECT ON TABLE api.grade_snapshot_distributions TO student;
+GRANT SELECT ON TABLE api.grade_snapshot_distributions TO ta;
+GRANT SELECT ON TABLE api.grade_snapshot_distributions TO faculty;
 
 
 --

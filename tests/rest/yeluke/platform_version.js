@@ -19,7 +19,7 @@ describe('platform_version API endpoint', () => {
             .to.include({
                 platform: 'yelukerest',
                 platform_compatibility_version: 1,
-                schema_compatibility_version: 2,
+                schema_compatibility_version: 3,
                 admin_api_version: 5,
             });
     });

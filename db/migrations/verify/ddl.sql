@@ -146,6 +146,35 @@ BEGIN
         RAISE EXCEPTION 'api.quiz_grade_distributions must suppress cohorts smaller than three student grades';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_roles r ON r.oid = c.relowner
+        WHERE n.nspname = 'api'
+        AND c.relname = 'grade_snapshot_distributions'
+        AND c.relkind = 'v'
+        AND r.rolname = 'superuser'
+    ) THEN
+        RAISE EXCEPTION 'api.grade_snapshot_distributions must exist and be superuser-owned';
+    END IF;
+
+    IF pg_get_viewdef('api.grade_snapshot_distributions'::regclass) NOT LIKE '%WHERE ("user".role = ''student''::data.user_role)%'
+        OR pg_get_viewdef('api.grade_snapshot_distributions'::regclass) NOT LIKE '%HAVING (count(grade.user_id) >= 3)%'
+    THEN
+        RAISE EXCEPTION 'api.grade_snapshot_distributions must include only student grades while suppressing cohorts smaller than three';
+    END IF;
+
+    IF NOT has_table_privilege('student', 'api.grade_snapshot_distributions', 'SELECT')
+        OR NOT has_table_privilege('ta', 'api.grade_snapshot_distributions', 'SELECT')
+        OR NOT has_table_privilege('faculty', 'api.grade_snapshot_distributions', 'SELECT')
+        OR has_table_privilege('anonymous', 'api.grade_snapshot_distributions', 'SELECT')
+        OR has_table_privilege('student', 'api.grade_snapshot_distributions', 'UPDATE')
+        OR has_table_privilege('faculty', 'api.grade_snapshot_distributions', 'UPDATE')
+    THEN
+        RAISE EXCEPTION 'api.grade_snapshot_distributions privileges are incorrect';
+    END IF;
+
     IF pg_get_viewdef('api.assignments'::regclass) NOT LIKE '%WHERE ((request.user_role() = ''faculty''::text) OR (is_draft = false))%'
     THEN
         RAISE EXCEPTION 'api.assignments must hide draft assignments from student and TA reads';
@@ -370,7 +399,7 @@ BEGIN
         FROM api.platform_version
         WHERE platform = 'yelukerest'
         AND platform_compatibility_version >= 1
-        AND schema_compatibility_version >= 2
+        AND schema_compatibility_version >= 3
         AND admin_api_version >= 5
     ) THEN
         RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';

@@ -15,8 +15,8 @@ The response is a one-row JSON array:
   {
     "platform": "yelukerest",
     "platform_compatibility_version": 1,
-    "schema_compatibility_version": 1,
-    "admin_api_version": 4
+    "schema_compatibility_version": 3,
+    "admin_api_version": 5
   }
 ]
 ```
@@ -30,8 +30,8 @@ import urllib.request
 
 required = {
     "platform": "yelukerest",
-    "schema_compatibility_version": 1,
-    "admin_api_version": 4,
+    "schema_compatibility_version": 3,
+    "admin_api_version": 5,
 }
 
 with urllib.request.urlopen("https://example.edu/rest/platform_version") as res:
