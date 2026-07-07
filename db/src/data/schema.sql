@@ -11,5 +11,4 @@ set search_path = data, public;
 \ir ../libs/auth/data/user.sql
 
 -- import our application models
-\ir todo.sql
 \ir yeluke.sql

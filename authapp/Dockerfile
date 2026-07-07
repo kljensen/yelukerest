@@ -5,7 +5,7 @@ RUN apk --no-cache add ca-certificates
 # create a working directory
 WORKDIR /go/src/app
 # add source code
-ADD . .
+COPY . .
 # build the source
 RUN CGO_ENABLED=0 GOOS=linux go build -mod vendor -a -installsuffix cgo -o main
 

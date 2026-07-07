@@ -45,8 +45,6 @@ services:
         image: postgrest/postgrest:v14.14
         ports:
             - '127.0.0.1:3000:${POSTGREST_PORT}'
-        links:
-            - db:db
         environment:
             - PGRST_DB_URI=postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
             - PGRST_DB_SCHEMAS=${DB_SCHEMA}
@@ -68,10 +66,6 @@ services:
             - '${CADDY_LISTEN_HOST}:80:80'
             - '${CADDY_LISTEN_HOST}:443:443'
             - '${CADDY_LISTEN_HOST}:443:443/udp'
-        links:
-            - postgrest:postgrest
-            - authapp:authapp
-            - codeframe:codeframe
         restart: on-failure
         environment:
             - FQDN=${FQDN}

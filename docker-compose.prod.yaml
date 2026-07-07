@@ -40,8 +40,6 @@ services:
 
   backup:
     build: backup
-    links:
-      - db
     environment:
       - SCHEDULE=${BACKUP_SCHEDULE}
       - S3_REGION=${BACKUP_S3_REGION}

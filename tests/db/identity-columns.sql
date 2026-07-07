@@ -14,7 +14,6 @@ SELECT set_eq(
             ('data', 'assignment_submission', 'id'),
             ('data', 'quiz', 'id'),
             ('data', 'quiz_grade_exception', 'id'),
-            ('data', 'todo', 'id'),
             ('data', 'user', 'id'),
             ('data', 'user_secret', 'id')
         )
@@ -25,7 +24,6 @@ SELECT set_eq(
         'data.assignment_submission.id',
         'data.quiz.id',
         'data.quiz_grade_exception.id',
-        'data.todo.id',
         'data.user.id',
         'data.user_secret.id'
     ],

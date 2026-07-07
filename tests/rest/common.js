@@ -38,8 +38,10 @@ var restService = function () {
 const resetdb = () => {
     let pg;
     if (have_psql) {
-        var env = Object.create(process.env);
-        env.PGPASSWORD = SUPER_USER_PASSWORD
+        var env = {
+            ...process.env,
+            PGPASSWORD: SUPER_USER_PASSWORD
+        };
         pg = spawnSync(psql_path, ['-h', DB_HOST, '-p', DB_PORT, '-U', SUPER_USER, DB_NAME, '-f', `${process.cwd()}/db/src/sample_data/reset.sql`], {
             env: env
         });

@@ -3,7 +3,7 @@
 # originally. 
 FROM alpine:3.24.1
 
-ADD install.sh install.sh
+COPY install.sh install.sh
 RUN sh install.sh && rm install.sh
 
 ENV POSTGRES_DATABASE=**None**
@@ -18,7 +18,7 @@ ENV S3_ENDPOINT=**None**
 ENV S3_S3V4=no
 ENV SCHEDULE=**None**
 
-ADD run.sh run.sh
-ADD backup.sh backup.sh
+COPY run.sh run.sh
+COPY backup.sh backup.sh
 
 CMD ["sh", "run.sh"]

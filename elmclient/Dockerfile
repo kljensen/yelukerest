@@ -11,11 +11,11 @@ COPY --from=elm_tools /usr/local/bin/elm-test-rs /usr/local/bin/elm-test-rs
 COPY --from=elm_tools /usr/local/bin/esbuild /usr/local/bin/esbuild
 
 RUN mkdir -p /opt/app
-ADD elm.json /opt/app/elm.json
-ADD build.sh /opt/app/build.sh
-ADD run.sh /opt/app/run.sh
-ADD src /opt/app/src
-ADD tests /opt/app/tests
+COPY elm.json /opt/app/elm.json
+COPY build.sh /opt/app/build.sh
+COPY run.sh /opt/app/run.sh
+COPY src /opt/app/src
+COPY tests /opt/app/tests
 
 WORKDIR /opt/app
 RUN mkdir -p dist && elm make src/elm/Main.elm --optimize --output=/tmp/main.js && rm /tmp/main.js

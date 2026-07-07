@@ -31,7 +31,7 @@ export SQITCH_PASSWORD="$SUPER_USER_PASSWORD"
 # endklj
 
 # Determine which Docker image to run.
-SQITCH_IMAGE=${SQITCH_IMAGE:=sqitch/sqitch:latest}
+SQITCH_IMAGE=${SQITCH_IMAGE:=sqitch/sqitch@sha256:8f33577854f5a9b971e0291aa405468b1d227a704d8f1cdc3444f0618f241a4d}
 
 # Set up required pass-through variables.
 user=${USER-$(whoami)}

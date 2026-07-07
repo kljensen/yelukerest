@@ -1,0 +1,10 @@
+.agent-sync
+.agents
+.claude
+.forge
+.git
+.env
+.pi
+.vscode
+node_modules
+tmp
