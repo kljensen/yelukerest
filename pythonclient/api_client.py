@@ -14,6 +14,7 @@ import click
 import requests
 import ruamel.yaml as ruamel_yaml
 from jinja2 import Template
+from yaml_text import normalize_text_values
 
 
 DEFAULT_BASE_URL = "https://localhost"
@@ -56,7 +57,7 @@ ASSIGNMENT_FIELD_KEYS = (
 def read_yaml(filehandle):
     """Read YAML data from a file handle."""
     yaml = ruamel_yaml.YAML(typ="safe", pure=True)
-    return yaml.load(filehandle)
+    return normalize_text_values(yaml.load(filehandle))
 
 
 def parse_timedelta(td):

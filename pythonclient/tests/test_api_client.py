@@ -191,6 +191,32 @@ child:assignment_fields:
         loaded = api_client.read_yaml(io.StringIO("- slug: one\n"))
         self.assertEqual(loaded, [{"slug": "one"}])
 
+    def test_read_yaml_coerces_text_fields_after_implicit_typing(self):
+        loaded = api_client.read_yaml(
+            io.StringIO(
+                """
+slug: 123
+body: true
+points_possible: 25
+is_draft: false
+fields:
+  - slug: false
+    assignment_slug: 123
+    is_url: true
+    display_order: 0
+"""
+            )
+        )
+
+        self.assertEqual(loaded["slug"], "123")
+        self.assertEqual(loaded["body"], "true")
+        self.assertEqual(loaded["points_possible"], 25)
+        self.assertIs(loaded["is_draft"], False)
+        self.assertEqual(loaded["fields"][0]["slug"], "false")
+        self.assertEqual(loaded["fields"][0]["assignment_slug"], "123")
+        self.assertIs(loaded["fields"][0]["is_url"], True)
+        self.assertEqual(loaded["fields"][0]["display_order"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

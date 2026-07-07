@@ -16,6 +16,7 @@ import datetime
 from jinja2 import Template
 from functools import partial
 import requests
+from yaml_text import normalize_text_values
 
 
 LEGACY_MEETING_WARNING = (
@@ -36,7 +37,7 @@ def read_yaml(filehandle):
 
     yaml = ruamel_yaml.YAML(typ="safe", pure=True)
     data = yaml.load(filehandle)
-    return data
+    return normalize_text_values(data)
 
 
 @click.group()
