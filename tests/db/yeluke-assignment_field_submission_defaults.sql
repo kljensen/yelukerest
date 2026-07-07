@@ -1,11 +1,13 @@
 begin;
-select plan(4);
+select plan(5);
 
 INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example)
 VALUES ('exam-1', 'pattern-field', 'gobblygook', 'find this online', 'e.g. foo', '.*foo.*', 'xfoobar');
 
 INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,is_url,example)
 VALUES ('exam-1', 'url-field', 'gobblygook', 'find this online', 'e.g. http://kljensen', true, 'https://foo.com');
+INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder)
+VALUES ('exam-1', 'direct-field', 'gobblygook', 'find this online', 'e.g. foo');
 
 SELECT throws_like(
     $$
@@ -66,7 +68,22 @@ select set_eq (
   'is_url is autopopulated from the assignment when not available'
 );
 
+RESET ROLE;
+select set_eq (
+  $$
+    with
+    inserted_rows as (
+      INSERT INTO
+        data.assignment_field_submission (assignment_submission_id,assignment_field_slug,body)
+      VALUES (6001, 'direct-field', 'direct body')
+      RETURNING assignment_slug
+    )
+    select assignment_slug from inserted_rows
+  $$,
+  ARRAY['exam-1'],
+  'assignment_slug is autopopulated for direct data.assignment_field_submission inserts'
+);
+
 
 select * from finish();
 rollback;
-

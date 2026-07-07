@@ -17,8 +17,8 @@ SELECT table_privs_are(
 );
 
 SELECT table_privs_are(
-    'data', 'assignment_submission', 'faculty', ARRAY[]::text[],
-    'faculty should only be granted nothing on "data.assignment_submission"'
+    'data', 'assignment_field_submission', 'faculty', ARRAY[]::text[],
+    'faculty should only be granted nothing on "data.assignment_field_submission"'
 );
 
 set local role faculty;
@@ -233,4 +233,3 @@ select set_eq (
 
 select * from finish();
 rollback;
-

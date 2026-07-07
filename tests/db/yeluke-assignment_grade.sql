@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(13);
 
 SELECT view_owner_is(
     'api', 'assignment_grades', 'api',
@@ -81,6 +81,21 @@ SELECT lives_ok(
         INSERT INTO api.assignment_grades (assignment_submission_id, points) VALUES (4,  0)
     $$,
     'assignment_slug should be automatically populated via trigger when assignment_submission_id is specified'
+);
+
+RESET ROLE;
+DELETE FROM data.assignment_grade WHERE assignment_submission_id = 4;
+SELECT set_eq(
+    $$
+        WITH inserted_rows AS (
+            INSERT INTO data.assignment_grade (assignment_submission_id, points)
+            VALUES (4, 0)
+            RETURNING assignment_slug
+        )
+        SELECT assignment_slug FROM inserted_rows
+    $$,
+    ARRAY['project-update-1'],
+    'assignment_slug should be automatically populated for direct data.assignment_grade inserts'
 );
 
 

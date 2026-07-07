@@ -48,6 +48,40 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_namespace pn ON pn.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_grade'
+        AND t.tgname = 'tg_assignment_grade_default'
+        AND pn.nspname = 'data'
+        AND p.proname = 'fill_assignment_grade_defaults'
+        AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_grade default trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_namespace pn ON pn.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_field_submission'
+        AND t.tgname = 'tg_assignment_field_submission_default'
+        AND pn.nspname = 'data'
+        AND p.proname = 'fill_assignment_field_submission_defaults'
+        AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_field_submission default trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
         FROM pg_attribute a
         JOIN pg_class c ON c.oid = a.attrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace
