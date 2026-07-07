@@ -92,8 +92,12 @@ calls, and catalog tests over `pg_proc.proconfig`.
 to application roles. Lack of `USAGE` on `auth` appears to block direct use
 today, but the grant is a latent footgun.
 
-Status: likely part of #228 auth/JWT hardening. Revoke direct application-role
-execute and expose only constrained wrappers/views.
+Status: partially mitigated by #228/#251. A trial revocation showed current
+`api.user_jwts` queries still require caller roles to have function `EXECUTE`,
+so the present boundary is: no application role has `USAGE` on schema `auth`,
+`auth.sign_jwt` has a pinned `search_path`, and JWT values are constrained by
+`api.user_jwts` tests. A deeper fix would require reshaping JWT minting rather
+than simply revoking function execute.
 
 ### P2: Team Submission History Depends on Current Team Membership
 

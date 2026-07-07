@@ -89,6 +89,10 @@ User PostgREST JWT:
 - Default lifetime is one hour from `settings.jwt_lifetime`.
 - Returned by `/auth/me` and `/auth/jwt` only for valid sessions.
 - Used by Elm and API clients to call `/rest/*`.
+- `student`, `ta`, `faculty`, and `app` currently need `EXECUTE` on
+  `auth.sign_jwt` so `api.user_jwts` can mint constrained JWT values for those
+  callers. They do not receive `USAGE` on schema `auth`, and direct JWT
+  visibility is constrained by `api.user_jwts` RLS-backed tests.
 
 `YELUKEREST_CLIENT_JWT`:
 
