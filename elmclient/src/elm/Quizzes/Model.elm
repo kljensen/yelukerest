@@ -64,13 +64,9 @@ paperQuizStatusText =
 -- Quiz submissions
 -- ----------------
 
--- Kept for read-only dashboard/status compatibility with imported paper quiz
--- data. The client no longer supports online quiz-taking or editing.
 type alias QuizSubmission =
     { quiz_id : Int
     , user_id : Int
-    , closed_at : Posix
-    , is_open : Bool
     , created_at : Posix
     , updated_at : Posix
     }
@@ -86,8 +82,6 @@ quizSubmissionDecoder =
     Decode.succeed QuizSubmission
         |> required "quiz_id" Decode.int
         |> required "user_id" Decode.int
-        |> required "closed_at" Json.Decode.Extra.datetime
-        |> required "is_open" Decode.bool
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
 

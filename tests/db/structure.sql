@@ -5,7 +5,7 @@ select * from check_test(
     views_are('api', array[
         'platform_version',
         'artifacts', 'meetings', 'engagements', 'teams', 'users', 'quizzes',
-        'quiz_submissions', 'quiz_submissions_info', 'ui_elements',
+        'quiz_submissions', 'ui_elements',
         'assignments', 'assignment_fields', 'assignment_submissions',
         'assignment_field_submissions', 'quiz_grades', 'assignment_grades',
         'quiz_grade_exceptions', 'assignment_grade_exceptions',

@@ -320,6 +320,10 @@ BEGIN
         RAISE EXCEPTION 'project-owned SQL helper functions must use parsed SQL bodies';
     END IF;
 
+    IF to_regclass('api.quiz_submissions_info') IS NOT NULL THEN
+        RAISE EXCEPTION 'api.quiz_submissions_info compatibility view must be removed';
+    END IF;
+
     IF (
         SELECT count(*)
         FROM pg_attribute a

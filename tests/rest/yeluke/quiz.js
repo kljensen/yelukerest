@@ -12,6 +12,7 @@ const {
     getJWTForNetid,
     makeListTestCases,
     makeInsertTestCases,
+    we,
 } = require('./helpers.js');
 
 describe('quizzes API endpoint', () => {
@@ -49,6 +50,41 @@ describe('quizzes API endpoint', () => {
     }];
 
     makeListTestCases(it, '/quizzes', (x => x.meeting_slug), listTestCases);
+
+    it('should serve current-user quiz submissions from the base endpoint', async () => {
+        const jwt = await studentJWTPromise;
+        const response = await restService()
+            .get('/quiz_submissions?user_id=eq.1&order=quiz_id')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect('Content-Type', /json/)
+            .expect(200);
+
+        we.expect(response.body)
+            .to.have.lengthOf(1);
+        we.expect(response.body[0])
+            .to.include({
+                quiz_id: 1,
+                user_id: 1,
+            });
+        we.expect(response.body[0])
+            .to.have.property('created_at')
+            .that.is.a('string');
+        we.expect(response.body[0])
+            .to.have.property('updated_at')
+            .that.is.a('string');
+        we.expect(response.body[0])
+            .not.to.have.property('closed_at');
+        we.expect(response.body[0])
+            .not.to.have.property('is_open');
+    });
+
+    it('should not expose the removed quiz submissions compatibility endpoint', async () => {
+        const jwt = await studentJWTPromise;
+        await restService()
+            .get('/quiz_submissions_info')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect(404);
+    });
 
     const newQuiz = {
         meeting_slug: 'server-side-apps',

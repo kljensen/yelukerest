@@ -28,6 +28,3 @@ grant select on api.quiz_submissions to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quiz_submissions to faculty;
-
--- The quiz_submissions_info view is read-only
-grant select on api.quiz_submissions_info to student, ta, faculty;

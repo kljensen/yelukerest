@@ -2500,24 +2500,6 @@ CREATE VIEW api.quizzes AS
 ALTER VIEW api.quizzes OWNER TO api;
 
 --
--- Name: quiz_submissions_info; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.quiz_submissions_info AS
- SELECT qs.quiz_id,
-    qs.user_id,
-    qs.created_at,
-    qs.updated_at,
-    false AS is_open,
-    COALESCE(qge.closed_at, q.closed_at) AS closed_at
-   FROM ((api.quiz_submissions qs
-     JOIN api.quizzes q ON ((qs.quiz_id = q.id)))
-     LEFT JOIN api.quiz_grade_exceptions qge ON (((q.id = qge.quiz_id) AND (qs.user_id = qge.user_id))));
-
-
-ALTER VIEW api.quiz_submissions_info OWNER TO api;
-
---
 -- Name: team; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -4231,15 +4213,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.quiz TO api;
 GRANT SELECT ON TABLE api.quizzes TO student;
 GRANT SELECT ON TABLE api.quizzes TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.quizzes TO faculty;
-
-
---
--- Name: TABLE quiz_submissions_info; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT ON TABLE api.quiz_submissions_info TO student;
-GRANT SELECT ON TABLE api.quiz_submissions_info TO ta;
-GRANT SELECT ON TABLE api.quiz_submissions_info TO faculty;
 
 
 --

@@ -36,8 +36,6 @@ tests =
                         (Ok
                             { quiz_id = 1
                             , user_id = 42
-                            , closed_at = millis 2000
-                            , is_open = False
                             , created_at = millis 0
                             , updated_at = millis 0
                             }
@@ -110,14 +108,12 @@ paperQuizJson =
 quizSubmissionJson : String
 quizSubmissionJson =
     """
-    {
-      "quiz_id": 1,
-      "user_id": 42,
-      "closed_at": "1970-01-01T00:00:02Z",
-      "is_open": false,
-      "created_at": "1970-01-01T00:00:00Z",
-      "updated_at": "1970-01-01T00:00:00Z"
-    }
+      {
+        "quiz_id": 1,
+        "user_id": 42,
+        "created_at": "1970-01-01T00:00:00Z",
+        "updated_at": "1970-01-01T00:00:00Z"
+      }
     """
 
 

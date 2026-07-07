@@ -37,7 +37,7 @@ fetchQuizSubmissions currentUser =
 
 fetchQuizSubmissionsUrl : Int -> String
 fetchQuizSubmissionsUrl userID =
-    "/rest/quiz_submissions_info?user_id=eq." ++ String.fromInt userID
+    "/rest/quiz_submissions?user_id=eq." ++ String.fromInt userID
 
 
 fetchQuizArtifacts : CurrentUser -> Cmd Msg
