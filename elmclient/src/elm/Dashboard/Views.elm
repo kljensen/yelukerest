@@ -213,12 +213,20 @@ secretRowMarkup secretsToShow slug body =
                 Html.span []
                     [ Html.text (body ++ " ")
                     , Html.button
+                        [ Attrs.type_ "button"
+                        , Attrs.attribute "data-copy-text" body
+                        , Attrs.attribute "aria-label" ("copy " ++ slug)
+                        ]
+                        [ Html.text "copy" ]
+                    , Html.text " "
+                    , Html.button
                         [ onClick
+                        , Attrs.type_ "button"
                         ]
                         [ Html.text "hide" ]
                     ]
             else
-                Html.span [] [ Html.text "...hidden... ", Html.button [ onClick ] [ Html.text "show" ] ]
+                Html.span [] [ Html.text "...hidden... ", Html.button [ onClick, Attrs.type_ "button" ] [ Html.text "show" ] ]
     in
     Html.tr []
         [ Html.td [] [ Html.text slug ]

@@ -46,6 +46,24 @@ cp src/static/fonts/* "$dist/static/fonts/"
         }),
         node: node
     });
+
+    document.addEventListener("click", function (event) {
+        var node = event.target;
+
+        while (node && node.nodeType !== 1) {
+            node = node.parentNode;
+        }
+
+        while (node && node.nodeType === 1 && !node.hasAttribute("data-copy-text")) {
+            node = node.parentNode;
+        }
+
+        if (!node || node.nodeType !== 1 || !navigator.clipboard || !navigator.clipboard.writeText) {
+            return;
+        }
+
+        navigator.clipboard.writeText(node.getAttribute("data-copy-text"))["catch"](function () {});
+    });
 }());
 EOF
 } > "$dist/static/js/init.js"
