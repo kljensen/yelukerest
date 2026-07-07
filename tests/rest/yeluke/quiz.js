@@ -69,12 +69,10 @@ describe('quizzes API endpoint', () => {
                 quiz_id: 1,
                 user_id: 1,
             });
-        we.expect(response.body[0])
-            .to.have.property('created_at')
-            .that.is.a('string');
-        we.expect(response.body[0])
-            .to.have.property('updated_at')
-            .that.is.a('string');
+        we.expect(response.body[0].created_at)
+            .to.be.a('string');
+        we.expect(response.body[0].updated_at)
+            .to.be.a('string');
         we.expect(response.body[0])
             .not.to.have.property('closed_at');
         we.expect(response.body[0])

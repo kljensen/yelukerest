@@ -11,10 +11,20 @@ const {
     restService,
 } = require('../common.js');
 
+const testCASBaseURL = process.env.TEST_CAS_BASE_URL || process.env.TEST_BASE_URL || process.env.YELUKEREST_SMOKE_BASE_URL;
+
 // Add the we string plugin
 we.use(chaiString);
 we.use(dirtyChai);
 we.use(chaiAsPromised);
+
+const testURL = (candidateURL) => {
+    const parsedURL = new url.URL(candidateURL);
+    if (testCASBaseURL && parsedURL.hostname === 'localhost' && parsedURL.pathname.startsWith('/cas/')) {
+        return new url.URL(`${parsedURL.pathname}${parsedURL.search}`, testCASBaseURL);
+    }
+    return parsedURL;
+};
 
 /** Logs in a user by netid and returns a superagent agent
  *  that has session cookies set.
@@ -32,13 +42,14 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
         responseFromLoginPage = await request(thisStartURL)
             .get(thisAuthPath)
             .retry(2)
-            .redirects(1);
+            .redirects(0)
+            .ok(res => res.status < 400);
     } catch (error) {
         throw error;
     }
-    we.expect(responseFromLoginPage.redirects)
-        .to.have.lengthOf(1);
-    const casURL = new url.URL(responseFromLoginPage.redirects[0]);
+    we.expect(responseFromLoginPage.headers)
+        .to.have.property('location');
+    const casURL = testURL(responseFromLoginPage.headers.location);
 
 
     // 2. User loads the CAS page and authenticates, thereby getting
@@ -49,7 +60,9 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
     try {
         responseFromCASServer = await request(`${casURL.protocol}//${casURL.host}`)
             .get(`${casURL.pathname}${casURL.search}&id=${netid}`)
-            .retry(2);
+            .retry(2)
+            .redirects(0)
+            .ok(res => res.status < 400);
     } catch (error) {
         throw error;
     }
@@ -73,11 +86,13 @@ async function getUserSessionCookie(thisStartURL, thisAuthPath, netid) {
             if (!location) {
                 break;
             }
-            const finalURL = new url.URL(location);
+            const finalURL = testURL(location);
             // eslint-disable-next-line no-await-in-loop
             finalResponse = await request.agent(`${finalURL.protocol}//${finalURL.host}`)
                 .get(`${finalURL.pathname}${finalURL.search}`)
-                .retry(2);
+                .retry(2)
+                .redirects(0)
+                .ok(res => res.status < 400);
             // .expect(agentCookies.set(yelukeCookieInfo));
             previousResponse = finalResponse;
             if (finalResponse.header['set-cookie']) {
@@ -141,6 +156,29 @@ async function getJWT(thisBaseURL, thisJWTPath, cookies, contentType = 'text/pla
     return undefined;
 }
 
+function lazyPromise(factory) {
+    let promise;
+    return {
+        then(onFulfilled, onRejected) {
+            if (!promise) {
+                promise = Promise.resolve()
+                    .then(factory);
+            }
+            return promise.then(onFulfilled, onRejected);
+        },
+        catch(onRejected) {
+            return this.then(undefined, onRejected);
+        },
+        finally(onFinally) {
+            return this.then(value => Promise.resolve(onFinally())
+                .then(() => value), error => Promise.resolve(onFinally())
+                .then(() => {
+                    throw error;
+                }));
+        },
+    };
+}
+
 /**
  * Gets session and then JWT
  * @param  {String} thisBaseURL Where to start
@@ -151,27 +189,29 @@ async function getJWT(thisBaseURL, thisJWTPath, cookies, contentType = 'text/pla
  * @param  {Number} expiresIn Number of seconds for JWT expiration
  * @returns {Promise} A promise that resolves to a string containing a JWT
  */
-async function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, contentType = 'text/plain', expiresIn = undefined) {
-    let cookie;
-    try {
-        cookie = await getUserSessionCookie(thisBaseURL, thisAuthPath, netid, true);
-    } catch (error) {
-        throw error;
-    }
-    if (!cookie) {
-        return undefined;
-    }
+function getJWTForNetid(thisBaseURL, thisAuthPath, thisJWTPath, netid, contentType = 'text/plain', expiresIn = undefined) {
+    return lazyPromise(async () => {
+        let cookie;
+        try {
+            cookie = await getUserSessionCookie(thisBaseURL, thisAuthPath, netid, true);
+        } catch (error) {
+            throw error;
+        }
+        if (!cookie) {
+            return undefined;
+        }
 
-    let jwt;
-    try {
-        jwt = await getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
-    } catch (error) {
-        throw error;
-    }
-    if (jwt === null) {
-        jwt = undefined;
-    }
-    return jwt;
+        let jwt;
+        try {
+            jwt = await getJWT(thisBaseURL, thisJWTPath, [cookie], contentType, expiresIn);
+        } catch (error) {
+            throw error;
+        }
+        if (jwt === null) {
+            jwt = undefined;
+        }
+        return jwt;
+    });
 }
 
 const postRequestWithJWT = (path, body, jwt) => {
@@ -196,6 +236,12 @@ const getRequestWithJWT = (path, jwt) => {
     return req;
 };
 
+const resolveJWT = async (jwt) => {
+    if (jwt && typeof jwt.then === 'function') {
+        return jwt;
+    }
+    return jwt;
+};
 
 /**
  * Dynamically creates a number of test cases on post/insert. The caller
@@ -213,17 +259,7 @@ async function makeInsertTestCases(theIt, path, body, testCases) {
             we.expect(tc)
                 .to.have.property('status');
 
-            // If the JWT is a Promise, resolve it.
-            let jwtValue;
-            if (tc.jwt && tc.jwt instanceof Promise) {
-                try {
-                    jwtValue = await tc.jwt;
-                } catch (error) {
-                    throw error;
-                }
-            } else {
-                jwtValue = tc.jwt;
-            }
+            const jwtValue = await resolveJWT(tc.jwt);
 
             // Make the request
             try {
@@ -255,17 +291,7 @@ async function makeListTestCases(theIt, path, transformation, testCases) {
             we.expect(tc)
                 .to.have.property('status');
 
-            // If the JWT is a Promise, resolve it.
-            let jwtValue;
-            if (tc.jwt && tc.jwt instanceof Promise) {
-                try {
-                    jwtValue = await tc.jwt;
-                } catch (error) {
-                    throw error;
-                }
-            } else {
-                jwtValue = tc.jwt;
-            }
+            const jwtValue = await resolveJWT(tc.jwt);
 
             // Make the request
             let response;

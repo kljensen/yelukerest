@@ -27,3 +27,7 @@ services:
 
     volumes:
       - "./db/src:/docker-entrypoint-initdb.d"
+
+  authapp:
+    environment:
+      - CAS_VALIDATION_URI=http://authapp:${AUTHAPP_PORT}/cas/serviceValidate
