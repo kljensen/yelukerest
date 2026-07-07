@@ -1,21 +1,23 @@
-# This is from here
-# https://github.com/schickling/dockerfiles/tree/master/postgres-backup-s3
-# originally. 
 FROM alpine:3.24.1
 
 COPY install.sh install.sh
 RUN sh install.sh && rm install.sh
 
-ENV POSTGRES_DATABASE=**None**
-ENV POSTGRES_HOST=**None**
+ENV POSTGRES_DATA_PATH=/var/lib/postgresql/18/docker
 ENV POSTGRES_PORT=5432
+ENV POSTGRES_SOCKET_PATH=/var/run/postgresql
 ENV POSTGRES_USER=**None**
-ENV POSTGRES_EXTRA_OPTS=''
+ENV PGBACKREST_STANZA=yelukerest
+ENV PGBACKREST_REPO1_PATH=/pgbackrest
+ENV PGBACKREST_REPO1_RETENTION_FULL=2
+ENV PGBACKREST_REPO1_TYPE=s3
+ENV PGBACKREST_REPO1_S3_URI_STYLE=host
+ENV PGBACKREST_REPO1_STORAGE_PORT=443
+ENV PGBACKREST_REPO1_STORAGE_VERIFY_TLS=y
 ENV S3_BUCKET=**None**
-ENV S3_REGION=us-east-1
-ENV S3_PREFIX='backup'
 ENV S3_ENDPOINT=**None**
-ENV S3_S3V4=no
+ENV S3_PREFIX=pgbackrest
+ENV S3_REGION=us-east-1
 ENV SCHEDULE=**None**
 
 COPY run.sh run.sh

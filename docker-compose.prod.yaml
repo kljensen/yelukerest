@@ -9,6 +9,7 @@ volumes:
     # volume for persistence. 
     # See https://docs.docker.com/engine/admin/volumes/volumes/
     external: true
+  postgres-run:
 services:
 
   # This is the database to which the all the other components in the stack will connect and interact with
@@ -37,6 +38,7 @@ services:
 
     volumes:
       - yelukerest-pg-data:/var/lib/postgresql
+      - postgres-run:/var/run/postgresql
 
   backup:
     build: backup
@@ -47,9 +49,11 @@ services:
       - S3_SECRET_ACCESS_KEY=${BACKUP_S3_SECRET_ACCESS_KEY}
       - S3_BUCKET=${BACKUP_S3_BUCKET}
       - S3_PREFIX=${BACKUP_S3_PREFIX}
-      - S3_OBJECT_NAME=${BACKUP_S3_OBJECT_NAME}
-      - POSTGRES_DATABASE=${DB_NAME}
       - POSTGRES_USER=${SUPER_USER}
       - POSTGRES_PASSWORD=${SUPER_USER_PASSWORD}
-      - POSTGRES_HOST=${DB_HOST}
       - POSTGRES_PORT=${DB_PORT}
+      - POSTGRES_DATA_PATH=/var/lib/postgresql/18/docker
+      - POSTGRES_SOCKET_PATH=/var/run/postgresql
+    volumes:
+      - yelukerest-pg-data:/var/lib/postgresql:ro
+      - postgres-run:/var/run/postgresql:ro

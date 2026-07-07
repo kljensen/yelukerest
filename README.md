@@ -47,7 +47,8 @@ The roles of the most important components are as follows:
 - _[postgres](https://www.postgresql.org/)_ - provides persistence nearly all
   of the application data and enforces
   relational integrity.
-- _backup_ - Saves backups of the production postgres database to S3, usually hourly.
+- _backup_ - Saves pgBackRest backups of the production postgres database to
+  S3, usually hourly.
 - _postgrest_ - provides an HTTP API over the postgres application database.
 - _elmclient_ - a front-end client that runs in web browsers and communicates
   with the API. This is the main way in which students interact with the
@@ -159,14 +160,18 @@ For `YELUKEREST_CLIENT_JWT` (user klj39's user id)
 
 ### Restoring production backups
 
-Backups are saved to s3 hourly in production. To restore, download one,
-then run something like
+Backups are saved to S3 through pgBackRest. The local backup harness exercises
+the same backup image against a disposable Postgres volume and a self-hosted
+MinIO S3 endpoint:
 
 ```
-pg_restore --host $HOST -U superuser -d app --port $PORT --clean --exit-on-error ./thebackup.dump
+bun run test_pgbackrest
 ```
 
-The `--clean` will drop (or truncate?) tables.
+Use `pgbackrest restore` with the production stanza and repository settings to
+restore a physical backup. Point-in-time recovery needs a follow-up production
+change to enable WAL archiving; the current backup container runs full physical
+backups with `archive-check=n`.
 
 ### Adding a table when working on the database
 

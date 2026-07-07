@@ -1,0 +1,7 @@
+.git
+.gitignore
+dist
+elm-stuff
+node_modules
+*.log
+tmp

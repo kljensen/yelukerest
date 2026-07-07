@@ -13,10 +13,12 @@ const {
 
 const testCASBaseURL = process.env.TEST_CAS_BASE_URL || process.env.TEST_BASE_URL || process.env.YELUKEREST_SMOKE_BASE_URL;
 
+const chaiPlugin = plugin => plugin.default || plugin;
+
 // Add the we string plugin
-we.use(chaiString);
-we.use(dirtyChai);
-we.use(chaiAsPromised);
+we.use(chaiPlugin(chaiString));
+we.use(chaiPlugin(dirtyChai));
+we.use(chaiPlugin(chaiAsPromised));
 
 const testURL = (candidateURL) => {
     const parsedURL = new url.URL(candidateURL);
