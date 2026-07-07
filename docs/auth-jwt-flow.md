@@ -101,7 +101,10 @@ they connect directly to PostgreSQL.
 
 Swagger:
 
-- The Swagger UI now fetches `/auth/jwt` from the current browser session.
+- The Swagger UI fetches `/auth/jwt` from the current browser session to
+  prefill its JWT authorization.
+- The Swagger UI renders `/auth/api.json`, which uses the same session to fetch
+  PostgREST's OpenAPI JSON with the user's JWT.
 - It should not need a static `SWAGGER_JWT`.
 
 ## Role Matrix

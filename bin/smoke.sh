@@ -237,6 +237,7 @@ main() {
     check_http "anonymous DB-backed meetings endpoint" "$BASE_URL/rest/meetings?select=slug&limit=1" "200" '^\['
     check_http_header "authapp login redirects to CAS" "$BASE_URL/auth/login" "307" '^[Ll]ocation: .*/cas/login\?service=.*auth%2Fvalidate'
     check_http "authapp unauthenticated /auth/me" "$BASE_URL/auth/me" "401" 'Unauthorized'
+    check_http "authapp unauthenticated /auth/api.json" "$BASE_URL/auth/api.json" "401" 'Unauthorized'
 
     if [ "$FAILURES" -ne 0 ]; then
         printf '\nSmoke test failed with %s failure(s).\n' "$FAILURES" >&2

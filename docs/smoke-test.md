@@ -74,6 +74,8 @@ The command verifies:
 - `/auth/login` redirects into CAS validation through Caddy and authapp;
 - `/auth/me` returns the expected unauthenticated `401 Unauthorized` response
   through Caddy and authapp.
+- `/auth/api.json` returns the expected unauthenticated `401 Unauthorized`
+  response through Caddy and authapp.
 
 ## Scope
 

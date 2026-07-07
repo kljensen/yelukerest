@@ -81,8 +81,10 @@ func main() {
 	// Add the user details endpoints
 	getMe := getSessionMiddleware(sessionManager, getMeHandler(fetchJWTConfig))
 	getJWT := getSessionMiddleware(sessionManager, getJWTHandler(fetchJWTConfig))
+	getOpenAPI := getSessionMiddleware(sessionManager, getOpenAPIHandler(fetchJWTConfig))
 	mux.Handle("/auth/me", getMe)
 	mux.Handle("/auth/jwt", getJWT)
+	mux.Handle("/auth/api.json", getOpenAPI)
 
 	// In development, add endpoints for a mock CAS server.
 	if casConfig.IsDevelopment {

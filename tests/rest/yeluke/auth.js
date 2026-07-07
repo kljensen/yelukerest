@@ -21,6 +21,7 @@ process.on('unhandledRejection', (r) => {
 });
 
 const mePath = '/auth/me';
+const apiJSONPath = '/auth/api.json';
 
 const decodeJWTPayload = (jwt) => {
     const payload = jwt.split('.')[1];
@@ -57,6 +58,9 @@ describe('authentication API endpoint', () => {
                 .expect(401);
             await request(baseURL)
                 .get(jwtPath)
+                .expect(401);
+            await request(baseURL)
+                .get(apiJSONPath)
                 .expect(401);
         } catch (error) {
             throw error;
@@ -141,6 +145,40 @@ describe('authentication API endpoint', () => {
             });
         we.expect(payload.exp)
             .to.be.above(Math.floor(Date.now() / 1000));
+    });
+
+    it('should return user-scoped OpenAPI JSON from /auth/api.json', async () => {
+        let cookie;
+        let response;
+        try {
+            cookie = await getUserSessionCookie(baseURL, authPath, 'abc123', true);
+            response = await request(baseURL)
+                .get(apiJSONPath)
+                .set('Cookie', [cookie])
+                .accept('application/json')
+                .expect(200);
+        } catch (error) {
+            throw error;
+        }
+
+        we.expect(response.body)
+            .to.satisfy((body) => Boolean(body.swagger || body.openapi));
+        we.expect(response.body)
+            .to.include({
+                basePath: '/rest/',
+            });
+        we.expect(response.body.securityDefinitions.jwt)
+            .to.include({
+                name: 'Authorization',
+                type: 'apiKey',
+                in: 'header',
+            });
+        we.expect(response.body.security[0])
+            .to.have.property('jwt');
+        we.expect(response.body.responses.UnauthorizedError)
+            .to.include({
+                description: 'JWT authorization is missing, invalid, or insufficient',
+            });
     });
 
     it('should sign JWTs with the user id, role, and expiry claims', async () => {
