@@ -3,7 +3,7 @@ create or replace view platform_version as
         'yelukerest'::text as platform,
         1::integer as platform_compatibility_version,
         1::integer as schema_compatibility_version,
-        1::integer as admin_api_version;
+        2::integer as admin_api_version;
 
 alter view platform_version owner to api;
 

@@ -3,10 +3,21 @@ const common = require('../common.js');
 
 
 const {
+    baseURL,
+    authPath,
+    jwtPath,
     restService,
 } = common;
 
+const {
+    getJWTForNetid,
+    we,
+} = require('./helpers.js');
+
 describe('meetings API endpoint', () => {
+    const studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
+    const facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
+
     before((done) => {
         common.resetdb();
         done();
@@ -18,7 +29,8 @@ describe('meetings API endpoint', () => {
             .expect('Content-Type', /json/)
             .expect(200, done)
             .expect((r) => {
-                r.body.length.should.equal(4);
+                we.expect(r.body)
+                    .to.have.lengthOf(4);
             });
     });
 
@@ -45,5 +57,81 @@ describe('meetings API endpoint', () => {
             .post('/meetings')
             .send({})
             .expect(401, done);
+    });
+
+    it('should not let anonymous users sync meetings', (done) => {
+        restService()
+            .post('/rpc/sync_meetings')
+            .send({ p_meetings: [] })
+            .expect(401, done);
+    });
+
+    it('should not let students sync meetings', async () => {
+        const jwt = await studentJWTPromise;
+        await restService()
+            .post('/rpc/sync_meetings')
+            .set('Authorization', `Bearer ${jwt}`)
+            .send({ p_meetings: [] })
+            .expect(403);
+    });
+
+    it('should let faculty atomically sync meetings', async () => {
+        const jwt = await facultyJWTPromise;
+        const response = await restService()
+            .post('/rpc/sync_meetings')
+            .set('Authorization', `Bearer ${jwt}`)
+            .send({
+                p_meetings: [{
+                    slug: 'intro',
+                    title: 'Updated Introduction',
+                    summary: 'updated',
+                    description: 'updated description',
+                    begins_at: '2018-01-01T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: false,
+                }, {
+                    slug: 'structuredquerylang',
+                    title: 'Databases and Structured Query Language',
+                    summary: 'summary',
+                    description: 'description',
+                    begins_at: '2018-01-02T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: true,
+                }, {
+                    slug: 'entrepreneurship-woot',
+                    title: 'The Lean Start-up',
+                    summary: 'summary',
+                    description: 'description',
+                    begins_at: '2018-01-03T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: false,
+                }, {
+                    slug: 'new-admin-meeting',
+                    title: 'New Admin Meeting',
+                    summary: 'new',
+                    description: 'new description',
+                    begins_at: '2018-01-02T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: true,
+                }],
+            })
+            .expect(200);
+
+        we.expect(response.body)
+            .to.have.lengthOf(1);
+        we.expect(response.body[0])
+            .to.include({
+                inserted_count: 1,
+                updated_count: 3,
+                deleted_count: 1,
+            });
+
+        const meetings = await restService()
+            .get('/meetings?select=slug&order=slug')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect(200);
+
+        we.expect(meetings.body.map(meeting => meeting.slug))
+            .to.deep.equal(['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang']);
     });
 });

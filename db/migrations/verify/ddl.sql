@@ -238,9 +238,32 @@ BEGIN
         WHERE platform = 'yelukerest'
         AND platform_compatibility_version >= 1
         AND schema_compatibility_version >= 1
-        AND admin_api_version >= 1
+        AND admin_api_version >= 2
     ) THEN
         RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname = 'sync_meetings'
+        AND pg_get_function_identity_arguments(p.oid) = 'p_meetings jsonb'
+    ) THEN
+        RAISE EXCEPTION 'missing api.sync_meetings(jsonb)';
+    END IF;
+
+    IF NOT has_function_privilege('faculty', 'api.sync_meetings(jsonb)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'faculty must be able to execute api.sync_meetings';
+    END IF;
+
+    IF has_function_privilege('anonymous', 'api.sync_meetings(jsonb)', 'EXECUTE')
+        OR has_function_privilege('student', 'api.sync_meetings(jsonb)', 'EXECUTE')
+        OR has_function_privilege('ta', 'api.sync_meetings(jsonb)', 'EXECUTE')
+        OR has_function_privilege('app', 'api.sync_meetings(jsonb)', 'EXECUTE')
+    THEN
+        RAISE EXCEPTION 'api.sync_meetings execute privilege is too broad';
     END IF;
 
     IF NOT EXISTS (
