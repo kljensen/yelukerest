@@ -39,4 +39,5 @@ export PGPASSWORD="${SUPER_USER_PASSWORD}"
   --port "$DB_TEST_PORT" \
   --username "${SUPER_USER}" \
   --dbname "${DB_NAME}" \
+  --set "authenticator_user=${DB_USER}" \
   tests/db/*.sql

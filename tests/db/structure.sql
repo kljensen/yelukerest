@@ -18,12 +18,12 @@ select * from check_test(
 );
 
 SELECT set_eq(
-    $$
+    format($$
         SELECT rolname
         FROM pg_roles
         WHERE rolname IN (
             'faculty',
-            'authenticator',
+            %L,
             'observer',
             'student',
             'superuser',
@@ -32,10 +32,10 @@ SELECT set_eq(
             'api',
             'ta'
         )
-    $$,
+    $$, :'authenticator_user'),
     ARRAY[
         'faculty',
-        'authenticator',
+        :'authenticator_user',
         'observer',
         'student',
         'superuser',
