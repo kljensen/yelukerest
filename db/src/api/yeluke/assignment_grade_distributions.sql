@@ -18,7 +18,8 @@ CREATE OR REPLACE VIEW assignment_grade_distributions AS
             JOIN data.user u
             ON participant.user_id = u.id
     WHERE role='student'
-    GROUP BY sub.assignment_slug;
+    GROUP BY sub.assignment_slug
+    HAVING COUNT(sub.id) >= 3;
 
 COMMENT ON VIEW assignment_grade_distributions IS
     'Statics on the grades received by students for each assignment';

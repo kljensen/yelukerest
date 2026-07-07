@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(10);
 
 SELECT view_owner_is(
     'api', 'quiz_grade_distributions', 'superuser',
@@ -38,8 +38,50 @@ set request.jwt.claim.user_id = '1';
 
 SELECT set_eq(
     'SELECT quiz_id FROM api.quiz_grade_distributions',
-    ARRAY[1],
-    'students should be able to see quiz grade stats'
+    ARRAY[]::integer[],
+    'students should not see quiz grade stats for cohorts smaller than three'
+);
+
+RESET ROLE;
+INSERT INTO data.quiz_submission (quiz_id, user_id)
+VALUES (2, 1);
+INSERT INTO data.quiz_grade (quiz_id, user_id, points)
+VALUES (2, 1, 10);
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT results_eq(
+    $$
+        SELECT quiz_id
+        FROM api.quiz_grade_distributions
+        WHERE quiz_id = 2
+    $$,
+    $$VALUES (0) LIMIT 0$$,
+    'quiz grade distributions should suppress singleton cohorts'
+);
+
+RESET ROLE;
+INSERT INTO data."user" (id, email, netid, nickname, role)
+VALUES (6, 'student6@yale.edu', 'stu6', 'quiet-river', 'student');
+INSERT INTO data.quiz_submission (quiz_id, user_id)
+VALUES (1, 6);
+INSERT INTO data.quiz_grade (quiz_id, user_id, points)
+VALUES (1, 6, 6);
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT results_eq(
+    $$
+        SELECT quiz_id, count::int, grades
+        FROM api.quiz_grade_distributions
+        WHERE quiz_id = 1
+    $$,
+    $$VALUES (1, 3, ARRAY[0::real, 6::real, 13::real])$$,
+    'quiz grade distributions should show cohorts with at least three student grades'
 );
 
 SELECT throws_like(

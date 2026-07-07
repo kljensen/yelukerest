@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(10);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_distributions', 'superuser',
@@ -38,14 +38,36 @@ set request.jwt.claim.user_id = '1';
 
 SELECT set_eq(
     'SELECT assignment_slug FROM api.assignment_grade_distributions',
-    ARRAY['team-selection', 'project-update-1'],
-    'students should be able to see assignment grade stats'
+    ARRAY[]::text[],
+    'students should not see assignment grade stats for cohorts smaller than three'
 );
 
 SELECT throws_like(
     'UPDATE api.assignment_grade_distributions SET assignment_slug=''team-selection'' WHERE assignment_slug = ''team-selection''',
     '%cannot update view%',
     'students should NOT be able to alter assignment grade stats'
+);
+
+RESET ROLE;
+INSERT INTO data."user" (id, email, netid, nickname, role)
+VALUES (6, 'student6@yale.edu', 'stu6', 'quiet-river', 'student');
+INSERT INTO data.assignment_submission (id, assignment_slug, is_team, user_id, submitter_user_id)
+VALUES (5, 'team-selection', false, 6, 6);
+INSERT INTO data.assignment_grade (assignment_submission_id, assignment_slug, points)
+VALUES (5, 'team-selection', 30);
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT results_eq(
+    $$
+        SELECT assignment_slug, count::int, grades
+        FROM api.assignment_grade_distributions
+        WHERE assignment_slug = 'team-selection'
+    $$,
+    $$VALUES ('team-selection', 3, ARRAY[30::real, 40::real, 50::real])$$,
+    'assignment grade distributions should show cohorts with at least three student grades'
 );
 
 RESET ROLE;
@@ -57,12 +79,12 @@ set request.jwt.claim.user_id = '1';
 
 SELECT results_eq(
     $$
-        SELECT count::int, grades
+        SELECT assignment_slug
         FROM api.assignment_grade_distributions
         WHERE assignment_slug = 'project-update-1'
     $$,
-    $$VALUES (1, ARRAY[75::real])$$,
-    'assignment grade distributions should use submission-time team participants, not current team membership'
+    $$VALUES ('never-returned'::text) LIMIT 0$$,
+    'assignment grade distributions should use submission-time team participants before applying cohort suppression'
 );
 
 

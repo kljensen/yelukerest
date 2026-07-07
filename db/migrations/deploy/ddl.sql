@@ -1855,7 +1855,8 @@ CREATE VIEW api.assignment_grade_distributions AS
      JOIN data.assignment_submission_participant participant ON ((participant.assignment_submission_id = sub.id)))
      JOIN data."user" u ON ((participant.user_id = u.id)))
   WHERE (u.role = 'student'::data.user_role)
-  GROUP BY sub.assignment_slug;
+  GROUP BY sub.assignment_slug
+ HAVING (count(sub.id) >= 3);
 
 
 ALTER VIEW api.assignment_grade_distributions OWNER TO superuser;
@@ -2365,7 +2366,8 @@ CREATE VIEW api.quiz_grade_distributions AS
    FROM (data.quiz_grade
      JOIN data."user" ON ((quiz_grade.user_id = "user".id)))
   WHERE ("user".role = 'student'::data.user_role)
-  GROUP BY quiz_grade.quiz_id;
+  GROUP BY quiz_grade.quiz_id
+ HAVING (count(quiz_grade.user_id) >= 3);
 
 
 ALTER VIEW api.quiz_grade_distributions OWNER TO superuser;

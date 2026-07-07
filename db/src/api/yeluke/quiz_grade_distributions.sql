@@ -15,7 +15,8 @@ CREATE OR REPLACE VIEW quiz_grade_distributions AS
         JOIN data.user
             ON user_id=data.user.id
     WHERE role='student'
-    GROUP BY quiz_id;
+    GROUP BY quiz_id
+    HAVING COUNT(user_id) >= 3;
 
 
 COMMENT ON VIEW quiz_grade_distributions IS
