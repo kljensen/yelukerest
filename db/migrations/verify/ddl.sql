@@ -680,6 +680,31 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'every data foreign key must have a plain btree index on its referencing columns';
     END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relkind = 'v'
+        AND NULLIF(btrim(obj_description(c.oid, 'pg_class')), '') IS NULL
+    ) THEN
+        RAISE EXCEPTION 'all api views must have non-empty comments';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        WHERE n.nspname = 'api'
+        AND c.relkind = 'v'
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        AND NULLIF(btrim(col_description(a.attrelid, a.attnum)), '') IS NULL
+    ) THEN
+        RAISE EXCEPTION 'all api view columns must have non-empty comments';
+    END IF;
 END $$;
 
 ROLLBACK;

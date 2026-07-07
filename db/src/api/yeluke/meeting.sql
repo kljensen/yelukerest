@@ -6,6 +6,8 @@ alter view meetings owner to api;
 
 COMMENT ON VIEW meetings IS
     'An in-person meeting of our class, usually a lecture';
+COMMENT ON COLUMN meetings.title IS
+    'Human-readable title for the meeting';
 COMMENT ON COLUMN meetings.slug IS
     'A short identifier, appropriate for URLs, like "sql-intro"';
 COMMENT ON COLUMN meetings.summary IS

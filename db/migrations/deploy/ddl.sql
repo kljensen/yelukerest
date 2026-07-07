@@ -4063,6 +4063,11 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_field_submissions TO f
 
 
 --
+-- Name: api-comments.sql; Type: INCLUDE; Schema: api; Owner: -
+--
+\ir api-comments.sql
+
+--
 -- Name: TABLE artifact; Type: ACL; Schema: data; Owner: superuser
 --
 

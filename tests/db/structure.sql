@@ -47,5 +47,32 @@ SELECT set_eq(
     'Yelukerest roles are present'
 );
 
+SELECT is_empty(
+    $$
+        SELECT relname
+        FROM pg_class
+        INNER JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+        WHERE nspname = 'api'
+        AND relkind IN ('v', 'm')
+        AND NULLIF(btrim(obj_description(pg_class.oid, 'pg_class')), '') IS NULL
+    $$,
+    'all API views have comments'
+);
+
+SELECT is_empty(
+    $$
+        SELECT pg_class.relname || '.' || pg_attribute.attname
+        FROM pg_class
+        INNER JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+        INNER JOIN pg_attribute ON pg_attribute.attrelid = pg_class.oid
+        WHERE nspname = 'api'
+        AND relkind IN ('v', 'm')
+        AND pg_attribute.attnum > 0
+        AND NOT pg_attribute.attisdropped
+        AND NULLIF(btrim(col_description(pg_attribute.attrelid, pg_attribute.attnum)), '') IS NULL
+    $$,
+    'all API view columns have comments'
+);
+
 select * from finish();
 rollback;
