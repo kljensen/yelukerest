@@ -238,6 +238,7 @@ main() {
     fi
 
     check_http "frontend shell" "$BASE_URL/" "200" '<div id="main"'
+    check_http "frontend favicon" "$BASE_URL/favicon.ico" "200"
     check_http "OpenAPI UI" "$BASE_URL/openapi/" "200" 'swagger-ui'
     check_http "PostgREST root OpenAPI JSON" "$BASE_URL/rest/" "200" '"(swagger|openapi)"[[:space:]]*:'
     check_http "anonymous DB-backed meetings endpoint" "$BASE_URL/rest/meetings?select=slug&limit=1" "200" '^\['
