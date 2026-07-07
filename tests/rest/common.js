@@ -13,15 +13,20 @@ const POSTGRES_PASSWORD = process.env.POSTGRES_PASSWORD;
 const SUPER_USER = process.env.SUPER_USER;
 const SUPER_USER_PASSWORD = process.env.SUPER_USER_PASSWORD;
 
-const DB_HOST = process.env.DB_HOST;
-const DB_PORT = process.env.DB_PORT || '5432';
+const DB_HOST = process.env.DB_TEST_HOST || 'localhost';
+const DB_PORT = process.env.DB_TEST_PORT || process.env.DB_PORT || '5432';
 const DB_NAME = process.env.DB_NAME;
-const PG = `${COMPOSE_PROJECT_NAME}_db_1`;
 
-const psql_version = spawnSync('psql', ['--version']);
-const have_psql = (psql_version.stdout && psql_version.stdout.toString('utf8')
-    .trim()
-    .length > 0);
+const psql_version = spawnSync('sh', ['-c', 'command -v psql']);
+const psql_path = psql_version.status === 0 ? psql_version.stdout.toString('utf8').trim() : '';
+const have_psql = psql_path.length > 0;
+
+const streamToString = (stream) => {
+    if (!stream) {
+        return '';
+    }
+    return stream.toString('utf8');
+};
 
 const baseURL = 'https://localhost';
 // So that we don't raise an error on self-signed certs.
@@ -35,14 +40,14 @@ const resetdb = () => {
     if (have_psql) {
         var env = Object.create(process.env);
         env.PGPASSWORD = SUPER_USER_PASSWORD
-        pg = spawnSync('psql', ['-h', 'localhost', '-p', DB_PORT, '-U', SUPER_USER, DB_NAME, '-f', process.env.PWD + '/db/src/sample_data/reset.sql'], {
+        pg = spawnSync(psql_path, ['-h', DB_HOST, '-p', DB_PORT, '-U', SUPER_USER, DB_NAME, '-f', `${process.cwd()}/db/src/sample_data/reset.sql`], {
             env: env
         });
     } else {
-        pg = spawnSync('docker', ['exec', PG, 'psql', '-U', SUPER_USER, DB_NAME, '-f', 'docker-entrypoint-initdb.d/sample_data/reset.sql'])
+        pg = spawnSync('docker', ['compose', '-f', 'docker-compose.base.yaml', '-f', 'docker-compose.dev.yaml', 'exec', '-T', 'db', 'psql', '-U', SUPER_USER, DB_NAME, '-f', 'docker-entrypoint-initdb.d/sample_data/reset.sql'])
     }
     if (pg.status !== 0) {
-        throw new Error(`Could not reset database in rest tests. Error = ${pg.stderr.toString()}`);
+        throw new Error(`Could not reset database in rest tests. Error = ${streamToString(pg.stderr)}${streamToString(pg.stdout)}${pg.error || ''}`);
     }
 }
 

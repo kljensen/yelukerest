@@ -1,19 +1,22 @@
-To run the tests in this directory do the following
-- change to the root of the project folder
-- bring the system up using docker-compose
-- run the command below
+# Database Tests
 
-```shell
-( \
-	source .env && \
-	docker run -i -t --rm --name pgtap \
-	--network ${COMPOSE_PROJECT_NAME}_default \
-	--link ${COMPOSE_PROJECT_NAME}_db_1:db \
-	-v $(pwd)/tests/db/:/test \
-  -e HOST=$DB_HOST \
-	-e DATABASE=$DB_NAME \
-	-e USER=$SUPER_USER \
-	-e PASSWORD=$SUPER_USER_PASSWORD \
-	lren/pgtap:0.96.0-2 \
-)
+Run these from the repository root with the development stack running:
+
+```sh
+bun run test_db
+```
+
+The command resets sample data with `bin/reset_db.sh`, then runs all
+`tests/db/*.sql` files with local `pg_prove`.
+
+Requirements:
+
+- `psql`
+- `pg_prove` from pgTAP
+- a running development database reachable with the values in `.env`
+
+If the host database port differs from `.env`, override it for the test run:
+
+```sh
+DB_TEST_PORT=55432 bun run test_db
 ```

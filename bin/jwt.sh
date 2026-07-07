@@ -10,9 +10,6 @@ set -a
 . ./.env
 set +a
 
-# Run the node script for creating a jwt
-dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-
 create_openssl_jwt() {
     # From
     # https://stackoverflow.com/questions/59002949/how-to-create-a-json-web-token-jwt-using-openssl-shell-commands
@@ -35,9 +32,8 @@ create_openssl_jwt() {
 }
 
 
-# Try https://github.com/mike-engel/jwt-cli, then openssl, then nodejs
+# Try https://github.com/mike-engel/jwt-cli, then openssl.
 # Note that jwt-cli will add an exp automatically. I'm only using this
 # script for JWTs with no expiration, so I'm setting a long, 5 year expiration.
 jwt encode --secret=$JWT_SECRET --exp "5 years" "$@" || \
-    create_openssl_jwt "$@" || \
-    node $dir/_jwt.js "$@" 
+    create_openssl_jwt "$@"

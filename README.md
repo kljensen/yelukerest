@@ -72,9 +72,11 @@ PostgREST, authapp, the static OpenAPI UI, and database reachability. It does
 not replace the database, REST, or Elm test suites. See
 `docs/smoke-test.md` for the exact checks and production overrides.
 
-To run the database and REST tests, do `npm test` from the root of this project.
-The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
-tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
+To run the database and REST tests, do `bun run test` from the root of this
+project. The containers will need to be running. This will run
+[pgTAP](http://pgtap.org/) tests through local `pg_prove` and tests of the REST
+API using [supertest](https://github.com/ladjs/supertest). See the `tests`
+directory.
 
 To run the Elm client tests:
 

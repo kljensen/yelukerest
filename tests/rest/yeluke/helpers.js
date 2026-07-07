@@ -199,8 +199,8 @@ const getRequestWithJWT = (path, jwt) => {
 
 /**
  * Dynamically creates a number of test cases on post/insert. The caller
- * supplies a the `it` from a mocha test suite and this function adds in tests.
- * @param  {it} theIt The `it` from a mocha test suite
+ * supplies the `it` function from a test suite and this function adds tests.
+ * @param  {it} theIt The `it` function from a test suite
  * @param {String} path path to which we will POST
  * @param {Object} body body we will POST
  * @param {Object} testCases the test cases, each of which can override path or body.
@@ -227,7 +227,7 @@ async function makeInsertTestCases(theIt, path, body, testCases) {
 
             // Make the request
             try {
-                postRequestWithJWT(tc.path || path, tc.body || body, jwtValue)
+                await postRequestWithJWT(tc.path || path, tc.body || body, jwtValue)
                     .expect(tc.status);
             } catch (error) {
                 throw error;
@@ -240,7 +240,7 @@ async function makeInsertTestCases(theIt, path, body, testCases) {
  * Dynamically creates a number of test cases. Often, we want to verify something
  * like "a user can see only her/his rows" and "a faculty can see all rows". This
  * helps us write those with minimal code duplication.
- * @param  {it} theIt The `it` from a mocha test suite
+ * @param  {it} theIt The `it` function from a test suite
  * @param {String} path path to which we will POST
  * @param {Function} transformation a function that is applied to each row of the
  *                              results to create a set.

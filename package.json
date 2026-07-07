@@ -1,35 +1,19 @@
 {
     "name": "yelukerest",
-    "engines": {
-        "node": "12"
-    },
+    "private": true,
     "dependencies": {
         "chai": "^4.2.0",
         "chai-as-promised": "^7.1.1",
         "chai-string": "^1.5.0",
-        "eslint": "^7.0.0",
-        "eslint-config-airbnb-base": "^14.1.0",
-        "eslint-plugin-import": "^2.20.2",
-        "expect-cookies": "^0.1.2",
-        "jsonwebtoken": "^8.5.1",
         "lodash": "^4.17.19",
-        "npm": "^6.14.6",
-        "subzero-cli": "^0.1.41"
-    },
-    "devDependencies": {
-        "babel-core": "^6.26.3",
-        "babel-preset-latest": "^6.24.1",
         "dirty-chai": "^2.0.1",
         "dotenv": "^8.2.0",
-        "eslint-plugin-mocha": "^6.3.0",
-        "mocha": "^7.1.2",
-        "should": "^13.2.3",
         "supertest": "^4.0.2"
     },
     "scripts": {
-        "test_rest": "mocha -s 1000 --recursive ./tests/rest/",
-        "test_db": "( set -a && . ./.env && set +a && ./bin/reset_db.sh && docker run -i -t --rm --name pgtap --net ${COMPOSE_PROJECT_NAME}_default --link ${COMPOSE_PROJECT_NAME}-db-1:db -v $(pwd)/tests/db/:/test -e HOST=$DB_HOST -e DATABASE=$DB_NAME -e USER=$SUPER_USER -e PASSWORD=$SUPER_USER_PASSWORD subzerocloud/pgtap:pg13 )",
-        "test": "npm run test_db && npm run test_rest"
+        "test_rest": "bun test --preload ./tests/bun-rest-setup.js ./tests/rest/*.js ./tests/rest/**/*.js",
+        "test_db": "./bin/test-db.sh",
+        "test": "bun run test_db && bun run test_rest"
     },
     "author": "kyle.jensen@yale.edu",
     "license": "Varied"

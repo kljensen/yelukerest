@@ -20,9 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Dump database**: `./bin/dumpdb.sh`
 
 ### Testing
-- **Run all tests**: `npm test` (runs both database and REST API tests)
-- **Run database tests only**: `npm run test_db` (uses pgTAP for PostgreSQL testing)
-- **Run REST API tests only**: `npm run test_rest` (uses Mocha + Supertest)
+- **Run all tests**: `bun run test` (runs both database and REST API tests)
+- **Run database tests only**: `bun run test_db` (uses local pgTAP `pg_prove`)
+- **Run REST API tests only**: `bun run test_rest` (uses Bun test + Supertest)
 
 ### Development Utilities
 - **Generate JWT tokens**: `./bin/jwt.sh '{"role": "student"}'`
