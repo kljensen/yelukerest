@@ -217,7 +217,7 @@ func getValidateHandler(casConfig CASConfig, jwtConfig FetchJWTConfig, sessionMa
 		// allow them to log in.
 		jwtInfo, err, httpStatus := fetchUserJWTInfo(netid, jwtConfig)
 		if err != nil || jwtInfo == nil {
-			http.Error(w, "Unauthorized", httpStatus)
+			http.Error(w, http.StatusText(httpStatus), httpStatus)
 			return
 		}
 		if httpStatus != http.StatusOK {

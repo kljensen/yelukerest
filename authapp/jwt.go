@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
+	"time"
 )
 
 type UserJWTInfo struct {
@@ -31,13 +34,24 @@ type FetchJWTConfig struct {
 	AuthappJWT    string
 }
 
+func userJWTURL(netID string, config FetchJWTConfig) string {
+	endpoint := url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(config.PostgrestHost, config.PostgrestPort),
+		Path:   "/user_jwts",
+	}
+	query := endpoint.Query()
+	query.Set("netid", "eq."+netID)
+	endpoint.RawQuery = query.Encode()
+	return endpoint.String()
+}
+
 func fetchUserJWTInfo(netID string, config FetchJWTConfig) (*UserJWTInfo, error, int) {
 	if netID == "" {
 		return nil, fmt.Errorf("netid is nil"), http.StatusForbidden
 	}
 
-	url := fmt.Sprintf("http://%s:%s/user_jwts?netid=eq.%s", config.PostgrestHost, config.PostgrestPort, netID)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest("GET", userJWTURL(netID, config), nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err), http.StatusInternalServerError
 	}
@@ -45,10 +59,12 @@ func fetchUserJWTInfo(netID string, config FetchJWTConfig) (*UserJWTInfo, error,
 	req.Header.Set("Authorization", "Bearer "+config.AuthappJWT)
 	req.Header.Set("Accept", "application/vnd.pgrst.object+json")
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching jwt: %v", err), http.StatusForbidden
+		return nil, fmt.Errorf("postgrest unavailable: %v", err), http.StatusBadGateway
 	}
 	defer resp.Body.Close()
 
@@ -57,14 +73,25 @@ func fetchUserJWTInfo(netID string, config FetchJWTConfig) (*UserJWTInfo, error,
 		return nil, fmt.Errorf("error reading response: %v", err), http.StatusInternalServerError
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusNotAcceptable, http.StatusNotFound:
+			return nil, fmt.Errorf("user is not authorized"), http.StatusForbidden
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("authapp service token rejected by postgrest"), http.StatusBadGateway
+		default:
+			return nil, fmt.Errorf("unexpected postgrest status %s: %s", resp.Status, string(body)), http.StatusBadGateway
+		}
+	}
+
 	var data UserJWTInfo
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing jwt: %v", err), http.StatusForbidden
+		return nil, fmt.Errorf("error parsing jwt response: %v", err), http.StatusBadGateway
 	}
 
 	if data.JWT == "" {
-		return nil, fmt.Errorf("error parsing jwt"), http.StatusForbidden
+		return nil, fmt.Errorf("user is not authorized"), http.StatusForbidden
 	}
 
 	return &data, nil, http.StatusOK

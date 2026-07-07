@@ -117,6 +117,42 @@ BEGIN
         RAISE EXCEPTION 'auth.sign_jwt search_path is not pinned';
     END IF;
 
+    IF NOT has_function_privilege('api', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'api must be able to execute auth.sign_jwt';
+    END IF;
+
+    IF NOT has_function_privilege('student', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'student must be able to execute auth.sign_jwt through api.user_jwts';
+    END IF;
+
+    IF NOT has_function_privilege('ta', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'ta must be able to execute auth.sign_jwt through api.user_jwts';
+    END IF;
+
+    IF NOT has_function_privilege('faculty', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'faculty must be able to execute auth.sign_jwt through api.user_jwts';
+    END IF;
+
+    IF NOT has_function_privilege('app', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'app must be able to execute auth.sign_jwt through api.user_jwts';
+    END IF;
+
+    IF has_schema_privilege('student', 'auth', 'USAGE') THEN
+        RAISE EXCEPTION 'student must not have direct usage on auth schema';
+    END IF;
+
+    IF has_schema_privilege('ta', 'auth', 'USAGE') THEN
+        RAISE EXCEPTION 'ta must not have direct usage on auth schema';
+    END IF;
+
+    IF has_schema_privilege('faculty', 'auth', 'USAGE') THEN
+        RAISE EXCEPTION 'faculty must not have direct usage on auth schema';
+    END IF;
+
+    IF has_schema_privilege('app', 'auth', 'USAGE') THEN
+        RAISE EXCEPTION 'app must not have direct usage on auth schema';
+    END IF;
+
     IF NOT EXISTS (
         SELECT 1
         FROM pg_proc p

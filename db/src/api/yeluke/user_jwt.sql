@@ -4,14 +4,18 @@ create or replace view user_jwts as
     -- rows of data.
     case when
     	(
-            request.user_role() = 'faculty'
-            OR
-            (request.user_id() = id)
-            OR
+            "role" <> 'observer'::data.user_role
+            AND
             (
-                request.user_role() = 'app'
-                AND
-                request.app_name() = 'authapp'
+                request.user_role() = 'faculty'
+                OR
+                (request.user_id() = id)
+                OR
+                (
+                    request.user_role() = 'app'
+                    AND
+                    request.app_name() = 'authapp'
+                )
             )
         )
     then

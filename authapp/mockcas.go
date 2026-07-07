@@ -6,9 +6,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 )
 
 var ticketStore = make(map[string]string)
+var ticketStoreMu sync.RWMutex
 
 func getCASLoginForm(user_id, service string) string {
 	var casForm = `
@@ -49,7 +51,9 @@ func getSuccessHTML(user_id string) string {
 
 func redirectToService(w http.ResponseWriter, r *http.Request, user_id, service string) {
 	ticket := "mock-ticket-" + user_id
+	ticketStoreMu.Lock()
 	ticketStore[ticket] = user_id
+	ticketStoreMu.Unlock()
 
 	// Parse the service string as URL
 	log.Println("Redirecting to service:", service)
@@ -96,7 +100,9 @@ func casServiceValidateHandler(w http.ResponseWriter, r *http.Request) {
 	// Set the content type to text/xml
 	w.Header().Set("Content-Type", "text/xml")
 
+	ticketStoreMu.RLock()
 	user_id, ok := ticketStore[ticket]
+	ticketStoreMu.RUnlock()
 	var xml string
 	if ok {
 		xml = getSuccessHTML(user_id)

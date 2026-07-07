@@ -71,8 +71,9 @@ Yale CAS URLs.
 - Holds only the SCS session token in the browser.
 - Server-side session data stores the user's netid.
 - Lifetime is 24 hours in `authapp`.
-- SCS defaults are `HttpOnly` and `SameSite=Lax`; production should explicitly
-  set `Secure=true`.
+- `authapp` explicitly sets `HttpOnly` and `SameSite=Lax`.
+- Production sets `Secure=true`; development leaves `Secure=false` so direct
+  local HTTP authapp testing remains possible.
 
 `AUTHAPP_JWT`:
 
@@ -108,7 +109,7 @@ Swagger:
 | `student` | CAS login for a student user | `user_id`, `role=student`, `exp` | sees own row and own JWT | Normal student browser role. |
 | `ta` | CAS login for a TA user | `user_id`, `role=ta`, `exp` | sees user rows but JWT is non-null only for self | Broader read access than students, not equivalent to faculty. |
 | `faculty` | CAS login for a faculty user | `user_id`, `role=faculty`, `exp` | sees all user JWTs | Broadest human role and the normal admin token role. |
-| `observer` | CAS login for an observer user | `user_id`, `role=observer`, `exp` | can receive a JWT through `app/authapp` | Current sample data includes this role, but it has no `api` schema usage grant. Its intended product meaning needs a decision. |
+| `observer` | CAS login for an observer user | none minted | JWT is intentionally null | Current sample data includes this role, but observers have no supported API surface yet. |
 | `app` | Service token | `role=app`, optional `app_name` | no user JWTs unless `app_name=authapp` | Not a `data.user_role`; used for app-to-app access. |
 | `app/authapp` | `AUTHAPP_JWT` | `role=app`, `app_name=authapp` | can fetch all user rows/JWTs | Service boundary between CAS sessions and user JWT minting. |
 | `authenticator` | PostgREST DB connection role | none | not a request identity | Can switch into application roles granted to it. |
@@ -125,20 +126,11 @@ Swagger:
 | CAS validation failure | `401 Unauthorized` | not yet covered directly |
 | CAS back-channel or PostgREST error | authapp returns an error status, often collapsed to `403`/`500` | follow-up issue needed |
 | Expired or invalid PostgREST user JWT | PostgREST rejects `/rest/*` request | covered indirectly by PostgREST; app UX follow-up needed |
-| Observer login | observer JWT is minted, but `/rest/*` usefulness is unclear because `observer` lacks `api` usage | REST auth test documents current behavior |
+| Observer login | no session/JWT is created because `api.user_jwts` does not mint observer JWTs | REST auth and pgTAP tests |
 
 ## Known Follow-Ups
 
-Tracked in #251:
+Future cleanup:
 
-- Harden `authapp` session cookie settings by explicitly setting production
-  `Secure=true` and adding a test or smoke assertion for cookie attributes.
-- Escape the netid when building the PostgREST `user_jwts` query URL.
-- Improve `authapp` error propagation for malformed/expired `AUTHAPP_JWT`,
-  PostgREST outages, and unexpected `user_jwts` responses.
-- Decide the intended `observer` role posture: either grant the intended read
-  surface or prevent observer JWTs from being minted.
-- Revoke direct `auth.sign_jwt` execute grants from application roles if they
-  are not needed, and add pgTAP assertions for the intended grants.
 - Remove or quarantine stale `db/src/libs/auth/api/*` starter-kit files if they
   are no longer imported.

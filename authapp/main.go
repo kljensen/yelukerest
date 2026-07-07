@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
@@ -51,10 +52,9 @@ func main() {
 		RemoteURI:           casURI,
 		RemoteValidationURI: casValidationURI,
 		ReturnPath:          authValidatePath,
-		IsDevelopment:       os.Getenv("DEVELOPMENT") != "",
+		IsDevelopment:       developmentEnabled(os.Getenv("DEVELOPMENT")),
 	}
-	sessionManager := scs.New()
-	sessionManager.Lifetime = 24 * time.Hour
+	sessionManager := newSessionManager(casConfig.IsDevelopment)
 
 	// Set up the JWT stuff
 	fetchJWTConfig := FetchJWTConfig{
@@ -94,6 +94,24 @@ func main() {
 	err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux))
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func newSessionManager(isDevelopment bool) *scs.SessionManager {
+	sessionManager := scs.New()
+	sessionManager.Lifetime = 24 * time.Hour
+	sessionManager.Cookie.HttpOnly = true
+	sessionManager.Cookie.SameSite = http.SameSiteLaxMode
+	sessionManager.Cookie.Secure = !isDevelopment
+	return sessionManager
+}
+
+func developmentEnabled(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "0", "false", "no", "off":
+		return false
+	default:
+		return true
 	}
 }
 

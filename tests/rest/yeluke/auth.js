@@ -71,6 +71,21 @@ describe('authentication API endpoint', () => {
         }
     });
 
+    it('should set HttpOnly SameSite=Lax session cookies in development', async () => {
+        let cookies;
+        try {
+            cookies = await getUserSessionCookie(baseURL, authPath, 'abc123', true);
+        } catch (error) {
+            throw error;
+        }
+
+        const sessionCookie = cookies.find(cookie => cookie.startsWith('session='));
+        we.expect(sessionCookie)
+            .to.include('HttpOnly');
+        we.expect(sessionCookie)
+            .to.include('SameSite=Lax');
+    });
+
     it('should not create a session for an invalid user', async () => {
         try {
             const p = await getUserSessionCookie(baseURL, authPath, 'invalid23', false);
@@ -146,22 +161,16 @@ describe('authentication API endpoint', () => {
             .to.be.above(Math.floor(Date.now() / 1000));
     });
 
-    it('should let observer users authenticate and receive observer JWTs', async () => {
-        let cookie;
+    it('should not mint JWTs for observer users', async () => {
         let jwt;
         try {
-            cookie = await getUserSessionCookie(baseURL, authPath, 'crt43', true);
-            jwt = await getJWT(baseURL, jwtPath, [cookie]);
+            jwt = await getJWTForNetid(baseURL, authPath, jwtPath, 'crt43');
         } catch (error) {
             throw error;
         }
 
-        const payload = decodeJWTPayload(jwt);
-        we.expect(payload)
-            .to.include({
-                user_id: 5,
-                role: 'observer',
-            });
+        we.expect(jwt)
+            .to.be.undefined();
     });
 
     it('should not let invalid users get a JWT', async () => {

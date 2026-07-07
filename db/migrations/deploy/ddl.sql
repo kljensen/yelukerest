@@ -1616,7 +1616,7 @@ ALTER VIEW api.ui_elements OWNER TO api;
 CREATE VIEW api.user_jwts AS
  SELECT
         CASE
-            WHEN ((request.user_role() = 'faculty'::text) OR (request.user_id() = id) OR ((request.user_role() = 'app'::text) AND (request.app_name() = 'authapp'::text))) THEN auth.sign_jwt(id, role)
+            WHEN ((role <> 'observer'::data.user_role) AND ((request.user_role() = 'faculty'::text) OR (request.user_id() = id) OR ((request.user_role() = 'app'::text) AND (request.app_name() = 'authapp'::text)))) THEN auth.sign_jwt(id, role)
             ELSE NULL::text
         END AS jwt,
     id,
