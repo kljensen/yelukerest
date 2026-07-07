@@ -11,15 +11,10 @@ import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
         ( Quiz
-        , QuizGradeException
-        , QuizOpenState(..)
-        , QuizSubmission
-        , SubmissionEditableState(..)
-        , quizSubmitability
+        , paperQuizStatusText
         )
 import RemoteData exposing (WebData)
-import Time exposing (Posix)
-import Quizzes.Model exposing (QuizType(..))
+
 
 markdownToHTML : List (Html.Attribute msg) -> String -> Html msg 
 markdownToHTML attributes md =
@@ -54,44 +49,35 @@ getQuizForMeetingSlug slug wdQuizzes =
             Nothing
 
 
-detailView : Maybe Posix -> TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
-detailView maybeCurrentDate timeZone currentUser wdMeetings slug quizzes quizSubmissions quizGradeExceptions =
-    case maybeCurrentDate of
-        Nothing ->
-            Html.text "Loding..."
+detailView : TimeZone -> WebData CurrentUser -> WebData (List Meeting) -> MeetingSlug -> WebData (List Quiz) -> Html.Html Msg
+detailView timeZone currentUser wdMeetings slug quizzes =
+    case wdMeetings of
+        RemoteData.NotAsked ->
+            Html.text ""
 
-        Just currentDate ->
-            case wdMeetings of
-                RemoteData.NotAsked ->
-                    Html.text ""
+        RemoteData.Loading ->
+            Html.text "Loading ..."
 
-                RemoteData.Loading ->
-                    Html.text "Loading ..."
+        RemoteData.Success meetings ->
+            let
+                maybeMeeting =
+                    meetings
+                        |> List.filter (\meeting -> meeting.slug == slug)
+                        |> List.head
+            in
+            case maybeMeeting of
+                Just meeting ->
+                    detailViewForJustMeeting timeZone currentUser meeting quizzes
 
-                RemoteData.Success meetings ->
-                    let
-                        maybeMeeting =
-                            meetings
-                                |> List.filter (\meeting -> meeting.slug == slug)
-                                |> List.head
-                    in
-                    case maybeMeeting of
-                        Just meeting ->
-                            detailViewForJustMeeting currentDate timeZone currentUser meeting quizzes quizSubmissions quizGradeExceptions
+                Nothing ->
+                    meetingNotFoundView slug
 
-                        Nothing ->
-                            meetingNotFoundView slug
-
-                RemoteData.Failure _ ->
-                    Html.text "Error loading meetings!"
+        RemoteData.Failure _ ->
+            Html.text "Error loading meetings!"
 
 
-detailViewForJustMeeting : Posix -> TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
-detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions =
-    let
-        maybeQuiz =
-            getQuizForMeetingSlug meeting.slug wdQuizzes
-    in
+detailViewForJustMeeting : TimeZone -> WebData CurrentUser -> Meeting -> WebData (List Quiz) -> Html.Html Msg
+detailViewForJustMeeting timeZone currentUser meeting wdQuizzes =
     Html.div []
         [ Html.h1 [] [ Html.text meeting.title, Common.Views.showDraftStatus meeting.is_draft ]
         , Html.p []
@@ -99,8 +85,8 @@ detailViewForJustMeeting currentDate timeZone currentUser meeting wdQuizzes wdQu
             ]
         , markdownToHTML [] meeting.description
         , case currentUser of
-            RemoteData.Success user ->
-                showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions
+            RemoteData.Success _ ->
+                showQuizStatus meeting wdQuizzes
 
             _ ->
                 Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
@@ -122,21 +108,17 @@ recordEngagementButton meetingSlug currentUser =
             Html.text ""
 
 
-showQuizStatus : Posix -> CurrentUser -> TimeZone -> Meeting -> WebData (List Quiz) -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
-showQuizStatus currentDate user timeZone meeting wdQuizzes wdQuizSubmissions wdQuizGradeExceptions =
+showQuizStatus : Meeting -> WebData (List Quiz) -> Html.Html Msg
+showQuizStatus meeting wdQuizzes =
     case wdQuizzes of
-        RemoteData.Success quizzes ->
+        RemoteData.Success _ ->
             let
                 maybeQuiz =
-                    quizzes
-                        |> List.filter (\quiz -> quiz.meeting_slug == meeting.slug)
-                        |> List.head
+                    getQuizForMeetingSlug meeting.slug wdQuizzes
             in
             case maybeQuiz of
-                Just quiz ->
-                    Html.p []
-                        [ showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions
-                        ]
+                Just _ ->
+                    showPaperQuizStatus
 
                 Nothing ->
                     if meeting.is_draft then
@@ -160,83 +142,9 @@ pText theString =
     Html.p [] [ Html.text theString ]
 
 
-showQuizSubmissionStatus : Posix -> CurrentUser -> TimeZone -> Quiz -> WebData (List QuizSubmission) -> WebData (List QuizGradeException) -> Html.Html Msg
-showQuizSubmissionStatus currentDate user timeZone quiz wdQuizSubmissions wdQuizGradeExceptions =
-    case wdQuizSubmissions of
-        RemoteData.Success submissions ->
-            let
-                matchesQuizAndUserId =
-                    \qs -> qs.quiz_id == quiz.id && qs.user_id == user.id
-
-                maybeSubmission =
-                    submissions
-                        |> List.filter matchesQuizAndUserId
-                        |> List.head
-
-                maybeException =
-                    case wdQuizGradeExceptions of
-                        RemoteData.Success exceptions ->
-                            exceptions
-                                |> List.filter matchesQuizAndUserId
-                                |> List.head
-
-                        _ ->
-                            Nothing
-
-                dueString =
-                    case maybeException of
-                        Just exception ->
-                            "It looks like you have an exception/extension. Your quiz will be due by " ++ longDateToString exception.closed_at timeZone ++ " instead of " ++ longDateToString quiz.closed_at timeZone
-
-                        Nothing ->
-                            "The quiz is due by " ++ longDateToString quiz.closed_at timeZone ++ "."
-
-                quizType =
-                    quizSubmitability currentDate quiz maybeSubmission maybeException
-            in
-            case quizType of
-                Offline ->
-                    pText ("There is an in-person quiz for this meeting.")
-                Online ( QuizOpen, _ ) ->
-                    pText ("There is an in-person quiz for this meeting. " ++ dueString)
-
-                Online( _, NotEditableSubmission _ ) ->
-                    let
-                        exceptionNote =
-                            case maybeException of
-                                Just exception ->
-                                    "  It looks like you had a grading exception/extension. Your quiz was due by " ++ longDateToString exception.closed_at timeZone ++ "."
-
-                                Nothing ->
-                                    ""
-                    in
-                    pText ("You already submitted this quiz." ++ exceptionNote)
-
-                Online( AfterQuizClosed, _ ) ->
-                    case maybeException of
-                        Just exception ->
-                            pText ("This quiz is now closed. It was due by " ++ longDateToString exception.closed_at timeZone ++ ". You had an extention. The quiz was originally due by " ++ longDateToString quiz.closed_at timeZone)
-
-                        Nothing ->
-                            pText ("This quiz is now closed. It was due by " ++ longDateToString quiz.closed_at timeZone ++ ".")
-
-                Online( QuizIsDraft, _ ) ->
-                    pText
-                        ("This quiz is still in draft mode. The instructor needs to finalize the quiz.  "
-                            ++ dueString
-                        )
-
-                Online( BeforeQuizOpen, _ ) ->
-                    pText ("This quiz is not yet open for submissions. It opens at " ++ longDateToString quiz.open_at timeZone ++ ".  " ++ dueString)
-
-        RemoteData.NotAsked ->
-            pText "Quiz submissions not yet loaded. Unclear if you started this quiz."
-
-        RemoteData.Loading ->
-            pText "Loading quiz submissions."
-
-        RemoteData.Failure _ ->
-            pText "Failed to load quiz submissions!"
+showPaperQuizStatus : Html.Html Msg
+showPaperQuizStatus =
+    pText paperQuizStatusText
 
 
 meetingNotFoundView : String -> Html msg

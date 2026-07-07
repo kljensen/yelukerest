@@ -30,7 +30,6 @@ import Msgs exposing (BrowserLocation(..), Msg)
 import Quizzes.Commands
     exposing
         ( fetchQuizGradeDistributions
-        , fetchQuizGradeExceptions
         , fetchQuizGrades
         , fetchQuizSubmissions
         , fetchQuizzes
@@ -114,7 +113,6 @@ update msg model =
                                 [ fetchAssignments user
                                 , fetchQuizzes user
                                 , fetchQuizGradeDistributions user
-                                , fetchQuizGradeExceptions user
                                 , fetchAssignmentSubmissions user
                                 , fetchQuizSubmissions user
                                 , fetchQuizGrades user
@@ -241,9 +239,6 @@ update msg model =
 
         Msgs.OnFetchUserSecrets userSecrets ->
             ( { model | userSecrets = userSecrets }, Cmd.none )
-
-        Msgs.OnFetchQuizGradeExceptions quizGradeExceptions ->
-            ( { model | quizGradeExceptions = quizGradeExceptions }, Cmd.none )
 
         Msgs.OnFetchEngagements response ->
             ( { model | engagements = response }, Cmd.none )

@@ -38,7 +38,7 @@ page model =
             lazy2 Meetings.Views.listView model.timeZone model.meetings
 
         Models.MeetingDetailRoute slug ->
-            Meetings.Views.detailView model.current_date model.timeZone model.currentUser model.meetings slug model.quizzes model.quizSubmissions model.quizGradeExceptions
+            Meetings.Views.detailView model.timeZone model.currentUser model.meetings slug model.quizzes
 
         Models.AssignmentListRoute ->
             lazy2 Assignments.Views.listView model.timeZone model.assignments

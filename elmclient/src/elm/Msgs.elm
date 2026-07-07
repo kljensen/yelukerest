@@ -19,7 +19,6 @@ import Quizzes.Model
         ( Quiz
         , QuizGrade
         , QuizGradeDistribution
-        , QuizGradeException
         , QuizSubmission
         )
 import RemoteData exposing (WebData)
@@ -59,7 +58,6 @@ type Msg
     | OnFetchUserSecrets (WebData (List UserSecret))
     | OnChangeEngagement String Int String
     | OnSubmitEngagementResponse String Int (WebData Engagement)
-    | OnFetchQuizGradeExceptions (WebData (List QuizGradeException))
     | OnFetchAssignmentGradeExceptions (WebData (List AssignmentGradeException))
     | ToggleShowUserSecret String
     | OnChangeEngagementUserQuery String

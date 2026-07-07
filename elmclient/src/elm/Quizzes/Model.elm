@@ -2,22 +2,15 @@ module Quizzes.Model exposing
     ( Quiz
     , QuizGrade
     , QuizGradeDistribution
-    , QuizGradeException
-    , QuizOpenState(..)
     , QuizSubmission
-    , QuizType(..)
-    , SubmissionEditableState(..)
+    , paperQuizStatusText
     , quizGradeDistributionsDecoder
-    , quizGradeExceptionDecoder
-    , quizGradeExceptionsDecoder
     , quizGradesDecoder
     , quizSubmissionDecoder
     , quizSubmissionsDecoder
-    , quizSubmitability
     , quizzesDecoder
     )
 
-import Common.Comparisons exposing (dateIsLessThan)
 import Json.Decode as Decode exposing (Decoder)
 import Json.Decode.Extra
 import Json.Decode.Pipeline exposing (required)
@@ -60,71 +53,17 @@ quizDecoder =
         |> required "is_offline" Decode.bool
 
 
+paperQuizStatusText : String
+paperQuizStatusText =
+    "There is an in-person quiz for this meeting."
+
 
 -- ----------------
 -- Quiz submissions
 -- ----------------
 
-type QuizOpenState
-    = BeforeQuizOpen
-    | QuizOpen
-    | QuizIsDraft
-    | AfterQuizClosed
-
-
-type SubmissionEditableState
-    = EditableSubmission QuizSubmission
-    | NotEditableSubmission QuizSubmission
-    | NoSubmission
-
-type QuizType
-    =
-    Online (QuizOpenState, SubmissionEditableState)
-    | Offline
-
-
-quizSubmitability : Posix -> Quiz -> Maybe QuizSubmission -> Maybe QuizGradeException -> QuizType
-quizSubmitability currentDate quiz maybeQuizSubmission maybeException =
-    let
-        quizOpenState =
-            if dateIsLessThan currentDate quiz.open_at then
-                BeforeQuizOpen
-
-            else if dateIsLessThan quiz.closed_at currentDate then
-                case maybeException of
-                    Just exception ->
-                        if dateIsLessThan currentDate exception.closed_at then
-                            QuizOpen
-
-                        else
-                            AfterQuizClosed
-
-                    Nothing ->
-                        AfterQuizClosed
-
-            else if quiz.is_draft then
-                QuizIsDraft
-
-            else
-                QuizOpen
-
-        submissionEditableState =
-            case maybeQuizSubmission of
-                Just quizSubmission ->
-                    if dateIsLessThan currentDate quizSubmission.closed_at then
-                        EditableSubmission quizSubmission
-                    else
-                        NotEditableSubmission quizSubmission
-
-                Nothing ->
-                    NoSubmission
-    in
-    if quiz.is_offline then
-        Offline
-    else
-        Online ( quizOpenState, submissionEditableState )
-
-
+-- Kept for read-only dashboard/status compatibility with imported paper quiz
+-- data. The client no longer supports online quiz-taking or editing.
 type alias QuizSubmission =
     { quiz_id : Int
     , user_id : Int
@@ -206,31 +145,3 @@ quizGradeDistributionDecoder =
 quizGradeDistributionsDecoder : Decode.Decoder (List QuizGradeDistribution)
 quizGradeDistributionsDecoder =
     Decode.list quizGradeDistributionDecoder
-
-
-type alias QuizGradeException =
-    { id : Int
-    , quiz_id : Int
-    , user_id : Int
-    , fractional_credit : Float
-    , closed_at : Posix
-    , created_at : Posix
-    , updated_at : Posix
-    }
-
-
-quizGradeExceptionDecoder : Decode.Decoder QuizGradeException
-quizGradeExceptionDecoder =
-    Decode.succeed QuizGradeException
-        |> required "id" Decode.int
-        |> required "quiz_id" Decode.int
-        |> required "user_id" Decode.int
-        |> required "fractional_credit" Decode.float
-        |> required "closed_at" Json.Decode.Extra.datetime
-        |> required "created_at" Json.Decode.Extra.datetime
-        |> required "updated_at" Json.Decode.Extra.datetime
-
-
-quizGradeExceptionsDecoder : Decode.Decoder (List QuizGradeException)
-quizGradeExceptionsDecoder =
-    Decode.list quizGradeExceptionDecoder
