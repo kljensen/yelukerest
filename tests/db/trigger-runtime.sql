@@ -1,5 +1,5 @@
 begin;
-select plan(24);
+select plan(25);
 
 SELECT set_eq(
     $$
@@ -29,6 +29,7 @@ SELECT set_eq(
         'quiz_submission.tg_quiz_submission_default',
         'team.tg_team_update_timestamps',
         'ui_element.tg_ui_element_update_timestamps',
+        'user.tg_user_student_engagement_rows',
         'user.tg_users_default',
         'user_secret.tg_user_secret_default'
     ],
@@ -46,12 +47,14 @@ SELECT set_eq(
             'fill_assignment_grade_exception_defaults',
             'fill_assignment_submission_defaults',
             'fill_quiz_grade_defaults',
+            'ensure_student_engagement_rows',
             'quiz_set_defaults'
         )
         AND p.prosecdef
         AND p.proconfig @> ARRAY['search_path=data, pg_temp']
     $$,
     ARRAY[
+        'ensure_student_engagement_rows',
         'fill_assignment_grade_defaults',
         'fill_assignment_grade_exception_defaults',
         'fill_assignment_submission_defaults',
@@ -69,6 +72,26 @@ SELECT results_eq(
     $$,
     $$ VALUES ('mixedcase@yale.edu'::text, 'abc999'::text, 'loud-nick'::text, true) $$,
     'tg_users_default lowercases user fields and refreshes updated_at'
+);
+
+SELECT results_eq(
+    $$
+        SELECT participation
+        FROM data.engagement
+        WHERE user_id = (
+            SELECT id
+            FROM data."user"
+            WHERE netid = 'abc999'
+        )
+        ORDER BY meeting_slug
+    $$,
+    $$ VALUES
+        ('absent'::data.participation_enum),
+        ('absent'::data.participation_enum),
+        ('absent'::data.participation_enum),
+        ('absent'::data.participation_enum)
+    $$,
+    'tg_user_student_engagement_rows creates absent rows for new students'
 );
 
 SELECT results_eq(

@@ -82,6 +82,35 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND p.proname = 'ensure_student_engagement_rows'
+        AND p.prosecdef
+        AND p.proconfig @> ARRAY['search_path=data, pg_temp']
+    ) THEN
+        RAISE EXCEPTION 'missing security-definer data.ensure_student_engagement_rows function';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_namespace pn ON pn.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'user'
+        AND t.tgname = 'tg_user_student_engagement_rows'
+        AND pn.nspname = 'data'
+        AND p.proname = 'ensure_student_engagement_rows'
+        AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'missing data.user student engagement maintenance trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
         FROM pg_constraint con
         JOIN pg_class c ON c.oid = con.conrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace

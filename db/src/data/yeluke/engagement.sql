@@ -34,3 +34,29 @@ CREATE TRIGGER tg_engagement_update_timestamps
     ON engagement
     FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
+
+CREATE OR REPLACE FUNCTION ensure_student_engagement_rows()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (
+        NEW.role = 'student'::user_role
+        AND (TG_OP = 'INSERT' OR OLD.role IS DISTINCT FROM NEW.role)
+    ) THEN
+        INSERT INTO data.engagement (user_id, meeting_slug, participation)
+        SELECT NEW.id, meeting.slug, 'absent'::participation_enum
+        FROM data.meeting AS meeting
+        ON CONFLICT (user_id, meeting_slug) DO NOTHING;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = data, pg_temp;
+
+DROP TRIGGER IF EXISTS tg_user_student_engagement_rows ON "user";
+CREATE TRIGGER tg_user_student_engagement_rows
+    AFTER INSERT OR UPDATE OF role
+    ON "user"
+    FOR EACH ROW
+EXECUTE FUNCTION ensure_student_engagement_rows();

@@ -1039,6 +1039,32 @@ $$;
 ALTER FUNCTION data.clean_user_fields() OWNER TO superuser;
 
 --
+-- Name: ensure_student_engagement_rows(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.ensure_student_engagement_rows() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+BEGIN
+    IF (
+        NEW.role = 'student'::user_role
+        AND (TG_OP = 'INSERT' OR OLD.role IS DISTINCT FROM NEW.role)
+    ) THEN
+        INSERT INTO data.engagement (user_id, meeting_slug, participation)
+        SELECT NEW.id, meeting.slug, 'absent'::participation_enum
+        FROM data.meeting AS meeting
+        ON CONFLICT (user_id, meeting_slug) DO NOTHING;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION data.ensure_student_engagement_rows() OWNER TO superuser;
+
+--
 -- Name: fill_assignment_field_submission_defaults(); Type: FUNCTION; Schema: data; Owner: superuser
 --
 
@@ -3468,6 +3494,13 @@ CREATE TRIGGER tg_user_secret_default BEFORE INSERT OR UPDATE ON data.user_secre
 --
 
 CREATE TRIGGER tg_users_default BEFORE INSERT OR UPDATE ON data."user" FOR EACH ROW EXECUTE FUNCTION data.clean_user_fields();
+
+
+--
+-- Name: user tg_user_student_engagement_rows; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_user_student_engagement_rows AFTER INSERT OR UPDATE OF role ON data."user" FOR EACH ROW EXECUTE FUNCTION data.ensure_student_engagement_rows();
 
 
 --
