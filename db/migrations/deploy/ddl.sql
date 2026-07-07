@@ -120,6 +120,19 @@ CREATE TYPE data.participation_enum AS ENUM (
 ALTER TYPE data.participation_enum OWNER TO superuser;
 
 --
+-- Name: meeting_type_enum; Type: TYPE; Schema: data; Owner: superuser
+--
+
+CREATE TYPE data.meeting_type_enum AS ENUM (
+    'lecture',
+    'no-meeting',
+    'office-hours'
+);
+
+
+ALTER TYPE data.meeting_type_enum OWNER TO superuser;
+
+--
 -- Name: user_role; Type: TYPE; Schema: data; Owner: superuser
 --
 
@@ -801,6 +814,7 @@ BEGIN
         description text,
         begins_at timestamptz,
         duration interval,
+        meeting_type data.meeting_type_enum,
         is_draft boolean
     )
     GROUP BY meeting.slug
@@ -821,6 +835,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     ),
@@ -845,6 +860,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     )
@@ -859,6 +875,7 @@ BEGIN
             existing_meeting.description,
             existing_meeting.begins_at,
             existing_meeting.duration,
+            existing_meeting.meeting_type,
             existing_meeting.is_draft
         ) IS DISTINCT FROM (
             input_meeting.title,
@@ -866,6 +883,7 @@ BEGIN
             input_meeting.description,
             input_meeting.begins_at,
             input_meeting.duration,
+            COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             input_meeting.is_draft
         )
     );
@@ -879,6 +897,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     ),
@@ -893,6 +912,7 @@ BEGIN
             existing_meeting.description,
             existing_meeting.begins_at,
             existing_meeting.duration,
+            existing_meeting.meeting_type,
             existing_meeting.is_draft
         ) IS DISTINCT FROM (
             input_meeting.title,
@@ -900,6 +920,7 @@ BEGIN
             input_meeting.description,
             input_meeting.begins_at,
             input_meeting.duration,
+            COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             input_meeting.is_draft
         )
     ),
@@ -911,6 +932,7 @@ BEGIN
             description = input_meeting.description,
             begins_at = input_meeting.begins_at,
             duration = input_meeting.duration,
+            meeting_type = COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             is_draft = input_meeting.is_draft
         FROM changed_meetings input_meeting
         WHERE existing_meeting.slug = input_meeting.slug
@@ -928,6 +950,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     ),
@@ -939,6 +962,7 @@ BEGIN
             description,
             begins_at,
             duration,
+            meeting_type,
             is_draft
         )
         SELECT
@@ -948,6 +972,7 @@ BEGIN
             input_meeting.description,
             input_meeting.begins_at,
             input_meeting.duration,
+            COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             input_meeting.is_draft
         FROM input_meetings input_meeting
         WHERE NOT EXISTS (
@@ -2233,6 +2258,7 @@ CREATE TABLE data.meeting (
     description text NOT NULL,
     begins_at timestamp with time zone NOT NULL,
     duration interval NOT NULL,
+    meeting_type data.meeting_type_enum DEFAULT 'lecture'::data.meeting_type_enum NOT NULL,
     is_draft boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -2256,6 +2282,7 @@ CREATE VIEW api.meetings AS
     description,
     begins_at,
     duration,
+    meeting_type,
     is_draft,
     created_at,
     updated_at
@@ -2307,6 +2334,13 @@ COMMENT ON COLUMN api.meetings.duration IS 'The duration of the meeting as a Pos
 
 
 --
+-- Name: COLUMN meetings.meeting_type; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.meetings.meeting_type IS 'The kind of meeting, such as lecture, no-meeting, or office-hours';
+
+
+--
 -- Name: COLUMN meetings.is_draft; Type: COMMENT; Schema: api; Owner: api
 --
 
@@ -2334,8 +2368,8 @@ COMMENT ON COLUMN api.meetings.updated_at IS 'The most recent time this database
 CREATE VIEW api.platform_version AS
  SELECT 'yelukerest'::text AS platform,
     1 AS platform_compatibility_version,
-    1 AS schema_compatibility_version,
-    4 AS admin_api_version;
+    2 AS schema_compatibility_version,
+    5 AS admin_api_version;
 
 
 ALTER VIEW api.platform_version OWNER TO api;

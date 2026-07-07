@@ -27,6 +27,7 @@ MEETING_KEYS = (
     "description",
     "begins_at",
     "duration",
+    "meeting_type",
     "is_draft",
 )
 

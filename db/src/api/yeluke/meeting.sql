@@ -18,6 +18,8 @@ COMMENT ON COLUMN meetings.begins_at IS
     'The time at which the meeting begins, including timezone';
 COMMENT ON COLUMN meetings.duration IS
     'The duration of the meeting as a Postgres interval';
+COMMENT ON COLUMN meetings.meeting_type IS
+    'The kind of meeting, such as lecture, no-meeting, or office-hours';
 COMMENT ON COLUMN meetings.is_draft IS
     'An indicator of if the content is still changing';
 COMMENT ON COLUMN meetings.created_at IS

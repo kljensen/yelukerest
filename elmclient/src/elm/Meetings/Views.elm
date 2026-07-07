@@ -89,52 +89,64 @@ detailViewForJustMeeting timeZone currentUser meeting wdQuizzes =
                 showQuizStatus meeting wdQuizzes
 
             _ ->
-                Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
-        , recordEngagementButton meeting.slug currentUser
+                if meeting.meeting_type == "no-meeting" then
+                    Html.text ""
+
+                else
+                    Html.div [] [ Html.text "You must log in to see quiz information for this meeting." ]
+        , recordEngagementButton meeting currentUser
         ]
 
 
-recordEngagementButton : String -> WebData CurrentUser -> Html.Html Msg
-recordEngagementButton meetingSlug currentUser =
-    case isLoggedInFacultyOrTA currentUser of
-        Ok _ ->
-            Html.a [ Attrs.href ("#/engagements/" ++ meetingSlug) ]
-                [ Html.button
-                    [ Attrs.class "btn btn-primary" ]
-                    [ Html.text "Take attendance" ]
-                ]
+recordEngagementButton : Meeting -> WebData CurrentUser -> Html.Html Msg
+recordEngagementButton meeting currentUser =
+    if meeting.meeting_type == "no-meeting" then
+        Html.text ""
 
-        _ ->
-            Html.text ""
+    else
+        case isLoggedInFacultyOrTA currentUser of
+            Ok _ ->
+                Html.a [ Attrs.href ("#/engagements/" ++ meeting.slug) ]
+                    [ Html.button
+                        [ Attrs.class "btn btn-primary" ]
+                        [ Html.text "Take attendance" ]
+                    ]
+
+            _ ->
+                Html.text ""
 
 
 showQuizStatus : Meeting -> WebData (List Quiz) -> Html.Html Msg
 showQuizStatus meeting wdQuizzes =
-    case wdQuizzes of
-        RemoteData.Success _ ->
-            let
-                maybeQuiz =
-                    getQuizForMeetingSlug meeting.slug wdQuizzes
-            in
-            case maybeQuiz of
-                Just _ ->
-                    showPaperQuizStatus
+    if meeting.meeting_type == "no-meeting" then
+        Html.text ""
 
-                Nothing ->
-                    if meeting.is_draft then
-                        Html.p [] [ Html.text "Unless this is a \"special\" class, like an exam, there will likely be a quiz. The class is still labeled \"draft\" and the quiz information cannot be loaded at this time." ]
+    else
+        case wdQuizzes of
+            RemoteData.Success _ ->
+                let
+                    maybeQuiz =
+                        getQuizForMeetingSlug meeting.slug wdQuizzes
+                in
+                case maybeQuiz of
+                    Just _ ->
+                        showPaperQuizStatus
 
-                    else
-                        Html.p [] [ Html.text "There is no quiz for this meeting." ]
+                    Nothing ->
+                        if meeting.is_draft then
+                            Html.p [] [ Html.text "Unless this is a \"special\" class, like an exam, there will likely be a quiz. The class is still labeled \"draft\" and the quiz information cannot be loaded at this time." ]
 
-        RemoteData.NotAsked ->
-            Html.text "Quizzes not yet loaded. Unclear if there is a quiz for this meeting."
+                        else
+                            Html.p [] [ Html.text "There is no quiz for this meeting." ]
 
-        RemoteData.Loading ->
-            Html.text "Loading quizzes."
+            RemoteData.NotAsked ->
+                Html.text "Quizzes not yet loaded. Unclear if there is a quiz for this meeting."
 
-        RemoteData.Failure _ ->
-            Html.text "Failed to load quizzes!"
+            RemoteData.Loading ->
+                Html.text "Loading quizzes."
+
+            RemoteData.Failure _ ->
+                Html.text "Failed to load quizzes!"
 
 
 pText : String -> Html.Html Msg

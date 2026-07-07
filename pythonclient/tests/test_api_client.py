@@ -32,7 +32,7 @@ class FakeSession:
 
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs))
-        return FakeResponse([{"admin_api_version": 4}])
+        return FakeResponse([{"admin_api_version": 5}])
 
 
 class ApiClientTest(unittest.TestCase):
@@ -48,6 +48,7 @@ class ApiClientTest(unittest.TestCase):
             "title": "Week 1",
             "description": "Course {{ class_number }}",
             "begins_at": datetime.datetime(2026, 1, 14, 14, 0),
+            "meeting_type": "office-hours",
             "ignored": "not sent",
         }
 
@@ -58,6 +59,7 @@ class ApiClientTest(unittest.TestCase):
         )
 
         self.assertEqual(normalized["description"], "Course 858")
+        self.assertEqual(normalized["meeting_type"], "office-hours")
         self.assertEqual(
             normalized["begins_at"],
             datetime.datetime(2026, 1, 14, 15, 30),
@@ -185,7 +187,7 @@ child:assignment_fields:
             fake_session.calls[0][0],
             "https://example.test/rest/platform_version",
         )
-        self.assertEqual(json.loads(result.output), [{"admin_api_version": 4}])
+        self.assertEqual(json.loads(result.output), [{"admin_api_version": 5}])
 
     def test_read_yaml_loads_lists_from_file_handles(self):
         loaded = api_client.read_yaml(io.StringIO("- slug: one\n"))

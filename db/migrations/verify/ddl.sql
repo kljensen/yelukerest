@@ -370,10 +370,40 @@ BEGIN
         FROM api.platform_version
         WHERE platform = 'yelukerest'
         AND platform_compatibility_version >= 1
-        AND schema_compatibility_version >= 1
-        AND admin_api_version >= 4
+        AND schema_compatibility_version >= 2
+        AND admin_api_version >= 5
     ) THEN
         RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE n.nspname = 'data'
+        AND t.typname = 'meeting_type_enum'
+        AND t.typtype = 'e'
+    ) THEN
+        RAISE EXCEPTION 'missing data.meeting_type_enum';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_type t ON t.oid = a.atttypid
+        JOIN pg_namespace tn ON tn.oid = t.typnamespace
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = 'data'
+        AND c.relname = 'meeting'
+        AND a.attname = 'meeting_type'
+        AND a.attnotnull
+        AND tn.nspname = 'data'
+        AND t.typname = 'meeting_type_enum'
+        AND pg_get_expr(d.adbin, d.adrelid) LIKE '%lecture%meeting_type_enum%'
+    ) THEN
+        RAISE EXCEPTION 'data.meeting.meeting_type must be NOT NULL DEFAULT lecture using data.meeting_type_enum';
     END IF;
 
     IF NOT EXISTS (

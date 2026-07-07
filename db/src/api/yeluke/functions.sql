@@ -36,6 +36,7 @@ BEGIN
         description text,
         begins_at timestamptz,
         duration interval,
+        meeting_type data.meeting_type_enum,
         is_draft boolean
     )
     GROUP BY meeting.slug
@@ -56,6 +57,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     ),
@@ -80,6 +82,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     )
@@ -94,6 +97,7 @@ BEGIN
             existing_meeting.description,
             existing_meeting.begins_at,
             existing_meeting.duration,
+            existing_meeting.meeting_type,
             existing_meeting.is_draft
         ) IS DISTINCT FROM (
             input_meeting.title,
@@ -101,6 +105,7 @@ BEGIN
             input_meeting.description,
             input_meeting.begins_at,
             input_meeting.duration,
+            COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             input_meeting.is_draft
         )
     );
@@ -114,6 +119,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     ),
@@ -128,6 +134,7 @@ BEGIN
             existing_meeting.description,
             existing_meeting.begins_at,
             existing_meeting.duration,
+            existing_meeting.meeting_type,
             existing_meeting.is_draft
         ) IS DISTINCT FROM (
             input_meeting.title,
@@ -135,6 +142,7 @@ BEGIN
             input_meeting.description,
             input_meeting.begins_at,
             input_meeting.duration,
+            COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             input_meeting.is_draft
         )
     ),
@@ -146,6 +154,7 @@ BEGIN
             description = input_meeting.description,
             begins_at = input_meeting.begins_at,
             duration = input_meeting.duration,
+            meeting_type = COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             is_draft = input_meeting.is_draft
         FROM changed_meetings input_meeting
         WHERE existing_meeting.slug = input_meeting.slug
@@ -163,6 +172,7 @@ BEGIN
             description text,
             begins_at timestamptz,
             duration interval,
+            meeting_type data.meeting_type_enum,
             is_draft boolean
         )
     ),
@@ -174,6 +184,7 @@ BEGIN
             description,
             begins_at,
             duration,
+            meeting_type,
             is_draft
         )
         SELECT
@@ -183,6 +194,7 @@ BEGIN
             input_meeting.description,
             input_meeting.begins_at,
             input_meeting.duration,
+            COALESCE(input_meeting.meeting_type, 'lecture'::data.meeting_type_enum),
             input_meeting.is_draft
         FROM input_meetings input_meeting
         WHERE NOT EXISTS (

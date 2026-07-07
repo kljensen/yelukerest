@@ -2,11 +2,27 @@
 BEGIN;
 
 -- Plan the tests.
-SELECT plan(29);
+SELECT plan(37);
 
 SELECT view_owner_is(
     'api', 'meetings', 'api',
     'api.meetings view should be owned by the api role'
+);
+
+SELECT results_eq(
+    $$
+        SELECT n.nspname, t.typname
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace cn ON cn.oid = c.relnamespace
+        JOIN pg_type t ON t.oid = a.atttypid
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+        WHERE cn.nspname = 'data'
+        AND c.relname = 'meeting'
+        AND a.attname = 'meeting_type'
+    $$,
+    $$ VALUES ('data'::name, 'meeting_type_enum'::name) $$,
+    'data.meeting.meeting_type should use data.meeting_type_enum'
 );
 
 -- switch to a anonymous application user
@@ -54,6 +70,28 @@ select set_eq(
 SELECT lives_ok(
     'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
     'faculty should be able to insert into the api.meetings view'
+);
+
+SELECT is(
+    (SELECT meeting_type::text FROM api.meetings WHERE slug = 'fakeclass'),
+    'lecture',
+    'meetings should default to lecture type'
+);
+
+SELECT lives_ok(
+    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('spring-break', 'Spring Break', '', 'No class', '2018-03-24T14:00:00Z', '1 minute', 'no-meeting', false) $$,
+    'faculty should be able to insert a no-meeting row'
+);
+
+SELECT lives_ok(
+    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('office-hours', 'Office Hours', '', 'Extra help', '2018-03-25T14:00:00Z', '1 hour', 'office-hours', false) $$,
+    'faculty should be able to insert an office-hours row'
+);
+
+SELECT throws_like(
+    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('bad-type', 'Bad Type', '', 'Invalid', '2018-03-25T14:00:00Z', '1 hour', 'field-trip', false) $$,
+    '%invalid input value for enum data.meeting_type_enum%',
+    'meetings should reject unknown meeting types'
 );
 
 SELECT lives_ok(
@@ -189,7 +227,7 @@ SELECT throws_like(
 
 SELECT set_eq(
     'SELECT slug FROM api.meetings ORDER BY slug',
-    ARRAY['entrepreneurship-woot', 'fakeclass', 'intro', 'server-side-apps', 'structuredquerylang'],
+    ARRAY['entrepreneurship-woot', 'fakeclass', 'intro', 'office-hours', 'server-side-apps', 'spring-break', 'structuredquerylang'],
     'failed sync_meetings should leave the meeting set unchanged'
 );
 
@@ -209,7 +247,7 @@ SELECT results_eq(
               {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]'::jsonb
         )
     $$,
-    $$ VALUES (1, 3, 0, 2) $$,
+    $$ VALUES (1, 3, 0, 4) $$,
     'sync_meetings should report inserted, updated, and deleted counts'
 );
 
@@ -217,6 +255,32 @@ SELECT set_eq(
     'SELECT slug FROM api.meetings ORDER BY slug',
     ARRAY['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang'],
     'sync_meetings should replace the meeting set'
+);
+
+SELECT is(
+    (SELECT meeting_type::text FROM api.meetings WHERE slug = 'new-admin-meeting'),
+    'lecture',
+    'sync_meetings should default omitted meeting_type to lecture'
+);
+
+SELECT results_eq(
+    $$
+        SELECT inserted_count, updated_count, unchanged_count, deleted_count
+        FROM api.sync_meetings(
+            '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
+              {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":true},
+              {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
+              {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"office-hours","is_draft":true}]'::jsonb
+        )
+    $$,
+    $$ VALUES (0, 1, 3, 0) $$,
+    'sync_meetings should update meeting_type when provided'
+);
+
+SELECT is(
+    (SELECT meeting_type::text FROM api.meetings WHERE slug = 'new-admin-meeting'),
+    'office-hours',
+    'sync_meetings should persist provided meeting_type'
 );
 
 SELECT results_eq(
@@ -229,10 +293,10 @@ SELECT results_eq(
         sync_result AS (
             SELECT inserted_count, updated_count, unchanged_count, deleted_count
             FROM api.sync_meetings(
-                '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
-                  {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
-                  {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
-                  {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]'::jsonb
+                '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
+                  {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":true},
+                  {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
+                  {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"office-hours","is_draft":true}]'::jsonb
             )
         ),
         after_sync AS (

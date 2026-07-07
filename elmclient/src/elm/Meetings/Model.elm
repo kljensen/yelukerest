@@ -16,6 +16,7 @@ type alias Meeting =
     , summary : Maybe String
     , description : String
     , begins_at : Posix
+    , meeting_type : String
     , is_draft : Bool
     }
 
@@ -33,6 +34,7 @@ meetingDecoder =
         |> required "summary" (Decode.nullable Decode.string)
         |> required "description" Decode.string
         |> required "begins_at" Json.Decode.Extra.datetime
+        |> required "meeting_type" Decode.string
         |> required "is_draft" Decode.bool
 
 

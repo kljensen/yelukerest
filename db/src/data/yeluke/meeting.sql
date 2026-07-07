@@ -2,6 +2,12 @@
 -- Table `meeting` stores information about a single meeting of
 -- our class, usually a lecture, but sometimes an exam, or even
 -- a hack-a-thon.
+CREATE TYPE meeting_type_enum AS ENUM (
+    'lecture',
+    'no-meeting',
+    'office-hours'
+);
+
 CREATE TABLE IF NOT EXISTS meeting (
     title text NOT NULL CHECK (char_length(title) < 250),
     slug TEXT UNIQUE NOT NULL
@@ -10,6 +16,7 @@ CREATE TABLE IF NOT EXISTS meeting (
     description TEXT NOT NULL,
     begins_at TIMESTAMP WITH TIME ZONE NOT NULL,
     duration INTERVAL NOT NULL,
+    meeting_type meeting_type_enum NOT NULL DEFAULT 'lecture',
     is_draft BOOLEAN NOT NULL DEFAULT false,
 
     created_at TIMESTAMP WITH TIME ZONE

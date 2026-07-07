@@ -56,13 +56,13 @@ SELECT is(
 
 SELECT is(
     (SELECT schema_compatibility_version FROM api.platform_version),
-    1,
+    2,
     'api.platform_version should expose the expected schema compatibility version'
 );
 
 SELECT is(
     (SELECT admin_api_version FROM api.platform_version),
-    4,
+    5,
     'api.platform_version should expose the expected admin API version'
 );
 

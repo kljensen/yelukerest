@@ -91,6 +91,26 @@ describe('meetings API endpoint', () => {
                     is_draft: false,
                 }],
             })
+            .expect(409);
+    });
+
+    it('should reject invalid meeting types during sync', async () => {
+        const jwt = await facultyJWTPromise;
+        await restService()
+            .post('/rpc/sync_meetings')
+            .set('Authorization', `Bearer ${jwt}`)
+            .send({
+                p_meetings: [{
+                    slug: 'invalid-type',
+                    title: 'Invalid Type',
+                    summary: '',
+                    description: 'invalid',
+                    begins_at: '2018-01-01T14:00:00Z',
+                    duration: '01:20:00',
+                    meeting_type: 'field-trip',
+                    is_draft: false,
+                }],
+            })
             .expect(400);
     });
 
@@ -107,6 +127,7 @@ describe('meetings API endpoint', () => {
                     description: 'updated description',
                     begins_at: '2018-01-01T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'lecture',
                     is_draft: false,
                 }, {
                     slug: 'structuredquerylang',
@@ -115,6 +136,7 @@ describe('meetings API endpoint', () => {
                     description: 'description',
                     begins_at: '2018-01-02T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'lecture',
                     is_draft: true,
                 }, {
                     slug: 'entrepreneurship-woot',
@@ -123,6 +145,7 @@ describe('meetings API endpoint', () => {
                     description: 'description',
                     begins_at: '2018-01-03T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'no-meeting',
                     is_draft: false,
                 }, {
                     slug: 'new-admin-meeting',
@@ -131,6 +154,7 @@ describe('meetings API endpoint', () => {
                     description: 'new description',
                     begins_at: '2018-01-02T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'office-hours',
                     is_draft: true,
                 }],
             })
@@ -154,6 +178,19 @@ describe('meetings API endpoint', () => {
         we.expect(meetings.body.map(meeting => meeting.slug))
             .to.deep.equal(['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang']);
 
+        const meetingTypes = await restService()
+            .get('/meetings?select=slug,meeting_type&order=slug')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect(200);
+
+        we.expect(meetingTypes.body)
+            .to.deep.equal([
+                { slug: 'entrepreneurship-woot', meeting_type: 'no-meeting' },
+                { slug: 'intro', meeting_type: 'lecture' },
+                { slug: 'new-admin-meeting', meeting_type: 'office-hours' },
+                { slug: 'structuredquerylang', meeting_type: 'lecture' },
+            ]);
+
         const repeatResponse = await restService()
             .post('/rpc/sync_meetings')
             .set('Authorization', `Bearer ${jwt}`)
@@ -165,6 +202,7 @@ describe('meetings API endpoint', () => {
                     description: 'updated description',
                     begins_at: '2018-01-01T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'lecture',
                     is_draft: false,
                 }, {
                     slug: 'structuredquerylang',
@@ -173,6 +211,7 @@ describe('meetings API endpoint', () => {
                     description: 'description',
                     begins_at: '2018-01-02T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'lecture',
                     is_draft: true,
                 }, {
                     slug: 'entrepreneurship-woot',
@@ -181,6 +220,7 @@ describe('meetings API endpoint', () => {
                     description: 'description',
                     begins_at: '2018-01-03T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'no-meeting',
                     is_draft: false,
                 }, {
                     slug: 'new-admin-meeting',
@@ -189,6 +229,7 @@ describe('meetings API endpoint', () => {
                     description: 'new description',
                     begins_at: '2018-01-02T14:00:00Z',
                     duration: '01:20:00',
+                    meeting_type: 'office-hours',
                     is_draft: true,
                 }],
             })
