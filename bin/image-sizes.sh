@@ -10,7 +10,7 @@ yelukerest-elmclient:latest
 yelukerest-elmclient-test:latest
 yelukerest-postgres:18.4-pgbackrest
 yelukerest-postgres-dev:18.4-pgtap
-postgrest/postgrest:v14.14
+ghcr.io/kljensen/docker-postgrest-static:14.14
 "
 
 if [ "$#" -gt 0 ]; then

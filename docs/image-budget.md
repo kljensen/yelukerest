@@ -28,8 +28,11 @@ docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmc
 - `db` uses PostgreSQL 18 Alpine and adds pgBackRest so production WAL
   `archive_command` can push to the same S3-compatible repository as backups.
 - `caddy` uses explicit Caddy Alpine builder/runtime tags.
-- `postgrest/postgrest:v14.14` remains the major external exception; no
-  matching official Alpine tag was available during the July 2026 check.
+- `postgrest` uses `ghcr.io/kljensen/docker-postgrest-static:14.14`, a
+  checksum-verified `scratch` image built from upstream PostgREST release
+  assets. The local amd64 image measured 21,687,300 bytes; the local arm64
+  image measured 86,556,914 bytes because upstream publishes a dynamic Ubuntu
+  aarch64 binary rather than a Linux static arm64 asset.
 
 ## Known Tradeoffs
 
