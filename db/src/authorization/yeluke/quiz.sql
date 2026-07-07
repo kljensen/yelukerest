@@ -9,4 +9,3 @@ grant select on api.quizzes to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on api.quizzes to faculty;
-grant usage on data.quiz_id_seq to faculty;

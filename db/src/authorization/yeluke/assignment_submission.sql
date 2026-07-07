@@ -110,6 +110,5 @@ using (
 grant select, insert on api.assignment_submissions to student, ta;
 
 -- faculty have CRUD privileges
-grant usage on data.assignment_submission_id_seq to faculty, ta, student;
 grant select, insert, update, delete on data.assignment_submission_participant to api;
 grant select, insert, update, delete on api.assignment_submissions to faculty;
