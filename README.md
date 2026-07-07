@@ -135,46 +135,18 @@ Then...
 7. Update the JWTs in your .env
 8. Restart. Good to go.
 
-If you get a CAS error it is because you didn't set up the JWTs. You will need at least the following.
+If you get a CAS error it may be because `AUTHAPP_JWT` is missing or invalid.
+See `docs/auth-jwt-flow.md` for the full CAS/session/PostgREST JWT model.
 
 For `AUTHAPP_JWT`
 ```
-./bin/jwt.sh {"role": "app", "app_name": "authapp"}'
+./bin/jwt.sh '{"role":"app","app_name":"authapp"}'
 ```
 
 For `YELUKEREST_CLIENT_JWT` (user klj39's user id)
 ```
-./bin/jwt.sh '{"user_id": "1", "role": "faculty"}
+./bin/jwt.sh '{"user_id":1,"role":"faculty"}'
 ```
-
-For `SWAGGER_JWT`
-```
-./bin/jwt.sh '{"role": "student"}'
-```
-
-## Random notes
-
-### Restoring production backups
-
-Backups are saved to s3 hourly in production. To restore, download one,
-then run something like
-
-```
-pg_restore --host $HOST -U superuser -d app --port $PORT --clean --exit-on-error ./thebackup.dump
-```
-
-The `--clean` will drop (or truncate?) tables.
-
-### Adding a table when working on the database
-
-1. Add the table in `db/src/data/yeluke.sql`
-2. Add the table in `db/src/sample_data/yeluke/reset.sql`
-3. Add the api views in `db/src/api/yeluke.sql`
-4. Add the auth in `db/src/authorization/yeluke.sql`
-5. Add sample data in `db/src/sample_data/yeluke/data.sql`
-6. Add the tests in `tests/db/`
-
-
 
 ## Random notes
 
