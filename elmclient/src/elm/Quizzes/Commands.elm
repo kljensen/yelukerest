@@ -1,5 +1,6 @@
 module Quizzes.Commands exposing
-    ( fetchQuizGradeDistributions
+    ( fetchQuizArtifacts
+    , fetchQuizGradeDistributions
     , fetchQuizGrades
     , fetchQuizSubmissions
     , fetchQuizzes
@@ -10,7 +11,8 @@ import Auth.Model exposing (CurrentUser)
 import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
-        ( quizGradeDistributionsDecoder
+        ( quizArtifactsDecoder
+        , quizGradeDistributionsDecoder
         , quizGradesDecoder
         , quizSubmissionsDecoder
         , quizzesDecoder
@@ -36,6 +38,16 @@ fetchQuizSubmissions currentUser =
 fetchQuizSubmissionsUrl : Int -> String
 fetchQuizSubmissionsUrl userID =
     "/rest/quiz_submissions_info?user_id=eq." ++ String.fromInt userID
+
+
+fetchQuizArtifacts : CurrentUser -> Cmd Msg
+fetchQuizArtifacts currentUser =
+    fetchForCurrentUser currentUser (fetchQuizArtifactsUrl currentUser.id) quizArtifactsDecoder Msgs.OnFetchQuizArtifacts
+
+
+fetchQuizArtifactsUrl : Int -> String
+fetchQuizArtifactsUrl userID =
+    "/rest/artifacts?user_id=eq." ++ String.fromInt userID ++ "&quiz_id=not.is.null&order=quiz_id,slug"
 
 
 fetchQuizGrades : CurrentUser -> Cmd Msg

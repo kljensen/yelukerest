@@ -1,9 +1,11 @@
 module Quizzes.Model exposing
     ( Quiz
+    , QuizArtifact
     , QuizGrade
     , QuizGradeDistribution
     , QuizSubmission
     , paperQuizStatusText
+    , quizArtifactsDecoder
     , quizGradeDistributionsDecoder
     , quizGradesDecoder
     , quizSubmissionDecoder
@@ -86,6 +88,53 @@ quizSubmissionDecoder =
         |> required "user_id" Decode.int
         |> required "closed_at" Json.Decode.Extra.datetime
         |> required "is_open" Decode.bool
+        |> required "created_at" Json.Decode.Extra.datetime
+        |> required "updated_at" Json.Decode.Extra.datetime
+
+
+-- --------------
+-- Quiz artifacts
+-- --------------
+
+
+type alias QuizArtifact =
+    { id : Int
+    , user_id : Int
+    , quiz_id : Maybe Int
+    , slug : String
+    , title : String
+    , description : String
+    , url : String
+    , storage_uri : Maybe String
+    , content_type : Maybe String
+    , content_length : Maybe Int
+    , checksum_sha256 : Maybe String
+    , is_user_visible : Bool
+    , created_at : Posix
+    , updated_at : Posix
+    }
+
+
+quizArtifactsDecoder : Decode.Decoder (List QuizArtifact)
+quizArtifactsDecoder =
+    Decode.list quizArtifactDecoder
+
+
+quizArtifactDecoder : Decode.Decoder QuizArtifact
+quizArtifactDecoder =
+    Decode.succeed QuizArtifact
+        |> required "id" Decode.int
+        |> required "user_id" Decode.int
+        |> required "quiz_id" (Decode.nullable Decode.int)
+        |> required "slug" Decode.string
+        |> required "title" Decode.string
+        |> required "description" Decode.string
+        |> required "url" Decode.string
+        |> required "storage_uri" (Decode.nullable Decode.string)
+        |> required "content_type" (Decode.nullable Decode.string)
+        |> required "content_length" (Decode.nullable Decode.int)
+        |> required "checksum_sha256" (Decode.nullable Decode.string)
+        |> required "is_user_visible" Decode.bool
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
 

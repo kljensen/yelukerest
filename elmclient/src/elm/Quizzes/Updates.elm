@@ -1,5 +1,6 @@
 module Quizzes.Updates exposing
-    ( onFetchQuizGradeDistributions
+    ( onFetchQuizArtifacts
+    , onFetchQuizGradeDistributions
     , onFetchQuizGrades
     , onFetchQuizSubmissions
     )
@@ -8,7 +9,8 @@ import Models exposing (Model)
 import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
-        ( QuizGrade
+        ( QuizArtifact
+        , QuizGrade
         , QuizGradeDistribution
         , QuizSubmission
         )
@@ -18,6 +20,11 @@ import RemoteData exposing (WebData)
 onFetchQuizSubmissions : Model -> WebData (List QuizSubmission) -> ( Model, Cmd Msg )
 onFetchQuizSubmissions model response =
     ( { model | quizSubmissions = response }, Cmd.none )
+
+
+onFetchQuizArtifacts : Model -> WebData (List QuizArtifact) -> ( Model, Cmd Msg )
+onFetchQuizArtifacts model response =
+    ( { model | quizArtifacts = response }, Cmd.none )
 
 
 onFetchQuizGrades : Model -> WebData (List QuizGrade) -> ( Model, Cmd Msg )

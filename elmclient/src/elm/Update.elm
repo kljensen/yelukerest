@@ -29,14 +29,16 @@ import Models exposing (Model, Route(..))
 import Msgs exposing (BrowserLocation(..), Msg)
 import Quizzes.Commands
     exposing
-        ( fetchQuizGradeDistributions
+        ( fetchQuizArtifacts
+        , fetchQuizGradeDistributions
         , fetchQuizGrades
         , fetchQuizSubmissions
         , fetchQuizzes
         )
 import Quizzes.Updates
     exposing
-        ( onFetchQuizGradeDistributions
+        ( onFetchQuizArtifacts
+        , onFetchQuizGradeDistributions
         , onFetchQuizGrades
         , onFetchQuizSubmissions
         )
@@ -115,6 +117,7 @@ update msg model =
                                 , fetchQuizGradeDistributions user
                                 , fetchAssignmentSubmissions user
                                 , fetchQuizSubmissions user
+                                , fetchQuizArtifacts user
                                 , fetchQuizGrades user
                                 , fetchQuizGradeDistributions user
                                 , fetchAssignmentGrades user
@@ -221,6 +224,9 @@ update msg model =
 
         Msgs.OnFetchQuizSubmissions response ->
             onFetchQuizSubmissions model response
+
+        Msgs.OnFetchQuizArtifacts response ->
+            onFetchQuizArtifacts model response
 
         Msgs.OnFetchQuizGrades response ->
             onFetchQuizGrades model response

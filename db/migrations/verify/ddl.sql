@@ -316,6 +316,73 @@ BEGIN
         RAISE EXCEPTION 'data.user_secret.is_user_visible must be NOT NULL DEFAULT true';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'artifact'
+        AND c.relkind = 'r'
+    ) THEN
+        RAISE EXCEPTION 'missing data.artifact table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'artifacts'
+        AND c.relkind = 'v'
+    ) THEN
+        RAISE EXCEPTION 'missing api.artifacts view';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = 'data'
+        AND c.relname = 'artifact'
+        AND a.attname = 'is_user_visible'
+        AND a.attnotnull
+        AND pg_get_expr(d.adbin, d.adrelid) = 'true'
+    ) THEN
+        RAISE EXCEPTION 'data.artifact.is_user_visible must be NOT NULL DEFAULT true';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_policy p
+        JOIN pg_class c ON c.oid = p.polrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'artifact'
+        AND p.polname = 'artifact_access_policy'
+    ) THEN
+        RAISE EXCEPTION 'missing data.artifact RLS policy';
+    END IF;
+
+    IF NOT has_table_privilege('api', 'data.artifact', 'SELECT')
+        OR NOT has_table_privilege('api', 'data.artifact', 'INSERT')
+        OR NOT has_table_privilege('api', 'data.artifact', 'UPDATE')
+        OR NOT has_table_privilege('api', 'data.artifact', 'DELETE')
+    THEN
+        RAISE EXCEPTION 'api must have table privileges on data.artifact';
+    END IF;
+
+    IF NOT has_table_privilege('student', 'api.artifacts', 'SELECT')
+        OR NOT has_table_privilege('ta', 'api.artifacts', 'SELECT')
+        OR NOT has_table_privilege('faculty', 'api.artifacts', 'SELECT')
+        OR NOT has_table_privilege('faculty', 'api.artifacts', 'INSERT')
+        OR NOT has_table_privilege('faculty', 'api.artifacts', 'UPDATE')
+        OR NOT has_table_privilege('faculty', 'api.artifacts', 'DELETE')
+    THEN
+        RAISE EXCEPTION 'artifact API privileges are incomplete';
+    END IF;
+
     IF EXISTS (
         WITH fk AS (
             SELECT

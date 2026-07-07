@@ -20,6 +20,7 @@ import Meetings.Model exposing (Meeting, MeetingSlug)
 import Quizzes.Model
     exposing
         ( Quiz
+        , QuizArtifact
         , QuizGrade
         , QuizGradeDistribution
         , QuizSubmission
@@ -67,6 +68,7 @@ type alias Model =
     , assignments : WebData (List Assignment)
     , quizzes : WebData (List Quiz)
     , quizSubmissions : WebData (List QuizSubmission)
+    , quizArtifacts : WebData (List QuizArtifact)
     , quizGrades : WebData (List QuizGrade)
     , quizGradeDistributions : WebData (List QuizGradeDistribution)
     , uiElements : UIElements
@@ -108,6 +110,7 @@ initialModel flags route key =
     , assignments = RemoteData.NotAsked
     , quizzes = RemoteData.NotAsked
     , quizSubmissions = RemoteData.NotAsked
+    , quizArtifacts = RemoteData.NotAsked
     , quizGrades = RemoteData.NotAsked
     , quizGradeDistributions = RemoteData.NotAsked
     , uiElements =

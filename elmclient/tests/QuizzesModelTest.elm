@@ -2,7 +2,7 @@ module QuizzesModelTest exposing (tests)
 
 import Expect
 import Json.Decode as Decode
-import Quizzes.Model exposing (paperQuizStatusText, quizSubmissionDecoder, quizzesDecoder)
+import Quizzes.Model exposing (paperQuizStatusText, quizArtifactsDecoder, quizSubmissionDecoder, quizzesDecoder)
 import Test exposing (Test, describe, test)
 import Time
 
@@ -41,6 +41,43 @@ tests =
                             , created_at = millis 0
                             , updated_at = millis 0
                             }
+                        )
+        , test "decodes student artifact metadata with nullable quiz linkage" <|
+            \_ ->
+                Decode.decodeString quizArtifactsDecoder artifactJson
+                    |> Expect.equal
+                        (Ok
+                            [ { id = 1
+                              , user_id = 42
+                              , quiz_id = Just 1
+                              , slug = "quiz-1-scan"
+                              , title = "Quiz 1 scan"
+                              , description = "Scanned quiz"
+                              , url = "https://example.com/quiz-1.pdf"
+                              , storage_uri = Just "s3://course-artifacts/quiz-1.pdf"
+                              , content_type = Just "application/pdf"
+                              , content_length = Just 123
+                              , checksum_sha256 = Just "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                              , is_user_visible = True
+                              , created_at = millis 0
+                              , updated_at = millis 0
+                              }
+                            , { id = 2
+                              , user_id = 42
+                              , quiz_id = Nothing
+                              , slug = "feedback"
+                              , title = "Feedback"
+                              , description = ""
+                              , url = "https://example.com/feedback.pdf"
+                              , storage_uri = Nothing
+                              , content_type = Nothing
+                              , content_length = Nothing
+                              , checksum_sha256 = Nothing
+                              , is_user_visible = True
+                              , created_at = millis 0
+                              , updated_at = millis 0
+                              }
+                            ]
                         )
         , test "uses paper-only meeting quiz status text" <|
             \_ ->
@@ -81,6 +118,46 @@ quizSubmissionJson =
       "created_at": "1970-01-01T00:00:00Z",
       "updated_at": "1970-01-01T00:00:00Z"
     }
+    """
+
+
+artifactJson : String
+artifactJson =
+    """
+    [
+      {
+        "id": 1,
+        "user_id": 42,
+        "quiz_id": 1,
+        "slug": "quiz-1-scan",
+        "title": "Quiz 1 scan",
+        "description": "Scanned quiz",
+        "url": "https://example.com/quiz-1.pdf",
+        "storage_uri": "s3://course-artifacts/quiz-1.pdf",
+        "content_type": "application/pdf",
+        "content_length": 123,
+        "checksum_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "is_user_visible": true,
+        "created_at": "1970-01-01T00:00:00Z",
+        "updated_at": "1970-01-01T00:00:00Z"
+      },
+      {
+        "id": 2,
+        "user_id": 42,
+        "quiz_id": null,
+        "slug": "feedback",
+        "title": "Feedback",
+        "description": "",
+        "url": "https://example.com/feedback.pdf",
+        "storage_uri": null,
+        "content_type": null,
+        "content_length": null,
+        "checksum_sha256": null,
+        "is_user_visible": true,
+        "created_at": "1970-01-01T00:00:00Z",
+        "updated_at": "1970-01-01T00:00:00Z"
+      }
+    ]
     """
 
 

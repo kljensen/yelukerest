@@ -21,6 +21,7 @@ import Msgs exposing (Msg)
 import Quizzes.Model
     exposing
         ( Quiz
+        , QuizArtifact
         , QuizGrade
         , QuizGradeDistribution
         , QuizSubmission
@@ -45,6 +46,7 @@ type alias WebDataGradeData a =
         , assignmentGradeDistributions : WebData (List AssignmentGradeDistribution)
         , quizzes : WebData (List Quiz)
         , quizSubmissions : WebData (List QuizSubmission)
+        , quizArtifacts : WebData (List QuizArtifact)
         , quizGrades : WebData (List QuizGrade)
         , quizGradeDistributions : WebData (List QuizGradeDistribution)
     }
@@ -62,6 +64,7 @@ type alias GradeData =
     , assignmentGradeDistributions : List AssignmentGradeDistribution
     , quizzes : List Quiz
     , quizSubmissions : List QuizSubmission
+    , quizArtifacts : List QuizArtifact
     , quizGrades : List QuizGrade
     , quizGradeDistributions : List QuizGradeDistribution
     }
@@ -85,6 +88,7 @@ type alias QuizGradeData a =
         , meetings : List Meeting
         , quizzes : List Quiz
         , quizSubmissions : List QuizSubmission
+        , quizArtifacts : List QuizArtifact
         , quizGrades : List QuizGrade
         , quizGradeDistributions : List QuizGradeDistribution
     }
@@ -103,6 +107,7 @@ gradeDataFromWebData wgd =
         |> RemoteData.andMap wgd.assignmentGradeDistributions
         |> RemoteData.andMap wgd.quizzes
         |> RemoteData.andMap wgd.quizSubmissions
+        |> RemoteData.andMap (RemoteData.Success (webDataWithDefault [] wgd.quizArtifacts))
         |> RemoteData.andMap wgd.quizGrades
         |> RemoteData.andMap wgd.quizGradeDistributions
 
@@ -119,10 +124,11 @@ newGradeData :
     -> List AssignmentGradeDistribution
     -> List Quiz
     -> List QuizSubmission
+    -> List QuizArtifact
     -> List QuizGrade
     -> List QuizGradeDistribution
     -> GradeData
-newGradeData currentUser timeZone userSecrets userSecretsToShow meetings assignments assignmentSubmissions assignmentGrades assignmentGradeDistributions quizzes quizSubmissions quizGrades quizGradeDistributions =
+newGradeData currentUser timeZone userSecrets userSecretsToShow meetings assignments assignmentSubmissions assignmentGrades assignmentGradeDistributions quizzes quizSubmissions quizArtifacts quizGrades quizGradeDistributions =
     { currentUser = currentUser
     , timeZone = timeZone
     , userSecrets = userSecrets
@@ -134,9 +140,20 @@ newGradeData currentUser timeZone userSecrets userSecretsToShow meetings assignm
     , assignmentGradeDistributions = assignmentGradeDistributions
     , quizzes = quizzes
     , quizSubmissions = quizSubmissions
+    , quizArtifacts = quizArtifacts
     , quizGrades = quizGrades
     , quizGradeDistributions = quizGradeDistributions
     }
+
+
+webDataWithDefault : a -> WebData a -> a
+webDataWithDefault default webData =
+    case webData of
+        RemoteData.Success value ->
+            value
+
+        _ ->
+            default
 
 
 dashboard : WebDataGradeData a -> Html.Html Msg
@@ -279,6 +296,7 @@ quizGradeTableHeader =
             , th2 "Status"
             , th "Grade"
             , th2 "Points Possible"
+            , th2 "Artifacts"
             , th "Class Average"
             , th2 "Class Stddev"
             ]
@@ -313,6 +331,11 @@ td x =
 td2 : String -> Html.Html Msg
 td2 x =
     Html.td [ Attrs.class "secondary" ] [ Html.text x ]
+
+
+td2Html : List (Html.Html Msg) -> Html.Html Msg
+td2Html children =
+    Html.td [ Attrs.class "secondary" ] children
 
 
 th : String -> Html.Html Msg
@@ -355,6 +378,10 @@ showGradeForQuiz gd quiz meeting =
 
                 Nothing ->
                     ( "n/a", "n/a" )
+
+        artifacts =
+            gd.quizArtifacts
+                |> List.filter (\artifact -> artifact.quiz_id == Just quiz.id && artifact.user_id == gd.currentUser.id)
     in
     Html.tr []
         [ td (shortDateToString meeting.begins_at gd.timeZone)
@@ -362,9 +389,33 @@ showGradeForQuiz gd quiz meeting =
         , td2 qs
         , td grade
         , td2 (String.fromInt quiz.points_possible)
+        , quizArtifactLinks artifacts
         , td average
         , td2 stddev
         ]
+
+
+quizArtifactLinks : List QuizArtifact -> Html.Html Msg
+quizArtifactLinks artifacts =
+    case artifacts of
+        [] ->
+            td2 "n/a"
+
+        _ ->
+            artifacts
+                |> List.map quizArtifactLink
+                |> List.intersperse (Html.text ", ")
+                |> td2Html
+
+
+quizArtifactLink : QuizArtifact -> Html.Html Msg
+quizArtifactLink artifact =
+    Html.a
+        [ Attrs.href artifact.url
+        , Attrs.target "_blank"
+        , Attrs.rel "noopener noreferrer"
+        ]
+        [ Html.text artifact.title ]
 
 
 getQuizForMeetingSlug : List Quiz -> String -> Maybe Quiz

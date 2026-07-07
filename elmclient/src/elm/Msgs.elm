@@ -17,6 +17,7 @@ import Meetings.Model exposing (Meeting)
 import Quizzes.Model
     exposing
         ( Quiz
+        , QuizArtifact
         , QuizGrade
         , QuizGradeDistribution
         , QuizSubmission
@@ -44,6 +45,7 @@ type Msg
     | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
+    | OnFetchQuizArtifacts (WebData (List QuizArtifact))
     | OnFetchQuizGrades (WebData (List QuizGrade))
     | OnFetchQuizGradeDistributions (WebData (List QuizGradeDistribution))
     | OnFetchQuizSubmissions (WebData (List QuizSubmission))
