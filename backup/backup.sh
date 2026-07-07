@@ -76,5 +76,6 @@ EOF
 fi
 
 pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" stanza-create
-pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" --archive-check=n backup
+pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" check
+pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" backup
 pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" info

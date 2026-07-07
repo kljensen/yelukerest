@@ -9,8 +9,13 @@ the static files served by Caddy. The normal static build does not use npm or
 Webpack. Elm, `elm-format`, `elm-test-rs`, and `esbuild` are copied from the
 pinned `ghcr.io/kljensen/docker-elm-dev-static:0.19.2` tool image. The default
 `app` image target does not include Node; the separate `test` target installs
-`nodejs` because `elm-test-rs` requires the `node` executable for its generated
-JavaScript test supervisor.
+the pinned Deno 1.x binary from `denoland/deno:alpine-1.46.3` and runs
+`elm-test-rs --deno`.
+
+`elm-test-rs` 3.1.0 currently emits Deno glue that assumes a Node-like `global`
+binding and an older Deno stdin resource-id shape. The test image wraps `deno`
+with `deno-elm-test-rs.sh` to patch only the generated files in
+`elm-stuff/tests-0.19.2/js` before delegating to the real Deno binary.
 
 The build output is written to `dist/`:
 

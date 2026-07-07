@@ -89,6 +89,15 @@ docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmc
 docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml run --rm elmclient-test
 ```
 
+To inspect the current local container image sizes:
+
+```
+bun run image_sizes
+```
+
+See `docs/image-budget.md` for the current Alpine/static image posture and the
+known external image exceptions.
+
 ## Starting in a new development environment
 
 When you checkout this repo anew and wish to work on yelukerest you'll
@@ -169,9 +178,9 @@ bun run test_pgbackrest
 ```
 
 Use `pgbackrest restore` with the production stanza and repository settings to
-restore a physical backup. Point-in-time recovery needs a follow-up production
-change to enable WAL archiving; the current backup container runs full physical
-backups with `archive-check=n`.
+restore a physical backup. WAL archiving is enabled in the production Compose
+Postgres service so backups can support point-in-time recovery when the S3
+repository retains the needed WAL range.
 
 ### Adding a table when working on the database
 

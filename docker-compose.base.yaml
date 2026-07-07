@@ -37,7 +37,9 @@ services:
             - './elmclient/src:/opt/app/src'
             - './elmclient/tests:/opt/app/tests'
             - './elmclient/elm.json:/opt/app/elm.json'
-        entrypoint: elm-test-rs
+        entrypoint:
+            - elm-test-rs
+            - --deno
 
     # PostgREST instance, is responsible for communicating with the database
     # and providing a REST api, (almost) every request that is sent to the database goes through it

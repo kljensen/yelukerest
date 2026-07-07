@@ -30,6 +30,17 @@ services:
   db:
     ports: !override
       - "127.0.0.1:${DB_PORT}:5432"
+    environment:
+      - S3_REGION=us-east-1
+      - S3_ACCESS_KEY_ID=minioadmin
+      - S3_SECRET_ACCESS_KEY=minioadmin
+      - S3_BUCKET=yelukerest-backups
+      - S3_ENDPOINT=minio
+      - S3_PREFIX=pgbackrest
+      - PGBACKREST_REPO1_S3_URI_STYLE=path
+      - PGBACKREST_REPO1_STORAGE_PORT=9000
+      - PGBACKREST_REPO1_STORAGE_VERIFY_TLS=n
+      - POSTGRES_DATA_PATH=/var/lib/postgresql/18/docker
   backup:
     depends_on:
       db:
@@ -98,7 +109,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-compose up -d --build db minio minio-init
+compose build db backup
+compose up -d db minio minio-init
 compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done'
 compose run --rm backup
-compose run --rm minio-client -ceu 'mc --insecure alias set local https://minio:9000 minioadmin minioadmin >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/backup/yelukerest/backup.info >/dev/null'
+compose run --rm minio-client -ceu 'mc --insecure alias set local https://minio:9000 minioadmin minioadmin >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/backup/yelukerest/backup.info >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/archive/yelukerest/archive.info >/dev/null'
