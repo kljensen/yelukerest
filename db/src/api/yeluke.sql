@@ -13,8 +13,8 @@
 \ir ./yeluke/quiz_grade.sql
 \ir ./yeluke/artifact.sql
 \ir ./yeluke/assignment_grade.sql
-\ir ./yeluke/quiz_grade_distributions.sql
-\ir ./yeluke/assignment_grade_distributions.sql
+\ir ./yeluke/quiz_grade_distribution.sql
+\ir ./yeluke/assignment_grade_distribution.sql
 \ir ./yeluke/assignment_grade_exception.sql
 \ir ./yeluke/quiz_grade_exception.sql
 \ir ./yeluke/user_secret.sql
