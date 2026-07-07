@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(30);
 
 -- We test exceptions elsewhere.
 DELETE FROM api.assignment_grade_exceptions;
@@ -52,6 +52,22 @@ SELECT is(
     ),
     1,
     'assignment_submission.is_team should be NOT NULL'
+);
+
+SELECT has_table(
+    'data', 'assignment_submission_participant',
+    'assignment_submission_participant table should snapshot submission membership'
+);
+
+SELECT col_is_pk(
+    'data', 'assignment_submission_participant', ARRAY['assignment_submission_id', 'user_id'],
+    'assignment_submission_participant should be keyed by submission and user'
+);
+
+SELECT set_eq(
+    'SELECT user_id FROM data.assignment_submission_participant WHERE assignment_submission_id = 4 ORDER BY user_id',
+    ARRAY[1, 3],
+    'team submission participants should be snapshotted at submission time'
 );
 
 SELECT throws_like(
@@ -220,6 +236,93 @@ SELECT lives_ok(
     'the team_nickname is added automatically when it is NULL on insert'
 );
 -- Can't submit team submission with user_id, individual w/o it
+
+RESET ROLE;
+UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 2;
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT set_eq(
+    'SELECT id FROM api.assignment_submissions ORDER BY (id)',
+    ARRAY[1, 4],
+    'students should keep access to team submissions they participated in after leaving the team'
+);
+
+set request.jwt.claim.user_id = '2';
+
+SELECT set_eq(
+    'SELECT id FROM api.assignment_submissions WHERE id = 4 ORDER BY (id)',
+    ARRAY[]::int[],
+    'students should not gain access to historical team submissions after joining the team later'
+);
+
+RESET ROLE;
+INSERT INTO data."user" (id, email, netid, nickname, role, team_nickname)
+VALUES (6, 'student6@yale.edu', 'stu6', 'quiet-river', 'student', 'bright-fog');
+INSERT INTO data.assignment (slug, is_team, points_possible, title, body, closed_at, is_draft)
+VALUES ('project-update-2', TRUE, 75, 'Second Project Update', 'body', current_timestamp + '1 day'::interval, FALSE);
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 1;
+UPDATE data.user SET team_nickname = 'hazy-mountain' WHERE id = 2;
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+INSERT INTO api.assignment_submissions (assignment_slug)
+VALUES ('project-update-2');
+
+RESET ROLE;
+UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '6';
+
+SELECT set_eq(
+    'SELECT assignment_slug FROM api.assignment_submissions WHERE assignment_slug = ''project-update-2''',
+    ARRAY['project-update-2'],
+    'non-submitter student participants should keep access after the submitter leaves the team'
+);
+
+RESET ROLE;
+UPDATE data.assignment_submission
+SET team_nickname = 'damp-pond'
+WHERE assignment_slug = 'project-update-2';
+
+SELECT set_eq(
+    $$
+        SELECT user_id
+        FROM data.assignment_submission_participant
+        WHERE assignment_submission_id = (
+            SELECT id
+            FROM data.assignment_submission
+            WHERE assignment_slug = 'project-update-2'
+        )
+        ORDER BY user_id
+    $$,
+    ARRAY[1, 3, 6],
+    'assignment submission participants should not be resnapshotted by submission key updates'
+);
+
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 2;
+
+SELECT set_eq(
+    $$
+        SELECT user_id
+        FROM data.assignment_submission_participant
+        WHERE assignment_submission_id = (
+            SELECT id
+            FROM data.assignment_submission
+            WHERE assignment_slug = 'project-update-2'
+        )
+        ORDER BY user_id
+    $$,
+    ARRAY[1, 3, 6],
+    'late team joiners should not be added to existing participant snapshots'
+);
 
 
 select * from finish();

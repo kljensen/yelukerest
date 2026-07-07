@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(25);
 
 SELECT view_owner_is(
     'api', 'assignment_field_submissions', 'api',
@@ -229,6 +229,61 @@ select set_eq (
     values(0)
   $$,
     'students cannot update assignment field submissions for another team'
+);
+
+RESET ROLE;
+UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 2;
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT set_eq(
+    'SELECT assignment_field_slug FROM api.assignment_field_submissions WHERE assignment_submission_id = 4 ORDER BY assignment_field_slug',
+    ARRAY['repo-url', 'update-url'],
+    'students should keep access to team field submissions they participated in after leaving the team'
+);
+
+set request.jwt.claim.user_id = '2';
+
+select set_eq (
+  $$
+    with
+    updated_rows as (
+      UPDATE api.assignment_field_submissions
+      SET body='http://late.example.com'
+      WHERE assignment_submission_id=4
+      AND assignment_field_slug='repo-url'
+      RETURNING assignment_field_slug
+    )
+    select count(assignment_field_slug) as total from updated_rows
+  $$,
+  $$
+    values(1)
+  $$,
+    'students who join the current team should be able to update open team field submissions'
+);
+
+RESET ROLE;
+UPDATE data.assignment
+SET closed_at = current_timestamp - '1 hour'::interval
+WHERE slug = 'project-update-1';
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '2';
+
+SELECT set_eq(
+    $$
+        SELECT assignment_field_slug
+        FROM api.assignment_field_submissions
+        WHERE assignment_submission_id = 4
+        AND assignment_field_slug = 'update-url'
+        ORDER BY assignment_field_slug
+    $$,
+    ARRAY[]::text[],
+    'students should not gain access to historical team field submissions they did not submit after joining the team later'
 );
 
 select * from finish();

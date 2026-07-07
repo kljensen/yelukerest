@@ -13,8 +13,10 @@ CREATE OR REPLACE VIEW assignment_grade_distributions AS
         data.assignment_grade
             JOIN data.assignment_submission sub
             ON assignment_submission_id=sub.id
+            JOIN data.assignment_submission_participant participant
+            ON participant.assignment_submission_id = sub.id
             JOIN data.user u
-            ON (sub.user_id = u.id OR sub.team_nickname = u.team_nickname)
+            ON participant.user_id = u.id
     WHERE role='student'
     GROUP BY sub.assignment_slug;
 

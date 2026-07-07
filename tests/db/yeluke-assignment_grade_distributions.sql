@@ -1,5 +1,5 @@
 begin;
-select plan(8);
+select plan(9);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_distributions', 'superuser',
@@ -46,6 +46,23 @@ SELECT throws_like(
     'UPDATE api.assignment_grade_distributions SET assignment_slug=''team-selection'' WHERE assignment_slug = ''team-selection''',
     '%cannot update view%',
     'students should NOT be able to alter assignment grade stats'
+);
+
+RESET ROLE;
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 2;
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT results_eq(
+    $$
+        SELECT count::int, grades
+        FROM api.assignment_grade_distributions
+        WHERE assignment_slug = 'project-update-1'
+    $$,
+    $$VALUES (1, ARRAY[75::real])$$,
+    'assignment grade distributions should use submission-time team participants, not current team membership'
 );
 
 

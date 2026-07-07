@@ -1,5 +1,5 @@
 begin;
-select plan(13);
+select plan(15);
 
 SELECT view_owner_is(
     'api', 'assignment_grades', 'api',
@@ -98,6 +98,32 @@ SELECT set_eq(
     'assignment_slug should be automatically populated for direct data.assignment_grade inserts'
 );
 
+RESET ROLE;
+UPDATE data.assignment_grade
+SET points = 75, description = NULL
+WHERE assignment_submission_id = 4;
+
+RESET ROLE;
+UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 2;
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT set_eq(
+    'SELECT assignment_submission_id FROM api.assignment_grades ORDER BY assignment_submission_id',
+    ARRAY[1, 4],
+    'students should keep access to team grades they participated in after leaving the team'
+);
+
+set request.jwt.claim.user_id = '2';
+
+SELECT set_eq(
+    'SELECT assignment_submission_id FROM api.assignment_grades ORDER BY assignment_submission_id',
+    ARRAY[2],
+    'students should not gain access to historical team grades after joining the team later'
+);
 
 
 

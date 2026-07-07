@@ -19,8 +19,6 @@ BEGIN;
 -- PostgreSQL database cluster dump
 --
 
-\restrict gl5jagVdyGPOBeMbT1Qp0AsOTp9yZiDqUfxwEIqXLDaFwNSka3wes4Jpldrg2bY
-
 SET default_transaction_read_only = off;
 
 SET client_encoding = 'UTF8';
@@ -66,8 +64,6 @@ GRANT ta TO :authenticator_user WITH INHERIT TRUE GRANTED BY :super_user;
 
 
 
-
-\unrestrict gl5jagVdyGPOBeMbT1Qp0AsOTp9yZiDqUfxwEIqXLDaFwNSka3wes4Jpldrg2bY
 
 --
 -- PostgreSQL database cluster dump complete

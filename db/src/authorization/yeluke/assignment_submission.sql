@@ -18,15 +18,26 @@ using (
             (NOT is_team AND request.user_id() = user_id)
             or
             -- It is a team assignment and they are on that team
-            -- Note that the table constraints ensure `team_nickname`
-            -- is not null when `is_team` is TRUE.
+            -- as captured when the assignment submission was created.
             (is_team AND (
+                -- INSERT ... RETURNING checks USING before the AFTER trigger
+                -- writes participant rows, so the submitter must see their
+                -- newly created row directly. Once snapshot rows exist, the
+                -- snapshot is authoritative.
+                (
+                    request.user_id() = submitter_user_id
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM data.assignment_submission_participant AS p
+                        WHERE p.assignment_submission_id = assignment_submission.id
+                    )
+                )
+                OR
                 EXISTS(
-                    SELECT u.id FROM api.users as u
+                    SELECT p.user_id FROM data.assignment_submission_participant AS p
                     WHERE
-                        u.id = request.user_id()
-                        AND
-                        u.team_nickname = assignment_submission.team_nickname
+                        p.assignment_submission_id = assignment_submission.id
+                        AND p.user_id = request.user_id()
                 )
             ))
         )
@@ -83,7 +94,7 @@ using (
                 -- TODO: REFACTOR to reduce code duplication with the
                 -- RLS policy above on reads.
                 EXISTS(
-                    SELECT u.id FROM api.users as u
+                    SELECT u.id FROM data."user" as u
                     WHERE
                         u.id = request.user_id()
                         AND
@@ -100,4 +111,5 @@ grant select, insert on api.assignment_submissions to student, ta;
 
 -- faculty have CRUD privileges
 grant usage on data.assignment_submission_id_seq to faculty, ta, student;
+grant select, insert, update, delete on data.assignment_submission_participant to api;
 grant select, insert, update, delete on api.assignment_submissions to faculty;

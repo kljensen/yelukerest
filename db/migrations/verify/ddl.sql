@@ -82,6 +82,109 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_submission_participant'
+        AND c.relkind = 'r'
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_submission_participant table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_submission_participant'
+        AND con.contype = 'p'
+        AND con.conkey = ARRAY[
+            (
+                SELECT attnum
+                FROM pg_attribute
+                WHERE attrelid = con.conrelid
+                AND attname = 'assignment_submission_id'
+            ),
+            (
+                SELECT attnum
+                FROM pg_attribute
+                WHERE attrelid = con.conrelid
+                AND attname = 'user_id'
+            )
+        ]::smallint[]
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_submission_participant must be keyed by assignment_submission_id and user_id';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_proc p ON p.oid = t.tgfoid
+        JOIN pg_namespace pn ON pn.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_submission'
+        AND t.tgname = 'tg_assignment_submission_participants'
+        AND (t.tgtype & 1) = 1
+        AND (t.tgtype & 2) = 0
+        AND (t.tgtype & 4) = 4
+        AND (t.tgtype & 8) = 0
+        AND (t.tgtype & 16) = 0
+        AND pn.nspname = 'data'
+        AND p.proname = 'refresh_assignment_submission_participants'
+        AND NOT t.tgisinternal
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_submission insert-only participant refresh trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND p.proname = 'refresh_assignment_submission_participants'
+        AND p.prosecdef
+        AND p.proconfig @> ARRAY['search_path=data, pg_temp']
+    ) THEN
+        RAISE EXCEPTION 'data.refresh_assignment_submission_participants must be SECURITY DEFINER with pinned search_path';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND p.proname = 'fill_assignment_field_submission_defaults'
+        AND p.prosecdef
+        AND p.proconfig @> ARRAY['search_path=data, pg_temp']
+    ) THEN
+        RAISE EXCEPTION 'data.fill_assignment_field_submission_defaults must be SECURITY DEFINER with pinned search_path';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'data'
+        AND p.proname = 'assignment_field_submission_is_writable_by_current_user'
+        AND p.prosecdef
+        AND p.proconfig @> ARRAY['search_path=data, pg_temp']
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_field_submission_is_writable_by_current_user must be SECURITY DEFINER with pinned search_path';
+    END IF;
+
+    IF NOT has_table_privilege('api', 'data.assignment_submission_participant', 'SELECT')
+        OR NOT has_table_privilege('api', 'data.assignment_submission_participant', 'INSERT')
+        OR NOT has_table_privilege('api', 'data.assignment_submission_participant', 'UPDATE')
+        OR NOT has_table_privilege('api', 'data.assignment_submission_participant', 'DELETE')
+    THEN
+        RAISE EXCEPTION 'api must have table privileges on data.assignment_submission_participant';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
         FROM pg_attribute a
         JOIN pg_class c ON c.oid = a.attrelid
         JOIN pg_namespace n ON n.oid = c.relnamespace

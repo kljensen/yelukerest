@@ -62,6 +62,24 @@ DROP INDEX IF EXISTS idx_assignment_submission_submitter_fk;
 CREATE INDEX idx_assignment_submission_submitter_fk
     ON assignment_submission (submitter_user_id);
 
+CREATE TABLE IF NOT EXISTS assignment_submission_participant (
+    assignment_submission_id INT NOT NULL
+        REFERENCES assignment_submission(id)
+        ON UPDATE CASCADE
+        ON DELETE CASCADE,
+    user_id INT NOT NULL
+        REFERENCES "user"(id)
+        ON UPDATE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE
+        NOT NULL
+        DEFAULT current_timestamp,
+    PRIMARY KEY (assignment_submission_id, user_id)
+);
+
+DROP INDEX IF EXISTS idx_assignment_submission_participant_user_fk;
+CREATE INDEX idx_assignment_submission_participant_user_fk
+    ON assignment_submission_participant (user_id);
+
 CREATE OR REPLACE FUNCTION fill_assignment_submission_defaults()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -105,3 +123,48 @@ CREATE TRIGGER tg_assignment_submission_default
     ON assignment_submission
     FOR EACH ROW
 EXECUTE PROCEDURE fill_assignment_submission_defaults();
+
+CREATE OR REPLACE FUNCTION refresh_assignment_submission_participants()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Submission participants are an insert-time snapshot. Later team roster
+    -- changes must not rewrite historical submitted work.
+    DELETE FROM data.assignment_submission_participant
+    WHERE assignment_submission_id = NEW.id;
+
+    IF (NEW.is_team) THEN
+        INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
+        SELECT NEW.id, u.id
+        FROM data."user" AS u
+        WHERE u.team_nickname = NEW.team_nickname;
+    ELSE
+        INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
+        SELECT NEW.id, NEW.user_id
+        WHERE NEW.user_id IS NOT NULL;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ language 'plpgsql'
+SECURITY DEFINER
+SET search_path = data, pg_temp;
+
+DROP TRIGGER IF EXISTS tg_assignment_submission_participants ON assignment_submission;
+CREATE TRIGGER tg_assignment_submission_participants
+    AFTER INSERT
+    ON assignment_submission
+    FOR EACH ROW
+EXECUTE PROCEDURE refresh_assignment_submission_participants();
+
+INSERT INTO assignment_submission_participant (assignment_submission_id, user_id)
+SELECT ass_sub.id, ass_sub.user_id
+FROM assignment_submission AS ass_sub
+WHERE NOT ass_sub.is_team
+AND ass_sub.user_id IS NOT NULL
+UNION
+SELECT ass_sub.id, u.id
+FROM assignment_submission AS ass_sub
+JOIN "user" AS u
+ON u.team_nickname = ass_sub.team_nickname
+WHERE ass_sub.is_team
+ON CONFLICT DO NOTHING;

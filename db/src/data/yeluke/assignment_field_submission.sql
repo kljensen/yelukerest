@@ -58,6 +58,56 @@ DROP INDEX IF EXISTS idx_assignment_field_submission_submitter_fk;
 CREATE INDEX idx_assignment_field_submission_submitter_fk
     ON assignment_field_submission (submitter_user_id);
 
+CREATE OR REPLACE FUNCTION assignment_field_submission_is_writable_by_current_user(
+    the_assignment_submission_id INT
+)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT ass_sub.id
+        FROM data.assignment_submission AS ass_sub
+        INNER JOIN data."user" AS u
+        ON (
+            ass_sub.user_id = u.id
+            OR
+            ass_sub.team_nickname = u.team_nickname
+        )
+        INNER JOIN data.assignment AS a
+        ON a.slug = ass_sub.assignment_slug
+        LEFT JOIN data.assignment_grade_exception AS ge
+        ON (
+            ge.assignment_slug = ass_sub.assignment_slug
+            AND
+            (
+                (ass_sub.is_team AND ge.team_nickname = ass_sub.team_nickname)
+                OR
+                (NOT ass_sub.is_team AND ge.user_id = ass_sub.user_id)
+            )
+        )
+        WHERE
+            u.id = request.user_id()
+            AND ass_sub.id = the_assignment_submission_id
+            AND (
+                (
+                    a.is_draft = false
+                    AND current_timestamp < a.closed_at
+                )
+                OR
+                (
+                    ge.closed_at > current_timestamp
+                    AND (
+                        ge.user_id = ass_sub.user_id
+                        OR
+                        ge.team_nickname = ass_sub.team_nickname
+                    )
+                )
+            )
+    );
+END;
+$$ language 'plpgsql'
+SECURITY DEFINER
+SET search_path = data, pg_temp;
+
 CREATE OR REPLACE FUNCTION fill_assignment_field_submission_defaults()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -65,7 +115,7 @@ BEGIN
     -- at the assignment_slug from the assignment_submission.
     IF (NEW.assignment_slug IS NULL AND NEW.assignment_submission_id IS NOT NULL) THEN
         SELECT assignment_slug INTO NEW.assignment_slug
-        FROM api.assignment_submissions
+        FROM data.assignment_submission
         WHERE id = NEW.assignment_submission_id;
     END IF;
     -- Fill in the assignment_submission_id if it is null
@@ -74,8 +124,8 @@ BEGIN
     IF (NEW.assignment_submission_id IS NULL and NEW.assignment_slug IS NOT NULL and request.user_id() IS NOT NULL) THEN
         SELECT ass.id INTO NEW.assignment_submission_id
         FROM
-            (api.assignment_submissions ass
-            LEFT OUTER JOIN api.users u
+            (data.assignment_submission ass
+            LEFT OUTER JOIN data."user" u
             ON u.team_nickname = ass.team_nickname)
         WHERE (
             -- It is the right assignment
@@ -93,7 +143,7 @@ BEGIN
             -- administrator is using the database directly and
             -- not through the API.
             SELECT submitter_user_id INTO NEW.submitter_user_id
-            FROM api.assignment_submissions AS sub
+            FROM data.assignment_submission AS sub
             WHERE sub.id = NEW.assignment_submission_id;
         END IF;
     ELSE
@@ -103,21 +153,23 @@ BEGIN
     -- Try to fill in `pattern`
     IF (NEW.assignment_field_pattern is NULL) THEN
         SELECT pattern INTO NEW.assignment_field_pattern
-        FROM api.assignment_fields AS af
+        FROM data.assignment_field AS af
         WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
     END IF;
 
     -- Try to fill in `is_url`
     IF (NEW.assignment_field_is_url is NULL) THEN
         SELECT is_url INTO NEW.assignment_field_is_url
-        FROM api.assignment_fields AS af
+        FROM data.assignment_field AS af
         WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
     END IF;
 
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ language 'plpgsql'
+SECURITY DEFINER
+SET search_path = data, pg_temp;
 
 
 DROP TRIGGER IF EXISTS tg_assignment_field_submission_default ON assignment_field_submission;

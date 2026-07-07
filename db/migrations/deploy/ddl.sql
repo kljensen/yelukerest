@@ -8,10 +8,8 @@ BEGIN;
 -- PostgreSQL database dump
 --
 
-\restrict fq9xhGLKGBw7n8qQ11b3ZINXaqhGdpK8yLfDcTHUAq0ea2fg7KvmM8pEI2BWlF7
-
 -- Dumped from database version 18.4
--- Dumped by pg_dump version 18.3 (Homebrew)
+-- Dumped by pg_dump version 18.4
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -156,6 +154,61 @@ $$;
 ALTER FUNCTION auth.sign_jwt(user_id integer, role data.user_role) OWNER TO superuser;
 
 --
+-- Name: assignment_field_submission_is_writable_by_current_user(integer); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.assignment_field_submission_is_writable_by_current_user(the_assignment_submission_id integer) RETURNS boolean
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT ass_sub.id
+        FROM data.assignment_submission AS ass_sub
+        INNER JOIN data."user" AS u
+        ON (
+            ass_sub.user_id = u.id
+            OR
+            ass_sub.team_nickname = u.team_nickname
+        )
+        INNER JOIN data.assignment AS a
+        ON a.slug = ass_sub.assignment_slug
+        LEFT JOIN data.assignment_grade_exception AS ge
+        ON (
+            ge.assignment_slug = ass_sub.assignment_slug
+            AND
+            (
+                (ass_sub.is_team AND ge.team_nickname = ass_sub.team_nickname)
+                OR
+                (NOT ass_sub.is_team AND ge.user_id = ass_sub.user_id)
+            )
+        )
+        WHERE
+            u.id = request.user_id()
+            AND ass_sub.id = the_assignment_submission_id
+            AND (
+                (
+                    a.is_draft = false
+                    AND current_timestamp < a.closed_at
+                )
+                OR
+                (
+                    ge.closed_at > current_timestamp
+                    AND (
+                        ge.user_id = ass_sub.user_id
+                        OR
+                        ge.team_nickname = ass_sub.team_nickname
+                    )
+                )
+            )
+    );
+END;
+$$;
+
+
+ALTER FUNCTION data.assignment_field_submission_is_writable_by_current_user(the_assignment_submission_id integer) OWNER TO superuser;
+
+--
 -- Name: clean_user_fields(); Type: FUNCTION; Schema: data; Owner: superuser
 --
 
@@ -179,14 +232,15 @@ ALTER FUNCTION data.clean_user_fields() OWNER TO superuser;
 --
 
 CREATE FUNCTION data.fill_assignment_field_submission_defaults() RETURNS trigger
-    LANGUAGE plpgsql
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
     AS $$
 BEGIN
     -- Fill in the assignment_slug if it is NULL by looking
     -- at the assignment_slug from the assignment_submission.
     IF (NEW.assignment_slug IS NULL AND NEW.assignment_submission_id IS NOT NULL) THEN
         SELECT assignment_slug INTO NEW.assignment_slug
-        FROM api.assignment_submissions
+        FROM data.assignment_submission
         WHERE id = NEW.assignment_submission_id;
     END IF;
     -- Fill in the assignment_submission_id if it is null
@@ -195,8 +249,8 @@ BEGIN
     IF (NEW.assignment_submission_id IS NULL and NEW.assignment_slug IS NOT NULL and request.user_id() IS NOT NULL) THEN
         SELECT ass.id INTO NEW.assignment_submission_id
         FROM
-            (api.assignment_submissions ass
-            LEFT OUTER JOIN api.users u
+            (data.assignment_submission ass
+            LEFT OUTER JOIN data."user" u
             ON u.team_nickname = ass.team_nickname)
         WHERE (
             -- It is the right assignment
@@ -214,7 +268,7 @@ BEGIN
             -- administrator is using the database directly and
             -- not through the API.
             SELECT submitter_user_id INTO NEW.submitter_user_id
-            FROM api.assignment_submissions AS sub
+            FROM data.assignment_submission AS sub
             WHERE sub.id = NEW.assignment_submission_id;
         END IF;
     ELSE
@@ -224,14 +278,14 @@ BEGIN
     -- Try to fill in `pattern`
     IF (NEW.assignment_field_pattern is NULL) THEN
         SELECT pattern INTO NEW.assignment_field_pattern
-        FROM api.assignment_fields AS af
+        FROM data.assignment_field AS af
         WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
     END IF;
 
     -- Try to fill in `is_url`
     IF (NEW.assignment_field_is_url is NULL) THEN
         SELECT is_url INTO NEW.assignment_field_is_url
-        FROM api.assignment_fields AS af
+        FROM data.assignment_field AS af
         WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
     END IF;
 
@@ -451,6 +505,38 @@ END; $$;
 
 
 ALTER FUNCTION data.quiz_set_defaults() OWNER TO superuser;
+
+--
+-- Name: refresh_assignment_submission_participants(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.refresh_assignment_submission_participants() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+BEGIN
+    -- Submission participants are an insert-time snapshot. Later team roster
+    -- changes must not rewrite historical submitted work.
+    DELETE FROM data.assignment_submission_participant
+    WHERE assignment_submission_id = NEW.id;
+
+    IF (NEW.is_team) THEN
+        INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
+        SELECT NEW.id, u.id
+        FROM data."user" AS u
+        WHERE u.team_nickname = NEW.team_nickname;
+    ELSE
+        INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
+        SELECT NEW.id, NEW.user_id
+        WHERE NEW.user_id IS NOT NULL;
+    END IF;
+
+    RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION data.refresh_assignment_submission_participants() OWNER TO superuser;
 
 --
 -- Name: text_is_url(text); Type: FUNCTION; Schema: data; Owner: superuser
@@ -827,6 +913,19 @@ CREATE TABLE data.assignment_submission (
 ALTER TABLE data.assignment_submission OWNER TO superuser;
 
 --
+-- Name: assignment_submission_participant; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.assignment_submission_participant (
+    assignment_submission_id integer CONSTRAINT assignment_submission_partici_assignment_submission_id_not_null NOT NULL,
+    user_id integer NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+ALTER TABLE data.assignment_submission_participant OWNER TO superuser;
+
+--
 -- Name: user; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -870,9 +969,10 @@ CREATE VIEW api.assignment_grade_distributions AS
     max(assignment_grade.points_possible) AS points_possible,
     stddev_pop(assignment_grade.points) AS stddev,
     array_agg(assignment_grade.points ORDER BY assignment_grade.points) AS grades
-   FROM ((data.assignment_grade
+   FROM (((data.assignment_grade
      JOIN data.assignment_submission sub ON ((assignment_grade.assignment_submission_id = sub.id)))
-     JOIN data."user" u ON (((sub.user_id = u.id) OR (sub.team_nickname = u.team_nickname))))
+     JOIN data.assignment_submission_participant participant ON ((participant.assignment_submission_id = sub.id)))
+     JOIN data."user" u ON ((participant.user_id = u.id)))
   WHERE (u.role = 'student'::data.user_role)
   GROUP BY sub.assignment_slug;
 
@@ -1301,6 +1401,54 @@ COMMENT ON COLUMN api.meetings.updated_at IS 'The most recent time this database
 
 
 --
+-- Name: platform_version; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.platform_version AS
+ SELECT 'yelukerest'::text AS platform,
+    1 AS platform_compatibility_version,
+    1 AS schema_compatibility_version,
+    1 AS admin_api_version;
+
+
+ALTER VIEW api.platform_version OWNER TO api;
+
+--
+-- Name: VIEW platform_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON VIEW api.platform_version IS 'Single-row compatibility metadata for course admin preflight checks';
+
+
+--
+-- Name: COLUMN platform_version.platform; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.platform IS 'Platform identifier expected by course admin tooling';
+
+
+--
+-- Name: COLUMN platform_version.platform_compatibility_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.platform_compatibility_version IS 'Integer compatibility version for Yelukerest platform behavior';
+
+
+--
+-- Name: COLUMN platform_version.schema_compatibility_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer compatibility version for database schema/API shape';
+
+
+--
+-- Name: COLUMN platform_version.admin_api_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations';
+
+
+--
 -- Name: quiz_grade; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -1699,54 +1847,6 @@ CREATE VIEW api.users AS
 ALTER VIEW api.users OWNER TO api;
 
 --
--- Name: platform_version; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.platform_version AS
- SELECT 'yelukerest'::text AS platform,
-    1 AS platform_compatibility_version,
-    1 AS schema_compatibility_version,
-    1 AS admin_api_version;
-
-
-ALTER VIEW api.platform_version OWNER TO api;
-
---
--- Name: VIEW platform_version; Type: COMMENT; Schema: api; Owner: api
---
-
-COMMENT ON VIEW api.platform_version IS 'Single-row compatibility metadata for course admin preflight checks';
-
-
---
--- Name: COLUMN platform_version.platform; Type: COMMENT; Schema: api; Owner: api
---
-
-COMMENT ON COLUMN api.platform_version.platform IS 'Platform identifier expected by course admin tooling';
-
-
---
--- Name: COLUMN platform_version.platform_compatibility_version; Type: COMMENT; Schema: api; Owner: api
---
-
-COMMENT ON COLUMN api.platform_version.platform_compatibility_version IS 'Integer compatibility version for Yelukerest platform behavior';
-
-
---
--- Name: COLUMN platform_version.schema_compatibility_version; Type: COMMENT; Schema: api; Owner: api
---
-
-COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer compatibility version for database schema/API shape';
-
-
---
--- Name: COLUMN platform_version.admin_api_version; Type: COMMENT; Schema: api; Owner: api
---
-
-COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations';
-
-
---
 -- Name: assignment_grade_exception_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
 --
 
@@ -2003,6 +2103,14 @@ ALTER TABLE ONLY data.assignment_submission
 
 
 --
+-- Name: assignment_submission_participant assignment_submission_participant_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.assignment_submission_participant
+    ADD CONSTRAINT assignment_submission_participant_pkey PRIMARY KEY (assignment_submission_id, user_id);
+
+
+--
 -- Name: assignment_submission assignment_submission_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
 --
 
@@ -2199,20 +2307,6 @@ CREATE UNIQUE INDEX assignment_submission_unique_user ON data.assignment_submiss
 
 
 --
--- Name: secret_unique_slug_team; Type: INDEX; Schema: data; Owner: superuser
---
-
-CREATE UNIQUE INDEX secret_unique_slug_team ON data.user_secret USING btree (team_nickname, slug) WHERE (user_id IS NULL);
-
-
---
--- Name: secret_unique_slug_user; Type: INDEX; Schema: data; Owner: superuser
---
-
-CREATE UNIQUE INDEX secret_unique_slug_user ON data.user_secret USING btree (user_id, slug) WHERE (team_nickname IS NULL);
-
-
---
 -- Name: idx_assignment_field_assignment_slug_fk; Type: INDEX; Schema: data; Owner: superuser
 --
 
@@ -2280,6 +2374,13 @@ CREATE INDEX idx_assignment_grade_submission_fk ON data.assignment_grade USING b
 --
 
 CREATE INDEX idx_assignment_submission_assignment_fk ON data.assignment_submission USING btree (assignment_slug, is_team);
+
+
+--
+-- Name: idx_assignment_submission_participant_user_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_submission_participant_user_fk ON data.assignment_submission_participant USING btree (user_id);
 
 
 --
@@ -2374,6 +2475,20 @@ CREATE INDEX idx_user_team_nickname_fk ON data."user" USING btree (team_nickname
 
 
 --
+-- Name: secret_unique_slug_team; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE UNIQUE INDEX secret_unique_slug_team ON data.user_secret USING btree (team_nickname, slug) WHERE (user_id IS NULL);
+
+
+--
+-- Name: secret_unique_slug_user; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE UNIQUE INDEX secret_unique_slug_user ON data.user_secret USING btree (user_id, slug) WHERE (team_nickname IS NULL);
+
+
+--
 -- Name: assignment tg_assignment_default; Type: TRIGGER; Schema: data; Owner: superuser
 --
 
@@ -2413,6 +2528,13 @@ CREATE TRIGGER tg_assignment_grade_exception_default BEFORE INSERT OR UPDATE ON 
 --
 
 CREATE TRIGGER tg_assignment_submission_default BEFORE INSERT OR UPDATE ON data.assignment_submission FOR EACH ROW EXECUTE FUNCTION data.fill_assignment_submission_defaults();
+
+
+--
+-- Name: assignment_submission tg_assignment_submission_participants; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_assignment_submission_participants AFTER INSERT ON data.assignment_submission FOR EACH ROW EXECUTE FUNCTION data.refresh_assignment_submission_participants();
 
 
 --
@@ -2580,6 +2702,22 @@ ALTER TABLE ONLY data.assignment_submission
 
 
 --
+-- Name: assignment_submission_participant assignment_submission_participant_assignment_submission_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.assignment_submission_participant
+    ADD CONSTRAINT assignment_submission_participant_assignment_submission_id_fkey FOREIGN KEY (assignment_submission_id) REFERENCES data.assignment_submission(id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+
+--
+-- Name: assignment_submission_participant assignment_submission_participant_user_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.assignment_submission_participant
+    ADD CONSTRAINT assignment_submission_participant_user_id_fkey FOREIGN KEY (user_id) REFERENCES data."user"(id) ON UPDATE CASCADE;
+
+
+--
 -- Name: assignment_submission assignment_submission_submitter_user_id_fkey; Type: FK CONSTRAINT; Schema: data; Owner: superuser
 --
 
@@ -2738,18 +2876,33 @@ ALTER TABLE ONLY data."user"
 ALTER TABLE data.assignment_field_submission ENABLE ROW LEVEL SECURITY;
 
 --
--- Name: assignment_field_submission assignment_field_submission_access_policy; Type: POLICY; Schema: data; Owner: superuser
+-- Name: assignment_field_submission assignment_field_submission_delete_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY assignment_field_submission_access_policy ON data.assignment_field_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((submitter_user_id = request.user_id()) OR (EXISTS ( SELECT ass_sub.id
-   FROM (api.assignment_submissions ass_sub
-     JOIN api.users ON (((ass_sub.user_id = users.id) OR (ass_sub.team_nickname = users.team_nickname))))
-  WHERE ((users.id = request.user_id()) AND (ass_sub.id = assignment_field_submission.assignment_submission_id)))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND ((submitter_user_id = request.user_id()) AND (EXISTS ( SELECT ass_sub.id
-   FROM (((api.assignment_submissions ass_sub
-     JOIN api.users ON (((ass_sub.user_id = users.id) OR (ass_sub.team_nickname = users.team_nickname))))
-     JOIN api.assignments ON ((assignments.slug = ass_sub.assignment_slug)))
-     LEFT JOIN api.assignment_grade_exceptions ge ON (((ge.assignment_slug = ass_sub.assignment_slug) AND ((ass_sub.is_team AND (ge.team_nickname = ass_sub.team_nickname)) OR ((NOT ass_sub.is_team) AND (ge.user_id = ass_sub.user_id))))))
-  WHERE ((users.id = request.user_id()) AND (ass_sub.id = assignment_field_submission.assignment_submission_id) AND ((assignments.is_open = true) OR (((ge.user_id = ass_sub.user_id) OR (ge.team_nickname = ass_sub.team_nickname)) AND (ge.closed_at > CURRENT_TIMESTAMP))))))))));
+CREATE POLICY assignment_field_submission_delete_policy ON data.assignment_field_submission FOR DELETE TO api USING ((request.user_role() = 'faculty'::text));
+
+
+--
+-- Name: assignment_field_submission assignment_field_submission_insert_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY assignment_field_submission_insert_policy ON data.assignment_field_submission FOR INSERT TO api WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (submitter_user_id = request.user_id()) AND data.assignment_field_submission_is_writable_by_current_user(assignment_submission_id))));
+
+
+--
+-- Name: assignment_field_submission assignment_field_submission_select_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY assignment_field_submission_select_policy ON data.assignment_field_submission FOR SELECT TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND ((submitter_user_id = request.user_id()) OR (EXISTS ( SELECT ass_sub.id
+   FROM api.assignment_submissions ass_sub
+  WHERE (ass_sub.id = assignment_field_submission.assignment_submission_id))) OR data.assignment_field_submission_is_writable_by_current_user(assignment_submission_id))) OR (request.user_role() = 'faculty'::text)));
+
+
+--
+-- Name: assignment_field_submission assignment_field_submission_update_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY assignment_field_submission_update_policy ON data.assignment_field_submission FOR UPDATE TO api USING (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND ((submitter_user_id = request.user_id()) OR data.assignment_field_submission_is_writable_by_current_user(assignment_submission_id))))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (submitter_user_id = request.user_id()) AND data.assignment_field_submission_is_writable_by_current_user(assignment_submission_id))));
 
 
 --
@@ -2792,14 +2945,16 @@ ALTER TABLE data.assignment_submission ENABLE ROW LEVEL SECURITY;
 -- Name: assignment_submission assignment_submission_access_policy; Type: POLICY; Schema: data; Owner: superuser
 --
 
-CREATE POLICY assignment_submission_access_policy ON data.assignment_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (EXISTS ( SELECT u.id
-   FROM api.users u
-  WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_submission.team_nickname))))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (EXISTS ( SELECT a.slug
+CREATE POLICY assignment_submission_access_policy ON data.assignment_submission TO api USING ((((request.user_role() = ANY ('{student,ta}'::text[])) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (((request.user_id() = submitter_user_id) AND (NOT (EXISTS ( SELECT 1
+   FROM data.assignment_submission_participant p
+  WHERE (p.assignment_submission_id = assignment_submission.id))))) OR (EXISTS ( SELECT p.user_id
+   FROM data.assignment_submission_participant p
+  WHERE ((p.assignment_submission_id = assignment_submission.id) AND (p.user_id = request.user_id())))))))) OR (request.user_role() = 'faculty'::text))) WITH CHECK (((request.user_role() = 'faculty'::text) OR ((request.user_role() = ANY ('{student,ta}'::text[])) AND (EXISTS ( SELECT a.slug
    FROM ((api.assignments a
      LEFT JOIN api.assignment_grade_exceptions e ON ((a.slug = e.assignment_slug)))
      LEFT JOIN api.users u ON (((e.user_id = u.id) OR (e.team_nickname = u.team_nickname))))
   WHERE ((a.slug = assignment_submission.assignment_slug) AND (a.is_open OR ((e.closed_at > CURRENT_TIMESTAMP) AND (a.is_draft = false) AND ((e.user_id = assignment_submission.user_id) OR (e.team_nickname = assignment_submission.team_nickname))))))) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (EXISTS ( SELECT u.id
-   FROM api.users u
+   FROM data."user" u
   WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_submission.team_nickname)))))))));
 
 
@@ -2920,6 +3075,12 @@ GRANT USAGE ON SCHEMA api TO student;
 GRANT USAGE ON SCHEMA api TO ta;
 GRANT USAGE ON SCHEMA api TO faculty;
 GRANT USAGE ON SCHEMA api TO app;
+
+
+--
+-- Name: SCHEMA data; Type: ACL; Schema: -; Owner: superuser
+--
+
 GRANT USAGE ON SCHEMA data TO ta;
 GRANT USAGE ON SCHEMA data TO faculty;
 
@@ -2987,6 +3148,13 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment_grade TO api;
 --
 
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment_submission TO api;
+
+
+--
+-- Name: TABLE assignment_submission_participant; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE data.assignment_submission_participant TO api;
 
 
 --
@@ -3118,6 +3286,17 @@ GRANT SELECT ON TABLE api.meetings TO student;
 GRANT SELECT ON TABLE api.meetings TO ta;
 GRANT SELECT ON TABLE api.meetings TO anonymous;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.meetings TO faculty;
+
+
+--
+-- Name: TABLE platform_version; Type: ACL; Schema: api; Owner: api
+--
+
+GRANT SELECT ON TABLE api.platform_version TO anonymous;
+GRANT SELECT ON TABLE api.platform_version TO student;
+GRANT SELECT ON TABLE api.platform_version TO ta;
+GRANT SELECT ON TABLE api.platform_version TO faculty;
+GRANT SELECT ON TABLE api.platform_version TO app;
 
 
 --
@@ -3272,17 +3451,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.users TO faculty;
 
 
 --
--- Name: TABLE platform_version; Type: ACL; Schema: api; Owner: api
---
-
-GRANT SELECT ON TABLE api.platform_version TO anonymous;
-GRANT SELECT ON TABLE api.platform_version TO student;
-GRANT SELECT ON TABLE api.platform_version TO ta;
-GRANT SELECT ON TABLE api.platform_version TO faculty;
-GRANT SELECT ON TABLE api.platform_version TO app;
-
-
---
 -- Name: SEQUENCE assignment_submission_id_seq; Type: ACL; Schema: data; Owner: superuser
 --
 
@@ -3308,7 +3476,5 @@ ALTER DEFAULT PRIVILEGES FOR ROLE api REVOKE ALL ON FUNCTIONS FROM PUBLIC;
 --
 -- PostgreSQL database dump complete
 --
-
-\unrestrict fq9xhGLKGBw7n8qQ11b3ZINXaqhGdpK8yLfDcTHUAq0ea2fg7KvmM8pEI2BWlF7
 
 COMMIT;
