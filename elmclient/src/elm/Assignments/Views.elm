@@ -18,6 +18,7 @@ import Assignments.Model
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Common.Views exposing (longDateToString)
+import DateFormat
 import Dict
 import Html exposing (Html, a, div)
 import Html.Attributes as Attrs
@@ -27,7 +28,7 @@ import Markdown
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
-import Time exposing (Posix)
+import Time exposing (Posix, Zone)
 
 
 listView : TimeZone -> WebData (List Assignment) -> Html Msg
@@ -148,11 +149,46 @@ loginToViewAssignments =
 
 listAssignments : TimeZone -> List Assignment -> Html Msg
 listAssignments timeZone assignments =
-    let
-        assignmentDetails =
-            List.map (\a -> { date = a.closed_at, title = a.title, href = "#assignments/" ++ a.slug, isDraft = a.is_draft }) assignments
-    in
-    Html.div [] (List.map (Common.Views.dateTitleHrefRow timeZone) assignmentDetails)
+    Html.div [] (List.map (assignmentRow timeZone) assignments)
+
+
+assignmentRow : TimeZone -> Assignment -> Html Msg
+assignmentRow timeZone assignment =
+    Html.div [ Attrs.class "clearfix mb2" ]
+        [ Html.time [ Attrs.class "left p1 mr1 classdate" ]
+            [ Html.div [] [ Html.text (shortDayOfWeek assignment.closed_at timeZone.zone) ]
+            , Html.div [] [ Html.text (shortDateMonth assignment.closed_at timeZone.zone) ]
+            ]
+        , Html.div [ Attrs.class "overflow-hidden p1" ]
+            [ Html.a
+                [ Attrs.href ("#assignments/" ++ assignment.slug) ]
+                [ Html.text assignment.title ]
+            , Common.Views.showDraftStatus assignment.is_draft
+            , Html.div [] [ Html.text (pointsPossibleText assignment.points_possible) ]
+            ]
+        ]
+
+
+shortDayOfWeek : Posix -> Zone -> String
+shortDayOfWeek time zone =
+    DateFormat.format [ DateFormat.dayOfWeekNameAbbreviated ] zone time
+
+
+shortDateMonth : Posix -> Zone -> String
+shortDateMonth time zone =
+    DateFormat.format [ DateFormat.dayOfMonthFixed, DateFormat.monthNameAbbreviated ] zone time
+
+
+pointsPossibleText : Int -> String
+pointsPossibleText points =
+    "Points possible: "
+        ++ String.fromInt points
+        ++ (if points == 1 then
+                " point"
+
+            else
+                " points"
+           )
 
 
 getSubmissionForSlug : List AssignmentSubmission -> AssignmentSlug -> WebData CurrentUser -> Maybe AssignmentSubmission
@@ -281,6 +317,7 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
             [ Html.text "Due: "
             , Html.time [] [ Html.text (showDueDate assignment.closed_at timeZone maybeException assignment.slug user) ]
             ]
+        , Html.div [] [ Html.text (pointsPossibleText assignment.points_possible) ]
         , Markdown.toHtml [] assignment.body
         , Html.hr [] []
         , case maybeSubmission of
