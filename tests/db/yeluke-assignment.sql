@@ -17,8 +17,8 @@ SELECT table_privs_are(
 );
 
 SELECT table_privs_are(
-    'data', 'quiz', 'faculty', ARRAY[]::text[],
-    'faculty should only be granted nothing on "data.quiz"'
+    'data', 'assignment', 'faculty', ARRAY[]::text[],
+    'faculty should only be granted nothing on "data.assignment"'
 );
 
 -- switch to a anonymous application user

@@ -17,8 +17,8 @@ SELECT table_privs_are(
 );
 
 SELECT table_privs_are(
-    'data', 'quiz_grade_exception', 'faculty', ARRAY[]::text[],
-    'faculty should only be granted nothing on "data.quiz_grade_exception"'
+    'data', 'user_secret', 'faculty', ARRAY[]::text[],
+    'faculty should only be granted nothing on "data.user_secret"'
 );
 
 SELECT col_not_null(
