@@ -139,6 +139,8 @@ Then...
 
 If you get a CAS error it may be because `AUTHAPP_JWT` is missing or invalid.
 See `docs/auth-jwt-flow.md` for the full CAS/session/PostgREST JWT model.
+Course admin tooling should check the deployed platform/schema compatibility
+version before making admin changes. See `docs/platform-compatibility.md`.
 
 For `AUTHAPP_JWT`
 ```

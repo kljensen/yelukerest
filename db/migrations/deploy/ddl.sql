@@ -1697,6 +1697,54 @@ CREATE VIEW api.users AS
 ALTER VIEW api.users OWNER TO api;
 
 --
+-- Name: platform_version; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.platform_version AS
+ SELECT 'yelukerest'::text AS platform,
+    1 AS platform_compatibility_version,
+    1 AS schema_compatibility_version,
+    1 AS admin_api_version;
+
+
+ALTER VIEW api.platform_version OWNER TO api;
+
+--
+-- Name: VIEW platform_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON VIEW api.platform_version IS 'Single-row compatibility metadata for course admin preflight checks';
+
+
+--
+-- Name: COLUMN platform_version.platform; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.platform IS 'Platform identifier expected by course admin tooling';
+
+
+--
+-- Name: COLUMN platform_version.platform_compatibility_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.platform_compatibility_version IS 'Integer compatibility version for Yelukerest platform behavior';
+
+
+--
+-- Name: COLUMN platform_version.schema_compatibility_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer compatibility version for database schema/API shape';
+
+
+--
+-- Name: COLUMN platform_version.admin_api_version; Type: COMMENT; Schema: api; Owner: api
+--
+
+COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations';
+
+
+--
 -- Name: assignment_grade_exception_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
 --
 
@@ -3058,6 +3106,17 @@ GRANT SELECT ON TABLE api.users TO student;
 GRANT SELECT ON TABLE api.users TO ta;
 GRANT SELECT ON TABLE api.users TO app;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.users TO faculty;
+
+
+--
+-- Name: TABLE platform_version; Type: ACL; Schema: api; Owner: api
+--
+
+GRANT SELECT ON TABLE api.platform_version TO anonymous;
+GRANT SELECT ON TABLE api.platform_version TO student;
+GRANT SELECT ON TABLE api.platform_version TO ta;
+GRANT SELECT ON TABLE api.platform_version TO faculty;
+GRANT SELECT ON TABLE api.platform_version TO app;
 
 
 --

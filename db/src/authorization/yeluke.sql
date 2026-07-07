@@ -1,6 +1,7 @@
 
 
 \ir ./yeluke/user.sql
+\ir ./yeluke/platform_version.sql
 \ir ./yeluke/meeting.sql
 \ir ./yeluke/engagement.sql
 \ir ./yeluke/team.sql

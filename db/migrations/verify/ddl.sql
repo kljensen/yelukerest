@@ -86,6 +86,28 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'platform_version'
+        AND c.relkind = 'v'
+    ) THEN
+        RAISE EXCEPTION 'missing api.platform_version view';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM api.platform_version
+        WHERE platform = 'yelukerest'
+        AND platform_compatibility_version >= 1
+        AND schema_compatibility_version >= 1
+        AND admin_api_version >= 1
+    ) THEN
+        RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'auth'
