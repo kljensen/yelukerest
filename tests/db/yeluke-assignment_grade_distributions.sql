@@ -1,5 +1,5 @@
 begin;
-select plan(10);
+select plan(12);
 
 SELECT view_owner_is(
     'api', 'assignment_grade_distributions', 'superuser',
@@ -51,6 +51,32 @@ SELECT throws_like(
 RESET ROLE;
 INSERT INTO data."user" (id, email, netid, nickname, role)
 VALUES (6, 'student6@yale.edu', 'stu6', 'quiet-river', 'student');
+
+set local role student;
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '1';
+
+SELECT results_eq(
+    $$
+        SELECT assignment_slug, count::int, average, grades
+        FROM api.assignment_grade_distributions
+        WHERE assignment_slug = 'team-selection'
+    $$,
+    $$VALUES ('team-selection', 3, 30::double precision, ARRAY[0::real, 40::real, 50::real])$$,
+    'assignment grade distributions should count missing individual submissions as zero'
+);
+
+SELECT results_eq(
+    $$
+        SELECT assignment_slug
+        FROM api.assignment_grade_distributions
+        WHERE assignment_slug = 'js-koans'
+    $$,
+    $$VALUES ('never-returned'::text) LIMIT 0$$,
+    'assignment grade distributions should not reveal draft assignments as zero-score cohorts'
+);
+
+RESET ROLE;
 INSERT INTO data.assignment_submission (id, assignment_slug, is_team, user_id, submitter_user_id)
 VALUES (5, 'team-selection', false, 6, 6);
 INSERT INTO data.assignment_grade (assignment_submission_id, assignment_slug, points)

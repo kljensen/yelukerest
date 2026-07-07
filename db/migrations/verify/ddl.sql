@@ -135,8 +135,11 @@ BEGIN
         RAISE EXCEPTION 'data.grade must reject negative or non-finite points';
     END IF;
 
-    IF pg_get_viewdef('api.assignment_grade_distributions'::regclass) NOT LIKE '%HAVING (count(sub.id) >= 3)%' THEN
-        RAISE EXCEPTION 'api.assignment_grade_distributions must suppress cohorts smaller than three student grades';
+    IF pg_get_viewdef('api.assignment_grade_distributions'::regclass) NOT LIKE '%COALESCE(assignment_grade.points, (0)::real)%'
+        OR pg_get_viewdef('api.assignment_grade_distributions'::regclass) NOT LIKE '%NOT assignment.is_draft%'
+        OR pg_get_viewdef('api.assignment_grade_distributions'::regclass) NOT LIKE '%HAVING (count(*) >= 3)%'
+    THEN
+        RAISE EXCEPTION 'api.assignment_grade_distributions must include missing individual work as zero while suppressing cohorts smaller than three';
     END IF;
 
     IF pg_get_viewdef('api.quiz_grade_distributions'::regclass) NOT LIKE '%HAVING (count(quiz_grade.user_id) >= 3)%' THEN

@@ -1841,93 +1841,6 @@ CREATE TABLE data."user" (
 ALTER TABLE data."user" OWNER TO superuser;
 
 --
--- Name: assignment_grade_distributions; Type: VIEW; Schema: api; Owner: superuser
---
-
-CREATE VIEW api.assignment_grade_distributions AS
- SELECT sub.assignment_slug,
-    count(sub.id) AS count,
-    avg(assignment_grade.points) AS average,
-    min(assignment_grade.points) AS min,
-    max(assignment_grade.points) AS max,
-    max(assignment_grade.points_possible) AS points_possible,
-    stddev_pop(assignment_grade.points) AS stddev,
-    array_agg(assignment_grade.points ORDER BY assignment_grade.points) AS grades
-   FROM (((data.assignment_grade
-     JOIN data.assignment_submission sub ON ((assignment_grade.assignment_submission_id = sub.id)))
-     JOIN data.assignment_submission_participant participant ON ((participant.assignment_submission_id = sub.id)))
-     JOIN data."user" u ON ((participant.user_id = u.id)))
-  WHERE (u.role = 'student'::data.user_role)
-  GROUP BY sub.assignment_slug
- HAVING (count(sub.id) >= 3);
-
-
-ALTER VIEW api.assignment_grade_distributions OWNER TO superuser;
-
---
--- Name: VIEW assignment_grade_distributions; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON VIEW api.assignment_grade_distributions IS 'Statics on the grades received by students for each assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.assignment_slug; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.assignment_slug IS 'The slug for the assignment to which these statistics correspond';
-
-
---
--- Name: COLUMN assignment_grade_distributions.count; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.count IS 'The number of students with grades for this assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.average; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.average IS 'The average grade among students for this assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.min; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.min IS 'The minmum grade among students for this assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.max; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.max IS 'The maximum grade among students for this assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.points_possible; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.points_possible IS 'The number of points possible for this assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.stddev; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.stddev IS 'The standard deviation of student grades for this assignment';
-
-
---
--- Name: COLUMN assignment_grade_distributions.grades; Type: COMMENT; Schema: api; Owner: superuser
---
-
-COMMENT ON COLUMN api.assignment_grade_distributions.grades IS 'The grades received by students for this assignment in ascending order';
-
-
---
 -- Name: assignment_grade_exception; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -2075,6 +1988,108 @@ CREATE VIEW api.assignment_fields WITH (security_barrier='true') AS
 
 
 ALTER VIEW api.assignment_fields OWNER TO api;
+
+--
+-- Name: assignment_grade_distributions; Type: VIEW; Schema: api; Owner: superuser
+--
+
+CREATE VIEW api.assignment_grade_distributions AS
+ WITH included_scores AS (
+         SELECT assignment.slug AS assignment_slug,
+            assignment.points_possible,
+            COALESCE(assignment_grade.points, (0)::real) AS points
+           FROM ((data.assignment
+             JOIN data."user" student ON ((student.role = 'student'::data.user_role)))
+             LEFT JOIN data.assignment_submission sub ON (((sub.assignment_slug = assignment.slug) AND (NOT sub.is_team) AND (sub.user_id = student.id)))
+             LEFT JOIN data.assignment_grade ON ((assignment_grade.assignment_submission_id = sub.id)))
+          WHERE ((NOT assignment.is_team) AND (NOT assignment.is_draft))
+        UNION ALL
+         SELECT sub.assignment_slug,
+            assignment.points_possible,
+            COALESCE(assignment_grade.points, (0)::real) AS points
+           FROM ((((data.assignment_submission sub
+             JOIN data.assignment ON (((assignment.slug = sub.assignment_slug) AND assignment.is_team AND (NOT assignment.is_draft))))
+             JOIN data.assignment_submission_participant participant ON ((participant.assignment_submission_id = sub.id)))
+             JOIN data."user" student ON (((participant.user_id = student.id) AND (student.role = 'student'::data.user_role))))
+             LEFT JOIN data.assignment_grade ON ((assignment_grade.assignment_submission_id = sub.id)))
+        )
+ SELECT included_scores.assignment_slug,
+    count(*) AS count,
+    avg(included_scores.points) AS average,
+    min(included_scores.points) AS min,
+    max(included_scores.points) AS max,
+    max(included_scores.points_possible) AS points_possible,
+    stddev_pop(included_scores.points) AS stddev,
+    array_agg(included_scores.points ORDER BY included_scores.points) AS grades
+   FROM included_scores
+  GROUP BY included_scores.assignment_slug
+ HAVING (count(*) >= 3);
+
+
+ALTER VIEW api.assignment_grade_distributions OWNER TO superuser;
+
+--
+-- Name: VIEW assignment_grade_distributions; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON VIEW api.assignment_grade_distributions IS 'Statics on the grades received by students for each assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.assignment_slug; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.assignment_slug IS 'The slug for the assignment to which these statistics correspond';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.count; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.count IS 'The number of student scores included for this assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.average; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.average IS 'The average score among included students for this assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.min; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.min IS 'The minmum grade among students for this assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.max; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.max IS 'The maximum grade among students for this assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.points_possible; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.points_possible IS 'The number of points possible for this assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.stddev; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.stddev IS 'The standard deviation of included student scores for this assignment';
+
+
+--
+-- Name: COLUMN assignment_grade_distributions.grades; Type: COMMENT; Schema: api; Owner: superuser
+--
+
+COMMENT ON COLUMN api.assignment_grade_distributions.grades IS 'The included student scores for this assignment in ascending order';
+
 
 --
 -- Name: engagement; Type: TABLE; Schema: data; Owner: superuser
