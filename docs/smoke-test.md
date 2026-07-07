@@ -71,6 +71,7 @@ The command verifies:
 - `/openapi/` serves the static Swagger UI files through Caddy;
 - `/rest/` returns PostgREST OpenAPI JSON through Caddy;
 - `/rest/meetings?select=slug&limit=1` returns anonymous DB-backed JSON;
+- `/auth/login` redirects into CAS validation through Caddy and authapp;
 - `/auth/me` returns the expected unauthenticated `401 Unauthorized` response
   through Caddy and authapp.
 

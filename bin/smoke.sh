@@ -156,6 +156,37 @@ check_http() {
     say_ok "$name returned HTTP $expected_status"
 }
 
+check_http_header() {
+    name=$1
+    url=$2
+    expected_status=$3
+    header_pattern=$4
+
+    safe_name=$(printf '%s' "$name" | tr -c 'A-Za-z0-9_' '_')
+    body_file="$TMP_DIR/$safe_name.body"
+    header_file="$TMP_DIR/$safe_name.headers"
+    err_file="$TMP_DIR/$safe_name.err"
+
+    status=$(curl_request "$url" "$body_file" "$header_file" "$err_file")
+
+    if [ "$status" != "$expected_status" ]; then
+        detail=$(cat "$err_file")
+        if [ -n "$detail" ]; then
+            say_fail "$name returned HTTP $status, expected $expected_status ($detail)"
+        else
+            say_fail "$name returned HTTP $status, expected $expected_status"
+        fi
+        return
+    fi
+
+    if ! grep -E "$header_pattern" "$header_file" >/dev/null 2>&1; then
+        say_fail "$name returned HTTP $status but headers did not match '$header_pattern'"
+        return
+    fi
+
+    say_ok "$name returned HTTP $expected_status with expected header"
+}
+
 check_db() {
     if [ -z "${SUPER_USER:-}" ] || [ -z "${DB_NAME:-}" ]; then
         say_fail "database readiness check needs SUPER_USER and DB_NAME from .env"
@@ -204,6 +235,7 @@ main() {
     check_http "OpenAPI UI" "$BASE_URL/openapi/" "200" 'swagger-ui'
     check_http "PostgREST root OpenAPI JSON" "$BASE_URL/rest/" "200" '"(swagger|openapi)"[[:space:]]*:'
     check_http "anonymous DB-backed meetings endpoint" "$BASE_URL/rest/meetings?select=slug&limit=1" "200" '^\['
+    check_http_header "authapp login redirects to CAS" "$BASE_URL/auth/login" "307" '^[Ll]ocation: .*/cas/login\?service=.*auth%2Fvalidate'
     check_http "authapp unauthenticated /auth/me" "$BASE_URL/auth/me" "401" 'Unauthorized'
 
     if [ "$FAILURES" -ne 0 ]; then

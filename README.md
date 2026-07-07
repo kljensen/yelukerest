@@ -65,10 +65,12 @@ To smoke-test a running local or production-like stack through Caddy, run:
 
 ```
 ./bin/smoke.sh
+# or
+bun run smoke
 ```
 
 The smoke test is a fast wiring check for Compose services, HTTPS proxying,
-PostgREST, authapp, the static OpenAPI UI, and database reachability. It does
+PostgREST, authapp login routing, the static OpenAPI UI, and database reachability. It does
 not replace the database, REST, or Elm test suites. See
 `docs/smoke-test.md` for the exact checks and production overrides.
 
