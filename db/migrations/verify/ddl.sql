@@ -95,6 +95,19 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'grade'
+        AND con.conname = 'grade_points_finite_nonnegative'
+        AND con.contype = 'c'
+    ) THEN
+        RAISE EXCEPTION 'data.grade must reject negative or non-finite points';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'data'

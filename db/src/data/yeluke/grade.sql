@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS grade (
-    points REAL NOT NULL CHECK (points >= 0),
+    points REAL NOT NULL,
     snapshot_slug TEXT REFERENCES grade_snapshot(slug)
         ON UPDATE CASCADE NOT NULL,
     user_id INT REFERENCES "user"(id)
@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS grade (
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
+    CONSTRAINT grade_points_finite_nonnegative
+        CHECK (points >= 0 AND points < 'Infinity'::real),
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
     UNIQUE(snapshot_slug, user_id)
 );

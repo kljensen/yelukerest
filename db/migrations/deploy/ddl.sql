@@ -2154,7 +2154,7 @@ CREATE TABLE data.grade (
     description text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT grade_points_check CHECK ((points >= (0)::double precision)),
+    CONSTRAINT grade_points_finite_nonnegative CHECK (((points >= (0)::double precision) AND (points < 'Infinity'::real))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 

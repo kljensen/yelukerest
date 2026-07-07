@@ -1,5 +1,5 @@
 begin;
-select plan(10);
+select plan(12);
 
 SELECT view_owner_is(
     'api', 'grades', 'api',
@@ -65,6 +65,18 @@ SELECT throws_like(
     $$INSERT INTO api.grades(user_id, snapshot_slug, points) VALUES(1, 'after-first-exam', 1) $$,
     '%violates unique constraint%',
     'users should only have one grade per snapshot'
+);
+
+SELECT throws_like(
+    $$INSERT INTO api.grades(user_id, snapshot_slug, points) VALUES(3, 'after-first-exam', 'Infinity'::real) $$,
+    '%violates check constraint "grade_points_finite_nonnegative"%',
+    'snapshot grades should reject positive infinity'
+);
+
+SELECT throws_like(
+    $$INSERT INTO api.grades(user_id, snapshot_slug, points) VALUES(3, 'after-first-exam', 'NaN'::real) $$,
+    '%violates check constraint "grade_points_finite_nonnegative"%',
+    'snapshot grades should reject NaN'
 );
 
 
