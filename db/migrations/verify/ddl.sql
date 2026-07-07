@@ -256,7 +256,7 @@ BEGIN
         WHERE platform = 'yelukerest'
         AND platform_compatibility_version >= 1
         AND schema_compatibility_version >= 1
-        AND admin_api_version >= 3
+        AND admin_api_version >= 4
     ) THEN
         RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';
     END IF;
@@ -274,6 +274,20 @@ BEGIN
 
     IF NOT has_function_privilege('faculty', 'api.sync_meetings(jsonb)', 'EXECUTE') THEN
         RAISE EXCEPTION 'faculty must be able to execute api.sync_meetings';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN LATERAL unnest(p.proargnames, p.proargmodes) AS arg(argname, argmode)
+        WHERE n.nspname = 'api'
+        AND p.proname = 'sync_meetings'
+        AND pg_get_function_identity_arguments(p.oid) = 'p_meetings jsonb'
+        AND arg.argname = 'unchanged_count'
+        AND arg.argmode = 't'
+    ) THEN
+        RAISE EXCEPTION 'api.sync_meetings must return unchanged_count';
     END IF;
 
     IF has_function_privilege('anonymous', 'api.sync_meetings(jsonb)', 'EXECUTE')

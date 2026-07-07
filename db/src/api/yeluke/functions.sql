@@ -1,10 +1,12 @@
 -- Online quiz question/answer helper functions were removed with the
 -- paper-only quiz workflow.
 
+DROP FUNCTION IF EXISTS sync_meetings(jsonb);
 CREATE OR REPLACE FUNCTION sync_meetings(p_meetings jsonb)
 RETURNS TABLE (
     inserted_count integer,
     updated_count integer,
+    unchanged_count integer,
     deleted_count integer
 )
 LANGUAGE plpgsql
@@ -80,6 +82,61 @@ BEGIN
             duration interval,
             is_draft boolean
         )
+    )
+    SELECT count(*)::integer INTO unchanged_count
+    FROM input_meetings input_meeting
+    JOIN api.meetings existing_meeting
+        ON existing_meeting.slug = input_meeting.slug
+    WHERE NOT (
+        (
+            existing_meeting.title,
+            existing_meeting.summary,
+            existing_meeting.description,
+            existing_meeting.begins_at,
+            existing_meeting.duration,
+            existing_meeting.is_draft
+        ) IS DISTINCT FROM (
+            input_meeting.title,
+            input_meeting.summary,
+            input_meeting.description,
+            input_meeting.begins_at,
+            input_meeting.duration,
+            input_meeting.is_draft
+        )
+    );
+
+    WITH input_meetings AS (
+        SELECT *
+        FROM jsonb_to_recordset(p_meetings) AS meeting (
+            slug text,
+            title text,
+            summary text,
+            description text,
+            begins_at timestamptz,
+            duration interval,
+            is_draft boolean
+        )
+    ),
+    changed_meetings AS (
+        SELECT input_meeting.*
+        FROM input_meetings input_meeting
+        JOIN api.meetings existing_meeting
+            ON existing_meeting.slug = input_meeting.slug
+        WHERE (
+            existing_meeting.title,
+            existing_meeting.summary,
+            existing_meeting.description,
+            existing_meeting.begins_at,
+            existing_meeting.duration,
+            existing_meeting.is_draft
+        ) IS DISTINCT FROM (
+            input_meeting.title,
+            input_meeting.summary,
+            input_meeting.description,
+            input_meeting.begins_at,
+            input_meeting.duration,
+            input_meeting.is_draft
+        )
     ),
     updated_meetings AS (
         UPDATE api.meetings existing_meeting
@@ -90,7 +147,7 @@ BEGIN
             begins_at = input_meeting.begins_at,
             duration = input_meeting.duration,
             is_draft = input_meeting.is_draft
-        FROM input_meetings input_meeting
+        FROM changed_meetings input_meeting
         WHERE existing_meeting.slug = input_meeting.slug
         RETURNING existing_meeting.slug
     )

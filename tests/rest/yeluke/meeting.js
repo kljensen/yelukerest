@@ -123,6 +123,7 @@ describe('meetings API endpoint', () => {
             .to.include({
                 inserted_count: 1,
                 updated_count: 3,
+                unchanged_count: 0,
                 deleted_count: 1,
             });
 
@@ -133,5 +134,53 @@ describe('meetings API endpoint', () => {
 
         we.expect(meetings.body.map(meeting => meeting.slug))
             .to.deep.equal(['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang']);
+
+        const repeatResponse = await restService()
+            .post('/rpc/sync_meetings')
+            .set('Authorization', `Bearer ${jwt}`)
+            .send({
+                p_meetings: [{
+                    slug: 'intro',
+                    title: 'Updated Introduction',
+                    summary: 'updated',
+                    description: 'updated description',
+                    begins_at: '2018-01-01T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: false,
+                }, {
+                    slug: 'structuredquerylang',
+                    title: 'Databases and Structured Query Language',
+                    summary: 'summary',
+                    description: 'description',
+                    begins_at: '2018-01-02T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: true,
+                }, {
+                    slug: 'entrepreneurship-woot',
+                    title: 'The Lean Start-up',
+                    summary: 'summary',
+                    description: 'description',
+                    begins_at: '2018-01-03T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: false,
+                }, {
+                    slug: 'new-admin-meeting',
+                    title: 'New Admin Meeting',
+                    summary: 'new',
+                    description: 'new description',
+                    begins_at: '2018-01-02T14:00:00Z',
+                    duration: '01:20:00',
+                    is_draft: true,
+                }],
+            })
+            .expect(200);
+
+        we.expect(repeatResponse.body[0])
+            .to.include({
+                inserted_count: 0,
+                updated_count: 0,
+                unchanged_count: 4,
+                deleted_count: 0,
+            });
     });
 });

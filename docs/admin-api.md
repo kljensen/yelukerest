@@ -40,15 +40,16 @@ Response:
   {
     "inserted_count": 1,
     "updated_count": 3,
+    "unchanged_count": 0,
     "deleted_count": 0
   }
 ]
 ```
 
-The function refuses an empty list, rejects duplicate input slugs, and relies on the `meeting` table constraints for row validation. Only faculty can execute it.
+The function refuses an empty list, rejects duplicate input slugs, and relies on the `meeting` table constraints for row validation. Only faculty can execute it. Repeating the same payload reports matching existing rows under `unchanged_count` and does not touch their `updated_at` timestamps.
 If a missing meeting is still referenced by quizzes, engagements, or other rows, PostgreSQL foreign keys will reject the sync rather than silently deleting related data.
 
-`api.platform_version.admin_api_version` is `2` or later for deployments that support this RPC.
+`api.platform_version.admin_api_version` is `4` or later for deployments that support the `unchanged_count` response field.
 
 ## Assignment Sync
 

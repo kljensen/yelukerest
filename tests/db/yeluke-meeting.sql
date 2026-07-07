@@ -2,7 +2,7 @@
 BEGIN;
 
 -- Plan the tests.
-SELECT plan(24);
+SELECT plan(25);
 
 SELECT view_owner_is(
     'api', 'meetings', 'api',
@@ -161,7 +161,7 @@ SELECT is(
 
 SELECT results_eq(
     $$
-        SELECT inserted_count, updated_count, deleted_count
+        SELECT inserted_count, updated_count, unchanged_count, deleted_count
         FROM api.sync_meetings(
             '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
               {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
@@ -169,7 +169,7 @@ SELECT results_eq(
               {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]'::jsonb
         )
     $$,
-    $$ VALUES (1, 3, 2) $$,
+    $$ VALUES (1, 3, 0, 2) $$,
     'sync_meetings should report inserted, updated, and deleted counts'
 );
 
@@ -177,6 +177,39 @@ SELECT set_eq(
     'SELECT slug FROM api.meetings ORDER BY slug',
     ARRAY['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang'],
     'sync_meetings should replace the meeting set'
+);
+
+SELECT results_eq(
+    $$
+        WITH before_sync AS (
+            SELECT updated_at
+            FROM api.meetings
+            WHERE slug = 'intro'
+        ),
+        sync_result AS (
+            SELECT inserted_count, updated_count, unchanged_count, deleted_count
+            FROM api.sync_meetings(
+                '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
+                  {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
+                  {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
+                  {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]'::jsonb
+            )
+        ),
+        after_sync AS (
+            SELECT updated_at
+            FROM api.meetings
+            WHERE slug = 'intro'
+        )
+        SELECT
+            sync_result.inserted_count,
+            sync_result.updated_count,
+            sync_result.unchanged_count,
+            sync_result.deleted_count,
+            before_sync.updated_at = after_sync.updated_at
+        FROM sync_result, before_sync, after_sync
+    $$,
+    $$ VALUES (0, 0, 4, 0, true) $$,
+    'rerunning sync_meetings should report unchanged rows without touching updated_at'
 );
 
 -- Finish the tests and clean up.
