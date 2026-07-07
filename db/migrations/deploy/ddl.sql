@@ -1671,29 +1671,6 @@ CREATE TABLE data.assignment_field (
 
 ALTER TABLE data.assignment_field OWNER TO superuser;
 
---
--- Name: assignment_fields; Type: VIEW; Schema: api; Owner: api
---
-
-CREATE VIEW api.assignment_fields AS
- SELECT slug,
-    assignment_slug,
-    label,
-    help,
-    placeholder,
-    is_url,
-    is_multiline,
-    display_order,
-    pattern,
-    example,
-    created_at,
-    updated_at
-   FROM data.assignment_field;
-
-
-ALTER VIEW api.assignment_fields OWNER TO api;
-
---
 -- Name: artifact; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -2030,7 +2007,7 @@ ALTER TABLE data.assignment OWNER TO superuser;
 -- Name: assignments; Type: VIEW; Schema: api; Owner: api
 --
 
-CREATE VIEW api.assignments AS
+CREATE VIEW api.assignments WITH (security_barrier='true') AS
  SELECT slug,
     points_possible,
     is_draft,
@@ -2042,10 +2019,36 @@ CREATE VIEW api.assignments AS
     created_at,
     updated_at,
     ((is_draft = false) AND (CURRENT_TIMESTAMP < closed_at)) AS is_open
-   FROM data.assignment;
+   FROM data.assignment
+  WHERE ((request.user_role() = 'faculty'::text) OR (assignment.is_draft = false));
 
 
 ALTER VIEW api.assignments OWNER TO api;
+
+--
+-- Name: assignment_fields; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.assignment_fields WITH (security_barrier='true') AS
+ SELECT slug,
+    assignment_slug,
+    label,
+    help,
+    placeholder,
+    is_url,
+    is_multiline,
+    display_order,
+    pattern,
+    example,
+    created_at,
+    updated_at
+   FROM data.assignment_field field
+  WHERE ((request.user_role() = 'faculty'::text) OR (EXISTS ( SELECT 1
+           FROM data.assignment
+          WHERE ((assignment.slug = field.assignment_slug) AND (assignment.is_draft = false)))));
+
+
+ALTER VIEW api.assignment_fields OWNER TO api;
 
 --
 -- Name: engagement; Type: TABLE; Schema: data; Owner: superuser
@@ -2545,7 +2548,7 @@ ALTER TABLE data.quiz OWNER TO superuser;
 -- Name: quizzes; Type: VIEW; Schema: api; Owner: api
 --
 
-CREATE VIEW api.quizzes AS
+CREATE VIEW api.quizzes WITH (security_barrier='true') AS
  SELECT id,
     meeting_slug,
     points_possible,
@@ -2557,7 +2560,8 @@ CREATE VIEW api.quizzes AS
     created_at,
     updated_at,
     ((is_draft = false) AND (open_at < CURRENT_TIMESTAMP) AND (CURRENT_TIMESTAMP < closed_at)) AS is_open
-   FROM data.quiz;
+   FROM data.quiz
+  WHERE ((request.user_role() = 'faculty'::text) OR (quiz.is_draft = false));
 
 
 ALTER VIEW api.quizzes OWNER TO api;

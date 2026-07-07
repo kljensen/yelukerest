@@ -1,5 +1,5 @@
 begin;
-select plan(15);
+select plan(18);
 
 SELECT view_owner_is(
     'api', 'assignment_fields', 'api',
@@ -36,6 +36,17 @@ SELECT is(
     'assignment_field should have its own updated_at trigger'
 );
 
+SELECT is(
+    (
+        SELECT is_updatable
+        FROM information_schema.views
+        WHERE table_schema = 'api'
+        AND table_name = 'assignment_fields'
+    ),
+    'YES',
+    'api.assignment_fields should remain automatically updatable'
+);
+
 -- switch to a anonymous application user
 set local role anonymous;
 set request.jwt.claim.role = 'anonymous';
@@ -51,8 +62,17 @@ set request.jwt.claim.role = 'student';
 
 SELECT set_eq(
     'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
-    ARRAY['exam-1','exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
-    'students should be able to select from the api.assignment_fields view'
+    ARRAY['exam-1','exam-1', 'exam-1', 'project-update-1', 'project-update-1', 'team-selection'],
+    'students should only see fields for non-draft assignments'
+);
+
+set local role ta;
+set request.jwt.claim.role = 'ta';
+
+SELECT set_eq(
+    'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
+    ARRAY['exam-1','exam-1', 'exam-1', 'project-update-1', 'project-update-1', 'team-selection'],
+    'TAs should only see fields for non-draft assignments'
 );
 
 PREPARE doinsert AS INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen');
@@ -65,6 +85,12 @@ SELECT throws_like(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+
+SELECT set_eq(
+    'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
+    ARRAY['exam-1','exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
+    'faculty should see fields for draft and non-draft assignments'
+);
 
 SELECT lives_ok(
     'doinsert',

@@ -30,20 +30,23 @@ describe('quizzes API endpoint', () => {
             .expect(401, done);
     });
 
-    const meetingSlugs = [
+    const nonDraftMeetingSlugs = [
         'intro',
         'structuredquerylang',
+    ];
+    const allMeetingSlugs = [
+        ...nonDraftMeetingSlugs,
         'entrepreneurship-woot',
     ];
     const listTestCases = [{
-        title: 'should allow students to see all quizzes',
-        expected: meetingSlugs,
-        length: 3,
+        title: 'should allow students to see non-draft quizzes',
+        expected: nonDraftMeetingSlugs,
+        length: 2,
         status: 200,
         jwt: studentJWTPromise,
     }, {
         title: 'should allow faculty to see all quizzes',
-        expected: meetingSlugs,
+        expected: allMeetingSlugs,
         length: 3,
         status: 200,
         jwt: facultyJWTPromise,

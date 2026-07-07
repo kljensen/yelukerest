@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(13);
 
 SELECT view_owner_is(
     'api', 'quizzes', 'api',
@@ -37,8 +37,17 @@ set request.jwt.claim.role = 'student';
 
 SELECT set_eq(
     'SELECT meeting_slug FROM api.quizzes ORDER BY (meeting_slug)',
-    ARRAY['intro', 'structuredquerylang', 'entrepreneurship-woot'],
-    'students should be able to select from the api.quizzes view'
+    ARRAY['intro', 'structuredquerylang'],
+    'students should only see non-draft quizzes'
+);
+
+set local role ta;
+set request.jwt.claim.role = 'ta';
+
+SELECT set_eq(
+    'SELECT meeting_slug FROM api.quizzes ORDER BY (meeting_slug)',
+    ARRAY['intro', 'structuredquerylang'],
+    'TAs should only see non-draft quizzes'
 );
 
 PREPARE doinsert AS INSERT INTO api.quizzes (meeting_slug, points_possible, is_draft, duration, open_at, closed_at, created_at, updated_at) VALUES ('server-side-apps', 2, false, '00:10:00', '2017-01-04 07:55:50+00', '2017-01-06 07:55:50+00', '2018-01-06 07:55:50+00', '2018-01-06 13:10:23.24505+00');
@@ -52,6 +61,12 @@ SELECT throws_ok(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+
+SELECT set_eq(
+    'SELECT meeting_slug FROM api.quizzes ORDER BY (meeting_slug)',
+    ARRAY['entrepreneurship-woot', 'intro', 'structuredquerylang'],
+    'faculty should see draft and non-draft quizzes'
+);
 
 SELECT lives_ok(
     'doinsert',

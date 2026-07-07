@@ -114,6 +114,55 @@ BEGIN
         RAISE EXCEPTION 'api.quiz_grade_distributions must suppress cohorts smaller than three student grades';
     END IF;
 
+    IF pg_get_viewdef('api.assignments'::regclass) NOT LIKE '%WHERE ((request.user_role() = ''faculty''::text) OR (is_draft = false))%'
+    THEN
+        RAISE EXCEPTION 'api.assignments must hide draft assignments from student and TA reads';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'assignments'
+        AND c.reloptions @> ARRAY['security_barrier=true']
+    ) THEN
+        RAISE EXCEPTION 'api.assignments must be a security barrier view';
+    END IF;
+
+    IF pg_get_viewdef('api.assignment_fields'::regclass) NOT LIKE '%request.user_role() = ''faculty''::text%'
+        OR pg_get_viewdef('api.assignment_fields'::regclass) NOT LIKE '%assignment.is_draft = false%'
+    THEN
+        RAISE EXCEPTION 'api.assignment_fields must hide fields for draft assignments from student and TA reads';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'assignment_fields'
+        AND c.reloptions @> ARRAY['security_barrier=true']
+    ) THEN
+        RAISE EXCEPTION 'api.assignment_fields must be a security barrier view';
+    END IF;
+
+    IF pg_get_viewdef('api.quizzes'::regclass) NOT LIKE '%WHERE ((request.user_role() = ''faculty''::text) OR (is_draft = false))%'
+    THEN
+        RAISE EXCEPTION 'api.quizzes must hide draft quizzes from student and TA reads';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'quizzes'
+        AND c.reloptions @> ARRAY['security_barrier=true']
+    ) THEN
+        RAISE EXCEPTION 'api.quizzes must be a security barrier view';
+    END IF;
+
     IF NOT EXISTS (
         SELECT 1
         FROM pg_class c

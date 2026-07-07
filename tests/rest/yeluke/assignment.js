@@ -177,5 +177,22 @@ describe('assignments API endpoint', () => {
 
         we.expect(fields.body.map(field => `${field.assignment_slug}/${field.slug}`))
             .to.deep.equal(['exam-1/new-field', 'exam-1/url', 'new-admin-assignment/repo-url']);
+
+        const studentJWT = await studentJWTPromise;
+        const studentAssignments = await restService()
+            .get('/assignments?select=slug&order=slug')
+            .set('Authorization', `Bearer ${studentJWT}`)
+            .expect(200);
+
+        we.expect(studentAssignments.body.map(assignment => assignment.slug))
+            .to.deep.equal(['exam-1', 'project-update-1', 'team-selection']);
+
+        const studentFields = await restService()
+            .get('/assignment_fields?select=assignment_slug,slug&assignment_slug=in.(exam-1,new-admin-assignment)&order=assignment_slug,slug')
+            .set('Authorization', `Bearer ${studentJWT}`)
+            .expect(200);
+
+        we.expect(studentFields.body.map(field => `${field.assignment_slug}/${field.slug}`))
+            .to.deep.equal(['exam-1/new-field', 'exam-1/url']);
     });
 });

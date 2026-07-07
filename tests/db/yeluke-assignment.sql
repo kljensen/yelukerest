@@ -1,5 +1,5 @@
 begin;
-select plan(32);
+select plan(34);
 
 SELECT view_owner_is(
     'api', 'assignments', 'api',
@@ -36,8 +36,17 @@ set request.jwt.claim.role = 'student';
 
 SELECT set_eq(
     'SELECT slug FROM api.assignments ORDER BY (slug)',
-    ARRAY['exam-1', 'js-koans', 'project-update-1', 'team-selection'],
-    'students should be able to select from the api.assignments view'
+    ARRAY['exam-1', 'project-update-1', 'team-selection'],
+    'students should only see non-draft assignments'
+);
+
+set local role ta;
+set request.jwt.claim.role = 'ta';
+
+SELECT set_eq(
+    'SELECT slug FROM api.assignments ORDER BY (slug)',
+    ARRAY['exam-1', 'project-update-1', 'team-selection'],
+    'TAs should only see non-draft assignments'
 );
 
 PREPARE doinsert AS INSERT INTO api.assignments (slug,points_possible,title,body,closed_at) VALUES ('foo', 23, 'foo', 'foo', '2017-12-27 14:55:50');
@@ -52,6 +61,12 @@ SELECT throws_like(
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
+
+SELECT set_eq(
+    'SELECT slug FROM api.assignments ORDER BY (slug)',
+    ARRAY['exam-1', 'js-koans', 'project-update-1', 'team-selection'],
+    'faculty should see draft and non-draft assignments'
+);
 
 SELECT lives_ok(
     'doinsert',
