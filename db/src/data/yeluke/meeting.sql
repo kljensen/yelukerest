@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS meeting (
     updated_at  TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
+    CONSTRAINT meeting_duration_positive CHECK (duration > INTERVAL '0 seconds'),
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at)
 );
 

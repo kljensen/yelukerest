@@ -2,7 +2,7 @@
 BEGIN;
 
 -- Plan the tests.
-SELECT plan(25);
+SELECT plan(29);
 
 SELECT view_owner_is(
     'api', 'meetings', 'api',
@@ -78,6 +78,18 @@ SELECT throws_like(
     'meetings slugs should be limited to 100 length'
 );
 
+SELECT throws_like(
+    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft) VALUES ('zero-duration', 'Zero duration', '', 'invalid', '2018-01-01T14:00:00Z', '0 seconds', false) $$,
+    '%violates check constraint "meeting_duration_positive"%',
+    'meetings should reject zero duration'
+);
+
+SELECT throws_like(
+    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft) VALUES ('negative-duration', 'Negative duration', '', 'invalid', '2018-01-01T14:00:00Z', '-10 minutes', false) $$,
+    '%violates check constraint "meeting_duration_positive"%',
+    'meetings should reject negative duration'
+);
+
 SELECT table_privs_are(
     'api', 'meetings', 'faculty', ARRAY['SELECT', 'DELETE', 'INSERT', 'UPDATE'],
     'faculty should have CRUD privileges on the api.meetings view'
@@ -132,6 +144,34 @@ SELECT throws_like(
     $$,
     '%duplicate meeting slug%',
     'sync_meetings should reject duplicate input slugs'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_meetings(
+            '[{"slug":"intro","title":"Introduction to the class","summary":"summary","description":"description","begins_at":"2018-01-01T14:00:00Z","duration":"0 seconds","is_draft":false},
+              {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
+              {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
+              {"slug":"server-side-apps","title":"Server-side Apps","summary":"summary","description":"description","begins_at":"2018-01-04T14:00:00Z","duration":"01:20:00","is_draft":false},
+              {"slug":"fakeclass","title":"fake class title","summary":"my awesome summary","description":"foo","begins_at":"2017-12-27T14:54:50Z","duration":"00:00:03","is_draft":false}]'::jsonb
+        )
+    $$,
+    '%meeting_duration_positive%',
+    'sync_meetings should reject zero meeting durations'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_meetings(
+            '[{"slug":"intro","title":"Introduction to the class","summary":"summary","description":"description","begins_at":"2018-01-01T14:00:00Z","duration":"-10 minutes","is_draft":false},
+              {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
+              {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
+              {"slug":"server-side-apps","title":"Server-side Apps","summary":"summary","description":"description","begins_at":"2018-01-04T14:00:00Z","duration":"01:20:00","is_draft":false},
+              {"slug":"fakeclass","title":"fake class title","summary":"my awesome summary","description":"foo","begins_at":"2017-12-27T14:54:50Z","duration":"00:00:03","is_draft":false}]'::jsonb
+        )
+    $$,
+    '%meeting_duration_positive%',
+    'sync_meetings should reject negative meeting durations'
 );
 
 SELECT throws_like(

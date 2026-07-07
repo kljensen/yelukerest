@@ -2191,6 +2191,7 @@ CREATE TABLE data.meeting (
     is_draft boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT meeting_duration_positive CHECK ((duration > '00:00:00'::interval)),
     CONSTRAINT meeting_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 60))),
     CONSTRAINT meeting_title_check CHECK ((char_length(title) < 250)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))

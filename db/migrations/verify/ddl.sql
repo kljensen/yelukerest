@@ -82,6 +82,19 @@ BEGIN
 
     IF NOT EXISTS (
         SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'meeting'
+        AND con.conname = 'meeting_duration_positive'
+        AND con.contype = 'c'
+    ) THEN
+        RAISE EXCEPTION 'data.meeting must reject zero or negative duration';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'data'

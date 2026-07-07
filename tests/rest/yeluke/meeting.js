@@ -75,6 +75,25 @@ describe('meetings API endpoint', () => {
             .expect(403);
     });
 
+    it('should reject invalid meeting durations during sync', async () => {
+        const jwt = await facultyJWTPromise;
+        await restService()
+            .post('/rpc/sync_meetings')
+            .set('Authorization', `Bearer ${jwt}`)
+            .send({
+                p_meetings: [{
+                    slug: 'negative-duration',
+                    title: 'Negative Duration',
+                    summary: '',
+                    description: 'invalid',
+                    begins_at: '2018-01-01T14:00:00Z',
+                    duration: '-10 minutes',
+                    is_draft: false,
+                }],
+            })
+            .expect(400);
+    });
+
     it('should let faculty atomically sync meetings', async () => {
         const jwt = await facultyJWTPromise;
         const response = await restService()
