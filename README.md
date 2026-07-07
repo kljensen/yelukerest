@@ -61,7 +61,18 @@ to understand how all this fits together.
 
 ## Testing
 
-To run the tests, do `npm test` from the root of this project.
+To smoke-test a running local or production-like stack through Caddy, run:
+
+```
+./bin/smoke.sh
+```
+
+The smoke test is a fast wiring check for Compose services, HTTPS proxying,
+PostgREST, authapp, the static OpenAPI UI, and database reachability. It does
+not replace the database, REST, or Elm test suites. See
+`docs/smoke-test.md` for the exact checks and production overrides.
+
+To run the database and REST tests, do `npm test` from the root of this project.
 The containers will need to be running. This will run [pgTAP](http://pgtap.org/)
 tests and tests of the REST API using [supertest](https://github.com/visionmedia/supertest). See the `test` directory.
 

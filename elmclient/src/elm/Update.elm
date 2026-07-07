@@ -43,6 +43,7 @@ import Quizzes.Updates
         )
 import RemoteData exposing (WebData)
 import Routing exposing (parseLocation)
+import Set
 import Time exposing (Posix)
 import Url
 import Users.Commands exposing (fetchUserSecrets, fetchUsers)
