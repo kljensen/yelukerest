@@ -111,6 +111,7 @@ trap cleanup EXIT INT TERM
 
 compose build db backup
 compose up -d db minio minio-init
+# shellcheck disable=SC2016
 compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done'
 compose run --rm backup
 compose run --rm minio-client -ceu 'mc --insecure alias set local https://minio:9000 minioadmin minioadmin >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/backup/yelukerest/backup.info >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/archive/yelukerest/archive.info >/dev/null'

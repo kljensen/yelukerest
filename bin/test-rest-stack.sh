@@ -37,6 +37,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 compose up -d --build --force-recreate db postgrest authapp elmclient caddy
+# shellcheck disable=SC2016
 compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done'
 
 retries=30

@@ -37,7 +37,7 @@ if [ ! -d "$POSTGRES_SOCKET_PATH" ]; then
   exit 1
 fi
 
-export PGPASSWORD=$POSTGRES_PASSWORD
+export PGPASSWORD="$POSTGRES_PASSWORD"
 REPO_PATH=$PGBACKREST_REPO1_PATH
 
 if [ -n "${S3_PREFIX:-}" ]; then

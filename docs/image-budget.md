@@ -30,9 +30,24 @@ docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmc
 - `caddy` uses explicit Caddy Alpine builder/runtime tags.
 - `postgrest` uses `ghcr.io/kljensen/docker-postgrest-static:14.14`, a
   checksum-verified `scratch` image built from upstream PostgREST release
-  assets. The local amd64 image measured 21,687,300 bytes; the local arm64
-  image measured 86,556,914 bytes because upstream publishes a dynamic Ubuntu
-  aarch64 binary rather than a Linux static arm64 asset.
+  assets. The local arm64 image measured 86,556,914 bytes because upstream
+  publishes a dynamic Ubuntu aarch64 binary rather than a Linux static arm64
+  asset.
+
+## Current Local Sizes
+
+Measured on 2026-07-07 after building the REST stack and Elm test target:
+
+| Image | MiB |
+| --- | ---: |
+| `yelukerest-authapp:latest` | 9.2 |
+| `yelukerest-backup:latest` | 45.2 |
+| `yelukerest-caddy:latest` | 105.0 |
+| `yelukerest-elmclient:latest` | 72.9 |
+| `yelukerest-elmclient-test:latest` | 221.6 |
+| `yelukerest-postgres:18.4-pgbackrest` | 306.0 |
+| `yelukerest-postgres-dev:18.4-pgtap` | 308.8 |
+| `ghcr.io/kljensen/docker-postgrest-static:14.14` | 82.5 |
 
 ## Known Tradeoffs
 
@@ -40,5 +55,7 @@ docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmc
   pgBackRest must be available inside the database container for WAL archiving.
 - The Elm test image carries Deno only in the `test` target; the app target does
   not include Deno or Node.
+- The Caddy image is Alpine-based, but the Route53 DNS provider produces a
+  larger binary and a heavy build-time Go dependency graph.
 - Root REST tests still use Bun plus JavaScript test dependencies. That is
   test-only tooling, not a runtime container dependency.
