@@ -94,7 +94,7 @@ describe('authentication API endpoint', () => {
         try {
             const p = await getUserSessionCookie(baseURL, authPath, 'invalid23', false);
             we.expect(p)
-                .to.be.null();
+                .to.equal(null);
         } catch (error) {
             console.log(error);
             throw error;
@@ -109,7 +109,8 @@ describe('authentication API endpoint', () => {
             throw error;
         }
         we.expect(jwt)
-            .to.be.a.singleLine();
+            .to.be.a('string')
+            .and.not.match(/[\r\n]/);
         we.expect(jwt)
             .to.have.lengthOf.at.least(20);
     });
@@ -135,7 +136,8 @@ describe('authentication API endpoint', () => {
                 role: 'student',
             });
         we.expect(response.body.jwt)
-            .to.be.a.singleLine();
+            .to.be.a('string')
+            .and.not.match(/[\r\n]/);
 
         const payload = decodeJWTPayload(response.body.jwt);
         we.expect(payload)
@@ -208,7 +210,7 @@ describe('authentication API endpoint', () => {
         }
 
         we.expect(jwt)
-            .to.be.undefined();
+            .to.equal(undefined);
     });
 
     it('should not let invalid users get a JWT', async () => {
@@ -219,6 +221,6 @@ describe('authentication API endpoint', () => {
             throw error;
         }
         we.expect(jwt)
-            .to.be.undefined();
+            .to.equal(undefined);
     });
 });

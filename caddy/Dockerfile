@@ -1,10 +1,3 @@
-FROM caddy:2.11.4-builder-alpine AS builder
+ARG CADDY_IMAGE=ghcr.io/kljensen/docker-caddy-dns-static:2.11.4@sha256:5581821ac430d45b356ef2e2a3081a918f83541b57580b033c41c7d8df6d40db
 
-RUN xcaddy build v2.11.4 \
-    --with github.com/caddy-dns/route53@v1.6.2
-
-FROM caddy:2.11.4-alpine
-
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy
-RUN /usr/bin/caddy version
-RUN /usr/bin/caddy list-modules --skip-standard --versions
+FROM ${CADDY_IMAGE}

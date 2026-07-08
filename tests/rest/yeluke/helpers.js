@@ -2,23 +2,13 @@
 const request = require('supertest');
 const we = require('chai');
 const url = require('url');
-const chaiAsPromised = require('chai-as-promised');
-const chaiString = require('chai-string');
-const dirtyChai = require('dirty-chai');
-const lodash = require('lodash');
+const { isDeepStrictEqual } = require('util');
 
 const {
     restService,
 } = require('../common.js');
 
 const testCASBaseURL = process.env.TEST_CAS_BASE_URL || process.env.TEST_BASE_URL || process.env.YELUKEREST_SMOKE_BASE_URL;
-
-const chaiPlugin = plugin => plugin.default || plugin;
-
-// Add the we string plugin
-we.use(chaiPlugin(chaiString));
-we.use(chaiPlugin(dirtyChai));
-we.use(chaiPlugin(chaiAsPromised));
 
 const testURL = (candidateURL) => {
     const parsedURL = new url.URL(candidateURL);
@@ -315,8 +305,8 @@ async function makeListTestCases(theIt, path, transformation, testCases) {
                 }
                 if ((tc.transformation || transformation) && tc.expected) {
                     const received = response.body.map(tc.transformation || transformation);
-                    we.expect(lodash.isEqual(received, tc.expected))
-                        .to.be.true();
+                    we.expect(isDeepStrictEqual(received, tc.expected))
+                        .to.equal(true);
                 }
             }
         });
