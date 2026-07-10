@@ -52,6 +52,22 @@ func getRequestHost(r *http.Request) string {
 	return host
 }
 
+func safeRedirectPath(next string) string {
+	if next == "" || strings.Contains(next, "\\") {
+		return "/"
+	}
+
+	target, err := url.Parse(next)
+	if err != nil || target.IsAbs() || target.Host != "" {
+		return "/"
+	}
+	if target.Path == "" || !strings.HasPrefix(target.Path, "/") || strings.HasPrefix(target.Path, "//") {
+		return "/"
+	}
+
+	return target.RequestURI()
+}
+
 // uriWithoutTicket returns the URI without the ticket query parameter.
 // All other query parameters are preserved.
 func uriWithoutTicket(r *http.Request) string {
@@ -111,8 +127,8 @@ func getLoginHandler(config CASConfig) http.HandlerFunc {
 			Path:   config.ReturnPath,
 		}
 		serviceURIValues := url.Values{}
-		next := r.URL.Query().Get("next")
-		if next != "" {
+		next := safeRedirectPath(r.URL.Query().Get("next"))
+		if next != "/" {
 			serviceURIValues.Add("next", next)
 		}
 		serviceURI.RawQuery = serviceURIValues.Encode()
@@ -231,10 +247,7 @@ func getValidateHandler(casConfig CASConfig, jwtConfig FetchJWTConfig, sessionMa
 
 		// See if there is a next parameter to which we should redirect
 		// the user after they have authenticated.
-		next := r.URL.Query().Get("next")
-		if next == "" {
-			next = "/"
-		}
+		next := safeRedirectPath(r.URL.Query().Get("next"))
 		// If there is no next parameter, then just show a message.
 		http.Redirect(w, r, next, http.StatusTemporaryRedirect)
 	}
