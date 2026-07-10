@@ -12,6 +12,14 @@ KEEP_STACK=${YELUKEREST_PGBACKREST_TEST_KEEP_STACK:-}
 MINIO_CERT_DIR=tmp/pgbackrest-minio-certs
 MINIO_IMAGE=${YELUKEREST_PGBACKREST_TEST_MINIO_IMAGE:-quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
 MINIO_MC_IMAGE=${YELUKEREST_PGBACKREST_TEST_MINIO_MC_IMAGE:-quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727}
+SENTINEL_VALUE=${YELUKEREST_PGBACKREST_TEST_SENTINEL:-pgbackrest-restore-$(date +%Y%m%d%H%M%S)}
+
+case "$SENTINEL_VALUE" in
+    *[!A-Za-z0-9_.:-]*)
+        echo "Backup restore sentinel contains unsupported characters: $SENTINEL_VALUE" >&2
+        exit 1
+        ;;
+esac
 
 cd "$ROOT_DIR"
 mkdir -p "$(dirname "$OVERRIDE_FILE")"
@@ -27,11 +35,14 @@ SUPER_USER_VALUE=${SUPER_USER:-$(env_value SUPER_USER)}
 SUPER_USER_PASSWORD_VALUE=${SUPER_USER_PASSWORD:-$(env_value SUPER_USER_PASSWORD)}
 DB_NAME_VALUE=${DB_NAME:-$(env_value DB_NAME)}
 
-if [ ! -f "$MINIO_CERT_DIR/public.crt" ] || [ ! -f "$MINIO_CERT_DIR/private.key" ]; then
+if [ ! -f "$MINIO_CERT_DIR/public.crt" ] ||
+    [ ! -f "$MINIO_CERT_DIR/private.key" ] ||
+    ! openssl x509 -checkend 86400 -noout -in "$MINIO_CERT_DIR/public.crt" >/dev/null 2>&1; then
+    rm -f "$MINIO_CERT_DIR/public.crt" "$MINIO_CERT_DIR/private.key"
     openssl req -x509 -newkey rsa:2048 -nodes \
         -keyout "$MINIO_CERT_DIR/private.key" \
         -out "$MINIO_CERT_DIR/public.crt" \
-        -days 1 \
+        -days 7 \
         -subj "/CN=minio" \
         -addext "subjectAltName=DNS:minio,DNS:localhost,IP:127.0.0.1" >/dev/null 2>&1
 fi
@@ -186,6 +197,20 @@ EOF
         '
 }
 
+seed_backup_sentinel() {
+    compose exec -T db psql -v ON_ERROR_STOP=1 -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" <<SQL
+CREATE SCHEMA IF NOT EXISTS backup_restore_test;
+CREATE TABLE IF NOT EXISTS backup_restore_test.sentinel (
+    marker text PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+TRUNCATE backup_restore_test.sentinel;
+INSERT INTO backup_restore_test.sentinel (marker) VALUES ('$SENTINEL_VALUE');
+CHECKPOINT;
+SELECT pg_switch_wal();
+SQL
+}
+
 verify_restored_backup() {
     docker run -d \
         --name "$RESTORE_CONTAINER_NAME" \
@@ -200,7 +225,13 @@ verify_restored_backup() {
     for _ in $(seq 1 30); do
         if docker exec "$RESTORE_CONTAINER_NAME" pg_isready -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" >/dev/null 2>&1; then
             docker exec "$RESTORE_CONTAINER_NAME" psql -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc 'select 1' >/dev/null
-            return 0
+            restored_count=$(docker exec "$RESTORE_CONTAINER_NAME" psql -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc "select count(*) from backup_restore_test.sentinel where marker = '$SENTINEL_VALUE';" | tr -d '[:space:]')
+            if [ "$restored_count" = "1" ]; then
+                return 0
+            fi
+
+            echo "Restored backup did not contain the expected sentinel row: $SENTINEL_VALUE" >&2
+            return 1
         fi
         sleep 1
     done
@@ -214,6 +245,7 @@ compose build db backup
 compose up -d db minio minio-init
 # shellcheck disable=SC2016
 compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done'
+seed_backup_sentinel
 compose run --rm backup
 compose run --rm minio-client -ceu 'mc --insecure alias set local https://minio:9000 minioadmin minioadmin >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/backup/yelukerest/backup.info >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/archive/yelukerest/archive.info >/dev/null'
 restore_backup
