@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(16);
 
 SELECT is(
     (
@@ -66,8 +66,39 @@ SELECT is(
 
 SELECT is(
     has_function_privilege('app', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE'),
+    false,
+    'app should not be able to execute auth.sign_jwt directly'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname = 'check_request_jwt'
+        AND p.proconfig @> ARRAY['search_path=pg_catalog, api, settings, request, pg_temp']
+    ),
+    1,
+    'api.check_request_jwt should pin its search_path'
+);
+
+SELECT is(
+    has_function_privilege('student', 'api.check_request_jwt()', 'EXECUTE'),
     true,
-    'app should be able to execute auth.sign_jwt through api.user_jwts'
+    'student should be able to execute api.check_request_jwt as a PostgREST pre-request hook'
+);
+
+SELECT is(
+    has_function_privilege('app', 'api.issue_user_jwt(text)', 'EXECUTE'),
+    true,
+    'app should be able to execute api.issue_user_jwt'
+);
+
+SELECT is(
+    has_function_privilege('student', 'api.issue_user_jwt(text)', 'EXECUTE'),
+    false,
+    'student should not be able to execute api.issue_user_jwt'
 );
 
 SELECT is(

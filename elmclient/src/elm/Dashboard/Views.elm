@@ -237,16 +237,18 @@ secretRowMarkup secretsToShow slug body =
 
 
 userSecretTable : CurrentUser -> List UserSecret -> Set String -> Html.Html Msg
-userSecretTable user secrets secretsToShow =
+userSecretTable _ secrets secretsToShow =
     Html.div []
         [ Html.h2 [] [ Html.text "Your user secrets" ]
         , Html.table [ Attrs.class "dashboard" ]
             [ Html.tbody []
-                ( secretRowMarkup secretsToShow "jwt" user.jwt 
-                    :: List.map
-                        (secretRow secretsToShow)
-                        secrets
+                (List.map
+                    (secretRow secretsToShow)
+                    secrets
                 )
+            ]
+        , Html.p []
+            [ Html.a [ Attrs.href "/auth/jwt" ] [ Html.text "API token" ]
             ]
         ]
 

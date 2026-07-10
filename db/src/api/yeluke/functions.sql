@@ -1,6 +1,50 @@
 -- Online quiz question/answer helper functions were removed with the
 -- paper-only quiz workflow.
 
+CREATE OR REPLACE FUNCTION check_request_jwt() RETURNS void
+STABLE
+SECURITY DEFINER
+LANGUAGE plpgsql
+SET search_path = pg_catalog, api, settings, request, pg_temp
+AS $$
+DECLARE
+    claims jsonb;
+    claim_role text;
+    expected_audience text;
+    audience_claim jsonb;
+BEGIN
+    claim_role := request.user_role();
+    IF claim_role IS NULL OR claim_role = '' OR claim_role = 'anonymous' THEN
+        RETURN;
+    END IF;
+
+    claims := nullif(current_setting('request.jwt.claims', true), '')::jsonb;
+    IF claims IS NULL THEN
+        RAISE insufficient_privilege USING MESSAGE = 'missing jwt claims';
+    END IF;
+
+    IF claims->>'iss' IS DISTINCT FROM settings.get('jwt_issuer') THEN
+        RAISE insufficient_privilege USING MESSAGE = 'invalid jwt issuer';
+    END IF;
+
+    expected_audience := settings.get('jwt_audience');
+    audience_claim := claims->'aud';
+    IF NOT (
+        (jsonb_typeof(audience_claim) = 'string' AND audience_claim #>> '{}' = expected_audience)
+        OR
+        (jsonb_typeof(audience_claim) = 'array' AND audience_claim ? expected_audience)
+    ) THEN
+        RAISE insufficient_privilege USING MESSAGE = 'invalid jwt audience';
+    END IF;
+
+    IF coalesce(claims->>'sub', '') = '' THEN
+        RAISE insufficient_privilege USING MESSAGE = 'missing jwt subject';
+    END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION check_request_jwt() FROM PUBLIC;
+
 DROP FUNCTION IF EXISTS sync_meetings(jsonb);
 CREATE OR REPLACE FUNCTION sync_meetings(p_meetings jsonb)
 RETURNS TABLE (

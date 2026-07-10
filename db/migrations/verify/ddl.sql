@@ -590,8 +590,24 @@ BEGIN
         RAISE EXCEPTION 'faculty must be able to execute auth.sign_jwt through api.user_jwts';
     END IF;
 
-    IF NOT has_function_privilege('app', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
-        RAISE EXCEPTION 'app must be able to execute auth.sign_jwt through api.user_jwts';
+    IF has_function_privilege('app', 'auth.sign_jwt(integer, data.user_role)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'app must not be able to execute auth.sign_jwt directly';
+    END IF;
+
+    IF NOT has_function_privilege('student', 'api.check_request_jwt()', 'EXECUTE')
+        OR NOT has_function_privilege('app', 'api.check_request_jwt()', 'EXECUTE')
+    THEN
+        RAISE EXCEPTION 'authenticated roles must be able to execute api.check_request_jwt';
+    END IF;
+
+    IF NOT has_function_privilege('app', 'api.issue_user_jwt(text)', 'EXECUTE')
+        OR has_function_privilege('student', 'api.issue_user_jwt(text)', 'EXECUTE')
+    THEN
+        RAISE EXCEPTION 'api.issue_user_jwt privileges are incorrect';
+    END IF;
+
+    IF has_table_privilege('app', 'api.user_jwts', 'SELECT') THEN
+        RAISE EXCEPTION 'app must not be able to select api.user_jwts directly';
     END IF;
 
     IF has_schema_privilege('student', 'auth', 'USAGE') THEN

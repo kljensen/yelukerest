@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strings"
 	"testing"
 )
 
@@ -32,26 +31,39 @@ func testFetchJWTConfig(t *testing.T, handler http.HandlerFunc) FetchJWTConfig {
 	}
 }
 
-func TestUserJWTURLEscapesNetID(t *testing.T) {
+func TestIssueUserJWTURL(t *testing.T) {
 	config := FetchJWTConfig{
 		PostgrestHost: "postgrest",
 		PostgrestPort: "3000",
 	}
 
-	got := userJWTURL("abc+123&role=faculty", config)
+	got := issueUserJWTURL(config)
 
-	if !strings.Contains(got, "netid=eq.abc%2B123%26role%3Dfaculty") {
-		t.Fatalf("netid was not URL-escaped: %s", got)
+	if got != "http://postgrest:3000/rpc/issue_user_jwt" {
+		t.Fatalf("issueUserJWTURL = %q", got)
 	}
 }
 
 func TestFetchUserJWTInfoSendsServiceToken(t *testing.T) {
 	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Method; got != http.MethodPost {
+			t.Fatalf("method = %q", got)
+		}
+		if got := r.URL.Path; got != "/rpc/issue_user_jwt" {
+			t.Fatalf("path = %q", got)
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
 			t.Fatalf("Authorization header = %q", got)
 		}
-		if got := r.URL.Query().Get("netid"); got != "eq.abc+123" {
-			t.Fatalf("netid query = %q", got)
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("Content-Type header = %q", got)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if got := body["requested_netid"]; got != "abc+123" {
+			t.Fatalf("requested_netid = %q", got)
 		}
 
 		w.Header().Set("Content-Type", "application/json")

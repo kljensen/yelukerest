@@ -135,18 +135,8 @@ describe('authentication API endpoint', () => {
                 netid: 'abc123',
                 role: 'student',
             });
-        we.expect(response.body.jwt)
-            .to.be.a('string')
-            .and.not.match(/[\r\n]/);
-
-        const payload = decodeJWTPayload(response.body.jwt);
-        we.expect(payload)
-            .to.include({
-                user_id: 1,
-                role: 'student',
-            });
-        we.expect(payload.exp)
-            .to.be.above(Math.floor(Date.now() / 1000));
+        we.expect(response.body)
+            .to.not.have.property('jwt');
     });
 
     it('should return user-scoped OpenAPI JSON from /auth/api.json', async () => {
@@ -183,7 +173,7 @@ describe('authentication API endpoint', () => {
             });
     });
 
-    it('should sign JWTs with the user id, role, and expiry claims', async () => {
+    it('should sign JWTs with constrained identity and validity claims', async () => {
         let jwt;
         try {
             jwt = await getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
@@ -194,11 +184,21 @@ describe('authentication API endpoint', () => {
         const payload = decodeJWTPayload(jwt);
         we.expect(payload)
             .to.include({
+                iss: 'yelukerest',
+                aud: 'yelukerest-postgrest',
+                sub: 'user:1',
                 user_id: 1,
                 role: 'student',
             });
+        we.expect(payload.iat)
+            .to.be.at.most(Math.floor(Date.now() / 1000));
+        we.expect(payload.nbf)
+            .to.be.at.most(Math.floor(Date.now() / 1000));
         we.expect(payload.exp)
             .to.be.above(Math.floor(Date.now() / 1000));
+        we.expect(payload.jti)
+            .to.be.a('string')
+            .and.match(/^[0-9a-f-]{36}$/);
     });
 
     it('should not mint JWTs for observer users', async () => {

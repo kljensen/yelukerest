@@ -241,7 +241,7 @@ COMMENT ON COLUMN user_secrets.created_at IS 'When this user secret row was crea
 COMMENT ON COLUMN user_secrets.updated_at IS 'When this user secret row was last updated';
 
 COMMENT ON VIEW user_jwts IS
-    'JWT helper view for authenticated users and auth application flows';
+    'JWT helper view for authenticated user and faculty flows';
 COMMENT ON COLUMN user_jwts.jwt IS 'Signed JWT for the row user when the requester is allowed to receive it';
 COMMENT ON COLUMN user_jwts.id IS 'Unique user id';
 COMMENT ON COLUMN user_jwts.email IS 'User email address';
@@ -255,3 +255,6 @@ COMMENT ON COLUMN user_jwts.role IS 'Course role assigned to the user';
 COMMENT ON COLUMN user_jwts.created_at IS 'When this user row was created';
 COMMENT ON COLUMN user_jwts.updated_at IS 'When this user row was last updated';
 COMMENT ON COLUMN user_jwts.team_nickname IS 'Team nickname assigned to the user, if any';
+
+COMMENT ON FUNCTION issue_user_jwt(text) IS
+    'Issue one user JWT for the requested netid when called by the authapp service';

@@ -32,3 +32,18 @@ create or replace view user_jwts as
 -- row-level access. So, student are not going to be able to see other
 -- students rows.
 alter view user_jwts owner to api;
+
+create or replace function issue_user_jwt(requested_netid text) returns setof user_jwts
+stable
+security definer
+language sql
+set search_path = pg_catalog, api, request, pg_temp
+begin atomic
+    select user_jwts.*
+    from api.user_jwts
+    where user_jwts.netid = requested_netid
+    and request.user_role() = 'app'
+    and request.app_name() = 'authapp';
+end;
+revoke all privileges on function issue_user_jwt(text) from public;
+alter function issue_user_jwt(text) owner to api;

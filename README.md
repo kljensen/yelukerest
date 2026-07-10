@@ -165,6 +165,17 @@ For `YELUKEREST_CLIENT_JWT` (user klj39's user id)
 ./bin/jwt.sh '{"user_id":1,"role":"faculty"}'
 ```
 
+`bin/jwt.sh` adds the standard issuer, audience, subject, issued-at,
+not-before, and token-id claims used by the stricter JWT validator. After
+regenerating hand-minted service/client tokens, set:
+
+```
+PRE_REQUEST=api.check_request_jwt
+```
+
+This enables the PostgREST pre-request hook that rejects authenticated JWTs
+with the wrong issuer, missing/wrong audience, or missing subject.
+
 ## Random notes
 
 ### Restoring production backups

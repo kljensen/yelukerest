@@ -147,6 +147,53 @@ CREATE TYPE data.user_role AS ENUM (
 ALTER TYPE data.user_role OWNER TO superuser;
 
 --
+-- Name: check_request_jwt(); Type: FUNCTION; Schema: api; Owner: superuser
+--
+
+CREATE FUNCTION api.check_request_jwt() RETURNS void
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'api', 'settings', 'request', 'pg_temp'
+    AS $$
+DECLARE
+    claims jsonb;
+    claim_role text;
+    expected_audience text;
+    audience_claim jsonb;
+BEGIN
+    claim_role := request.user_role();
+    IF claim_role IS NULL OR claim_role = '' OR claim_role = 'anonymous' THEN
+        RETURN;
+    END IF;
+
+    claims := nullif(current_setting('request.jwt.claims', true), '')::jsonb;
+    IF claims IS NULL THEN
+        RAISE insufficient_privilege USING MESSAGE = 'missing jwt claims';
+    END IF;
+
+    IF claims->>'iss' IS DISTINCT FROM settings.get('jwt_issuer') THEN
+        RAISE insufficient_privilege USING MESSAGE = 'invalid jwt issuer';
+    END IF;
+
+    expected_audience := settings.get('jwt_audience');
+    audience_claim := claims->'aud';
+    IF NOT (
+        (jsonb_typeof(audience_claim) = 'string' AND audience_claim #>> '{}' = expected_audience)
+        OR
+        (jsonb_typeof(audience_claim) = 'array' AND audience_claim ? expected_audience)
+    ) THEN
+        RAISE insufficient_privilege USING MESSAGE = 'invalid jwt audience';
+    END IF;
+
+    IF coalesce(claims->>'sub', '') = '' THEN
+        RAISE insufficient_privilege USING MESSAGE = 'missing jwt subject';
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION api.check_request_jwt() OWNER TO superuser;
+
+--
 -- Name: sync_assignments(jsonb, boolean, boolean); Type: FUNCTION; Schema: api; Owner: superuser
 --
 
@@ -1540,12 +1587,26 @@ $$;
 ALTER FUNCTION pgjwt.verify(token text, secret text, algorithm text) OWNER TO superuser;
 
 --
+-- Name: jwt_claim(text); Type: FUNCTION; Schema: request; Owner: superuser
+--
+
+CREATE FUNCTION request.jwt_claim(claim text) RETURNS text
+    LANGUAGE sql STABLE
+    RETURN coalesce(
+        nullif(current_setting('request.jwt.claim.' || claim, TRUE), ''),
+        nullif((nullif(current_setting('request.jwt.claims', TRUE), '')::json ->> claim), '')
+    );
+
+
+ALTER FUNCTION request.jwt_claim(claim text) OWNER TO superuser;
+
+--
 -- Name: app_name(); Type: FUNCTION; Schema: request; Owner: superuser
 --
 
 CREATE FUNCTION request.app_name() RETURNS text
     LANGUAGE sql STABLE
-    RETURN coalesce(current_setting('request.jwt.claim.app_name', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'app_name'));
+    RETURN request.jwt_claim('app_name'::text);
 
 
 ALTER FUNCTION request.app_name() OWNER TO superuser;
@@ -1555,7 +1616,7 @@ ALTER FUNCTION request.app_name() OWNER TO superuser;
 
 CREATE FUNCTION request.user_id_as_text() RETURNS text
     LANGUAGE sql STABLE
-    RETURN coalesce(current_setting('request.jwt.claim.user_id', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'user_id'));
+    RETURN request.jwt_claim('user_id'::text);
 
 
 ALTER FUNCTION request.user_id_as_text() OWNER TO superuser;
@@ -1583,7 +1644,7 @@ ALTER FUNCTION request.user_id() OWNER TO superuser;
 
 CREATE FUNCTION request.user_role() RETURNS text
     LANGUAGE sql STABLE
-    RETURN coalesce(current_setting('request.jwt.claim.role', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'role'));
+    RETURN request.jwt_claim('role'::text);
 
 
 ALTER FUNCTION request.user_role() OWNER TO superuser;
@@ -1634,12 +1695,18 @@ ALTER FUNCTION settings.set(text, text) OWNER TO superuser;
 --
 
 CREATE FUNCTION auth.sign_jwt(user_id integer, role data.user_role) RETURNS text
-    LANGUAGE sql STABLE SECURITY DEFINER
+    LANGUAGE sql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'auth', 'settings', 'pgjwt', 'pg_temp'
     RETURN pgjwt.sign(
       json_build_object(
+        'iss', settings.get('jwt_issuer'),
+        'aud', settings.get('jwt_audience'),
+        'sub', 'user:' || user_id::text,
         'user_id', user_id,
         'role', "role"::TEXT,
+        'iat', extract(epoch from now())::integer,
+        'nbf', extract(epoch from now())::integer,
+        'jti', public.gen_random_uuid()::text,
         'exp', extract(epoch from now())::integer + settings.get('jwt_lifetime')::int -- token expires in 1 hour
       ),
       settings.get('jwt_secret'));
@@ -2804,6 +2871,24 @@ CREATE VIEW api.user_jwts AS
 
 
 ALTER VIEW api.user_jwts OWNER TO api;
+
+--
+-- Name: issue_user_jwt(text); Type: FUNCTION; Schema: api; Owner: api
+--
+
+CREATE FUNCTION api.issue_user_jwt(requested_netid text) RETURNS SETOF api.user_jwts
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'api', 'request', 'pg_temp'
+BEGIN ATOMIC
+    select user_jwts.*
+    from api.user_jwts
+    where user_jwts.netid = requested_netid
+    and request.user_role() = 'app'
+    and request.app_name() = 'authapp';
+END;
+
+
+ALTER FUNCTION api.issue_user_jwt(requested_netid text) OWNER TO api;
 
 --
 -- Name: user_secret; Type: TABLE; Schema: data; Owner: superuser
@@ -4098,7 +4183,26 @@ GRANT ALL ON FUNCTION auth.sign_jwt(user_id integer, role data.user_role) TO api
 GRANT ALL ON FUNCTION auth.sign_jwt(user_id integer, role data.user_role) TO student;
 GRANT ALL ON FUNCTION auth.sign_jwt(user_id integer, role data.user_role) TO ta;
 GRANT ALL ON FUNCTION auth.sign_jwt(user_id integer, role data.user_role) TO faculty;
-GRANT ALL ON FUNCTION auth.sign_jwt(user_id integer, role data.user_role) TO app;
+
+
+--
+-- Name: FUNCTION check_request_jwt(); Type: ACL; Schema: api; Owner: superuser
+--
+
+REVOKE ALL ON FUNCTION api.check_request_jwt() FROM PUBLIC;
+GRANT ALL ON FUNCTION api.check_request_jwt() TO anonymous;
+GRANT ALL ON FUNCTION api.check_request_jwt() TO student;
+GRANT ALL ON FUNCTION api.check_request_jwt() TO ta;
+GRANT ALL ON FUNCTION api.check_request_jwt() TO faculty;
+GRANT ALL ON FUNCTION api.check_request_jwt() TO app;
+
+
+--
+-- Name: FUNCTION issue_user_jwt(requested_netid text); Type: ACL; Schema: api; Owner: api
+--
+
+REVOKE ALL ON FUNCTION api.issue_user_jwt(requested_netid text) FROM PUBLIC;
+GRANT ALL ON FUNCTION api.issue_user_jwt(requested_netid text) TO app;
 
 
 --
@@ -4439,7 +4543,6 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.ui_elements TO faculty;
 GRANT SELECT ON TABLE api.user_jwts TO student;
 GRANT SELECT ON TABLE api.user_jwts TO ta;
 GRANT SELECT ON TABLE api.user_jwts TO faculty;
-GRANT SELECT ON TABLE api.user_jwts TO app;
 
 
 --

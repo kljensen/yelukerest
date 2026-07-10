@@ -26,6 +26,8 @@ create extension if not exists pgcrypto;
 -- save app settings
 select settings.set('jwt_secret', :quoted_jwt_secret);
 select settings.set('jwt_lifetime', '3600');
+select settings.set('jwt_issuer', 'yelukerest');
+select settings.set('jwt_audience', 'yelukerest-postgrest');
 select settings.set('auth.default-role', 'student');
 
 

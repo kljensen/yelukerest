@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,7 @@ import (
 )
 
 type UserJWTInfo struct {
-	JWT          string `json:"jwt"`
+	JWT          string `json:"jwt,omitempty"`
 	ID           int    `json:"id"`
 	Email        string `json:"email"`
 	NetID        string `json:"netid"`
@@ -34,15 +35,12 @@ type FetchJWTConfig struct {
 	AuthappJWT    string
 }
 
-func userJWTURL(netID string, config FetchJWTConfig) string {
+func issueUserJWTURL(config FetchJWTConfig) string {
 	endpoint := url.URL{
 		Scheme: "http",
 		Host:   net.JoinHostPort(config.PostgrestHost, config.PostgrestPort),
-		Path:   "/user_jwts",
+		Path:   "/rpc/issue_user_jwt",
 	}
-	query := endpoint.Query()
-	query.Set("netid", "eq."+netID)
-	endpoint.RawQuery = query.Encode()
 	return endpoint.String()
 }
 
@@ -51,13 +49,19 @@ func fetchUserJWTInfo(netID string, config FetchJWTConfig) (*UserJWTInfo, error,
 		return nil, fmt.Errorf("netid is nil"), http.StatusForbidden
 	}
 
-	req, err := http.NewRequest("GET", userJWTURL(netID, config), nil)
+	requestBody, err := json.Marshal(map[string]string{"requested_netid": netID})
+	if err != nil {
+		return nil, fmt.Errorf("error creating jwt request body: %v", err), http.StatusInternalServerError
+	}
+
+	req, err := http.NewRequest("POST", issueUserJWTURL(config), bytes.NewReader(requestBody))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err), http.StatusInternalServerError
 	}
 
 	req.Header.Set("Authorization", "Bearer "+config.AuthappJWT)
 	req.Header.Set("Accept", "application/vnd.pgrst.object+json")
+	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
@@ -68,7 +72,7 @@ func fetchUserJWTInfo(netID string, config FetchJWTConfig) (*UserJWTInfo, error,
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading response: %v", err), http.StatusInternalServerError
 	}
@@ -80,12 +84,12 @@ func fetchUserJWTInfo(netID string, config FetchJWTConfig) (*UserJWTInfo, error,
 		case http.StatusUnauthorized:
 			return nil, fmt.Errorf("authapp service token rejected by postgrest"), http.StatusBadGateway
 		default:
-			return nil, fmt.Errorf("unexpected postgrest status %s: %s", resp.Status, string(body)), http.StatusBadGateway
+			return nil, fmt.Errorf("unexpected postgrest status %s: %s", resp.Status, string(responseBody)), http.StatusBadGateway
 		}
 	}
 
 	var data UserJWTInfo
-	err = json.Unmarshal(body, &data)
+	err = json.Unmarshal(responseBody, &data)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing jwt response: %v", err), http.StatusBadGateway
 	}
@@ -145,6 +149,7 @@ func getMeHandler(config FetchJWTConfig) http.HandlerFunc {
 			http.Error(w, err.Error(), statusCode)
 			return
 		}
+		data.JWT = ""
 
 		encodedData, err := json.Marshal(data)
 		if err != nil {

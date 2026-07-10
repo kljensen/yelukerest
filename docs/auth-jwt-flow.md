@@ -45,16 +45,16 @@ Checked on 2026-07-06:
 7. `authapp` validates the ticket with `CAS_VALIDATION_URI` and extracts the
    CAS user netid.
 8. `authapp` calls PostgREST:
-   `GET /user_jwts?netid=eq.<netid>` with `Authorization: Bearer $AUTHAPP_JWT`.
+   `POST /rpc/issue_user_jwt` with the requested netid and
+   `Authorization: Bearer $AUTHAPP_JWT`.
 9. PostgreSQL grants/RLS allow this only when the JWT has `role = app` and
    `app_name = authapp`.
-10. `api.user_jwts` returns user data and a freshly signed user JWT when the
-    netid belongs to a known Yelukerest user.
+10. `api.issue_user_jwt` returns user data and a freshly signed user JWT when
+    the netid belongs to a known Yelukerest user.
 11. `authapp` renews the server-side session token, stores the netid in the
     session, and redirects to `next` or `/`.
-12. Elm calls `/auth/me` again and receives the current user plus a fresh
-    PostgREST JWT.
-13. Elm keeps that JWT in memory and sends it as
+12. Elm calls `/auth/me` again and receives non-secret current user data.
+13. Elm calls `/auth/jwt` explicitly, keeps that JWT in memory, and sends it as
     `Authorization: Bearer <jwt>` to `/rest/*`.
 14. PostgREST verifies the JWT signature and expiry, switches to the JWT
     `role`, sets request JWT claims, and PostgreSQL authorizes the request.
@@ -78,21 +78,35 @@ Yale CAS URLs.
 `AUTHAPP_JWT`:
 
 - Long-lived service token configured in `.env`.
-- Expected payload is `{"role":"app","app_name":"authapp"}`.
-- Used only by `authapp` to ask PostgREST for rows from `api.user_jwts`.
+- Expected payload includes `role=app`, `app_name=authapp`, `iss`, `aud`, and
+  `sub`. `bin/jwt.sh` adds the standard claims automatically.
+- Used only by `authapp` to ask PostgREST for one row from
+  `api.issue_user_jwt`.
 - Must not be exposed to browsers or committed.
 
 User PostgREST JWT:
 
 - Signed in PostgreSQL by `auth.sign_jwt`.
-- Contains `user_id`, `role`, and `exp`.
+- Contains `iss`, `aud`, `sub`, `user_id`, `role`, `iat`, `nbf`, `jti`, and
+  `exp`.
 - Default lifetime is one hour from `settings.jwt_lifetime`.
-- Returned by `/auth/me` and `/auth/jwt` only for valid sessions.
+- Returned by `/auth/jwt` only for valid sessions. `/auth/me` returns
+  non-secret current user data.
 - Used by Elm and API clients to call `/rest/*`.
-- `student`, `ta`, `faculty`, and `app` currently need `EXECUTE` on
-  `auth.sign_jwt` so `api.user_jwts` can mint constrained JWT values for those
-  callers. They do not receive `USAGE` on schema `auth`, and direct JWT
-  visibility is constrained by `api.user_jwts` RLS-backed tests.
+- `student`, `ta`, and `faculty` currently need `EXECUTE` on `auth.sign_jwt`
+  so `api.user_jwts` can mint constrained JWT values for those callers. `app`
+  uses `api.issue_user_jwt` instead and cannot select `api.user_jwts`
+  directly. Application roles do not receive `USAGE` on schema `auth`.
+
+JWT pre-request validation:
+
+- Set `PRE_REQUEST=api.check_request_jwt` to enable the PostgREST pre-request
+  hook.
+- The hook rejects authenticated requests whose JWT issuer is not
+  `yelukerest`, whose audience is not `yelukerest-postgrest`, or whose subject
+  is missing.
+- Regenerate hand-minted service/client tokens with `bin/jwt.sh` before
+  enabling the hook.
 
 `YELUKEREST_CLIENT_JWT`:
 
@@ -116,12 +130,12 @@ Swagger:
 | Role | How it is obtained | JWT claims | `api.user_jwts` behavior | Notes |
 | --- | --- | --- | --- | --- |
 | `anonymous` | No JWT or no role claim | none | no access | PostgREST anonymous role. Public read access is controlled only by grants/RLS. |
-| `student` | CAS login for a student user | `user_id`, `role=student`, `exp` | sees own row and own JWT | Normal student browser role. |
-| `ta` | CAS login for a TA user | `user_id`, `role=ta`, `exp` | sees user rows but JWT is non-null only for self | Broader read access than students, not equivalent to faculty. |
-| `faculty` | CAS login for a faculty user | `user_id`, `role=faculty`, `exp` | sees all user JWTs | Broadest human role and the normal admin token role. |
+| `student` | CAS login for a student user | `iss`, `aud`, `sub`, `user_id`, `role=student`, `exp` | sees own row and own JWT | Normal student browser role. |
+| `ta` | CAS login for a TA user | `iss`, `aud`, `sub`, `user_id`, `role=ta`, `exp` | sees user rows but JWT is non-null only for self | Broader read access than students, not equivalent to faculty. |
+| `faculty` | CAS login for a faculty user | `iss`, `aud`, `sub`, `user_id`, `role=faculty`, `exp` | sees all user JWTs | Broadest human role and the normal admin token role. |
 | `observer` | CAS login for an observer user | none minted | JWT is intentionally null | Current sample data includes this role, but observers have no supported API surface yet. |
-| `app` | Service token | `role=app`, optional `app_name` | no user JWTs unless `app_name=authapp` | Not a `data.user_role`; used for app-to-app access. |
-| `app/authapp` | `AUTHAPP_JWT` | `role=app`, `app_name=authapp` | can fetch all user rows/JWTs | Service boundary between CAS sessions and user JWT minting. |
+| `app` | Service token | `role=app`, optional `app_name`, `iss`, `aud`, `sub` | no direct access | Not a `data.user_role`; used for app-to-app access. |
+| `app/authapp` | `AUTHAPP_JWT` | `role=app`, `app_name=authapp`, `iss`, `aud`, `sub` | can issue one user JWT by netid through RPC | Service boundary between CAS sessions and user JWT minting. |
 | `authenticator` | PostgREST DB connection role | none | not a request identity | Can switch into application roles granted to it. |
 
 ## Failure Modes
@@ -130,7 +144,7 @@ Swagger:
 | --- | --- | --- |
 | No session for `/auth/me` or `/auth/jwt` | `401 Unauthorized` | REST auth tests |
 | `/auth/login` requested | `302`/`307` redirect to CAS | REST auth tests |
-| Valid CAS netid in `data.user` | session created; `/auth/me` and `/auth/jwt` return user JWT | REST auth tests |
+| Valid CAS netid in `data.user` | session created; `/auth/me` returns non-secret user data; `/auth/jwt` returns user JWT | REST auth tests |
 | CAS-valid netid not in `data.user` | no session; JWT request returns no token | REST auth tests |
 | Missing `ticket` on `/auth/validate` | `400 Bad Request` | not yet covered |
 | CAS validation failure | `401 Unauthorized` | not yet covered directly |

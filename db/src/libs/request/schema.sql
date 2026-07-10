@@ -4,23 +4,32 @@ CREATE SCHEMA request;
 
 GRANT usage ON SCHEMA request TO public;
 
+CREATE OR REPLACE FUNCTION request.jwt_claim (claim text)
+    RETURNS text
+    STABLE
+    LANGUAGE sql
+    RETURN coalesce(
+        nullif(current_setting('request.jwt.claim.' || claim, TRUE), ''),
+        nullif((nullif(current_setting('request.jwt.claims', TRUE), '')::json ->> claim), '')
+    );
+
 CREATE OR REPLACE FUNCTION request.user_role ()
     RETURNS text
     STABLE
     LANGUAGE sql
-    RETURN coalesce(current_setting('request.jwt.claim.role', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'role'));
+    RETURN request.jwt_claim('role');
 
 CREATE OR REPLACE FUNCTION request.app_name ()
     RETURNS text
     STABLE
     LANGUAGE sql
-    RETURN coalesce(current_setting('request.jwt.claim.app_name', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'app_name'));
+    RETURN request.jwt_claim('app_name');
 
 CREATE OR REPLACE FUNCTION request.user_id_as_text ()
     RETURNS text
     STABLE
     LANGUAGE sql
-    RETURN coalesce(current_setting('request.jwt.claim.user_id', TRUE), (current_setting('request.jwt.claims', TRUE)::json ->> 'user_id'));
+    RETURN request.jwt_claim('user_id');
 
 CREATE OR REPLACE FUNCTION request.user_id ()
     RETURNS int

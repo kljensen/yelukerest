@@ -13,19 +13,52 @@ import Http
 import Json.Decode as Decode
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
+import Task
 
 
 fetchCurrentUser : Cmd Msg
 fetchCurrentUser =
-    Http.get
-        { url = fetchCurrentUserUrl
-        , expect = Http.expectJson (RemoteData.fromResult >> Msgs.OnFetchCurrentUser) currentUserDecoder
-        }
+    fetchCurrentUserTask
+        |> Task.andThen
+            (\user ->
+                fetchJWTTask
+                    |> Task.map (\jwt -> { user | jwt = jwt })
+            )
+        |> Task.attempt (RemoteData.fromResult >> Msgs.OnFetchCurrentUser)
 
 
 fetchCurrentUserUrl : String
 fetchCurrentUserUrl =
     "/auth/me"
+
+
+fetchJWTUrl : String
+fetchJWTUrl =
+    "/auth/jwt"
+
+
+fetchCurrentUserTask : Task.Task Http.Error CurrentUser
+fetchCurrentUserTask =
+    Http.task
+        { method = "GET"
+        , headers = []
+        , url = fetchCurrentUserUrl
+        , body = Http.emptyBody
+        , resolver = Http.stringResolver (handleJsonResponse currentUserDecoder)
+        , timeout = Nothing
+        }
+
+
+fetchJWTTask : Task.Task Http.Error JWT
+fetchJWTTask =
+    Http.task
+        { method = "GET"
+        , headers = []
+        , url = fetchJWTUrl
+        , body = Http.emptyBody
+        , resolver = Http.stringResolver handleTextResponse
+        , timeout = Nothing
+        }
 
 
 fetchForCurrentUser : CurrentUser -> String -> Decode.Decoder a -> (WebData a -> Msg) -> Cmd Msg
@@ -95,3 +128,22 @@ handleJsonResponse decoder response =
 
                 Ok result ->
                     Ok result
+
+
+handleTextResponse : Http.Response String -> Result Http.Error String
+handleTextResponse response =
+    case response of
+        Http.BadUrl_ url ->
+            Err (Http.BadUrl url)
+
+        Http.Timeout_ ->
+            Err Http.Timeout
+
+        Http.BadStatus_ { statusCode } _ ->
+            Err (Http.BadStatus statusCode)
+
+        Http.NetworkError_ ->
+            Err Http.NetworkError
+
+        Http.GoodStatus_ _ body ->
+            Ok body

@@ -13,13 +13,20 @@ func TestGetOpenAPIHandlerFetchesAndEnrichesSpec(t *testing.T) {
 	var sawOpenAPIRequest bool
 	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/user_jwts":
+		case "/rpc/issue_user_jwt":
 			sawJWTLookup = true
-			if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
-				t.Fatalf("user_jwts Authorization header = %q", got)
+			if got := r.Method; got != http.MethodPost {
+				t.Fatalf("user jwt method = %q", got)
 			}
-			if got := r.URL.Query().Get("netid"); got != "eq.abc123" {
-				t.Fatalf("netid query = %q", got)
+			if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
+				t.Fatalf("issue_user_jwt Authorization header = %q", got)
+			}
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode user jwt body: %v", err)
+			}
+			if got := body["requested_netid"]; got != "abc123" {
+				t.Fatalf("requested_netid = %q", got)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(UserJWTInfo{
@@ -107,7 +114,7 @@ func TestGetOpenAPIHandlerFetchesAndEnrichesSpec(t *testing.T) {
 func TestGetOpenAPIHandlerMapsPostgRESTSpecFailure(t *testing.T) {
 	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/user_jwts":
+		case "/rpc/issue_user_jwt":
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(UserJWTInfo{
 				JWT: "user-token",

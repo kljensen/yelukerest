@@ -30,7 +30,7 @@ currentUserDecoder =
     Decode.succeed CurrentUser
         |> required "id" Decode.int
         |> required "netid" Decode.string
-        |> required "jwt" Decode.string
+        |> optional "jwt" Decode.string ""
         |> required "role" Decode.string
         |> required "nickname" Decode.string
         |> required "team_nickname" (Decode.nullable Decode.string)
