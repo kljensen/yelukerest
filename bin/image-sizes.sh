@@ -9,7 +9,7 @@ yelukerest-caddy:latest
 yelukerest-elmclient:latest
 yelukerest-elmclient-test:latest
 yelukerest-postgres:18.4-pgbackrest
-yelukerest-postgres-dev:18.4-pgtap
+ghcr.io/kljensen/docker-postgres-pgtap:18.4-pgtap-1.3.4
 ghcr.io/kljensen/docker-postgrest-static:14.14
 "
 

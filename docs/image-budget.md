@@ -27,6 +27,9 @@ docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmc
 - `backup` runs on Alpine with pgBackRest and PostgreSQL client tools.
 - `db` uses PostgreSQL 18 Alpine and adds pgBackRest so production WAL
   `archive_command` can push to the same S3-compatible repository as backups.
+- `db` in development uses `ghcr.io/kljensen/docker-postgres-pgtap:18.4-pgtap-1.3.4`,
+  a separate PostgreSQL Alpine image with pgTAP installed. The test stack does
+  not download pgTAP from GitHub during normal yelukerest builds.
 - `caddy` comes from `ghcr.io/kljensen/docker-caddy-dns-static:2.11.4`, a
   scratch runtime with a static Caddy binary and Route53/Cloudflare DNS
   providers.
@@ -48,9 +51,9 @@ Measured on 2026-07-08 after building the REST stack and Elm test target:
 | `yelukerest-elmclient:latest` | 72.9 |
 | `yelukerest-elmclient-test:latest` | 221.6 |
 | `yelukerest-postgres:18.4-pgbackrest` | 306.0 |
-| `yelukerest-postgres-dev:18.4-pgtap` | 308.8 |
+| `ghcr.io/kljensen/docker-postgres-pgtap:18.4-pgtap-1.3.4` | 286.3 |
 | `ghcr.io/kljensen/docker-postgrest-static:14.14` | 82.5 |
-| **Total tracked current set** | **1094.0** |
+| **Total tracked current set** | **1071.5** |
 
 The current production-ish runtime subset, excluding `elmclient-test` and
 `postgres-dev`, is 563.6 MiB.
