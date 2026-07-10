@@ -13,13 +13,19 @@ MINIO_CERT_DIR=tmp/pgbackrest-minio-certs
 MINIO_IMAGE=${YELUKEREST_PGBACKREST_TEST_MINIO_IMAGE:-quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
 MINIO_MC_IMAGE=${YELUKEREST_PGBACKREST_TEST_MINIO_MC_IMAGE:-quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727}
 SENTINEL_VALUE=${YELUKEREST_PGBACKREST_TEST_SENTINEL:-pgbackrest-restore-$(date +%Y%m%d%H%M%S)}
+PITR_BAD_VALUE=${SENTINEL_VALUE}-after-target
 
-case "$SENTINEL_VALUE" in
-    *[!A-Za-z0-9_.:-]*)
-        echo "Backup restore sentinel contains unsupported characters: $SENTINEL_VALUE" >&2
-        exit 1
-        ;;
-esac
+validate_marker() {
+    case "$1" in
+        *[!A-Za-z0-9_.:-]*)
+            echo "Backup restore sentinel contains unsupported characters: $1" >&2
+            exit 1
+            ;;
+    esac
+}
+
+validate_marker "$SENTINEL_VALUE"
+validate_marker "$PITR_BAD_VALUE"
 
 cd "$ROOT_DIR"
 mkdir -p "$(dirname "$OVERRIDE_FILE")"
@@ -138,11 +144,14 @@ cleanup() {
         rm -f "$OVERRIDE_FILE"
         docker volume rm "$PG_VOLUME_NAME" >/dev/null 2>&1 || true
         docker volume rm "$RESTORE_VOLUME_NAME" >/dev/null 2>&1 || true
+        docker volume rm "${PROJECT_NAME}_postgres-run" >/dev/null 2>&1 || true
     fi
 }
 trap cleanup EXIT INT TERM
 
 restore_backup() {
+    restore_target_time=${1:-}
+
     docker rm -f "$RESTORE_CONTAINER_NAME" >/dev/null 2>&1 || true
     docker run --rm \
         --network "${PROJECT_NAME}_default" \
@@ -157,6 +166,7 @@ restore_backup() {
         -e PGBACKREST_REPO1_STORAGE_PORT=9000 \
         -e PGBACKREST_REPO1_STORAGE_VERIFY_TLS=n \
         -e POSTGRES_DATA_PATH=/var/lib/postgresql/18/docker \
+        -e RESTORE_TARGET_TIME="$restore_target_time" \
         -v "${RESTORE_VOLUME_NAME}:/var/lib/postgresql" \
         yelukerest-postgres:18.4-pgbackrest \
         -ceu '
@@ -192,7 +202,17 @@ EOF
                 printf "repo1-s3-endpoint=%s\n" "$repo1_endpoint" >> "$config"
             fi
 
-            pgbackrest --config="$config" --stanza=yelukerest restore
+            if [ -n "${RESTORE_TARGET_TIME:-}" ]; then
+                pgbackrest \
+                    --config="$config" \
+                    --stanza=yelukerest \
+                    --type=time \
+                    --target="$RESTORE_TARGET_TIME" \
+                    --target-action=promote \
+                    restore
+            else
+                pgbackrest --config="$config" --stanza=yelukerest restore
+            fi
             chown -R postgres:postgres /var/lib/postgresql
         '
 }
@@ -207,11 +227,53 @@ CREATE TABLE IF NOT EXISTS backup_restore_test.sentinel (
 TRUNCATE backup_restore_test.sentinel;
 INSERT INTO backup_restore_test.sentinel (marker) VALUES ('$SENTINEL_VALUE');
 CHECKPOINT;
-SELECT pg_switch_wal();
 SQL
 }
 
+wait_for_archived_wal() {
+    compose exec -T db psql -v ON_ERROR_STOP=1 -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" <<'SQL'
+DO $$
+DECLARE
+    switched_wal text;
+BEGIN
+    SELECT pg_walfile_name(pg_current_wal_lsn()) INTO switched_wal;
+    PERFORM pg_switch_wal();
+
+    FOR i IN 1..60 LOOP
+        PERFORM pg_stat_clear_snapshot();
+        PERFORM 1
+        FROM pg_stat_archiver
+        WHERE last_archived_wal >= switched_wal;
+
+        IF FOUND THEN
+            RETURN;
+        END IF;
+
+        PERFORM pg_sleep(1);
+    END LOOP;
+
+    RAISE EXCEPTION 'timed out waiting for WAL segment % to archive', switched_wal;
+END;
+$$;
+SQL
+}
+
+insert_bad_pitr_marker() {
+    pitr_target_time=$(compose exec -T db psql -v ON_ERROR_STOP=1 -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc "select to_char(clock_timestamp(), 'YYYY-MM-DD HH24:MI:SS.USOF');" | tr -d '\r')
+
+    compose exec -T db psql -v ON_ERROR_STOP=1 -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" <<SQL
+SELECT pg_sleep(1);
+INSERT INTO backup_restore_test.sentinel (marker) VALUES ('$PITR_BAD_VALUE');
+CHECKPOINT;
+SQL
+
+    wait_for_archived_wal
+}
+
 verify_restored_backup() {
+    expected_marker=$1
+    forbidden_marker=${2:-}
+
     docker run -d \
         --name "$RESTORE_CONTAINER_NAME" \
         --network "${PROJECT_NAME}_default" \
@@ -225,12 +287,19 @@ verify_restored_backup() {
     for _ in $(seq 1 30); do
         if docker exec "$RESTORE_CONTAINER_NAME" pg_isready -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" >/dev/null 2>&1; then
             docker exec "$RESTORE_CONTAINER_NAME" psql -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc 'select 1' >/dev/null
-            restored_count=$(docker exec "$RESTORE_CONTAINER_NAME" psql -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc "select count(*) from backup_restore_test.sentinel where marker = '$SENTINEL_VALUE';" | tr -d '[:space:]')
+            restored_count=$(docker exec "$RESTORE_CONTAINER_NAME" psql -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc "select count(*) from backup_restore_test.sentinel where marker = '$expected_marker';" | tr -d '[:space:]')
             if [ "$restored_count" = "1" ]; then
+                if [ -n "$forbidden_marker" ]; then
+                    forbidden_count=$(docker exec "$RESTORE_CONTAINER_NAME" psql -U "$SUPER_USER_VALUE" -d "$DB_NAME_VALUE" -tAc "select count(*) from backup_restore_test.sentinel where marker = '$forbidden_marker';" | tr -d '[:space:]')
+                    if [ "$forbidden_count" != "0" ]; then
+                        echo "Restored backup contained forbidden marker: $forbidden_marker" >&2
+                        return 1
+                    fi
+                fi
                 return 0
             fi
 
-            echo "Restored backup did not contain the expected sentinel row: $SENTINEL_VALUE" >&2
+            echo "Restored backup did not contain the expected sentinel row: $expected_marker" >&2
             return 1
         fi
         sleep 1
@@ -249,4 +318,7 @@ seed_backup_sentinel
 compose run --rm backup
 compose run --rm minio-client -ceu 'mc --insecure alias set local https://minio:9000 minioadmin minioadmin >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/backup/yelukerest/backup.info >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/archive/yelukerest/archive.info >/dev/null'
 restore_backup
-verify_restored_backup
+verify_restored_backup "$SENTINEL_VALUE"
+insert_bad_pitr_marker
+restore_backup "$pitr_target_time"
+verify_restored_backup "$SENTINEL_VALUE" "$PITR_BAD_VALUE"
