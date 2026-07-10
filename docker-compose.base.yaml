@@ -101,3 +101,5 @@ services:
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
+            - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
+            - JWT_AUDIENCE=${JWT_AUDIENCE:-yelukerest-postgrest}

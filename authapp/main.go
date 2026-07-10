@@ -31,6 +31,11 @@ func main() {
 	if authappJWT == "" {
 		log.Panicln("AUTHAPP_JWT environment variable not set")
 	}
+	var jwtIssuer = envOrDefault("JWT_ISSUER", "yelukerest")
+	var jwtAudience = envOrDefault("JWT_AUDIENCE", "yelukerest-postgrest")
+	if err := validateAuthappJWT(authappJWT, jwtIssuer, jwtAudience, time.Now()); err != nil {
+		log.Panicf("AUTHAPP_JWT is invalid: %v", err)
+	}
 
 	var port = os.Getenv("PORT")
 	if port == "" {
@@ -115,6 +120,14 @@ func developmentEnabled(value string) bool {
 	default:
 		return true
 	}
+}
+
+func envOrDefault(name string, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func getLogoutHandler(sessionManager *scs.SessionManager) http.HandlerFunc {

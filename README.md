@@ -177,6 +177,10 @@ This enables the PostgREST pre-request hook that rejects authenticated JWTs
 with the wrong issuer, missing/wrong audience, missing subject, or a subject
 that does not match the authenticated user/app identity.
 
+Run `bun run doctor` after rotating secrets or editing `.env`; it checks the
+authapp service token shape and the secure PostgREST pre-request default. See
+`docs/api-client-security.md` for direct API client guidance.
+
 ## Random notes
 
 ### Restoring production backups

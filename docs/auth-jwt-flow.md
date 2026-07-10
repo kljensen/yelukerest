@@ -107,6 +107,9 @@ JWT pre-request validation:
   missing, or whose subject does not match the authenticated user/app identity.
 - Regenerate hand-minted service/client tokens with `bin/jwt.sh` before using
   the default hook.
+- Run `bun run doctor` to catch a stale `AUTHAPP_JWT` before authapp starts.
+- See `docs/api-client-security.md` for student/staff API client token handling
+  guidance.
 
 `YELUKEREST_CLIENT_JWT`:
 

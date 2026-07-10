@@ -10,6 +10,7 @@
         "smoke": "./bin/smoke.sh",
         "test_pgbackrest": "./bin/test-pgbackrest.sh",
         "test_rest_stack": "./bin/test-rest-stack.sh",
+        "doctor": "./bin/doctor.sh",
         "image_sizes": "./bin/image-sizes.sh",
         "test_rest": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun test --max-concurrency=1 --preload ./tests/bun-rest-setup.js ./tests/rest/*.js ./tests/rest/**/*.js",
         "test_db": "./bin/test-db.sh",
