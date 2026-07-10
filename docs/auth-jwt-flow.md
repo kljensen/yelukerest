@@ -100,13 +100,13 @@ User PostgREST JWT:
 
 JWT pre-request validation:
 
-- Set `PRE_REQUEST=api.check_request_jwt` to enable the PostgREST pre-request
-  hook.
+- `PRE_REQUEST` defaults to `api.check_request_jwt`, enabling the PostgREST
+  pre-request hook unless a deployment explicitly overrides it.
 - The hook rejects authenticated requests whose JWT issuer is not
-  `yelukerest`, whose audience is not `yelukerest-postgrest`, or whose subject
-  is missing.
-- Regenerate hand-minted service/client tokens with `bin/jwt.sh` before
-  enabling the hook.
+  `yelukerest`, whose audience is not `yelukerest-postgrest`, whose subject is
+  missing, or whose subject does not match the authenticated user/app identity.
+- Regenerate hand-minted service/client tokens with `bin/jwt.sh` before using
+  the default hook.
 
 `YELUKEREST_CLIENT_JWT`:
 

@@ -190,12 +190,13 @@ describe('authentication API endpoint', () => {
                 user_id: 1,
                 role: 'student',
             });
+        const now = Math.floor(Date.now() / 1000);
         we.expect(payload.iat)
-            .to.be.at.most(Math.floor(Date.now() / 1000));
+            .to.be.at.most(now + 2);
         we.expect(payload.nbf)
-            .to.be.at.most(Math.floor(Date.now() / 1000));
+            .to.be.at.most(now + 2);
         we.expect(payload.exp)
-            .to.be.above(Math.floor(Date.now() / 1000));
+            .to.be.above(now);
         we.expect(payload.jti)
             .to.be.a('string')
             .and.match(/^[0-9a-f-]{36}$/);

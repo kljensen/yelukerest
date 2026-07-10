@@ -55,3 +55,11 @@ func TestLoginHandlerSanitizesNextInServiceURL(t *testing.T) {
 		t.Fatalf("service next = %q, want empty", got)
 	}
 }
+
+func TestURLWithoutQueryRedactsCASTicket(t *testing.T) {
+	got := urlWithoutQuery("https://cas.example/validate?ticket=ST-secret&service=https%3A%2F%2Fcourse.example%2Fauth%2Fvalidate")
+
+	if got != "https://cas.example/validate" {
+		t.Fatalf("urlWithoutQuery = %q", got)
+	}
+}

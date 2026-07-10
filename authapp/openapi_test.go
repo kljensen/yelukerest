@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -136,6 +137,9 @@ func TestGetOpenAPIHandlerMapsPostgRESTSpecFailure(t *testing.T) {
 
 	if recorder.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadGateway)
+	}
+	if strings.Contains(recorder.Body.String(), "PGRST000") {
+		t.Fatalf("response body leaked upstream detail: %q", recorder.Body.String())
 	}
 }
 

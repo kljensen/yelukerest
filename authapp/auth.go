@@ -105,6 +105,16 @@ func getCASValidationURL(config CASConfig, ticket string, r *http.Request) (stri
 	return url.String(), nil
 }
 
+func urlWithoutQuery(rawURL string) string {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "<invalid url>"
+	}
+	parsedURL.RawQuery = ""
+	parsedURL.ForceQuery = false
+	return parsedURL.String()
+}
+
 // Struct to hold CAS config
 type CASConfig struct {
 	RemoteURI           string
@@ -184,15 +194,15 @@ func getValidateHandler(casConfig CASConfig, jwtConfig FetchJWTConfig, sessionMa
 			Transport: tr,
 		}
 		url, err := getCASValidationURL(casConfig, ticket, r)
-		log.Println("Validating ticket at URL:", url)
 		if err != nil {
 			log.Println("CAS server error 0:", err)
 			http.Error(w, "CAS server error 0:", http.StatusInternalServerError)
 			return
 		}
+		log.Println("Validating CAS ticket at URL:", urlWithoutQuery(url))
 		resp, err := client.Get(url)
 		if err != nil {
-			log.Println("URL is ", url)
+			log.Println("CAS validation URL:", urlWithoutQuery(url))
 			log.Println("CAS server error 1:", err)
 			log.Println(resp)
 			http.Error(w, "CAS server error 1:", http.StatusInternalServerError)

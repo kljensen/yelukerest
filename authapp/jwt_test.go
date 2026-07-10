@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -41,6 +43,33 @@ func TestIssueUserJWTURL(t *testing.T) {
 
 	if got != "http://postgrest:3000/rpc/issue_user_jwt" {
 		t.Fatalf("issueUserJWTURL = %q", got)
+	}
+}
+
+func TestUserInfoURL(t *testing.T) {
+	config := FetchJWTConfig{
+		PostgrestHost: "postgrest",
+		PostgrestPort: "3000",
+	}
+
+	got := userInfoURL(config, "abc+123")
+	parsedURL, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("parse userInfoURL: %v", err)
+	}
+
+	if parsedURL.Scheme != "http" || parsedURL.Host != "postgrest:3000" || parsedURL.Path != "/users" {
+		t.Fatalf("userInfoURL = %q", got)
+	}
+	if got := parsedURL.Query().Get("netid"); got != "eq.abc+123" {
+		t.Fatalf("netid query = %q", got)
+	}
+	selectList := parsedURL.Query().Get("select")
+	if strings.Contains(selectList, "jwt") {
+		t.Fatalf("select list includes jwt: %q", selectList)
+	}
+	if !strings.Contains(selectList, "team_nickname") {
+		t.Fatalf("select list = %q", selectList)
 	}
 }
 
@@ -83,6 +112,81 @@ func TestFetchUserJWTInfoSendsServiceToken(t *testing.T) {
 	}
 	if info.JWT != "header.payload.signature" {
 		t.Fatalf("JWT = %q", info.JWT)
+	}
+}
+
+func TestFetchUserInfoSendsServiceTokenWithoutMintingJWT(t *testing.T) {
+	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Method; got != http.MethodGet {
+			t.Fatalf("method = %q", got)
+		}
+		if got := r.URL.Path; got != "/users" {
+			t.Fatalf("path = %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer service-token" {
+			t.Fatalf("Authorization header = %q", got)
+		}
+		if got := r.Header.Get("Accept"); got != "application/vnd.pgrst.object+json" {
+			t.Fatalf("Accept header = %q", got)
+		}
+		if got := r.URL.Query().Get("netid"); got != "eq.abc+123" {
+			t.Fatalf("netid query = %q", got)
+		}
+		if strings.Contains(r.URL.Query().Get("select"), "jwt") {
+			t.Fatalf("select query includes jwt: %q", r.URL.Query().Get("select"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(UserJWTInfo{
+			ID:    1,
+			NetID: "abc+123",
+			Role:  "student",
+		})
+	})
+
+	info, err, status := fetchUserInfo("abc+123", config)
+	if err != nil {
+		t.Fatalf("fetchUserInfo error = %v, status = %d", err, status)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, want %d", status, http.StatusOK)
+	}
+	if info.JWT != "" {
+		t.Fatalf("JWT = %q, want empty", info.JWT)
+	}
+	if info.NetID != "abc+123" {
+		t.Fatalf("NetID = %q", info.NetID)
+	}
+}
+
+func TestGetMeHandlerUsesUserInfoEndpoint(t *testing.T) {
+	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got == "/rpc/issue_user_jwt" {
+			t.Fatalf("getMeHandler should not mint a JWT")
+		}
+		if got := r.URL.Path; got != "/users" {
+			t.Fatalf("path = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(UserJWTInfo{
+			ID:    1,
+			NetID: "abc123",
+			Role:  "student",
+		})
+	})
+
+	handler := getMeHandler(config)
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/me", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "netid", "abc123"))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "jwt") {
+		t.Fatalf("response body includes jwt: %q", recorder.Body.String())
 	}
 }
 
@@ -134,5 +238,26 @@ func TestFetchUserJWTInfoMapsPostgRESTStatuses(t *testing.T) {
 				t.Fatalf("status = %d, want %d", status, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func TestGetJWTHandlerDoesNotExposeUpstreamErrorBody(t *testing.T) {
+	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"detail":"internal table name"}`))
+	})
+
+	handler := getJWTHandler(config)
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/jwt", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "netid", "abc123"))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadGateway)
+	}
+	if strings.Contains(recorder.Body.String(), "internal table name") {
+		t.Fatalf("response body leaked upstream detail: %q", recorder.Body.String())
 	}
 }

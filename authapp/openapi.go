@@ -43,7 +43,7 @@ func fetchOpenAPI(jwt string, config FetchJWTConfig) (map[string]interface{}, er
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected postgrest status %s: %s", resp.Status, string(body)), http.StatusBadGateway
+		return nil, fmt.Errorf("unexpected postgrest status %s", resp.Status), http.StatusBadGateway
 	}
 
 	var data map[string]interface{}
@@ -105,14 +105,14 @@ func getOpenAPIHandler(config FetchJWTConfig) http.HandlerFunc {
 		jwt, err, statusCode := fetchUserJWT(netID, config)
 		if err != nil {
 			log.Printf("Error fetching JWT: %v", err)
-			http.Error(w, err.Error(), statusCode)
+			http.Error(w, http.StatusText(statusCode), statusCode)
 			return
 		}
 
 		data, err, statusCode := fetchOpenAPI(jwt, config)
 		if err != nil {
 			log.Printf("Error fetching OpenAPI: %v", err)
-			http.Error(w, err.Error(), statusCode)
+			http.Error(w, http.StatusText(statusCode), statusCode)
 			return
 		}
 

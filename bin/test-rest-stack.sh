@@ -11,6 +11,8 @@ OVERRIDE_FILE=${YELUKEREST_TEST_COMPOSE_OVERRIDE:-tmp/docker-compose.test-rest-s
 
 cd "$ROOT_DIR"
 mkdir -p "$(dirname "$OVERRIDE_FILE")"
+TEST_AUTHAPP_JWT="$(./bin/jwt.sh '{"role":"app","app_name":"authapp"}')"
+export TEST_AUTHAPP_JWT
 
 cat > "$OVERRIDE_FILE" <<EOF
 services:
@@ -25,6 +27,7 @@ services:
 EOF
 
 compose() {
+    AUTHAPP_JWT=$TEST_AUTHAPP_JWT \
     MAX_ROWS=${MAX_ROWS:-} \
     PRE_REQUEST=${PRE_REQUEST:-} \
     CADDY_LISTEN_HOST=${CADDY_LISTEN_HOST:-127.0.0.1} \
