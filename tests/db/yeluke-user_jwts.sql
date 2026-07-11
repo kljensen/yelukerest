@@ -1,5 +1,5 @@
 begin;
-select plan(25);
+select plan(26);
 
 create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean)
 stable
@@ -203,6 +203,17 @@ SELECT isnt_empty(
         AND (verified.payload::json->>'exp')::integer > extract(epoch from now())::integer
     $$,
     'user jwts should include valid issued-at, not-before, and expiry claims'
+);
+
+SELECT isnt_empty(
+    $$
+        SELECT 1
+        FROM api.user_jwts
+        CROSS JOIN LATERAL verify_jwt(jwt) verified
+        WHERE id = 1
+        AND (verified.payload::json->>'exp')::integer - (verified.payload::json->>'iat')::integer <= 3600
+    $$,
+    'user jwts should expire within one hour'
 );
 
 SELECT isnt_empty(

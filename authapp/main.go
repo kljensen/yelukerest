@@ -85,7 +85,8 @@ func main() {
 
 	// Add the user details endpoints
 	getMe := getSessionMiddleware(sessionManager, getMeHandler(fetchJWTConfig))
-	getJWT := getSessionMiddleware(sessionManager, getJWTHandler(fetchJWTConfig))
+	jwtRateLimiter := newRateLimiter(60, time.Minute)
+	getJWT := getSessionMiddleware(sessionManager, rateLimitMiddleware(jwtRateLimiter, getJWTHandler(fetchJWTConfig)))
 	getOpenAPI := getSessionMiddleware(sessionManager, getOpenAPIHandler(fetchJWTConfig))
 	mux.Handle("/auth/me", getMe)
 	mux.Handle("/auth/jwt", getJWT)

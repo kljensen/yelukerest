@@ -184,6 +184,7 @@ func fetchUserJWT(netID string, config FetchJWTConfig) (string, error, int) {
 
 func getJWTHandler(config FetchJWTConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setNoStoreHeaders(w)
 		log.Println("Triggered the getJWTHandler")
 		netID := r.Context().Value("netid").(string)
 		if netID == "" {
@@ -205,6 +206,7 @@ func getJWTHandler(config FetchJWTConfig) http.HandlerFunc {
 func getMeHandler(config FetchJWTConfig) http.HandlerFunc {
 	log.Println("Triggered the getMeHandler")
 	return func(w http.ResponseWriter, r *http.Request) {
+		setNoStoreHeaders(w)
 
 		// The netid is passed in the context by the middleware.
 		// If the netid is not present, return an error.

@@ -92,6 +92,8 @@ User PostgREST JWT:
 - Default lifetime is one hour from `settings.jwt_lifetime`.
 - Returned by `/auth/jwt` only for valid sessions. `/auth/me` returns
   non-secret current user data.
+- `/auth/jwt`, `/auth/me`, and `/auth/api.json` responses are marked
+  `Cache-Control: no-store`. `/auth/jwt` is rate limited per client.
 - Used by Elm and API clients to call `/rest/*`.
 - `student`, `ta`, and `faculty` currently need `EXECUTE` on `auth.sign_jwt`
   so `api.user_jwts` can mint constrained JWT values for those callers. `app`

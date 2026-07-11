@@ -20,6 +20,19 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"
 		X-Frame-Options "DENY"
 	}
+	header /auth/* {
+		Cache-Control "no-store"
+		Pragma "no-cache"
+		Expires "0"
+	}
+	header /rest/* {
+		-Access-Control-Allow-Origin
+		-Access-Control-Allow-Credentials
+		-Access-Control-Allow-Headers
+		-Access-Control-Allow-Methods
+		-Access-Control-Expose-Headers
+		-Access-Control-Max-Age
+	}
 }
 
 (app_csp) {

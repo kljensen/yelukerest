@@ -20,6 +20,11 @@ Do not put JWTs in URLs, query parameters, local shell history, issue comments,
 logs, screenshots, or long-lived dotfiles. For local scripts, prefer an
 environment variable set in the current shell.
 
+Responses under `/auth/*`, including `/auth/jwt`, are sent with
+`Cache-Control: no-store`, `Pragma: no-cache`, and `Expires: 0`. The JWT
+endpoint also applies a small per-client issuance throttle so accidental loops
+or scripted retries do not mint unbounded credentials.
+
 ## Required Claims
 
 PostgREST verifies the JWT signature and standard validity claims. The
@@ -34,6 +39,9 @@ these claims match the deployed course:
 - `role`: one of the database roles used by the API, such as `student`,
   `ta`, `faculty`, or `app`.
 - `exp`, `iat`, `nbf`, and `jti`: standard lifecycle and token-id claims.
+
+User JWTs expire within one hour. Clients should be prepared to re-authenticate
+or request a fresh token after `401 Unauthorized`.
 
 Use `./bin/jwt.sh` for hand-minted service/admin tokens so those claims are
 present. Use `bun run doctor` before starting a local stack or deploying a
@@ -51,6 +59,11 @@ makes the same tradeoff explicit: bearer tokens sent in an `Authorization`
 header are normal, but browser storage choices must account for XSS and
 persistence risk.
 
+Yelukerest does not emit permissive CORS headers by default. Browser API clients
+should be served from the same origin as the course site. CLI and notebook
+clients are not affected by browser CORS and can send the `Authorization` header
+directly.
+
 ## CLI And Notebook Clients
 
 For student scripts and notebooks:
@@ -58,6 +71,8 @@ For student scripts and notebooks:
 - Obtain a fresh token from `/auth/jwt` after signing in.
 - Store it in an environment variable for the current shell or process.
 - Re-run the sign-in/token step when a request returns `401 Unauthorized`.
+- Slow down token refresh loops when `/auth/jwt` returns `429 Too Many
+  Requests`.
 - Treat `403 Forbidden` as an authorization or row-level-security result, not
   an expired-token result.
 - Do not check generated tokens into notebooks, repos, Canvas, Slack, or Piazza.

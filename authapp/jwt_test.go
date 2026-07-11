@@ -115,6 +115,28 @@ func TestFetchUserJWTInfoSendsServiceToken(t *testing.T) {
 	}
 }
 
+func TestGetJWTHandlerSetsNoStoreHeaders(t *testing.T) {
+	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(UserJWTInfo{
+			JWT:   "header.payload.signature",
+			NetID: "abc123",
+			Role:  "student",
+		})
+	})
+	handler := getJWTHandler(config)
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/jwt", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "netid", "abc123"))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	assertNoStoreHeaders(t, recorder.Result())
+}
+
 func TestFetchUserInfoSendsServiceTokenWithoutMintingJWT(t *testing.T) {
 	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Method; got != http.MethodGet {
@@ -188,6 +210,7 @@ func TestGetMeHandlerUsesUserInfoEndpoint(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), "jwt") {
 		t.Fatalf("response body includes jwt: %q", recorder.Body.String())
 	}
+	assertNoStoreHeaders(t, recorder.Result())
 }
 
 func TestFetchUserJWTInfoMapsPostgRESTStatuses(t *testing.T) {
@@ -238,6 +261,20 @@ func TestFetchUserJWTInfoMapsPostgRESTStatuses(t *testing.T) {
 				t.Fatalf("status = %d, want %d", status, tt.wantStatus)
 			}
 		})
+	}
+}
+
+func assertNoStoreHeaders(t *testing.T, response *http.Response) {
+	t.Helper()
+
+	if got := response.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := response.Header.Get("Pragma"); got != "no-cache" {
+		t.Fatalf("Pragma = %q, want no-cache", got)
+	}
+	if got := response.Header.Get("Expires"); got != "0" {
+		t.Fatalf("Expires = %q, want 0", got)
 	}
 }
 

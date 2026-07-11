@@ -94,6 +94,7 @@ func requestScheme(r *http.Request) string {
 
 func getOpenAPIHandler(config FetchJWTConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setNoStoreHeaders(w)
 		log.Println("Triggered the getOpenAPIHandler")
 
 		netID, ok := r.Context().Value("netid").(string)

@@ -20,6 +20,12 @@ const expectHeaders = (response, expectedHeaders) => {
         });
 };
 
+const expectHeaderAbsent = (response, name) => {
+    if (Object.prototype.hasOwnProperty.call(response.headers, name)) {
+        throw new Error(`Expected ${name} to be absent, got ${response.headers[name]}`);
+    }
+};
+
 describe('http security headers', () => {
     it('sets shared browser hardening headers on the frontend', async () => {
         const response = await request(baseURL)
@@ -56,6 +62,7 @@ describe('http security headers', () => {
             .expect(200);
 
         expectHeaders(response, commonHeaders);
+        expectHeaderAbsent(response, 'access-control-allow-origin');
     });
 
     it('sets shared browser hardening headers on authapp responses', async () => {
@@ -63,6 +70,22 @@ describe('http security headers', () => {
             .get('/auth/me')
             .expect(401);
 
-        expectHeaders(response, commonHeaders);
+        expectHeaders(response, {
+            ...commonHeaders,
+            'cache-control': 'no-store',
+            pragma: 'no-cache',
+            expires: '0',
+        });
+        expectHeaderAbsent(response, 'access-control-allow-origin');
+    });
+
+    it('does not expose REST responses cross-origin by default', async () => {
+        const response = await restService()
+            .get('/users')
+            .set('Origin', 'https://attacker.example')
+            .expect(401);
+
+        expectHeaderAbsent(response, 'access-control-allow-origin');
+        expectHeaderAbsent(response, 'access-control-allow-credentials');
     });
 });

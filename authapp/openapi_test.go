@@ -66,6 +66,7 @@ func TestGetOpenAPIHandlerFetchesAndEnrichesSpec(t *testing.T) {
 	if got := recorder.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
 		t.Fatalf("Content-Type = %q", got)
 	}
+	assertNoStoreHeaders(t, recorder.Result())
 	if !sawJWTLookup {
 		t.Fatal("did not fetch user JWT")
 	}
