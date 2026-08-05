@@ -12,10 +12,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// postgrestClient is the internal HTTP client tools will use to reach
-// PostgREST. Phase 0 (issue #265) ships no tools that call PostgREST; read
-// tools arrive in issue #266 and will use this client with the caller's
-// internal JWT.
+// postgrestClient is the internal HTTP client the read tools (tools.go) use
+// to reach PostgREST. Every request carries the caller's own forwarded
+// credential so PostgreSQL row-level security applies to each read.
 type postgrestClient struct {
 	baseURL    *url.URL
 	httpClient *http.Client
@@ -43,12 +42,9 @@ func newMCPServer(deps *toolDeps) *mcp.Server {
 		Name:    "yelukerest-mcp",
 		Title:   "Yelukerest MCP Server",
 		Version: "0.1.0",
-	}, nil)
+	}, &mcp.ServerOptions{Instructions: serverInstructions})
 	server.AddReceivingMiddleware(auditMiddleware(deps.logger))
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "whoami",
-		Description: "Return the verified identity (subject, user id, netid, role) of the caller.",
-	}, deps.whoami)
+	registerReadTools(server, deps)
 	return server
 }
 
@@ -61,26 +57,6 @@ func identityFromRequest(req mcp.Request) (*identity, error) {
 		return nil, errors.New("no verified identity on request")
 	}
 	return identityFromTokenInfo(extra.TokenInfo), nil
-}
-
-type whoamiOutput struct {
-	Subject string `json:"sub" jsonschema:"the token subject, e.g. user:42"`
-	UserID  string `json:"user_id" jsonschema:"the numeric user id as a string"`
-	NetID   string `json:"netid,omitempty" jsonschema:"the caller's netid, if present in the token"`
-	Role    string `json:"role" jsonschema:"the caller's role, e.g. student or faculty"`
-}
-
-func (d *toolDeps) whoami(_ context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, whoamiOutput, error) {
-	id, err := identityFromRequest(req)
-	if err != nil {
-		return nil, whoamiOutput{}, err
-	}
-	return nil, whoamiOutput{
-		Subject: id.Subject,
-		UserID:  id.UserID,
-		NetID:   id.NetID,
-		Role:    id.Role,
-	}, nil
 }
 
 // auditMiddleware logs one structured line per incoming MCP message: subject,

@@ -43,6 +43,27 @@ type identity struct {
 	Role      string // e.g. "student", "faculty"
 	JTI       string
 	ExpiresAt time.Time
+	// Scopes holds the optional scopes claim. Phase 0 tokens carry no scopes
+	// claim, so an empty slice means "scopeless legacy": read-allowed,
+	// write-denied (ADR 0001 default-deny for writes). See authorizeScope.
+	Scopes []string
+	// RawToken is the bearer token exactly as presented by the caller. It is
+	// never logged; tools obtain it only through forwardableToken.
+	RawToken string
+}
+
+// forwardableToken returns the credential tools must forward to PostgREST as
+// "Authorization: Bearer ..." so every read runs under the caller's own
+// row-level-security context. In phase 0 the MCP bearer token IS the internal
+// JWT, so the raw inbound token is forwarded unchanged. When Hydra token
+// exchange lands (issue #274) this accessor is the single place to swap the
+// inbound access token for a freshly minted internal JWT; tool handlers must
+// not reach for RawToken directly.
+func (id *identity) forwardableToken() (string, error) {
+	if id.RawToken == "" {
+		return "", errors.New("no forwardable credential is attached to this caller")
+	}
+	return id.RawToken, nil
 }
 
 // verifyMCPToken validates an HS256 MCP bearer token. Error messages never
@@ -141,7 +162,35 @@ func verifyMCPToken(token string, config mcpJWTConfig, now time.Time) (*identity
 		Role:      role,
 		JTI:       jti,
 		ExpiresAt: time.Unix(exp, 0),
+		// The scopes claim is optional and its absence is meaningful (see
+		// identity.Scopes); extracting it changes no accept/reject decision.
+		Scopes: scopesFromClaims(claims),
 	}, nil
+}
+
+// scopesFromClaims extracts the optional scopes claim. Both a "scopes" and an
+// OAuth-style "scope" claim are accepted, each as either a JSON array of
+// strings or a space-delimited string. A missing or empty claim yields nil.
+func scopesFromClaims(claims map[string]any) []string {
+	for _, key := range []string{"scopes", "scope"} {
+		value, ok := claims[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case string:
+			return strings.Fields(typed)
+		case []any:
+			scopes := make([]string, 0, len(typed))
+			for _, item := range typed {
+				if s, ok := item.(string); ok && s != "" {
+					scopes = append(scopes, s)
+				}
+			}
+			return scopes
+		}
+	}
+	return nil
 }
 
 // newTokenVerifier adapts verifyMCPToken to the go-sdk auth.TokenVerifier
@@ -156,11 +205,17 @@ func newTokenVerifier(config mcpJWTConfig) auth.TokenVerifier {
 		return &auth.TokenInfo{
 			Expiration: id.ExpiresAt,
 			UserID:     id.Subject,
+			Scopes:     id.Scopes,
 			Extra: map[string]any{
 				"user_id": id.UserID,
 				"netid":   id.NetID,
 				"role":    id.Role,
 				"jti":     id.JTI,
+				"scopes":  id.Scopes,
+				// The raw bearer token, carried so tools can forward the
+				// caller's own credential to PostgREST (see
+				// identity.forwardableToken). Never logged.
+				"raw_token": token,
 			},
 		}, nil
 	}
@@ -182,6 +237,12 @@ func identityFromTokenInfo(info *auth.TokenInfo) *identity {
 	}
 	if value, ok := info.Extra["jti"].(string); ok {
 		id.JTI = value
+	}
+	if value, ok := info.Extra["scopes"].([]string); ok {
+		id.Scopes = value
+	}
+	if value, ok := info.Extra["raw_token"].(string); ok {
+		id.RawToken = value
 	}
 	return id
 }

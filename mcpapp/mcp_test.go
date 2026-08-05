@@ -69,19 +69,43 @@ func testAppConfig(rateLimit int) appConfig {
 
 func newTestApp(t *testing.T, config appConfig) (*httptest.Server, *safeBuffer) {
 	t.Helper()
-
-	logs := &safeBuffer{}
-	deps := &toolDeps{
-		logger:    slog.New(slog.NewJSONHandler(logs, nil)),
-		postgrest: newPostgRESTClient("postgrest", "3000"),
-	}
-	server := httptest.NewServer(newMux(config, deps))
-	t.Cleanup(server.Close)
+	server, _, logs := newTestAppWithPostgREST(t, config)
 	return server, logs
 }
 
+// newTestAppWithPostgREST builds the full HTTP stack backed by a fake
+// PostgREST so tool round trips can assert on forwarded requests.
+func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, *fakePostgREST, *safeBuffer) {
+	t.Helper()
+
+	logs := &safeBuffer{}
+	fake := newFakePostgREST(t)
+	deps := &toolDeps{
+		logger:    slog.New(slog.NewJSONHandler(logs, nil)),
+		postgrest: fake.client(t),
+	}
+	server := httptest.NewServer(newMux(config, deps))
+	t.Cleanup(server.Close)
+	return server, fake, logs
+}
+
+// expectedToolNames is the deterministic tools/list order: the server sorts
+// tools by name.
+var expectedToolNames = []string{
+	"get_assignment",
+	"get_my_engagements",
+	"get_my_grades",
+	"get_my_quiz_grades",
+	"get_my_submissions",
+	"list_assignments",
+	"list_meetings",
+	"list_quizzes",
+	"whoami",
+}
+
 func TestWhoamiOverStreamableHTTP(t *testing.T) {
-	server, logs := newTestApp(t, testAppConfig(100))
+	server, fake, logs := newTestAppWithPostgREST(t, testAppConfig(100))
+	fake.respond("/users", fixtureUserRows)
 	claims := currentClaims()
 	claims["netid"] = "abc123"
 	token := signTestToken(t, hs256Header(), claims, testSecret)
@@ -101,8 +125,22 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tools/list: %v", err)
 	}
-	if len(toolList.Tools) != 1 || toolList.Tools[0].Name != "whoami" {
-		t.Fatalf("tools = %+v", toolList.Tools)
+	if len(toolList.Tools) != len(expectedToolNames) {
+		t.Fatalf("tool count = %d, want %d", len(toolList.Tools), len(expectedToolNames))
+	}
+	for i, tool := range toolList.Tools {
+		if tool.Name != expectedToolNames[i] {
+			t.Fatalf("tools[%d] = %q, want %q (deterministic order)", i, tool.Name, expectedToolNames[i])
+		}
+		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+			t.Fatalf("tool %q is missing readOnlyHint", tool.Name)
+		}
+		if tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint {
+			t.Fatalf("tool %q is missing openWorldHint=false", tool.Name)
+		}
+		if tool.Description == "" {
+			t.Fatalf("tool %q has no description", tool.Name)
+		}
 	}
 
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "whoami"})
@@ -133,6 +171,24 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 	if output.Role != "student" {
 		t.Fatalf("role = %q", output.Role)
 	}
+	if output.Nickname != "fuzzy-bunny" {
+		t.Fatalf("nickname = %q", output.Nickname)
+	}
+	if output.TeamNickname != "team-one" {
+		t.Fatalf("team_nickname = %q", output.TeamNickname)
+	}
+	if output.DBRole != "student" {
+		t.Fatalf("db_role = %q", output.DBRole)
+	}
+
+	// The user lookup forwarded the caller's own bearer token to PostgREST.
+	recorded := fake.recorded()
+	if len(recorded) != 1 || recorded[0].path != "/users" {
+		t.Fatalf("PostgREST requests = %+v", recorded)
+	}
+	if recorded[0].auth != "Bearer "+token {
+		t.Fatal("whoami did not forward the caller's bearer token to PostgREST")
+	}
 
 	// Audit log assertions: subject and tool name are present; token
 	// material is not.
@@ -151,6 +207,57 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 	}
 	if strings.Contains(logText, "Authorization") {
 		t.Fatal("logs contain an Authorization header")
+	}
+}
+
+func TestListAssignmentsOverStreamableHTTP(t *testing.T) {
+	server, fake, _ := newTestAppWithPostgREST(t, testAppConfig(100))
+	fake.respond("/assignments", fixtureAssignments)
+	token := signTestToken(t, hs256Header(), currentClaims(), testSecret)
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
+		Endpoint:   server.URL + mcpPath,
+		HTTPClient: &http.Client{Transport: authTransport{token: token}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_assignments"})
+	if err != nil {
+		t.Fatalf("tools/call: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("list_assignments returned tool error: %+v", result.Content)
+	}
+
+	structured, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	var output listAssignmentsOutput
+	if err := json.Unmarshal(structured, &output); err != nil {
+		t.Fatalf("unmarshal structured content: %v", err)
+	}
+	if output.TotalCount != 1 || output.Truncated || len(output.Assignments) != 1 {
+		t.Fatalf("output = %+v", output)
+	}
+	if output.Assignments[0].Slug != "proj1" || !output.Assignments[0].IsOpen {
+		t.Fatalf("assignment = %+v", output.Assignments[0])
+	}
+
+	recorded := fake.recorded()
+	if len(recorded) != 1 || recorded[0].path != "/assignments" {
+		t.Fatalf("PostgREST requests = %+v", recorded)
+	}
+	if recorded[0].auth != "Bearer "+token {
+		t.Fatal("list_assignments did not forward the caller's bearer token to PostgREST")
+	}
+	if recorded[0].query.Get("order") != "closed_at.asc,slug.asc" {
+		t.Fatalf("order = %q", recorded[0].query.Get("order"))
 	}
 }
 
@@ -240,7 +347,7 @@ func TestMCPEndpointRateLimitsPerSubject(t *testing.T) {
 	tokenB := tokenFor("user:43")
 
 	// Two requests for subject A pass the limiter; the third is rejected.
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if status := post(tokenA); status == http.StatusTooManyRequests {
 			t.Fatalf("request %d for subject A was rate limited", i+1)
 		}
