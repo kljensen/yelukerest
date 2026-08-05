@@ -205,3 +205,80 @@ feature flag. Append pilot and spike findings here (issues #271, #276).
 | Claude Code registers a new DCR client on every fresh connection — unbounded client-table growth | [anthropics/claude-code#59460](https://github.com/anthropics/claude-code/issues/59460) | Open | Prune clients with no token activity >30 days; doctor alert when client count far exceeds enrollment |
 | claude.ai inconsistently sends the RFC 8707 `resource` parameter | Observed in the field; no single upstream issue | Ongoing | Never disable audience validation; consent-accept grants audience server-side |
 | Self-hosted DCR connectors intermittently fail with claude.ai (zero inbound traffic or `McpAuthorizationError` after apparently-successful OAuth) | [anthropics/claude-ai-mcp#207](https://github.com/anthropics/claude-ai-mcp/issues/207), [#227](https://github.com/anthropics/claude-ai-mcp/issues/227), [#196](https://github.com/anthropics/claude-ai-mcp/issues/196) | Intermittent | Faculty/TA pilot on low-stakes accounts before student rollout (issue #276) |
+
+### Spike findings — issue #271 (2026-08-05, Hydra v26.2.0, live dev stack)
+
+**Verdict: GO on Hydra's audience mechanism** — with one mandatory,
+non-obvious requirement: the OAuth client's `audience` allowlist (client
+metadata, not a request parameter) **must contain the canonical MCP
+resource, or refresh breaks**. All results below were produced
+empirically against the running dev stack (DCR client, PKCE S256 code
+flow, login/consent accepted via the admin API exactly as authapp will
+in issue #273).
+
+1. **RFC 8707 `resource` parameter: silently ignored.** Sent on both
+   `/oauth2/auth` and `/oauth2/token`; never an error, echoed through
+   the login/consent resume redirects, never reaches
+   `requested_access_token_audience` (stays `[]`) or the token's `aud`.
+   No adapter can make it bind; use Hydra's audience mechanism.
+2. **Recipe for #273/#274 (works for clients that send nothing, i.e.
+   claude.ai):** consent-accept with
+   `grant_access_token_audience: ["https://<FQDN>/mcp"]` plus
+   `session.access_token` claims yields a JWT with
+   `aud=["https://<FQDN>/mcp"]` even when the client requested no
+   audience. **But** Hydra re-validates the granted audience against the
+   client's `audience` allowlist at **refresh** time: with the default
+   empty allowlist, the initial exchange succeeds and every refresh
+   fails (`invalid_request`, "Requested audience … has not been
+   whitelisted by the OAuth 2.0 Client"). Fixes, both verified: (a) DCR
+   accepts an `audience` field — the #272 register proxy can inject
+   `"audience": ["https://<FQDN>/mcp"]` into registration requests; (b)
+   an admin-API `PATCH /admin/clients/{id}` setting `audience`
+   retroactively repairs already-issued refresh tokens with no
+   re-registration or re-consent — authapp should ensure-patch the
+   client at consent time as a belt-and-suspenders.
+3. **Hydra's `audience` request parameter** works only for clients whose
+   allowlist already contains the value (otherwise: `invalid_request`
+   error redirect from `/oauth2/auth`). When present it populates the
+   consent request's `requested_access_token_audience`, which authapp
+   may display; it is not required for binding — the consent-accept
+   grant alone suffices.
+4. **Refresh preserves everything (no token_hook needed on v26.2.0):**
+   `aud`, `scp`, and all consent-accept `session.access_token` claims
+   survive `grant_type=refresh_token` unchanged; the refresh token
+   rotates. The "claims lost on refresh, need token_hook" caveat does
+   **not** reproduce on v26.2.0 — re-verify on every Hydra upgrade.
+5. **Claims placement:** `allowed_top_level_claims` *duplicates* claims —
+   they appear top-level (`role`, `user_id`, `netid`, `scopes`) *and*
+   under `ext.*`. Scopes are `scp` as a JSON array
+   (`["openid","offline_access"]`); there is no `scope` string claim.
+   `sub` is the consent-accepted subject; `iss` is the bare root issuer.
+6. **No-audience token shape (mcpapp rejection target):** a plain flow
+   with no grant yields `"aud": []` — an *empty array present in the
+   claims*, not an absent claim. mcpapp must reject `aud` that is
+   missing, empty, or lacking the exact canonical resource.
+7. **RFC 9207: NOT implemented.** No `iss` parameter on the
+   authorization response, success or error
+   (`?code=…&scope=…&state=…` only). Clients cannot rely on it; mix-up
+   defense rests on the single-issuer deployment and exact
+   redirect-URI matching.
+8. **DCR response null/empty fields (verbatim, for #272 to strip):**
+   null → `contacts`, `skip_logout_consent`, and all 13 lifespan fields
+   (`authorization_code_grant_{access,id,refresh}_token_lifespan`,
+   `client_credentials_grant_access_token_lifespan`,
+   `implicit_grant_{access,id}_token_lifespan`,
+   `jwt_bearer_grant_access_token_lifespan`,
+   `refresh_token_grant_{id,access,refresh}_token_lifespan`,
+   `device_authorization_grant_{id,access,refresh}_token_lifespan`);
+   empty string → `owner`, `policy_uri`, `tos_uri`, `client_uri`,
+   `logo_uri`; empty array → `audience`, `allowed_cors_origins`; empty
+   object → `jwks`, `metadata`; and `client_secret_expires_at: 0`. The
+   response also includes `registration_access_token` and
+   `registration_client_uri` (keep those).
+9. **Sanity:** access-token `expires_in` 3600 s and refresh-token
+   lifetime exactly 720 h (admin introspection), matching `hydra.yml`.
+   The public `/.well-known/jwks.json` publishes **both** the id-token
+   and access-token signing keys — mcpapp must select by `kid` from the
+   JWT header, never assume a single key; a key added to
+   `hydra.jwt.access-token` via the admin API is published immediately
+   alongside the old one (rotation-safe).
