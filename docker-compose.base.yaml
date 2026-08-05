@@ -162,3 +162,11 @@ services:
             - MCP_STATELESS_ENABLED=${MCP_STATELESS_ENABLED:-false}
             - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
             - FQDN=${FQDN}
+            # role=app app_name=mcpapp service credential used to exchange
+            # a verified OAuth token for an internal PostgREST credential
+            # via api.issue_user_jwt_for_mcp (issue #274). Mint with
+            # ./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'.
+            - MCPAPP_JWT=${MCPAPP_JWT:-}
+            # Hydra's JWKS is fetched over the internal compose network so
+            # it never traverses Caddy's development TLS certificate.
+            - HYDRA_PUBLIC_INTERNAL_URL=${HYDRA_PUBLIC_INTERNAL_URL:-http://hydra:4444}

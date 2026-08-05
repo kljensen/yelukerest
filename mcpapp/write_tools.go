@@ -138,7 +138,7 @@ type prepareSubmissionRow struct {
 
 func (d *toolDeps) prepareSubmissionChange(ctx context.Context, req *mcp.CallToolRequest, in prepareSubmissionChangeInput) (*mcp.CallToolResult, prepareSubmissionChangeOutput, error) {
 	var zero prepareSubmissionChangeOutput
-	id, token, err := writeCaller(req)
+	id, token, err := writeCaller(ctx, req)
 	if err != nil {
 		return nil, zero, err
 	}
@@ -308,7 +308,7 @@ type storedFieldSubmission struct {
 
 func (d *toolDeps) commitSubmissionChange(ctx context.Context, req *mcp.CallToolRequest, in commitSubmissionChangeInput) (*mcp.CallToolResult, commitSubmissionChangeOutput, error) {
 	var zero commitSubmissionChangeOutput
-	id, token, err := writeCaller(req)
+	id, token, err := writeCaller(ctx, req)
 	if err != nil {
 		return nil, zero, err
 	}

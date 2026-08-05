@@ -101,12 +101,6 @@ var slugPattern = regexp.MustCompile(`^[a-z0-9-]{1,59}$`)
 // restricted to characters that are safe inside a PostgREST or=() filter.
 var teamNicknamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{2,20}-[A-Za-z0-9_]{2,20}$`)
 
-// authorizeScope is the single scope gate all tools share; the write tools of
-// issue #267 extend this helper rather than adding new checks. Rules:
-//   - A token with no scopes claim (or an empty one) is a scopeless legacy
-//     phase 0 token: reads are allowed, anything else is denied by default
-//     (ADR 0001 default-deny for writes).
-//   - A scope-bearing token must carry the required scope.
 // scopeAliases maps each coarse requirement to the granular scope names
 // tokens actually carry (api.issue_user_jwt_for_mcp mints
 // course:read/grades:read/submissions:read/submissions:write; the coarse
@@ -116,8 +110,22 @@ var scopeAliases = map[string][]string{
 	scopeWrite: {"write", "submissions:write"},
 }
 
+// authorizeScope is the single scope gate all tools share; the write tools of
+// issue #267 extend this helper rather than adding new checks. Rules:
+//   - A token with no scopes claim (or an empty one) is a scopeless legacy
+//     phase 0 token: reads are allowed, anything else is denied by default
+//     (ADR 0001 default-deny for writes).
+//   - An OAuth token (issue #274) whose granted scopes map to nothing this
+//     server exposes is denied outright — there is no legacy to grandfather.
+//   - A scope-bearing token must carry the required scope.
 func authorizeScope(id *identity, required string) error {
 	if len(id.Scopes) == 0 {
+		// An OAuth caller gets no legacy grandfathering: an empty mapped
+		// scope set means consent granted nothing this server exposes (only
+		// openid/offline_access, say), so nothing is allowed.
+		if id.External {
+			return fmt.Errorf("the OAuth access token granted no yelukerest scopes, so %q is denied; re-authorize requesting course:read, grades:read, or submissions:read", required)
+		}
 		if required == scopeRead {
 			return nil
 		}
@@ -133,34 +141,30 @@ func authorizeScope(id *identity, required string) error {
 
 // readCaller is the one accessor read tools use for per-request state: the
 // verified identity, the read-scope authorization decision, and the
-// credential to forward to PostgREST.
-func readCaller(req mcp.Request) (*identity, string, error) {
-	id, err := identityFromRequest(req)
-	if err != nil {
-		return nil, "", err
-	}
-	if err := authorizeScope(id, scopeRead); err != nil {
-		return nil, "", err
-	}
-	token, err := id.forwardableToken()
-	if err != nil {
-		return nil, "", err
-	}
-	return id, token, nil
+// credential to forward to PostgREST. The context is used by the OAuth token
+// exchange (issue #274), which may make one upstream call.
+func readCaller(ctx context.Context, req mcp.Request) (*identity, string, error) {
+	return callerWithScope(ctx, req, scopeRead)
 }
 
 // writeCaller is readCaller's counterpart for write tools (issue #267): the
 // verified identity, the write-scope authorization decision (default-deny for
 // scopeless tokens, see authorizeScope), and the forwardable credential.
-func writeCaller(req mcp.Request) (*identity, string, error) {
+func writeCaller(ctx context.Context, req mcp.Request) (*identity, string, error) {
+	return callerWithScope(ctx, req, scopeWrite)
+}
+
+func callerWithScope(ctx context.Context, req mcp.Request, required string) (*identity, string, error) {
 	id, err := identityFromRequest(req)
 	if err != nil {
 		return nil, "", err
 	}
-	if err := authorizeScope(id, scopeWrite); err != nil {
+	// Scope first: an unauthorized caller must not cause a credential to be
+	// minted, nor a mint-audit row to be written.
+	if err := authorizeScope(id, required); err != nil {
 		return nil, "", err
 	}
-	token, err := id.forwardableToken()
+	token, err := id.forwardableToken(ctx)
 	if err != nil {
 		return nil, "", err
 	}
@@ -401,7 +405,7 @@ type whoamiOutput struct {
 }
 
 func (d *toolDeps) whoami(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, whoamiOutput, error) {
-	id, token, err := readCaller(req)
+	id, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, whoamiOutput{}, err
 	}
@@ -469,7 +473,7 @@ type listAssignmentsOutput struct {
 }
 
 func (d *toolDeps) listAssignments(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, listAssignmentsOutput, error) {
-	_, token, err := readCaller(req)
+	_, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, listAssignmentsOutput{}, err
 	}
@@ -570,7 +574,7 @@ func capAssignmentOutput(out getAssignmentOutput) getAssignmentOutput {
 }
 
 func (d *toolDeps) getAssignment(ctx context.Context, req *mcp.CallToolRequest, in getAssignmentInput) (*mcp.CallToolResult, getAssignmentOutput, error) {
-	_, token, err := readCaller(req)
+	_, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, getAssignmentOutput{}, err
 	}
@@ -657,7 +661,7 @@ type getMySubmissionsOutput struct {
 }
 
 func (d *toolDeps) getMySubmissions(ctx context.Context, req *mcp.CallToolRequest, in getMySubmissionsInput) (*mcp.CallToolResult, getMySubmissionsOutput, error) {
-	id, token, err := readCaller(req)
+	id, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, getMySubmissionsOutput{}, err
 	}
@@ -718,7 +722,7 @@ type listQuizzesOutput struct {
 }
 
 func (d *toolDeps) listQuizzes(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, listQuizzesOutput, error) {
-	_, token, err := readCaller(req)
+	_, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, listQuizzesOutput{}, err
 	}
@@ -759,7 +763,7 @@ type getMyQuizGradesOutput struct {
 }
 
 func (d *toolDeps) getMyQuizGrades(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, getMyQuizGradesOutput, error) {
-	id, token, err := readCaller(req)
+	id, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, getMyQuizGradesOutput{}, err
 	}
@@ -821,7 +825,7 @@ type getMyGradesOutput struct {
 }
 
 func (d *toolDeps) getMyGrades(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, getMyGradesOutput, error) {
-	id, token, err := readCaller(req)
+	id, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, getMyGradesOutput{}, err
 	}
@@ -878,7 +882,7 @@ type listMeetingsOutput struct {
 }
 
 func (d *toolDeps) listMeetings(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, listMeetingsOutput, error) {
-	_, token, err := readCaller(req)
+	_, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, listMeetingsOutput{}, err
 	}
@@ -912,7 +916,7 @@ type getMyEngagementsOutput struct {
 }
 
 func (d *toolDeps) getMyEngagements(ctx context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, getMyEngagementsOutput, error) {
-	id, token, err := readCaller(req)
+	id, token, err := readCaller(ctx, req)
 	if err != nil {
 		return nil, getMyEngagementsOutput{}, err
 	}

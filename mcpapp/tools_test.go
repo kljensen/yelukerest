@@ -138,7 +138,7 @@ func readToolRequest(t *testing.T, mutate func(map[string]any)) (*mcp.CallToolRe
 		mutate(claims)
 	}
 	token := signTestToken(t, hs256Header(), claims, testSecret)
-	verifier := newTokenVerifier(testJWTConfig())
+	verifier := newTokenVerifier(&bearerVerifier{internal: testJWTConfig()})
 	info, err := verifier(context.Background(), token, nil)
 	if err != nil {
 		t.Fatalf("verify token: %v", err)

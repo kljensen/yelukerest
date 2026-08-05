@@ -1,7 +1,33 @@
 // Command mcpapp is the yelukerest MCP server (issue #265). It serves the MCP
-// streamable HTTP endpoint at /mcp behind Caddy, validating internal
-// MCP-audience bearer JWTs. Tools that read course data via PostgREST arrive
-// in issue #266.
+// streamable HTTP endpoint at /mcp behind Caddy, validating both internal
+// MCP-audience bearer JWTs (phase 0) and Hydra-issued OAuth access tokens
+// (phase 1, issue #274), which it exchanges for internal credentials.
+//
+// Environment:
+//
+//	PORT, JWT_SECRET, POSTGREST_HOST, POSTGREST_PORT   required
+//	MCP_RESOURCE_URL or FQDN                           required; the canonical
+//	                                                   resource URL, which is
+//	                                                   also the audience every
+//	                                                   OAuth token must carry
+//	JWT_ISSUER, JWT_MCP_AUDIENCE                       internal token rules
+//	HYDRA_PUBLIC_URL                                   authorization server;
+//	                                                   unset disables the OAuth
+//	                                                   path entirely
+//	MCPAPP_JWT                                         role=app app_name=mcpapp
+//	                                                   service credential, used
+//	                                                   ONLY to call
+//	                                                   api.issue_user_jwt_for_mcp
+//	                                                   (./bin/jwt.sh
+//	                                                   '{"role":"app","app_name":"mcpapp"}')
+//	HYDRA_PUBLIC_INTERNAL_URL                          where the JWKS is
+//	                                                   fetched (default
+//	                                                   http://hydra:4444);
+//	                                                   keeps the fetch off
+//	                                                   Caddy's TLS
+//	HYDRA_ISSUER, HYDRA_JWKS_URL                       overrides for the two
+//	                                                   values derived above
+//	MCP_STATELESS_ENABLED                              2026-07-28 era flag
 package main
 
 import (
@@ -31,9 +57,12 @@ type appConfig struct {
 	ResourceURL            string // canonical MCP resource URL, e.g. https://example.com/mcp
 	MetadataURL            string // advertised in WWW-Authenticate on 401s
 	AuthorizationServerURL string // Hydra public URL; may be empty in phase 0
-	StatelessEnabled       bool
-	RateLimit              int
-	RateWindow             time.Duration
+	// Hydra configures the OAuth access-token path (issue #274). Nil means
+	// the deployment accepts phase 0 internal bearer tokens only.
+	Hydra            *hydraConfig
+	StatelessEnabled bool
+	RateLimit        int
+	RateWindow       time.Duration
 }
 
 func main() {
@@ -70,6 +99,8 @@ func main() {
 		log.Panicf("MCP resource URL is invalid: %v", err)
 	}
 
+	authorizationServerURL := strings.TrimSpace(os.Getenv("HYDRA_PUBLIC_URL"))
+
 	config := appConfig{
 		JWT: mcpJWTConfig{
 			Secret:   []byte(jwtSecret),
@@ -78,7 +109,8 @@ func main() {
 		},
 		ResourceURL:            resourceURL,
 		MetadataURL:            metadataURL,
-		AuthorizationServerURL: strings.TrimSpace(os.Getenv("HYDRA_PUBLIC_URL")),
+		AuthorizationServerURL: authorizationServerURL,
+		Hydra:                  hydraConfigFromEnv(authorizationServerURL, resourceURL),
 		// Stateless mode (SEP-2567, go-sdk StreamableHTTPOptions.Stateless):
 		// no Mcp-Session-Id header; GET and DELETE return 405. Off by default
 		// because current Claude/ChatGPT traffic is legacy-era.
@@ -88,10 +120,30 @@ func main() {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	postgrest := newPostgRESTClient(postgrestHost, postgrestPort)
+
+	// MCPAPP_JWT is the role=app app_name=mcpapp service credential the
+	// database requires to mint internal user JWTs (api.issue_user_jwt_for_mcp
+	// admits nothing else). Operators mint it with
+	// ./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'. Missing it is not
+	// fatal — phase 0 bearer tokens keep working — but every OAuth caller will
+	// fail at its first tool call, so say so loudly at startup.
+	mcpappJWT := strings.TrimSpace(os.Getenv("MCPAPP_JWT"))
+	if config.Hydra == nil {
+		log.Println("HYDRA_PUBLIC_URL is not set: OAuth access tokens are not accepted; only internal MCP bearer tokens will work")
+	} else {
+		log.Printf("OAuth access tokens accepted: issuer=%s jwks=%s audience=%s",
+			config.Hydra.Issuer, config.Hydra.JWKSURL, config.Hydra.Audience)
+		if mcpappJWT == "" {
+			log.Println("WARNING: MCPAPP_JWT is not set. OAuth access tokens will verify but cannot be exchanged for a course credential, so every tool call by an OAuth client will fail. Add MCPAPP_JWT to the mcpapp service environment (see docs/hydra.md).")
+		}
+	}
+
 	deps := &toolDeps{
 		logger:    logger,
-		postgrest: newPostgRESTClient(postgrestHost, postgrestPort),
+		postgrest: postgrest,
 		intent:    newIntentSigner(config.JWT.Secret, time.Now),
+		exchanger: newTokenExchanger(postgrest, mcpappJWT),
 	}
 
 	mux := newMux(config, deps)
@@ -109,6 +161,31 @@ func main() {
 // (2025-11-25 and earlier) get the version they request via `initialize`,
 // capped at 2025-11-25; 2026-07-28 clients use the newer negotiation. No
 // configuration is needed for dual-era support.
+// hydraConfigFromEnv builds the OAuth access-token configuration, or returns
+// nil when no authorization server is configured.
+//
+//   - HYDRA_ISSUER overrides the expected `iss`; it defaults to
+//     HYDRA_PUBLIC_URL, which is Hydra's URLS_SELF_ISSUER (the bare domain
+//     root, per hydra/hydra.yml).
+//   - HYDRA_JWKS_URL overrides where keys are fetched. By default they come
+//     from HYDRA_PUBLIC_INTERNAL_URL (http://hydra:4444 in compose) so the
+//     fetch stays on the internal network and never traverses Caddy's TLS —
+//     which, in development, is a certificate this container does not trust.
+//   - The audience every access token must carry is the canonical MCP
+//     resource URL. It is never widened or disabled (ADR 0001).
+func hydraConfigFromEnv(authorizationServerURL string, resourceURL string) *hydraConfig {
+	issuer := strings.TrimRight(envOrDefault("HYDRA_ISSUER", authorizationServerURL), "/")
+	if issuer == "" {
+		return nil
+	}
+	jwksURL := envOrDefault("HYDRA_JWKS_URL", "")
+	if jwksURL == "" {
+		base := strings.TrimRight(envOrDefault("HYDRA_PUBLIC_INTERNAL_URL", issuer), "/")
+		jwksURL = base + "/.well-known/jwks.json"
+	}
+	return &hydraConfig{Issuer: issuer, JWKSURL: jwksURL, Audience: resourceURL}
+}
+
 func newMux(config appConfig, deps *toolDeps) *http.ServeMux {
 	server := newMCPServer(deps)
 	mcpHandler := mcp.NewStreamableHTTPHandler(
@@ -122,8 +199,13 @@ func newMux(config appConfig, deps *toolDeps) *http.ServeMux {
 		},
 	)
 
+	verifier := &bearerVerifier{internal: config.JWT}
+	if config.Hydra != nil {
+		verifier.hydra = newHydraVerifier(*config.Hydra, nil, time.Now)
+		verifier.exchanger = deps.exchanger
+	}
 	requireBearer := auth.RequireBearerToken(
-		newTokenVerifier(config.JWT),
+		newTokenVerifier(verifier),
 		&auth.RequireBearerTokenOptions{ResourceMetadataURL: config.MetadataURL},
 	)
 	limiter := newRateLimiter(config.RateLimit, config.RateWindow)

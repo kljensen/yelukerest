@@ -140,8 +140,14 @@ type prepareAPIRequestOutput struct {
 
 func (d *toolDeps) prepareAPIRequest(ctx context.Context, req *mcp.CallToolRequest, in prepareAPIRequestInput) (*mcp.CallToolResult, prepareAPIRequestOutput, error) {
 	var zero prepareAPIRequestOutput
-	id, _, err := writeCaller(req)
+	// Preparation mints an intent token, not a request: it needs the
+	// write-scope decision but no PostgREST credential, so it does not go
+	// through writeCaller (which would exchange an OAuth token needlessly).
+	id, err := identityFromRequest(req)
 	if err != nil {
+		return nil, zero, err
+	}
+	if err := authorizeScope(id, scopeWrite); err != nil {
 		return nil, zero, err
 	}
 	method, err := validateAPIRequest(in.Method, in.Path, in.Query, in.Body)
@@ -235,7 +241,7 @@ func (d *toolDeps) postgrestRequest(ctx context.Context, req *mcp.CallToolReques
 		}
 	}
 
-	token, err := id.forwardableToken()
+	token, err := id.forwardableToken(ctx)
 	if err != nil {
 		return nil, zero, err
 	}
@@ -285,7 +291,15 @@ type getAPISchemaOutput struct {
 }
 
 func (d *toolDeps) getAPISchema(_ context.Context, req *mcp.CallToolRequest, _ any) (*mcp.CallToolResult, getAPISchemaOutput, error) {
-	if _, _, err := readCaller(req); err != nil {
+	// The document is static, so this path deliberately does not go through
+	// readCaller: it needs the read-scope decision but no PostgREST
+	// credential, and minting one would write a mint-audit row for a call
+	// that touches no course data.
+	id, err := identityFromRequest(req)
+	if err != nil {
+		return nil, getAPISchemaOutput{}, err
+	}
+	if err := authorizeScope(id, scopeRead); err != nil {
 		return nil, getAPISchemaOutput{}, err
 	}
 	return nil, getAPISchemaOutput{Schema: apiSchemaDocument}, nil

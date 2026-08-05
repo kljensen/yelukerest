@@ -2,12 +2,25 @@ package main
 
 // JWT verification for MCP bearer tokens.
 //
-// mcpapp accepts internal HS256 JWTs minted with the shared JWT_SECRET but
-// with an MCP-specific audience (JWT_MCP_AUDIENCE). Validation mirrors the
-// discipline of api.check_request_jwt in the database and authapp's
-// validateAuthappJWT: exact issuer, audience membership (string or array),
-// exp/iat/nbf, a non-empty jti, a non-empty role, and a subject of the form
-// "user:<id>". Tokens minted for the PostgREST audience are rejected.
+// Two token domains reach /mcp, and each is validated strictly against its
+// own rules. The JWT header's `alg` selects the path, before any key material
+// is touched, so neither domain's tokens can be verified with the other's key:
+//
+//   - HS256: an internal JWT minted with the shared JWT_SECRET and an
+//     MCP-specific audience (JWT_MCP_AUDIENCE). Validation mirrors the
+//     discipline of api.check_request_jwt in the database and authapp's
+//     validateAuthappJWT: exact issuer, audience membership (string or
+//     array), exp/iat/nbf, a non-empty jti, a non-empty role, and a subject
+//     of the form "user:<id>". Tokens minted for the PostgREST audience alone
+//     are rejected. This token IS the internal credential, so it is forwarded
+//     to PostgREST unchanged (phase 0).
+//   - RS256 and the other asymmetric algorithms Hydra can advertise: an OAuth
+//     access token, verified against the authorization server's JWKS
+//     (hydra.go) and then exchanged for an internal credential (exchange.go).
+//     The presented token itself never leaves mcpapp.
+//
+// Anything else — including alg=none and an HS256 token presented where an
+// RS256 one is expected — is refused.
 
 import (
 	"bytes"
@@ -47,19 +60,66 @@ type identity struct {
 	// claim, so an empty slice means "scopeless legacy": read-allowed,
 	// write-denied (ADR 0001 default-deny for writes). See authorizeScope.
 	Scopes []string
-	// RawToken is the bearer token exactly as presented by the caller. It is
-	// never logged; tools obtain it only through forwardableToken.
+	// External marks a caller who presented an OAuth access token rather than
+	// an internal one. Such a caller has no legacy grandfathering: an empty
+	// scope set means the authorization server granted nothing here, so
+	// everything is denied (see authorizeScope).
+	External bool
+	// RawToken is the bearer token exactly as presented by the caller, and is
+	// set ONLY for internal tokens (which are themselves the credential
+	// PostgREST accepts). It is never logged; tools obtain it only through
+	// forwardableToken.
 	RawToken string
+	// exchange is set for external callers: the recipe for turning the
+	// verified identity into an internal credential.
+	exchange *pendingExchange
+}
+
+// pendingExchange defers the token exchange until a tool actually needs a
+// credential, so protocol traffic that touches no course data (initialize,
+// tools/list) mints nothing and writes no audit row.
+type pendingExchange struct {
+	exchanger *tokenExchanger
+	request   exchangeRequest
 }
 
 // forwardableToken returns the credential tools must forward to PostgREST as
 // "Authorization: Bearer ..." so every read runs under the caller's own
-// row-level-security context. In phase 0 the MCP bearer token IS the internal
-// JWT, so the raw inbound token is forwarded unchanged. When Hydra token
-// exchange lands (issue #274) this accessor is the single place to swap the
-// inbound access token for a freshly minted internal JWT; tool handlers must
-// not reach for RawToken directly.
-func (id *identity) forwardableToken() (string, error) {
+// row-level-security context.
+//
+//   - Internal (phase 0) callers: the presented token IS the internal JWT, so
+//     it is forwarded unchanged.
+//   - OAuth callers: the verified identity is exchanged for a freshly minted
+//     internal JWT (api.issue_user_jwt_for_mcp, cached per netid+scopes). The
+//     presented access token is never forwarded.
+//
+// This accessor is the single place either happens; tool handlers must not
+// reach for RawToken directly.
+func (id *identity) forwardableToken(ctx context.Context) (string, error) {
+	if id.exchange != nil {
+		minted, err := id.exchange.exchanger.tokenFor(ctx, id.exchange.request)
+		if err != nil {
+			return "", err
+		}
+		// The database is authoritative about who the caller is; the claims
+		// in the external token are only a hint. Adopting its answer keeps
+		// PostgREST filters built from id.UserID correct even if the OAuth
+		// token's copy is stale.
+		if minted.userID != "" {
+			id.UserID = minted.userID
+			id.Subject = "user:" + minted.userID
+		}
+		if minted.netID != "" {
+			id.NetID = minted.netID
+		}
+		if minted.role != "" {
+			id.Role = minted.role
+		}
+		return minted.token, nil
+	}
+	if id.External {
+		return "", errors.New("OAuth token exchange is not configured on this deployment")
+	}
 	if id.RawToken == "" {
 		return "", errors.New("no forwardable credential is attached to this caller")
 	}
@@ -165,6 +225,9 @@ func verifyMCPToken(token string, config mcpJWTConfig, now time.Time) (*identity
 		// The scopes claim is optional and its absence is meaningful (see
 		// identity.Scopes); extracting it changes no accept/reject decision.
 		Scopes: scopesFromClaims(claims),
+		// An internal token is itself the credential PostgREST accepts, so it
+		// is the caller's forwardable credential.
+		RawToken: token,
 	}, nil
 }
 
@@ -193,12 +256,83 @@ func scopesFromClaims(claims map[string]any) []string {
 	return nil
 }
 
-// newTokenVerifier adapts verifyMCPToken to the go-sdk auth.TokenVerifier
+// bearerVerifier routes a bearer token to the verification path its `alg`
+// selects. hydra and exchanger are nil when the deployment has no OAuth
+// authorization server configured, in which case only internal tokens are
+// accepted.
+type bearerVerifier struct {
+	internal  mcpJWTConfig
+	hydra     *hydraVerifier
+	exchanger *tokenExchanger
+}
+
+// tokenAlg reads the `alg` header without validating anything else. Routing on
+// it is safe because each path then pins the algorithms it accepts.
+func tokenAlg(token string) (string, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", errors.New("token must have three JWT segments")
+	}
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return "", errors.New("token header is not base64url")
+	}
+	var header struct {
+		Alg string `json:"alg"`
+	}
+	if err := json.Unmarshal(headerBytes, &header); err != nil {
+		return "", errors.New("token header is not JSON")
+	}
+	if header.Alg == "" {
+		return "", errors.New("token header has no alg")
+	}
+	return header.Alg, nil
+}
+
+// verify validates one bearer token and returns the caller identity.
+func (v *bearerVerifier) verify(ctx context.Context, token string, now time.Time) (*identity, error) {
+	alg, err := tokenAlg(token)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case alg == "HS256":
+		// The internal verifier re-reads and re-checks the header itself, so
+		// this dispatch cannot widen what it accepts.
+		return verifyMCPToken(token, v.internal, now)
+	case hydraAllowedAlgs[alg]:
+		if v.hydra == nil {
+			return nil, errors.New("this server does not accept OAuth access tokens")
+		}
+		id, external, err := v.hydra.verify(ctx, token, now)
+		if err != nil {
+			return nil, err
+		}
+		if v.exchanger != nil {
+			id.exchange = &pendingExchange{
+				exchanger: v.exchanger,
+				request: exchangeRequest{
+					netID:    id.NetID,
+					scopes:   id.Scopes,
+					external: external,
+					outerExp: id.ExpiresAt,
+				},
+			}
+		}
+		return id, nil
+	default:
+		// Includes alg=none and every symmetric algorithm other than the one
+		// the internal path pins.
+		return nil, errors.New("token alg is not accepted")
+	}
+}
+
+// newTokenVerifier adapts bearerVerifier to the go-sdk auth.TokenVerifier
 // interface used by auth.RequireBearerToken. The returned error text is sent
 // to the client in the 401 body; it never contains token material.
-func newTokenVerifier(config mcpJWTConfig) auth.TokenVerifier {
-	return func(_ context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
-		id, err := verifyMCPToken(token, config, time.Now())
+func newTokenVerifier(verifier *bearerVerifier) auth.TokenVerifier {
+	return func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+		id, err := verifier.verify(ctx, token, time.Now())
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", auth.ErrInvalidToken, err)
 		}
@@ -207,15 +341,20 @@ func newTokenVerifier(config mcpJWTConfig) auth.TokenVerifier {
 			UserID:     id.Subject,
 			Scopes:     id.Scopes,
 			Extra: map[string]any{
-				"user_id": id.UserID,
-				"netid":   id.NetID,
-				"role":    id.Role,
-				"jti":     id.JTI,
-				"scopes":  id.Scopes,
+				"user_id":  id.UserID,
+				"netid":    id.NetID,
+				"role":     id.Role,
+				"jti":      id.JTI,
+				"scopes":   id.Scopes,
+				"external": id.External,
 				// The raw bearer token, carried so tools can forward the
 				// caller's own credential to PostgREST (see
-				// identity.forwardableToken). Never logged.
-				"raw_token": token,
+				// identity.forwardableToken). Empty for OAuth callers, whose
+				// token is exchanged instead of forwarded. Never logged.
+				"raw_token": id.RawToken,
+				// The deferred token exchange for OAuth callers (nil
+				// otherwise). In-process only: TokenInfo is never serialized.
+				"exchange": id.exchange,
 			},
 		}, nil
 	}
@@ -241,8 +380,14 @@ func identityFromTokenInfo(info *auth.TokenInfo) *identity {
 	if value, ok := info.Extra["scopes"].([]string); ok {
 		id.Scopes = value
 	}
+	if value, ok := info.Extra["external"].(bool); ok {
+		id.External = value
+	}
 	if value, ok := info.Extra["raw_token"].(string); ok {
 		id.RawToken = value
+	}
+	if value, ok := info.Extra["exchange"].(*pendingExchange); ok {
+		id.exchange = value
 	}
 	return id
 }
