@@ -39,6 +39,10 @@ services:
 
   authapp:
     environment:
+      # The end-to-end suite drives dozens of authorizations from one
+      # address in a couple of minutes; production keeps the 60/min
+      # default. See authapp/main.go.
+      - OAUTH_RATE_LIMIT_PER_MINUTE=${OAUTH_RATE_LIMIT_PER_MINUTE:-1000}
       - CAS_VALIDATION_URI=http://authapp:${AUTHAPP_PORT}/cas/serviceValidate
       # In development the stack is served at https://localhost via Caddy;
       # FQDN may be unset, so pin the MCP resource URL explicitly (used

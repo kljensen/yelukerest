@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -147,8 +148,11 @@ func main() {
 	)
 	// One authorization costs three requests (login GET, consent GET,
 	// consent POST), so 60/min leaves ample headroom for retries while
-	// bounding a challenge-probing loop.
-	oauthLimiter := newRateLimiter(60, time.Minute)
+	// bounding a challenge-probing loop. The end-to-end suite drives
+	// dozens of authorizations from one address in a couple of minutes,
+	// which is nothing like real traffic, so the ceiling is configurable
+	// and raised for the test stack rather than tuned down for production.
+	oauthLimiter := newRateLimiter(envIntOrDefault("OAUTH_RATE_LIMIT_PER_MINUTE", 60), time.Minute)
 	mux.Handle(oauthLoginPath, rateLimitMiddleware(oauthLimiter, getOAuthLoginHandler(oauthConfig, sessionManager)))
 	mux.Handle(oauthConsentPath, rateLimitMiddleware(oauthLimiter, getOAuthConsentHandler(oauthConfig, sessionManager)))
 	mux.Handle(oauthStylesheetPath, rateLimitMiddleware(oauthLimiter, getOAuthStylesheetHandler()))
@@ -196,6 +200,21 @@ func resolveMCPAudience() string {
 		return "https://" + fqdn + "/mcp"
 	}
 	return ""
+}
+
+// envIntOrDefault reads a positive integer from the environment, falling
+// back when the variable is unset, empty, or not a positive number.
+func envIntOrDefault(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		log.Printf("%s=%q is not a positive integer; using %d", name, value, fallback)
+		return fallback
+	}
+	return parsed
 }
 
 func envOrDefault(name string, fallback string) string {
