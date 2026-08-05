@@ -24,9 +24,13 @@ import (
 // ---- fake PostgREST ----
 
 type pgRequest struct {
-	path  string
-	query url.Values
-	auth  string
+	method string
+	path   string
+	query  url.Values
+	auth   string
+	prefer []string
+	accept string
+	body   string
 }
 
 type pgResponse struct {
@@ -34,6 +38,9 @@ type pgResponse struct {
 	body   string
 }
 
+// fakePostgREST records every request (method, path, query, headers, body)
+// and responds from two maps: method-specific responses ("POST /x") win over
+// path-only responses ("/x", used by the GET-only read tools).
 type fakePostgREST struct {
 	mu        sync.Mutex
 	requests  []pgRequest
@@ -45,13 +52,21 @@ func newFakePostgREST(t *testing.T) *fakePostgREST {
 	t.Helper()
 	fake := &fakePostgREST{responses: map[string]pgResponse{}}
 	fake.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestBody, _ := io.ReadAll(r.Body)
 		fake.mu.Lock()
 		fake.requests = append(fake.requests, pgRequest{
-			path:  r.URL.Path,
-			query: r.URL.Query(),
-			auth:  r.Header.Get("Authorization"),
+			method: r.Method,
+			path:   r.URL.Path,
+			query:  r.URL.Query(),
+			auth:   r.Header.Get("Authorization"),
+			prefer: r.Header.Values("Prefer"),
+			accept: r.Header.Get("Accept"),
+			body:   string(requestBody),
 		})
-		resp, ok := fake.responses[r.URL.Path]
+		resp, ok := fake.responses[r.Method+" "+r.URL.Path]
+		if !ok {
+			resp, ok = fake.responses[r.URL.Path]
+		}
 		fake.mu.Unlock()
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
@@ -78,6 +93,14 @@ func (f *fakePostgREST) respondStatus(path string, status int, body string) {
 	f.responses[path] = pgResponse{status: status, body: body}
 }
 
+// respondMethod registers a response for one method+path pair, taking
+// precedence over path-only responses.
+func (f *fakePostgREST) respondMethod(method string, path string, status int, body string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.responses[method+" "+path] = pgResponse{status: status, body: body}
+}
+
 func (f *fakePostgREST) recorded() []pgRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -101,6 +124,7 @@ func (f *fakePostgREST) deps(t *testing.T) *toolDeps {
 	return &toolDeps{
 		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		postgrest: f.client(t),
+		intent:    newIntentSigner([]byte(testSecret), time.Now),
 	}
 }
 

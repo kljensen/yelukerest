@@ -35,6 +35,9 @@ func newPostgRESTClient(host string, port string) *postgrestClient {
 type toolDeps struct {
 	logger    *slog.Logger
 	postgrest *postgrestClient
+	// intent mints and verifies the single-use intent tokens the write tools
+	// (issue #267) and the escape hatch (issue #268) require.
+	intent *intentSigner
 }
 
 func newMCPServer(deps *toolDeps) *mcp.Server {
@@ -45,6 +48,8 @@ func newMCPServer(deps *toolDeps) *mcp.Server {
 	}, &mcp.ServerOptions{Instructions: serverInstructions})
 	server.AddReceivingMiddleware(auditMiddleware(deps.logger))
 	registerReadTools(server, deps)
+	registerWriteTools(server, deps)
+	registerEscapeHatchTools(server, deps)
 	return server
 }
 

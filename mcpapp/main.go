@@ -91,6 +91,7 @@ func main() {
 	deps := &toolDeps{
 		logger:    logger,
 		postgrest: newPostgRESTClient(postgrestHost, postgrestPort),
+		intent:    newIntentSigner(config.JWT.Secret, time.Now),
 	}
 
 	mux := newMux(config, deps)

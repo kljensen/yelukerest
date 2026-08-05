@@ -83,6 +83,7 @@ func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, 
 	deps := &toolDeps{
 		logger:    slog.New(slog.NewJSONHandler(logs, nil)),
 		postgrest: fake.client(t),
+		intent:    newIntentSigner([]byte(testSecret), time.Now),
 	}
 	server := httptest.NewServer(newMux(config, deps))
 	t.Cleanup(server.Close)
@@ -92,6 +93,8 @@ func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, 
 // expectedToolNames is the deterministic tools/list order: the server sorts
 // tools by name.
 var expectedToolNames = []string{
+	"commit_submission_change",
+	"get_api_schema",
 	"get_assignment",
 	"get_my_engagements",
 	"get_my_grades",
@@ -100,7 +103,17 @@ var expectedToolNames = []string{
 	"list_assignments",
 	"list_meetings",
 	"list_quizzes",
+	"postgrest_request",
+	"prepare_api_request",
+	"prepare_submission_change",
 	"whoami",
+}
+
+// writeCapableTools are the tools that must NOT carry readOnlyHint and must
+// carry destructiveHint=true.
+var writeCapableTools = map[string]bool{
+	"commit_submission_change": true,
+	"postgrest_request":        true,
 }
 
 func TestWhoamiOverStreamableHTTP(t *testing.T) {
@@ -132,7 +145,17 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 		if tool.Name != expectedToolNames[i] {
 			t.Fatalf("tools[%d] = %q, want %q (deterministic order)", i, tool.Name, expectedToolNames[i])
 		}
-		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+		if tool.Annotations == nil {
+			t.Fatalf("tool %q has no annotations", tool.Name)
+		}
+		if writeCapableTools[tool.Name] {
+			if tool.Annotations.ReadOnlyHint {
+				t.Fatalf("write tool %q must not carry readOnlyHint", tool.Name)
+			}
+			if tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
+				t.Fatalf("write tool %q is missing destructiveHint=true", tool.Name)
+			}
+		} else if !tool.Annotations.ReadOnlyHint {
 			t.Fatalf("tool %q is missing readOnlyHint", tool.Name)
 		}
 		if tool.Annotations.OpenWorldHint == nil || *tool.Annotations.OpenWorldHint {
