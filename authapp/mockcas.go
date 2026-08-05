@@ -55,8 +55,11 @@ func redirectToService(w http.ResponseWriter, r *http.Request, user_id, service 
 	ticketStore[ticket] = user_id
 	ticketStoreMu.Unlock()
 
-	// Parse the service string as URL
-	log.Println("Redirecting to service:", service)
+	// Parse the service string as URL. Only the path is logged: since
+	// the OAuth login handler bounces through CAS, the service URL now
+	// carries a live Hydra login_challenge in its `next` parameter, and
+	// challenges do not belong in logs (issue #273).
+	log.Println("Redirecting to service:", urlWithoutQuery(service))
 	serviceURL, err := url.Parse(service)
 	if err != nil {
 		http.Error(w, "Bad request. Invalid 'service' parameter.", http.StatusBadRequest)

@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +56,34 @@ func TestLoginHandlerSanitizesNextInServiceURL(t *testing.T) {
 	}
 	if got := serviceURL.Query().Get("next"); got != "" {
 		t.Fatalf("service next = %q, want empty", got)
+	}
+}
+
+// The OAuth login handler bounces unauthenticated users through CAS,
+// so the mock CAS service URL now carries a live Hydra login_challenge
+// in its `next` parameter. It must not reach the log.
+func TestMockCASDoesNotLogTheServiceQuery(t *testing.T) {
+	var logs bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previous) })
+
+	service := "https://course.example/auth/validate?next=" +
+		url.QueryEscape("/auth/oauth/login?login_challenge=super-secret-challenge")
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet,
+		"https://course.example/cas/login?id=abc123&service="+url.QueryEscape(service), nil)
+
+	casLoginHandler(recorder, request)
+
+	if recorder.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusTemporaryRedirect)
+	}
+	if strings.Contains(logs.String(), "super-secret-challenge") {
+		t.Fatalf("mock CAS logged the challenge:\n%s", logs.String())
+	}
+	if !strings.Contains(logs.String(), "https://course.example/auth/validate") {
+		t.Fatalf("mock CAS log lost the service path:\n%s", logs.String())
 	}
 }
 

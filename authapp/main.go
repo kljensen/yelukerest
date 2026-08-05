@@ -134,6 +134,25 @@ func main() {
 	mux.Handle("/oauth2/register", registerProxy)
 	mux.Handle("/oauth2/register/", registerProxy)
 
+	// Hydra's delegated login and consent handlers (issue #273). The
+	// paths are fixed by hydra.yml's urls.login / urls.consent. The
+	// admin API these talk to is reachable only on the internal compose
+	// network; operators running Hydra elsewhere override
+	// HYDRA_ADMIN_URL. It must never be published or proxied by Caddy.
+	oauthConfig := newOAuthFlowConfig(
+		envOrDefault("HYDRA_ADMIN_URL", "http://hydra:4445"),
+		mcpAudience,
+		loginPath,
+		fetchJWTConfig,
+	)
+	// One authorization costs three requests (login GET, consent GET,
+	// consent POST), so 60/min leaves ample headroom for retries while
+	// bounding a challenge-probing loop.
+	oauthLimiter := newRateLimiter(60, time.Minute)
+	mux.Handle(oauthLoginPath, rateLimitMiddleware(oauthLimiter, getOAuthLoginHandler(oauthConfig, sessionManager)))
+	mux.Handle(oauthConsentPath, rateLimitMiddleware(oauthLimiter, getOAuthConsentHandler(oauthConfig, sessionManager)))
+	mux.Handle(oauthStylesheetPath, rateLimitMiddleware(oauthLimiter, getOAuthStylesheetHandler()))
+
 	// In development, add endpoints for a mock CAS server.
 	if casConfig.IsDevelopment {
 		mux.HandleFunc("/cas/login", casLoginHandler)

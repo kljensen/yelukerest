@@ -282,3 +282,28 @@ in issue #273).
    JWT header, never assume a single key; a key added to
    `hydra.jwt.access-token` via the admin API is published immediately
    alongside the old one (rotation-safe).
+
+### Implementation notes — issue #273 (2026-08-05, live dev stack)
+
+The spike recipe is implemented in `authapp/oauth.go`
+(`/auth/oauth/login`, `/auth/oauth/consent`; see `docs/hydra.md` for the
+handler contract) and was confirmed end to end against the running
+stack: DCR registration, PKCE S256 authorization, CAS login through the
+delegated handler, the consent form, code exchange, and refresh. The
+issued access token carried `aud: ["https://localhost/mcp"]`,
+`scp` as an array, and `netid`/`user_id`/`role`/`scopes` both top-level
+and under `ext.*`; every one of those survived a refresh unchanged,
+re-confirming finding 4. Two additions to the register:
+
+- **The consent-time audience ensure-patch is not theoretical.** A
+  client whose `audience` allowlist was emptied out of band had it
+  repaired by the consent handler (`PATCH /admin/clients/{id}` with a
+  JSON Patch `replace` on `/audience`) and then refreshed successfully.
+  Without the patch that refresh is the failure described in finding 2.
+- **Challenges are not short ids.** With `DSN=memory` Hydra encodes the
+  entire authorization request into the challenge: a measured
+  `login_challenge` was 1168 characters of base64url plus `==` padding,
+  and it round-trips through the CAS `next` parameter double-encoded.
+  Anything that validates, stores, or proxies a challenge must budget
+  kilobytes, and a Postgres-backed Hydra will produce a different
+  (shorter) shape — do not encode an assumption about either.

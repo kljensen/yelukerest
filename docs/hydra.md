@@ -33,7 +33,10 @@ tokens are validated by `mcpapp` only and never reach PostgREST.
   proxy when the upstream fix ships (issue #272).
 - Admin API on port 4445: **never published to the host, never proxied
   by Caddy**. It is reachable only from other containers on the compose
-  network (breakglass below).
+  network (breakglass below). authapp calls it for the delegated
+  login/consent handlers (below) using `HYDRA_ADMIN_URL`, which
+  defaults to `http://hydra:4445`; set it only if Hydra's admin
+  listener moves.
 - The OAuth issuer is the bare domain root (`https://$FQDN`, or
   `https://localhost` in dev), not a path prefix. Rationale is
   documented at the top of `hydra/hydra.yml`: RFC 8414 and OIDC
@@ -66,6 +69,67 @@ Key settings in `hydra.yml` (see the file for full comments):
   `openid offline_access`.
 - `ttl.access_token: 1h`, `ttl.refresh_token: 720h` (30 days).
 - `oauth2.grant.refresh_token.rotation_grace_period: 30s`.
+
+authapp reads two variables for these handlers:
+
+| Env var | Meaning |
+| --- | --- |
+| `HYDRA_ADMIN_URL` | Hydra's admin API. Default `http://hydra:4445`; override only if the admin listener moves. Never route it through Caddy. |
+| `MCP_RESOURCE_URL` | Canonical MCP resource, granted as the access-token audience and injected into client allowlists. Falls back to `https://$FQDN/mcp`. Must match mcpapp's expected audience exactly. |
+
+## Delegated Login And Consent (Issue #273)
+
+Hydra sends the browser to `urls.login` / `urls.consent` with an opaque
+challenge; `authapp/oauth.go` resolves each challenge against the admin
+API, decides, and PUTs an accept or reject back.
+
+**`GET /auth/oauth/login`** — fetches the login request; if Hydra says
+`skip`, it accepts immediately with the subject Hydra already holds.
+Otherwise it needs an scs session: with one, it accepts with
+`subject = <the session's netid>`; without one, it redirects into the
+existing CAS flow (`/auth/login?next=…`) with a `next` rebuilt
+server-side from the handler's own path plus the validated challenge, so
+the return target is always an internal path.
+
+**`GET /auth/oauth/consent`** — renders a JS-free, unstyled-by-CSP form
+(the stylesheet is served same-origin from `/auth/oauth/consent.css`
+because Caddy's CSP sets `style-src 'self'`, which forbids inline
+`<style>`). It leads with the client's **registered redirect origins and
+`client_id`** — `client_name` is chosen by whoever registered the client,
+so it is shown labeled self-reported. Read scopes are checked by default
+and write scopes are not (ADR 0001 default-deny for writes), and the page
+names the data categories from the ADR's FERPA policy note. A one-time
+CSRF token bound to (session, challenge) lives in the session.
+
+**`POST /auth/oauth/consent`** — verifies the CSRF token, then re-fetches
+the consent request from Hydra: subject, client, and the grantable scope
+set never come from the form. It grants
+`intersection(requested, approved)`, sets
+`grant_access_token_audience` to the MCP resource URL, attaches
+`session.access_token` claims `{netid, user_id, role, scopes}` (the four
+names in `allowed_top_level_claims`; `scopes` is space-delimited to match
+the internal MCP JWT), and sets `remember: false`. Anything other than
+the Allow button rejects with `access_denied`.
+
+Two details that are easy to get wrong:
+
+- **Audience allowlist.** Before accepting, the handler ensures the
+  client's `audience` metadata contains the MCP resource, patching it via
+  `PATCH /admin/clients/{id}` when it does not. The DCR proxy already
+  injects it at registration, so this only fires for clients registered
+  before that landed — but without it Hydra's *refresh*-time re-validation
+  fails with "Requested audience … has not been whitelisted" (issue #271
+  spike, finding 2). Verified live: a client whose allowlist was emptied
+  had it repaired at consent time and refreshed successfully.
+- **Challenge size.** With `DSN=memory` Hydra encodes the whole
+  authorization request into the challenge — a measured `login_challenge`
+  was 1168 characters of base64url with `==` padding, not a short id. Any
+  validation of challenges must allow for that (authapp caps at 8 KB).
+
+Rate limits are 60/min per client IP across the three handlers; all
+responses are `no-store` with `X-Frame-Options: DENY` and a tight CSP.
+Challenges, verifiers, codes, and tokens are never logged — the mock CAS
+handler logs the service URL without its query for the same reason.
 
 ## Dev Loop
 
