@@ -47,20 +47,67 @@
 (postgrest) {
 	# Pass /rest/ to Postgrest docker container.
 	# Use the $POSTGREST_PORT environment variable to set the port.
+	# Limit request body size as belt-and-suspenders alongside the
+	# database CHECK constraints. The largest legitimate API writes
+	# (assignment sync payloads) stay well under this; artifact files
+	# are stored outside this path, so only their metadata rows come
+	# through here.
 	route /rest/* {
 		uri strip_prefix /rest
-		reverse_proxy postgrest:{$POSTGREST_PORT}
+		# The faculty sync RPCs legitimately carry multi-megabyte JSON
+		# payloads; the functions themselves enforce 4/8 MB caps, so the
+		# proxy allows slightly more. Everything else stays at 1 MB.
+		@sync path /rpc/sync_assignments /rpc/sync_meetings
+		handle @sync {
+			request_body {
+				max_size 10MB
+			}
+			reverse_proxy postgrest:{$POSTGREST_PORT}
+		}
+		handle {
+			request_body {
+				max_size 1MB
+			}
+			reverse_proxy postgrest:{$POSTGREST_PORT}
+		}
 	}
 }
 
 (authapp) {
 	# Pass /auth/ to AuthApp docker container.
 	# Use the $AUTHAPP_PORT environment variable to set the port.
+	# Auth requests carry no large bodies, so cap them tightly.
 	route /auth/* {
+		request_body {
+			max_size 1MB
+		}
 		reverse_proxy authapp:{$AUTHAPP_PORT}
 	}
 	route /cas/* {
+		request_body {
+			max_size 1MB
+		}
 		reverse_proxy authapp:{$AUTHAPP_PORT}
+	}
+}
+
+(mcpapp) {
+	# Pass the MCP endpoint and its RFC 9728 protected resource metadata
+	# to the mcpapp docker container.
+	# Use the $MCPAPP_PORT environment variable to set the port.
+	# MCP messages are JSON-RPC bodies; cap them tightly. mcpapp also
+	# enforces its own per-request body limit and rate limits.
+	route /mcp {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy mcpapp:{$MCPAPP_PORT}
+	}
+	route /.well-known/oauth-protected-resource* {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy mcpapp:{$MCPAPP_PORT}
 	}
 }
 
@@ -71,6 +118,7 @@
 	import elmclient
 	import postgrest
 	import authapp
+	import mcpapp
 	route /openapi/* {
 		uri strip_prefix /openapi
 		file_server {

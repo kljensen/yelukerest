@@ -75,6 +75,7 @@ services:
             - NAKED_FQDN=${NAKED_FQDN}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
+            - MCPAPP_PORT=${MCPAPP_PORT:-8090}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
             - AWS_REGION=${CADDY_ACME_AWS_REGION}
@@ -103,3 +104,20 @@ services:
             - AUTHAPP_JWT=${AUTHAPP_JWT}
             - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
             - JWT_AUDIENCE=${JWT_AUDIENCE:-yelukerest-postgrest}
+
+    mcpapp:
+        build: mcpapp
+        ports:
+            - '127.0.0.1:${MCPAPP_HOST_PORT:-8090}:${MCPAPP_PORT:-8090}'
+        environment:
+            - DEVELOPMENT=${DEVELOPMENT}
+            - PORT=${MCPAPP_PORT:-8090}
+            - JWT_SECRET=${JWT_SECRET}
+            - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
+            - JWT_MCP_AUDIENCE=${JWT_MCP_AUDIENCE:-yelukerest-mcp}
+            - POSTGREST_HOST=${POSTGREST_HOST}
+            - POSTGREST_PORT=${POSTGREST_PORT}
+            - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-}
+            - MCP_STATELESS_ENABLED=${MCP_STATELESS_ENABLED:-false}
+            - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
+            - FQDN=${FQDN}

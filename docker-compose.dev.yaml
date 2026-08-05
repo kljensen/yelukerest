@@ -30,3 +30,9 @@ services:
   authapp:
     environment:
       - CAS_VALIDATION_URI=http://authapp:${AUTHAPP_PORT}/cas/serviceValidate
+
+  mcpapp:
+    environment:
+      # In development the stack is served at https://localhost via Caddy;
+      # FQDN may be unset, so pin the MCP resource URL explicitly.
+      - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-https://localhost/mcp}
