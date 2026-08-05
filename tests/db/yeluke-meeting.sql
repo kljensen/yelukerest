@@ -2,7 +2,7 @@
 BEGIN;
 
 -- Plan the tests.
-SELECT plan(37);
+SELECT plan(39);
 
 SELECT view_owner_is(
     'api', 'meetings', 'api',
@@ -171,6 +171,49 @@ SELECT throws_like(
     $$ SELECT * FROM api.sync_meetings('{"slug":"intro"}'::jsonb) $$,
     '%expects a JSON array%',
     'sync_meetings should reject non-array JSON'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_meetings(
+            (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'slug', 'cardinality-' || i,
+                        'title', 'Cardinality ' || i,
+                        'summary', '',
+                        'description', 'd',
+                        'begins_at', '2018-01-01T14:00:00Z',
+                        'duration', '01:00:00',
+                        'is_draft', true
+                    )
+                )
+                FROM generate_series(1, 501) AS i
+            )
+        )
+    $$,
+    '%accepts at most 500 meetings%',
+    'sync_meetings should reject more than 500 meetings'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_meetings(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'slug', 'oversized-payload',
+                    'title', 'Oversized payload',
+                    'summary', '',
+                    'description', repeat('x', 4194305),
+                    'begins_at', '2018-01-01T14:00:00Z',
+                    'duration', '01:00:00',
+                    'is_draft', true
+                )
+            )
+        )
+    $$,
+    '%payload exceeds the 4 MB limit%',
+    'sync_meetings should reject payloads larger than 4 MB'
 );
 
 SELECT throws_like(

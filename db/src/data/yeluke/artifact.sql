@@ -13,16 +13,22 @@ CREATE TABLE IF NOT EXISTS artifact (
     description TEXT NOT NULL DEFAULT ''
         CHECK (char_length(description) < 1000),
     url TEXT NOT NULL
-        CHECK (text_is_url(url)),
+        CHECK (text_is_url(url) AND char_length(url) <= 2048),
     storage_uri TEXT
         CHECK (storage_uri IS NULL OR char_length(storage_uri) < 1000),
     content_type TEXT
         CHECK (
             content_type IS NULL
-            OR content_type ~ '^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$'
+            OR (
+                char_length(content_type) <= 255
+                AND content_type ~ '^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$'
+            )
         ),
     content_length BIGINT
-        CHECK (content_length IS NULL OR content_length >= 0),
+        CHECK (
+            content_length IS NULL
+            OR (content_length >= 0 AND content_length <= 5368709120)
+        ),
     checksum_sha256 TEXT
         CHECK (checksum_sha256 IS NULL OR checksum_sha256 ~ '^[a-f0-9]{64}$'),
     is_user_visible BOOLEAN NOT NULL DEFAULT TRUE,

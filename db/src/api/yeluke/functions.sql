@@ -77,11 +77,21 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    IF octet_length(p_meetings::text) > 4194304 THEN
+        RAISE EXCEPTION 'sync_meetings payload exceeds the 4 MB limit'
+            USING ERRCODE = '22023';
+    END IF;
+
     SELECT count(*) INTO input_count
     FROM jsonb_array_elements(p_meetings);
 
     IF input_count = 0 THEN
         RAISE EXCEPTION 'sync_meetings refuses to sync an empty meeting list'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF input_count > 500 THEN
+        RAISE EXCEPTION 'sync_meetings accepts at most 500 meetings, received %', input_count
             USING ERRCODE = '22023';
     END IF;
 
@@ -292,6 +302,7 @@ DECLARE
     input_count integer;
     duplicate_assignment_slug text;
     invalid_assignment_field_slug text;
+    oversized_fields_assignment_slug text;
     duplicate_field_key text;
 BEGIN
     p_delete_missing := COALESCE(p_delete_missing, false);
@@ -303,11 +314,21 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    IF octet_length(p_assignments::text) > 8388608 THEN
+        RAISE EXCEPTION 'sync_assignments payload exceeds the 8 MB limit'
+            USING ERRCODE = '22023';
+    END IF;
+
     SELECT count(*) INTO input_count
     FROM jsonb_array_elements(p_assignments);
 
     IF input_count = 0 THEN
         RAISE EXCEPTION 'sync_assignments refuses to sync an empty assignment list'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF input_count > 500 THEN
+        RAISE EXCEPTION 'sync_assignments accepts at most 500 assignments, received %', input_count
             USING ERRCODE = '22023';
     END IF;
 
@@ -332,6 +353,16 @@ BEGIN
 
     IF invalid_assignment_field_slug IS NOT NULL THEN
         RAISE EXCEPTION 'sync_assignments expected fields to be an array for assignment: %', invalid_assignment_field_slug
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT COALESCE(assignment.value->>'slug', '<missing slug>') INTO oversized_fields_assignment_slug
+    FROM jsonb_array_elements(p_assignments) AS assignment(value)
+    WHERE jsonb_array_length(assignment.value->'fields') > 50
+    LIMIT 1;
+
+    IF oversized_fields_assignment_slug IS NOT NULL THEN
+        RAISE EXCEPTION 'sync_assignments accepts at most 50 fields per assignment, exceeded for assignment: %', oversized_fields_assignment_slug
             USING ERRCODE = '22023';
     END IF;
 

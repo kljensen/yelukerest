@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
         (assignment_field_slug, assignment_slug, assignment_field_is_url, assignment_field_pattern)
         REFERENCES assignment_field(slug, assignment_slug, is_url, pattern)
         ON UPDATE CASCADE,
-    body TEXT NOT NULL,
+    body TEXT NOT NULL
+        CONSTRAINT body_max_length CHECK (octet_length(body) <= 65536),
     submitter_user_id INT
         REFERENCES "user"(id)
         ON UPDATE CASCADE
@@ -38,7 +39,8 @@ CREATE TABLE IF NOT EXISTS assignment_field_submission (
         (assignment_field_is_url IS FALSE)
         OR
         text_is_url(body)
-    )
+    ),
+    CONSTRAINT updated_after_created CHECK (updated_at >= created_at)
 );
 
 DROP INDEX IF EXISTS idx_assignment_field_submission_submission_fk;
@@ -162,6 +164,30 @@ BEGIN
         SELECT is_url INTO NEW.assignment_field_is_url
         FROM data.assignment_field AS af
         WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
+    END IF;
+
+    IF (TG_OP = 'UPDATE') THEN
+        -- Optimistic concurrency: clients may include the `updated_at`
+        -- they last read in an UPDATE. If it does not match the current
+        -- row we reject the write as stale. Clients that omit
+        -- `updated_at` skip this check (PostgREST leaves the old value
+        -- in place for columns absent from the payload).
+        IF (NEW.updated_at IS DISTINCT FROM OLD.updated_at) THEN
+            RAISE EXCEPTION 'stale write rejected: submission last updated at %, client expected %', OLD.updated_at, NEW.updated_at
+                USING ERRCODE = 'PT409',
+                      DETAIL = 'The assignment field submission changed since it was last read.',
+                      HINT = 'Re-fetch the submission and retry with its current updated_at.';
+        END IF;
+        -- `created_at` is immutable once the row exists.
+        NEW.created_at = OLD.created_at;
+    ELSE
+        -- Prevent API clients from supplying a bogus `created_at`.
+        -- Direct database loads (no request user) keep their values.
+        IF (request.user_id() IS NOT NULL) THEN
+            NEW.created_at = current_timestamp;
+        ELSE
+            NEW.created_at = COALESCE(NEW.created_at, current_timestamp);
+        END IF;
     END IF;
 
     NEW.updated_at = current_timestamp;

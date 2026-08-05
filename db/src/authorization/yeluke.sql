@@ -25,6 +25,7 @@
 \ir ./yeluke/grade_snapshot.sql
 \ir ./yeluke/grade.sql
 \ir ./yeluke/grade_event.sql
+\ir ./yeluke/assignment_field_submission_event.sql
 \ir ./yeluke/functions.sql
 -- KEEP ME FOR new-table.sh
 

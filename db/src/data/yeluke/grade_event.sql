@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS grade_event (
     reason TEXT,
     import_id TEXT,
     CONSTRAINT grade_event_points_finite_nonnegative
-        CHECK (points >= 0 AND points < 'Infinity'::real)
+        CHECK (points >= 0 AND points <= 100000)
 );
 
 DROP INDEX IF EXISTS idx_grade_event_natural_key;

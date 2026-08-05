@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS assignment (
     is_team BOOLEAN NOT NULL DEFAULT false,
     title TEXT NOT NULL
         CHECK (char_length(title) < 100),
-    body text NOT NULL,
+    body text NOT NULL
+        CHECK (octet_length(body) <= 262144),
     -- The time after which students may not
     -- take the assignment
     closed_at TIMESTAMP WITH TIME ZONE NOT NULL,

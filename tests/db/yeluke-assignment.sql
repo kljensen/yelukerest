@@ -1,5 +1,5 @@
 begin;
-select plan(34);
+select plan(38);
 
 SELECT view_owner_is(
     'api', 'assignments', 'api',
@@ -128,6 +128,82 @@ SELECT throws_like(
     $$ SELECT * FROM api.sync_assignments('{"slug":"exam-1"}'::jsonb) $$,
     '%expects a JSON array%',
     'sync_assignments should reject non-array JSON'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_assignments(
+            (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'slug', 'cardinality-' || i,
+                        'title', 'Cardinality ' || i,
+                        'points_possible', 1,
+                        'body', 'b',
+                        'closed_at', '3018-12-27T14:55:50Z',
+                        'fields', '[]'::jsonb
+                    )
+                )
+                FROM generate_series(1, 501) AS i
+            )
+        )
+    $$,
+    '%accepts at most 500 assignments%',
+    'sync_assignments should reject more than 500 assignments'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_assignments(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'slug', 'oversized-payload',
+                    'title', 'Oversized payload',
+                    'points_possible', 1,
+                    'body', repeat('x', 8388609),
+                    'closed_at', '3018-12-27T14:55:50Z',
+                    'fields', '[]'::jsonb
+                )
+            )
+        )
+    $$,
+    '%payload exceeds the 8 MB limit%',
+    'sync_assignments should reject payloads larger than 8 MB'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.sync_assignments(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'slug', 'too-many-fields',
+                    'title', 'Too many fields',
+                    'points_possible', 1,
+                    'body', 'b',
+                    'closed_at', '3018-12-27T14:55:50Z',
+                    'fields', (
+                        SELECT jsonb_agg(
+                            jsonb_build_object(
+                                'slug', 'field-' || i,
+                                'label', 'Field ' || i,
+                                'help', 'help',
+                                'placeholder', 'value'
+                            )
+                        )
+                        FROM generate_series(1, 51) AS i
+                    )
+                )
+            )
+        )
+    $$,
+    '%accepts at most 50 fields per assignment%',
+    'sync_assignments should reject more than 50 fields per assignment'
+);
+
+SELECT throws_like(
+    $$ SELECT * FROM api.sync_assignments('"just-a-string"'::jsonb) $$,
+    '%expects a JSON array%',
+    'sync_assignments should reject scalar JSON input'
 );
 
 SELECT throws_like(

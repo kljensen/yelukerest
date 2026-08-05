@@ -779,6 +779,64 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'all api view columns must have non-empty comments';
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_field_submission'
+        AND con.conname = 'body_max_length'
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_field_submission.body must have the body_max_length CHECK';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_field_submission'
+        AND con.conname = 'updated_after_created'
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_field_submission must have the updated_after_created CHECK';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_field'
+        AND con.conname = 'assignment_field_pattern_check'
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_field.pattern must have a length CHECK';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_field_submission_event'
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_field_submission_event table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_field_submission'
+        AND t.tgname = 'tg_assignment_field_submission_event_history'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_assignment_field_submission_event_history trigger';
+    END IF;
 END $$;
 
 ROLLBACK;

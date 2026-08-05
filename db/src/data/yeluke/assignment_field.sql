@@ -8,10 +8,12 @@ return $1 ~ ('^(?:' || $2 || ')$');
 -- Check if a value looks like a URL. Here, I'm going to get false negatives,
 -- but for the most part I don't care. See
 -- https://mathiasbynens.be/demo/url-regex
+-- The length bound keeps the prefix-anchored regex from accepting
+-- arbitrarily large values.
 create or replace function text_is_url(text) returns bool
 stable
 language sql
-return $1 ~* '^https?://[a-z0-9]+';
+return char_length($1) <= 2048 and $1 ~* '^https?://[a-z0-9]+';
 
 CREATE TABLE IF NOT EXISTS assignment_field (
     slug TEXT
@@ -30,9 +32,12 @@ CREATE TABLE IF NOT EXISTS assignment_field (
     is_url BOOLEAN NOT NULL DEFAULT false,
     is_multiline BOOLEAN NOT NULL DEFAULT false,
     display_order SMALLINT NOT NULL DEFAULT 0,
-    -- The regular expression
-    pattern TEXT NOT NULL DEFAULT '.*',
-    example TEXT NOT NULL DEFAULT '',
+    -- The regular expression. This is executed against every
+    -- submitted body, so keep it small (ReDoS lever).
+    pattern TEXT NOT NULL DEFAULT '.*'
+        CHECK (char_length(pattern) <= 512),
+    example TEXT NOT NULL DEFAULT ''
+        CHECK (char_length(example) <= 1024),
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,

@@ -217,6 +217,7 @@ DECLARE
     input_count integer;
     duplicate_assignment_slug text;
     invalid_assignment_field_slug text;
+    oversized_fields_assignment_slug text;
     duplicate_field_key text;
 BEGIN
     p_delete_missing := COALESCE(p_delete_missing, false);
@@ -228,11 +229,21 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    IF octet_length(p_assignments::text) > 8388608 THEN
+        RAISE EXCEPTION 'sync_assignments payload exceeds the 8 MB limit'
+            USING ERRCODE = '22023';
+    END IF;
+
     SELECT count(*) INTO input_count
     FROM jsonb_array_elements(p_assignments);
 
     IF input_count = 0 THEN
         RAISE EXCEPTION 'sync_assignments refuses to sync an empty assignment list'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF input_count > 500 THEN
+        RAISE EXCEPTION 'sync_assignments accepts at most 500 assignments, received %', input_count
             USING ERRCODE = '22023';
     END IF;
 
@@ -257,6 +268,16 @@ BEGIN
 
     IF invalid_assignment_field_slug IS NOT NULL THEN
         RAISE EXCEPTION 'sync_assignments expected fields to be an array for assignment: %', invalid_assignment_field_slug
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT COALESCE(assignment.value->>'slug', '<missing slug>') INTO oversized_fields_assignment_slug
+    FROM jsonb_array_elements(p_assignments) AS assignment(value)
+    WHERE jsonb_array_length(assignment.value->'fields') > 50
+    LIMIT 1;
+
+    IF oversized_fields_assignment_slug IS NOT NULL THEN
+        RAISE EXCEPTION 'sync_assignments accepts at most 50 fields per assignment, exceeded for assignment: %', oversized_fields_assignment_slug
             USING ERRCODE = '22023';
     END IF;
 
@@ -858,11 +879,21 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    IF octet_length(p_meetings::text) > 4194304 THEN
+        RAISE EXCEPTION 'sync_meetings payload exceeds the 4 MB limit'
+            USING ERRCODE = '22023';
+    END IF;
+
     SELECT count(*) INTO input_count
     FROM jsonb_array_elements(p_meetings);
 
     IF input_count = 0 THEN
         RAISE EXCEPTION 'sync_meetings refuses to sync an empty meeting list'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF input_count > 500 THEN
+        RAISE EXCEPTION 'sync_meetings accepts at most 500 meetings, received %', input_count
             USING ERRCODE = '22023';
     END IF;
 
@@ -1211,6 +1242,30 @@ BEGIN
         WHERE NEW.assignment_field_slug=af.slug AND NEW.assignment_slug = af.assignment_slug;
     END IF;
 
+    IF (TG_OP = 'UPDATE') THEN
+        -- Optimistic concurrency: clients may include the `updated_at`
+        -- they last read in an UPDATE. If it does not match the current
+        -- row we reject the write as stale. Clients that omit
+        -- `updated_at` skip this check (PostgREST leaves the old value
+        -- in place for columns absent from the payload).
+        IF (NEW.updated_at IS DISTINCT FROM OLD.updated_at) THEN
+            RAISE EXCEPTION 'stale write rejected: submission last updated at %, client expected %', OLD.updated_at, NEW.updated_at
+                USING ERRCODE = 'PT409',
+                      DETAIL = 'The assignment field submission changed since it was last read.',
+                      HINT = 'Re-fetch the submission and retry with its current updated_at.';
+        END IF;
+        -- `created_at` is immutable once the row exists.
+        NEW.created_at = OLD.created_at;
+    ELSE
+        -- Prevent API clients from supplying a bogus `created_at`.
+        -- Direct database loads (no request user) keep their values.
+        IF (request.user_id() IS NOT NULL) THEN
+            NEW.created_at = current_timestamp;
+        ELSE
+            NEW.created_at = COALESCE(NEW.created_at, current_timestamp);
+        END IF;
+    END IF;
+
     NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
@@ -1471,7 +1526,7 @@ ALTER FUNCTION data.refresh_assignment_submission_participants() OWNER TO superu
 
 CREATE FUNCTION data.text_is_url(text) RETURNS boolean
     LANGUAGE sql STABLE
-    RETURN $1 ~* '^https?://[a-z0-9]+';
+    RETURN ((char_length($1) <= 2048) AND ($1 ~* '^https?://[a-z0-9]+'));
 
 
 ALTER FUNCTION data.text_is_url(text) OWNER TO superuser;
@@ -1746,7 +1801,9 @@ CREATE TABLE data.assignment_field_submission (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT body_matches_is_url CHECK (((assignment_field_is_url IS FALSE) OR data.text_is_url(body))),
-    CONSTRAINT body_matches_pattern CHECK (data.text_matches(body, assignment_field_pattern))
+    CONSTRAINT body_matches_pattern CHECK (data.text_matches(body, assignment_field_pattern)),
+    CONSTRAINT body_max_length CHECK ((octet_length(body) <= 65536)),
+    CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
 
@@ -1772,6 +1829,208 @@ CREATE VIEW api.assignment_field_submissions AS
 ALTER VIEW api.assignment_field_submissions OWNER TO api;
 
 --
+-- Name: prevent_assignment_field_submission_event_mutation(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.prevent_assignment_field_submission_event_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'assignment field submission event history is append-only';
+END;
+$$;
+
+
+ALTER FUNCTION data.prevent_assignment_field_submission_event_mutation() OWNER TO superuser;
+
+--
+-- Name: record_assignment_field_submission_event(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.record_assignment_field_submission_event() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+DECLARE
+    submission_row data.assignment_field_submission%ROWTYPE;
+    event_kind TEXT;
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        submission_row := OLD;
+        event_kind := 'deleted';
+    ELSE
+        submission_row := NEW;
+        IF (TG_OP = 'INSERT') THEN
+            event_kind := 'submitted';
+        ELSE
+            event_kind := 'revised';
+        END IF;
+    END IF;
+
+    INSERT INTO data.assignment_field_submission_event (
+        event_type,
+        operation,
+        assignment_submission_id,
+        assignment_field_slug,
+        assignment_slug,
+        body_sha256,
+        body_length,
+        submitter_user_id,
+        submission_created_at,
+        submission_updated_at,
+        created_by_user_id
+    )
+    VALUES (
+        event_kind,
+        lower(TG_OP),
+        submission_row.assignment_submission_id,
+        submission_row.assignment_field_slug,
+        submission_row.assignment_slug,
+        encode(public.digest(submission_row.body, 'sha256'), 'hex'),
+        octet_length(submission_row.body),
+        submission_row.submitter_user_id,
+        submission_row.created_at,
+        submission_row.updated_at,
+        request.user_id()
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+ALTER FUNCTION data.record_assignment_field_submission_event() OWNER TO superuser;
+
+--
+-- Name: assignment_field_submission_event; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.assignment_field_submission_event (
+    id bigint NOT NULL,
+    event_type text NOT NULL,
+    operation text NOT NULL,
+    assignment_submission_id integer NOT NULL,
+    assignment_field_slug text NOT NULL,
+    assignment_slug text NOT NULL,
+    body_sha256 text NOT NULL,
+    body_length integer NOT NULL,
+    submitter_user_id integer,
+    submission_created_at timestamp with time zone NOT NULL,
+    submission_updated_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_by_user_id integer,
+    CONSTRAINT assignment_field_submission_event_assignment_field_slug_check CHECK ((char_length(assignment_field_slug) < 100)),
+    CONSTRAINT assignment_field_submission_event_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
+    CONSTRAINT assignment_field_submission_event_body_length_check CHECK ((body_length >= 0)),
+    CONSTRAINT assignment_field_submission_event_body_sha256_check CHECK ((body_sha256 ~ '^[a-f0-9]{64}$'::text)),
+    CONSTRAINT assignment_field_submission_event_event_type_check CHECK ((event_type = ANY (ARRAY['submitted'::text, 'revised'::text, 'deleted'::text]))),
+    CONSTRAINT assignment_field_submission_event_operation_check CHECK ((operation = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text])))
+);
+
+
+ALTER TABLE data.assignment_field_submission_event OWNER TO superuser;
+
+--
+-- Name: assignment_field_submission_event_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.assignment_field_submission_event ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME data.assignment_field_submission_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: assignment_field_submission_event assignment_field_submission_event_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.assignment_field_submission_event
+    ADD CONSTRAINT assignment_field_submission_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_assignment_field_submission_event_actor_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_field_submission_event_actor_fk ON data.assignment_field_submission_event USING btree (created_by_user_id);
+
+
+--
+-- Name: idx_assignment_field_submission_event_natural_key; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_field_submission_event_natural_key ON data.assignment_field_submission_event USING btree (assignment_submission_id, assignment_field_slug, created_at, id);
+
+
+--
+-- Name: assignment_field_submission_event tg_assignment_field_submission_event_append_only; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_assignment_field_submission_event_append_only BEFORE DELETE OR UPDATE ON data.assignment_field_submission_event FOR EACH ROW EXECUTE FUNCTION data.prevent_assignment_field_submission_event_mutation();
+
+
+--
+-- Name: assignment_field_submission tg_assignment_field_submission_event_history; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_assignment_field_submission_event_history AFTER INSERT OR DELETE OR UPDATE ON data.assignment_field_submission FOR EACH ROW EXECUTE FUNCTION data.record_assignment_field_submission_event();
+
+
+--
+-- Name: assignment_field_submission_event; Type: ROW SECURITY; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.assignment_field_submission_event ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assignment_field_submission_event assignment_field_submission_event_access_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY assignment_field_submission_event_access_policy ON data.assignment_field_submission_event TO api USING ((request.user_role() = 'faculty'::text));
+
+
+--
+-- Name: TABLE assignment_field_submission_event; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT ON TABLE data.assignment_field_submission_event TO api;
+
+
+--
+-- Name: assignment_field_submission_events; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.assignment_field_submission_events AS
+ SELECT id,
+    event_type,
+    operation,
+    assignment_submission_id,
+    assignment_field_slug,
+    assignment_slug,
+    body_sha256,
+    body_length,
+    submitter_user_id,
+    submission_created_at,
+    submission_updated_at,
+    created_at,
+    created_by_user_id
+   FROM data.assignment_field_submission_event;
+
+
+ALTER VIEW api.assignment_field_submission_events OWNER TO api;
+
+--
+-- Name: TABLE assignment_field_submission_events; Type: ACL; Schema: api; Owner: api
+--
+
+GRANT SELECT ON TABLE api.assignment_field_submission_events TO faculty;
+
+
+--
 -- Name: assignment_field; Type: TABLE; Schema: data; Owner: superuser
 --
 
@@ -1789,8 +2048,10 @@ CREATE TABLE data.assignment_field (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT assignment_field_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
+    CONSTRAINT assignment_field_example_check CHECK ((char_length(example) <= 1024)),
     CONSTRAINT assignment_field_help_check CHECK ((char_length(help) < 200)),
     CONSTRAINT assignment_field_label_check CHECK ((char_length(label) < 100)),
+    CONSTRAINT assignment_field_pattern_check CHECK ((char_length(pattern) <= 512)),
     CONSTRAINT assignment_field_placeholder_check CHECK ((char_length(placeholder) < 100)),
     CONSTRAINT assignment_field_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 30))),
     CONSTRAINT pattern_matches_example CHECK (data.text_matches(example, pattern)),
@@ -1821,13 +2082,13 @@ CREATE TABLE data.artifact (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT artifact_checksum_sha256_check CHECK (((checksum_sha256 IS NULL) OR (checksum_sha256 ~ '^[a-f0-9]{64}$'::text))),
-    CONSTRAINT artifact_content_length_check CHECK (((content_length IS NULL) OR (content_length >= 0))),
-    CONSTRAINT artifact_content_type_check CHECK (((content_type IS NULL) OR (content_type ~ '^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$'::text))),
+    CONSTRAINT artifact_content_length_check CHECK (((content_length IS NULL) OR ((content_length >= 0) AND (content_length <= 5368709120)))),
+    CONSTRAINT artifact_content_type_check CHECK (((content_type IS NULL) OR ((char_length(content_type) <= 255) AND (content_type ~ '^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$'::text)))),
     CONSTRAINT artifact_description_check CHECK ((char_length(description) < 1000)),
     CONSTRAINT artifact_slug_check CHECK (((slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$'::text) AND (char_length(slug) < 100))),
     CONSTRAINT artifact_storage_uri_check CHECK (((storage_uri IS NULL) OR (char_length(storage_uri) < 1000))),
     CONSTRAINT artifact_title_check CHECK ((char_length(title) < 200)),
-    CONSTRAINT artifact_url_check CHECK (data.text_is_url(url)),
+    CONSTRAINT artifact_url_check CHECK ((data.text_is_url(url) AND (char_length(url) <= 2048))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -1871,6 +2132,7 @@ CREATE TABLE data.assignment_grade (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT assignment_grade_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
+    CONSTRAINT assignment_grade_description_check CHECK (((description IS NULL) OR (octet_length(description) <= 8192))),
     CONSTRAINT points_in_range CHECK (((points >= (0)::double precision) AND (points <= (points_possible)::double precision))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -2038,6 +2300,7 @@ CREATE TABLE data.assignment (
     closed_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT assignment_body_check CHECK ((octet_length(body) <= 262144)),
     CONSTRAINT assignment_points_possible_check CHECK ((points_possible >= 0)),
     CONSTRAINT assignment_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 60))),
     CONSTRAINT assignment_title_check CHECK ((char_length(title) < 100)),
@@ -2237,6 +2500,7 @@ CREATE TABLE data.grade_snapshot (
     description text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT grade_snapshot_description_check CHECK (((description IS NULL) OR (octet_length(description) <= 8192))),
     CONSTRAINT grade_snapshot_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 60))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -2304,7 +2568,8 @@ CREATE TABLE data.grade (
     description text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT grade_points_finite_nonnegative CHECK (((points >= (0)::double precision) AND (points < 'Infinity'::real))),
+    CONSTRAINT grade_description_check CHECK (((description IS NULL) OR (octet_length(description) <= 8192))),
+    CONSTRAINT grade_points_finite_nonnegative CHECK (((points >= (0)::double precision) AND (points <= (100000)::double precision))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -2418,8 +2683,11 @@ CREATE TABLE data.meeting (
     is_draft boolean DEFAULT false NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT meeting_description_check CHECK ((octet_length(description) <= 262144)),
+    CONSTRAINT meeting_duration_max CHECK ((duration <= '24:00:00'::interval)),
     CONSTRAINT meeting_duration_positive CHECK ((duration > '00:00:00'::interval)),
     CONSTRAINT meeting_slug_check CHECK (((slug ~ '^[a-z0-9-]+$'::text) AND (char_length(slug) < 60))),
+    CONSTRAINT meeting_summary_check CHECK (((summary IS NULL) OR (octet_length(summary) <= 4096))),
     CONSTRAINT meeting_title_check CHECK ((char_length(title) < 250)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -2578,6 +2846,7 @@ CREATE TABLE data.quiz_grade (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT points_in_range CHECK (((points >= (0)::double precision) AND (points <= (points_possible)::double precision))),
+    CONSTRAINT quiz_grade_description_check CHECK (((description IS NULL) OR (octet_length(description) <= 8192))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
 
@@ -2767,6 +3036,8 @@ CREATE TABLE data.quiz (
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT closed_after_open CHECK ((closed_at > open_at)),
+    CONSTRAINT quiz_duration_max CHECK ((duration <= '24:00:00'::interval)),
+    CONSTRAINT quiz_duration_positive CHECK ((duration > '00:00:00'::interval)),
     CONSTRAINT quiz_meeting_slug_check CHECK ((char_length(meeting_slug) < 100)),
     CONSTRAINT quiz_points_possible_check CHECK ((points_possible >= 0)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
@@ -2836,6 +3107,7 @@ CREATE TABLE data.ui_element (
     is_markdown boolean DEFAULT false,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT ui_element_body_check CHECK (((body IS NULL) OR (octet_length(body) <= 65536))),
     CONSTRAINT ui_element_key_check CHECK (((key ~ '^[a-z0-9\-]+$'::text) AND (char_length(key) < 50))),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
 );
@@ -2918,6 +3190,7 @@ CREATE TABLE data.user_secret (
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at)),
     CONSTRAINT user_or_team CHECK ((((team_nickname IS NOT NULL) AND (user_id IS NULL)) OR ((team_nickname IS NULL) AND (user_id IS NOT NULL)))),
+    CONSTRAINT user_secret_body_check CHECK ((octet_length(body) <= 8192)),
     CONSTRAINT user_secret_slug_check CHECK (((slug ~ '^[a-z0-9][a-z0-9_-]+[a-z0-9]$'::text) AND (char_length(slug) < 100))),
     CONSTRAINT user_secret_team_nickname_check CHECK ((char_length(team_nickname) < 50))
 );

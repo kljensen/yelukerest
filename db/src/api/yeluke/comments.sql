@@ -67,6 +67,22 @@ COMMENT ON COLUMN assignment_field_submissions.submitter_user_id IS 'User who su
 COMMENT ON COLUMN assignment_field_submissions.created_at IS 'When this field submission row was created';
 COMMENT ON COLUMN assignment_field_submissions.updated_at IS 'When this field submission row was last updated';
 
+COMMENT ON VIEW assignment_field_submission_events IS
+    'Append-only history of assignment field submission inserts, updates, and deletions';
+COMMENT ON COLUMN assignment_field_submission_events.id IS 'Unique assignment field submission history event id';
+COMMENT ON COLUMN assignment_field_submission_events.event_type IS 'Submission event kind: submitted, revised, or deleted';
+COMMENT ON COLUMN assignment_field_submission_events.operation IS 'Table operation that produced this event';
+COMMENT ON COLUMN assignment_field_submission_events.assignment_submission_id IS 'Submission the affected field value belongs to';
+COMMENT ON COLUMN assignment_field_submission_events.assignment_field_slug IS 'Assignment field the affected value answers';
+COMMENT ON COLUMN assignment_field_submission_events.assignment_slug IS 'Assignment the affected field value belongs to';
+COMMENT ON COLUMN assignment_field_submission_events.body_sha256 IS 'SHA-256 hash of the written field value';
+COMMENT ON COLUMN assignment_field_submission_events.body_length IS 'Length in bytes of the written field value';
+COMMENT ON COLUMN assignment_field_submission_events.submitter_user_id IS 'User recorded as the submitter of the field value';
+COMMENT ON COLUMN assignment_field_submission_events.submission_created_at IS 'Field submission row creation timestamp captured for this event';
+COMMENT ON COLUMN assignment_field_submission_events.submission_updated_at IS 'Field submission row update timestamp captured for this event';
+COMMENT ON COLUMN assignment_field_submission_events.created_at IS 'When this history event was appended';
+COMMENT ON COLUMN assignment_field_submission_events.created_by_user_id IS 'Request user that caused this history event, when available';
+
 COMMENT ON VIEW assignment_grades IS
     'Grades assigned to submitted assignments';
 COMMENT ON COLUMN assignment_grades.assignment_slug IS 'Assignment this grade belongs to';

@@ -12,8 +12,10 @@ CREATE TABLE IF NOT EXISTS meeting (
     title text NOT NULL CHECK (char_length(title) < 250),
     slug TEXT UNIQUE NOT NULL
         CHECK (slug ~ '^[a-z0-9-]+$' AND char_length(slug) < 60),
-    summary TEXT,
-    description TEXT NOT NULL,
+    summary TEXT
+        CHECK (summary IS NULL OR octet_length(summary) <= 4096),
+    description TEXT NOT NULL
+        CHECK (octet_length(description) <= 262144),
     begins_at TIMESTAMP WITH TIME ZONE NOT NULL,
     duration INTERVAL NOT NULL,
     meeting_type meeting_type_enum NOT NULL DEFAULT 'lecture',
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS meeting (
         NOT NULL
         DEFAULT current_timestamp,
     CONSTRAINT meeting_duration_positive CHECK (duration > INTERVAL '0 seconds'),
+    CONSTRAINT meeting_duration_max CHECK (duration <= INTERVAL '24 hours'),
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at)
 );
 

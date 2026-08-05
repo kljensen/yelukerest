@@ -2,7 +2,8 @@
 CREATE TABLE IF NOT EXISTS ui_element (
     key TEXT PRIMARY KEY
         CHECK (key ~ '^[a-z0-9\-]+$' AND char_length(key) < 50),
-    body TEXT,
+    body TEXT
+        CHECK (body IS NULL OR octet_length(body) <= 65536),
     is_markdown BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL

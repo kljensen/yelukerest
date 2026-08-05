@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS assignment_grade (
     points_possible smallint NOT NULL,
     assignment_submission_id INT PRIMARY KEY,
     points REAL NOT NULL,
-    description TEXT,
+    description TEXT
+        CHECK (description IS NULL OR octet_length(description) <= 8192),
     created_at TIMESTAMP WITH TIME ZONE
         NOT NULL
         DEFAULT current_timestamp,
