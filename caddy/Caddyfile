@@ -119,8 +119,25 @@
 	# 4444) is ever routed here — the admin API (port 4445) must NEVER
 	# be proxied. OAuth requests are small (auth redirects, token and
 	# DCR JSON bodies), so cap bodies tightly.
+	# Dynamic Client Registration goes through authapp, NOT directly to
+	# Hydra: Hydra's DCR responses include null/empty optional fields
+	# that strict-parser MCP clients reject (ory/hydra#4044, fix PR
+	# #4050 unmerged). authapp reverse-proxies these paths to Hydra's
+	# public port, cleans the response JSON, injects the MCP audience
+	# allowlist, and hardens registration (per-IP rate limit,
+	# redirect_uri validation). Route these directly to Hydra again
+	# once the upstream fix ships (issue #272).
+	@hydra_dcr {
+		path /oauth2/register /oauth2/register/*
+	}
+	route @hydra_dcr {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy authapp:{$AUTHAPP_PORT}
+	}
 	@hydra_public {
-		path /oauth2/auth /oauth2/auth/* /oauth2/token /oauth2/register /oauth2/register/* /oauth2/revoke /oauth2/sessions/* /oauth2/fallbacks/* /userinfo /.well-known/openid-configuration /.well-known/oauth-authorization-server /.well-known/jwks.json
+		path /oauth2/auth /oauth2/auth/* /oauth2/token /oauth2/revoke /oauth2/sessions/* /oauth2/fallbacks/* /userinfo /.well-known/openid-configuration /.well-known/oauth-authorization-server /.well-known/jwks.json
 	}
 	route @hydra_public {
 		request_body {

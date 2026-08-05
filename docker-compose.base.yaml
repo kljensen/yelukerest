@@ -131,6 +131,13 @@ services:
             - AUTHAPP_JWT=${AUTHAPP_JWT}
             - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
             - JWT_AUDIENCE=${JWT_AUDIENCE:-yelukerest-postgrest}
+            # For the DCR response-cleaning proxy (issue #272,
+            # ory/hydra#4044): Hydra's public API on the internal
+            # network, and the MCP resource URL injected as the client
+            # audience allowlist (falls back to https://$FQDN/mcp).
+            - HYDRA_PUBLIC_INTERNAL_URL=${HYDRA_PUBLIC_INTERNAL_URL:-http://hydra:4444}
+            - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
+            - FQDN=${FQDN}
 
     mcpapp:
         build: mcpapp

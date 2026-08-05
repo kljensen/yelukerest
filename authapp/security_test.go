@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -82,5 +83,24 @@ func TestRequestClientKey(t *testing.T) {
 	req.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.10")
 	if got := requestClientKey(req); got != "203.0.113.9" {
 		t.Fatalf("requestClientKey with forwarded header = %q", got)
+	}
+}
+
+func TestRateLimiterEvictsExpiredKeys(t *testing.T) {
+	limiter := newRateLimiter(5, time.Minute)
+	start := time.Now()
+	for i := range rateLimiterSweepThreshold + 10 {
+		limiter.Allow(fmt.Sprintf("ip-%d", i), start)
+	}
+	if len(limiter.requests) < rateLimiterSweepThreshold {
+		t.Fatalf("expected keys to accumulate, got %d", len(limiter.requests))
+	}
+	// A request a full window later must sweep every stale key.
+	limiter.Allow("fresh", start.Add(2*time.Minute))
+	if len(limiter.requests) != 1 {
+		t.Fatalf("expected stale keys to be evicted, %d remain", len(limiter.requests))
+	}
+	if !limiter.Allow("ip-0", start.Add(2*time.Minute)) {
+		t.Fatal("evicted key must be allowed again")
 	}
 }

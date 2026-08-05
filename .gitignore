@@ -11,3 +11,6 @@ node_modules
 tmp
 .DS_Store
 elm-stuff
+
+# Compiled Go binaries
+mcpapp/mcpapp

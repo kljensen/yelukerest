@@ -179,6 +179,53 @@ check_hydra() {
     fi
 }
 
+check_hydra_client_count() {
+    # Client-churn alert (issue #272): Claude Code registers a fresh
+    # DCR client on every connection (anthropics/claude-code#59460), so
+    # the registered-client count grows without bound unless
+    # bin/prune-hydra-clients.sh runs. Warn when the count exceeds
+    # HYDRA_CLIENT_COUNT_WARN (default 500, far above any realistic
+    # enrollment). Counting uses the admin API from a neighbor
+    # container because port 4445 is never proxied or published.
+    threshold=${HYDRA_CLIENT_COUNT_WARN:-500}
+    if [ "${DEVELOPMENT:-}" = "1" ]; then
+        compose_files='-f docker-compose.base.yaml -f docker-compose.dev.yaml'
+    else
+        compose_files='-f docker-compose.base.yaml -f docker-compose.prod.yaml'
+    fi
+
+    body_file=$(mktemp)
+    header_file=$(mktemp)
+    count=0
+    next='/admin/clients?page_size=500'
+    pages=0
+    while [ -n "$next" ] && [ "$pages" -lt 40 ]; do
+        pages=$((pages + 1))
+        # busybox wget prints response headers to stderr with -S; the
+        # Link header there carries the opaque next-page token.
+        # shellcheck disable=SC2086
+        docker compose $compose_files exec -T elmclient \
+            wget -SqO- "http://hydra:4445$next" >"$body_file" 2>"$header_file" || true
+        page_count=$(jq 'if type == "array" then length else empty end' <"$body_file" 2>/dev/null || true)
+        case "$page_count" in
+            ''|*[!0-9]*)
+                warn "hydra admin API not reachable for client count (is the stack up?); skipping"
+                rm -f "$body_file" "$header_file"
+                return
+                ;;
+        esac
+        count=$((count + page_count))
+        next=$(sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p' "$header_file" | head -n 1)
+    done
+    rm -f "$body_file" "$header_file"
+
+    if [ "$count" -gt "$threshold" ]; then
+        warn "hydra has $count registered OAuth clients (threshold $threshold); DCR churn is accumulating — run bin/prune-hydra-clients.sh (see docs/hydra.md)"
+    else
+        ok "hydra registered OAuth client count is $count (threshold $threshold)"
+    fi
+}
+
 need_command jq
 need_command openssl
 
@@ -220,6 +267,7 @@ if [ -n "${PRE_REQUEST:-}" ] && [ "$PRE_REQUEST" != "api.check_request_jwt" ]; t
 fi
 
 check_hydra
+check_hydra_client_count
 
 if [ "$failures" -ne 0 ]; then
     printf 'doctor failed: %d failure(s), %d warning(s)\n' "$failures" "$warnings" >&2

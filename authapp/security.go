@@ -14,6 +14,10 @@ func setNoStoreHeaders(w http.ResponseWriter) {
 	w.Header().Set("Expires", "0")
 }
 
+// rateLimiterSweepThreshold is the map size above which Allow sweeps expired
+// keys. Below it the bookkeeping is not worth the scan.
+const rateLimiterSweepThreshold = 1024
+
 type rateLimiter struct {
 	mu       sync.Mutex
 	limit    int
@@ -34,6 +38,10 @@ func (l *rateLimiter) Allow(key string, now time.Time) bool {
 	defer l.mu.Unlock()
 
 	cutoff := now.Add(-l.window)
+	// Evict keys whose windows have fully expired. Without this the map
+	// grows without bound on public endpoints (the DCR proxy), where
+	// clients can arrive from unlimited distinct addresses.
+	l.evictExpired(cutoff)
 	var recent []time.Time
 	for _, requestTime := range l.requests[key] {
 		if requestTime.After(cutoff) {
@@ -48,6 +56,20 @@ func (l *rateLimiter) Allow(key string, now time.Time) bool {
 	recent = append(recent, now)
 	l.requests[key] = recent
 	return true
+}
+
+// evictExpired drops keys with no requests inside the current window. It runs
+// under the caller's lock. Sweeping is amortized: the map only ever holds keys
+// seen within one window plus those added since the last sweep.
+func (l *rateLimiter) evictExpired(cutoff time.Time) {
+	if len(l.requests) < rateLimiterSweepThreshold {
+		return
+	}
+	for key, times := range l.requests {
+		if len(times) == 0 || !times[len(times)-1].After(cutoff) {
+			delete(l.requests, key)
+		}
+	}
 }
 
 func rateLimitMiddleware(limiter *rateLimiter, next http.Handler) http.Handler {

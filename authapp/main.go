@@ -92,6 +92,24 @@ func main() {
 	mux.Handle("/auth/jwt", getJWT)
 	mux.Handle("/auth/api.json", getOpenAPI)
 
+	// Proxy Hydra's Dynamic Client Registration endpoints, cleaning
+	// null/empty optional fields out of responses that break strict
+	// MCP clients (ory/hydra#4044, issue #272), injecting the MCP
+	// audience allowlist so token refresh works (issue #271 spike),
+	// and hardening the registration surface (rate limit,
+	// redirect_uri validation).
+	mcpAudience := resolveMCPAudience()
+	if mcpAudience == "" {
+		log.Println("warning: MCP_RESOURCE_URL and FQDN are unset; DCR audience injection is disabled and Hydra token refresh will fail for MCP clients")
+	}
+	registerLimiter := newRateLimiter(10, time.Minute)
+	registerProxy := getRegisterProxyHandler(registerProxyConfig{
+		HydraPublicURL: envOrDefault("HYDRA_PUBLIC_INTERNAL_URL", "http://hydra:4444"),
+		MCPAudience:    mcpAudience,
+	}, registerLimiter)
+	mux.Handle("/oauth2/register", registerProxy)
+	mux.Handle("/oauth2/register/", registerProxy)
+
 	// In development, add endpoints for a mock CAS server.
 	if casConfig.IsDevelopment {
 		mux.HandleFunc("/cas/login", casLoginHandler)
@@ -121,6 +139,20 @@ func developmentEnabled(value string) bool {
 	default:
 		return true
 	}
+}
+
+// resolveMCPAudience returns the MCP resource URL injected as the
+// audience allowlist during dynamic client registration: explicit
+// MCP_RESOURCE_URL when set (matching mcpapp's configuration),
+// otherwise derived from FQDN, otherwise empty (injection disabled).
+func resolveMCPAudience() string {
+	if value := strings.TrimSpace(os.Getenv("MCP_RESOURCE_URL")); value != "" {
+		return value
+	}
+	if fqdn := strings.TrimSpace(os.Getenv("FQDN")); fqdn != "" {
+		return "https://" + fqdn + "/mcp"
+	}
+	return ""
 }
 
 func envOrDefault(name string, fallback string) string {

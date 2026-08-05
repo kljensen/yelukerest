@@ -20,6 +20,17 @@ tokens are validated by `mcpapp` only and never reach PostgREST.
   `/oauth2/*` (auth, token, register, revoke, sessions, fallbacks),
   `/userinfo`, `/.well-known/openid-configuration`,
   `/.well-known/oauth-authorization-server`, `/.well-known/jwks.json`.
+- Exception: `/oauth2/register` and `/oauth2/register/{id}` (Dynamic
+  Client Registration) are routed to **authapp**, which reverse-proxies
+  them to Hydra's public port. authapp strips the null/empty optional
+  fields from Hydra's DCR responses that break strict-parser MCP
+  clients ([ory/hydra#4044](https://github.com/ory/hydra/issues/4044)),
+  injects the MCP audience allowlist so token refresh works (issue
+  #271 spike), and hardens registration: per-IP rate limit (10/min),
+  64KB body cap, at most 10 `redirect_uris` of at most 2000 chars,
+  https-only redirect URIs except `http://localhost` /
+  `http://127.0.0.1` loopback. See `authapp/register.go`; remove the
+  proxy when the upstream fix ships (issue #272).
 - Admin API on port 4445: **never published to the host, never proxied
   by Caddy**. It is reachable only from other containers on the compose
   network (breakglass below).
@@ -172,27 +183,58 @@ The admin API is intentionally unreachable from the host. Two ways in:
   ```
 
 - **Admin REST API from a neighbor container** (elmclient has a shell
-  and wget):
+  and busybox wget — GET/POST only; use the hydra CLI above for
+  DELETE):
 
   ```sh
   docker compose ... exec -T elmclient \
     wget -qO- http://hydra:4445/admin/clients
-  # Delete a client:
-  docker compose ... exec -T elmclient \
-    wget -qO- --method=DELETE http://hydra:4445/admin/clients/<client_id>
+  # Delete a client (busybox wget cannot send DELETE):
+  docker compose ... exec -T hydra \
+    hydra delete oauth2-client <client_id> --endpoint http://127.0.0.1:4445
   ```
 
 Never add a Caddy route or a host port mapping for 4445, even
 temporarily.
 
-## Client Pruning (Placeholder — Issue #272)
+## Client Pruning (Issue #272)
 
 Claude Code registers a fresh DCR client on every connection
-(anthropics/claude-code#59460), so the client table grows without bound.
-A prune job (delete clients with no token activity for >30 days) plus a
-doctor alert when the client count far exceeds enrollment are
-implemented in issue #272. Until then, prune manually via the breakglass
-admin API above.
+(anthropics/claude-code#59460), so the client table grows without
+bound. Two tools keep it in check:
+
+- **Alert**: `./bin/doctor.sh` counts registered clients via the admin
+  API and warns when the count exceeds `HYDRA_CLIENT_COUNT_WARN`
+  (default 500 — far above any realistic enrollment).
+- **Prune**: `./bin/prune-hydra-clients.sh` deletes stale clients.
+
+The prune script deletes clients that are **both** older than N days
+(`--days`, default 30 — `created_at` and `updated_at`) **and** not
+referenced by any active consent session (checked via the admin REST
+API per subject; subjects are enumerated from the app `user` table, so
+the db container must be up). It is conservative:
+
+- **Dry run by default** — prints the candidates; `--yes` deletes.
+- Only public clients (`token_endpoint_auth_method: "none"`, the DCR
+  churn population) are considered unless `--include-confidential` is
+  given, so manually registered confidential clients are never touched
+  by default.
+- If subjects or consent sessions cannot be enumerated, it aborts
+  instead of pruning blind.
+
+```sh
+# See what would be deleted (dev: DEVELOPMENT=1 selects dev compose files)
+./bin/prune-hydra-clients.sh
+# Delete clients idle more than 45 days
+./bin/prune-hydra-clients.sh --days 45 --yes
+```
+
+Keep `--days` at or above the refresh-token TTL (30 days,
+`ttl.refresh_token` in `hydra/hydra.yml`): consent-session listing is
+the activity signal, and a client whose consent was not remembered
+could in principle still hold refresh tokens younger than the TTL.
+Run it monthly (manually or from cron on the host); doctor's warning
+is the reminder that it has not been run.
 
 ## Upgrade Procedure
 
@@ -200,10 +242,11 @@ admin API above.
    changes. Re-check the ADR caveats register — especially
    [ory/hydra#4044](https://github.com/ory/hydra/issues/4044): Hydra's
    DCR responses include null/empty optional fields that break
-   strict-parser MCP clients (mcp-remote, Cursor, TS-SDK-based). A
-   response-cleaning proxy on `/oauth2/register` is tracked in issue
-   #272; **verify on every upgrade whether the upstream fix (PR #4050)
-   shipped** — if it did, the proxy can be deleted; if not, the proxy
+   strict-parser MCP clients (mcp-remote, Cursor, TS-SDK-based). The
+   response-cleaning proxy on `/oauth2/register` lives in authapp
+   (`authapp/register.go`, issue #272); **verify on every upgrade
+   whether the upstream fix (PR #4050) shipped** — if it did, the
+   cleaning code can be deleted (keep the hardening); if not, the proxy
    must keep working against the new response shape.
 2. Take a backup (`bin/dumpdb.sh` or a pgbackrest backup).
 3. Bump the image tag (and recorded digest) in
@@ -221,3 +264,7 @@ up: `/health/ready` on the internal network; both discovery documents
 fetchable through Caddy; issuer consistency with the expected public
 URL; `registration_endpoint` advertised (DCR on); PKCE S256 advertised.
 Set `HYDRA_CHECK_URL` to override the public base URL it probes.
+
+`check_hydra_client_count` additionally counts registered OAuth
+clients via the admin API and warns above `HYDRA_CLIENT_COUNT_WARN`
+(default 500); see Client Pruning above.
