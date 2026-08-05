@@ -18,6 +18,7 @@ truncate data.user_secret restart identity cascade;
 truncate data.grade_event restart identity cascade;
 truncate data.grade_snapshot restart identity cascade;
 truncate data.grade restart identity cascade;
+truncate data.mcp_jwt_mint_event restart identity cascade;
 -- KEEP ME FOR new-table.sh
 
 

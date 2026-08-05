@@ -13,6 +13,7 @@ select * from check_test(
         'quiz_grade_exceptions', 'assignment_grade_exceptions',
         'quiz_grade_distributions', 'assignment_grade_distributions',
         'grade_snapshot_distributions',
+        'mcp_jwt_mint_events', 'mcp_jwt_mint_anomalies',
         'user_secrets', 'user_jwts', 'grade_snapshots', 'grades'], 'tables present'),
     true,
     'all views are present in api schema',

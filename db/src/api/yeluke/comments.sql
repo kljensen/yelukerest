@@ -274,3 +274,29 @@ COMMENT ON COLUMN user_jwts.team_nickname IS 'Team nickname assigned to the user
 
 COMMENT ON FUNCTION issue_user_jwt(text) IS
     'Issue one user JWT for the requested netid when called by the authapp service';
+
+COMMENT ON VIEW mcp_jwt_mint_events IS
+    'Append-only audit history of internal user JWTs minted for the MCP service';
+COMMENT ON COLUMN mcp_jwt_mint_events.id IS 'Unique mint event id';
+COMMENT ON COLUMN mcp_jwt_mint_events.user_id IS 'User the internal JWT was minted for';
+COMMENT ON COLUMN mcp_jwt_mint_events.netid IS 'Netid the internal JWT was minted for';
+COMMENT ON COLUMN mcp_jwt_mint_events.user_role IS 'Course role captured when the internal JWT was minted';
+COMMENT ON COLUMN mcp_jwt_mint_events.scopes IS 'Space-separated scopes granted in the minted JWT';
+COMMENT ON COLUMN mcp_jwt_mint_events.jti IS 'Token id (jti claim) of the minted internal JWT';
+COMMENT ON COLUMN mcp_jwt_mint_events.caller_app_name IS 'app_name claim of the service credential that requested the mint';
+COMMENT ON COLUMN mcp_jwt_mint_events.external_issuer IS 'Issuer of the external token exchanged for this JWT, if any';
+COMMENT ON COLUMN mcp_jwt_mint_events.external_sub IS 'Subject of the external token exchanged for this JWT, if any';
+COMMENT ON COLUMN mcp_jwt_mint_events.external_jti IS 'Token id of the external token exchanged for this JWT, if any';
+COMMENT ON COLUMN mcp_jwt_mint_events.external_client_id IS 'OAuth client id associated with the external token, if any';
+COMMENT ON COLUMN mcp_jwt_mint_events.created_at IS 'When this mint event was appended';
+
+COMMENT ON VIEW mcp_jwt_mint_anomalies IS
+    'Mint-rate anomaly report: callers minting JWTs for more than 10 distinct users within a 10-minute window';
+COMMENT ON COLUMN mcp_jwt_mint_anomalies.caller_app_name IS 'Service credential whose minting rate looks anomalous';
+COMMENT ON COLUMN mcp_jwt_mint_anomalies.window_end IS 'End of the sliding 10-minute window: the mint event that tripped the threshold';
+COMMENT ON COLUMN mcp_jwt_mint_anomalies.window_start IS 'Start of the sliding 10-minute window containing the anomalous minting';
+COMMENT ON COLUMN mcp_jwt_mint_anomalies.distinct_subjects IS 'Distinct users minted for within the window';
+COMMENT ON COLUMN mcp_jwt_mint_anomalies.mint_count IS 'Total mint events within the window';
+
+COMMENT ON FUNCTION issue_user_jwt_for_mcp(text, text[], jsonb) IS
+    'Mint a short-lived scope-carrying internal user JWT for the mcpapp service, auditing every mint';

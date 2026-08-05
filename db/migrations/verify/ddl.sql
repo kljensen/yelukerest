@@ -976,6 +976,93 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'data.grade_event must have the grade_event_points_finite_nonnegative CHECK with the 100000 upper bound';
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'mcp_jwt_mint_event'
+        AND c.relrowsecurity
+    ) THEN
+        RAISE EXCEPTION 'missing data.mcp_jwt_mint_event table with row level security';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'mcp_jwt_mint_event'
+        AND t.tgname = 'tg_mcp_jwt_mint_event_append_only'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_mcp_jwt_mint_event_append_only trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_policy pol
+        JOIN pg_class c ON c.oid = pol.polrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'mcp_jwt_mint_event'
+        AND pol.polname = 'mcp_jwt_mint_event_access_policy'
+    ) THEN
+        RAISE EXCEPTION 'missing mcp_jwt_mint_event_access_policy policy';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname = 'issue_user_jwt_for_mcp'
+        AND p.prosecdef
+    ) THEN
+        RAISE EXCEPTION 'missing api.issue_user_jwt_for_mcp security-definer function';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'auth'
+        AND p.proname = 'sign_mcp_user_jwt'
+        AND p.prosecdef
+    ) THEN
+        RAISE EXCEPTION 'missing auth.sign_mcp_user_jwt security-definer function';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'mcp_jwt_mint_events'
+        AND c.relkind = 'v'
+    ) THEN
+        RAISE EXCEPTION 'missing api.mcp_jwt_mint_events view';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'api'
+        AND c.relname = 'mcp_jwt_mint_anomalies'
+        AND c.relkind = 'v'
+    ) THEN
+        RAISE EXCEPTION 'missing api.mcp_jwt_mint_anomalies view';
+    END IF;
+
+    IF NOT has_function_privilege('app', 'api.issue_user_jwt_for_mcp(text, text[], jsonb)', 'EXECUTE') THEN
+        RAISE EXCEPTION 'app must be able to execute api.issue_user_jwt_for_mcp';
+    END IF;
+
+    IF NOT has_table_privilege('faculty', 'api.mcp_jwt_mint_events', 'SELECT') THEN
+        RAISE EXCEPTION 'faculty must be able to select from api.mcp_jwt_mint_events';
+    END IF;
 END $$;
 
 ROLLBACK;

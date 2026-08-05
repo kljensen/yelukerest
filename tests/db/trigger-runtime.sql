@@ -28,6 +28,7 @@ SELECT set_eq(
         'grade.tg_grade_event_history',
         'grade_event.tg_grade_event_append_only',
         'grade_snapshot.tg_grade_snapshot_default',
+        'mcp_jwt_mint_event.tg_mcp_jwt_mint_event_append_only',
         'meeting.tg_meeting_default',
         'quiz.tg_quiz_default',
         'quiz_grade.tg_quiz_grade_default',

@@ -24,6 +24,7 @@
 \ir ./yeluke/grade.sql
 \ir ./yeluke/grade_event.sql
 \ir ./yeluke/assignment_field_submission_event.sql
+\ir ./yeluke/mcp_jwt.sql
 \ir ./yeluke/comments.sql
 
 \ir ./yeluke/functions.sql

@@ -8,6 +8,7 @@ SELECT set_eq(
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE (n.nspname, p.proname) IN (
             ('auth', 'sign_jwt'),
+            ('auth', 'sign_mcp_user_jwt'),
             ('data', 'text_is_url'),
             ('data', 'text_matches'),
             ('request', 'app_name'),
@@ -22,6 +23,7 @@ SELECT set_eq(
     $$,
     ARRAY[
         'auth.sign_jwt',
+        'auth.sign_mcp_user_jwt',
         'data.text_is_url',
         'data.text_matches',
         'request.app_name',
