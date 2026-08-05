@@ -111,6 +111,25 @@
 	}
 }
 
+(hydra) {
+	# Pass Ory Hydra's PUBLIC OAuth/OIDC endpoints to the hydra docker
+	# container (issue #270). The issuer is the domain root, so these
+	# specific paths are routed at the top level; see hydra/hydra.yml
+	# for the rationale. Only the public API (port $HYDRA_PUBLIC_PORT,
+	# 4444) is ever routed here — the admin API (port 4445) must NEVER
+	# be proxied. OAuth requests are small (auth redirects, token and
+	# DCR JSON bodies), so cap bodies tightly.
+	@hydra_public {
+		path /oauth2/auth /oauth2/auth/* /oauth2/token /oauth2/register /oauth2/register/* /oauth2/revoke /oauth2/sessions/* /oauth2/fallbacks/* /userinfo /.well-known/openid-configuration /.well-known/oauth-authorization-server /.well-known/jwks.json
+	}
+	route @hydra_public {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy hydra:{$HYDRA_PUBLIC_PORT}
+	}
+}
+
 (app) {
 	import security_headers
 	import app_csp
@@ -119,6 +138,7 @@
 	import postgrest
 	import authapp
 	import mcpapp
+	import hydra
 	route /openapi/* {
 		uri strip_prefix /openapi
 		file_server {

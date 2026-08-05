@@ -76,6 +76,7 @@ services:
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
             - MCPAPP_PORT=${MCPAPP_PORT:-8090}
+            - HYDRA_PUBLIC_PORT=${HYDRA_PUBLIC_PORT:-4444}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
             - AWS_REGION=${CADDY_ACME_AWS_REGION}
@@ -89,6 +90,32 @@ services:
             - './caddy/user_code:/usr/share/caddy/user_code'
             - caddy_data:/data
             - caddy_config:/config
+
+    # Ory Hydra: OAuth 2.1 authorization server for MCP clients
+    # (docs/adr/0001-mcp-and-oauth.md, issue #270).
+    # Pinned by tag for now; recorded digest for later digest-pinning:
+    # oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
+    hydra:
+        image: oryd/hydra:v26.2.0
+        command: serve all -c /etc/hydra/hydra.yml --sqa-opt-out
+        restart: on-failure
+        # NO ports section on purpose: the public API (4444) is reached only
+        # by Caddy over the internal compose network, and the admin API
+        # (4445) is never published to the host and never proxied by Caddy.
+        environment:
+            # The DSN (storage backend) comes from the dev/prod overlays:
+            # "memory" for the fast dev loop, Postgres in production.
+            # SECRETS_SYSTEM encrypts Hydra's data at rest; rotation
+            # procedure is documented in docs/hydra.md.
+            - SECRETS_SYSTEM=${HYDRA_SECRETS_SYSTEM}
+            # Issuer and endpoint URLs. See hydra/hydra.yml for why the
+            # issuer is the domain root rather than a path prefix.
+            - URLS_SELF_ISSUER=https://${FQDN}
+            - URLS_LOGIN=https://${FQDN}/auth/oauth/login
+            - URLS_CONSENT=https://${FQDN}/auth/oauth/consent
+            - WEBFINGER_OIDC_DISCOVERY_CLIENT_REGISTRATION_URL=https://${FQDN}/oauth2/register
+        volumes:
+            - './hydra/hydra.yml:/etc/hydra/hydra.yml:ro'
 
     authapp:
         build: authapp
@@ -117,7 +144,10 @@ services:
             - JWT_MCP_AUDIENCE=${JWT_MCP_AUDIENCE:-yelukerest-mcp}
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
-            - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-}
+            # Advertised in the RFC 9728 protected-resource metadata so
+            # MCP clients can discover the authorization server. Hydra's
+            # issuer is the domain root (see hydra/hydra.yml).
+            - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-https://${FQDN}}
             - MCP_STATELESS_ENABLED=${MCP_STATELESS_ENABLED:-false}
             - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
             - FQDN=${FQDN}

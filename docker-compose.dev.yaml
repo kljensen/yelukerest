@@ -24,8 +24,18 @@ services:
       - DEVELOPMENT=${DEVELOPMENT}
       - JWT_SECRET=${JWT_SECRET}
 
+      # Used by the hydra init script below (not by db/src scripts).
+      - HYDRA_DB_USER=${HYDRA_DB_USER:-hydra}
+      - HYDRA_DB_PASS=${HYDRA_DB_PASS:-hydra-dev-password}
+
     volumes:
       - "./db/src:/docker-entrypoint-initdb.d"
+      # Create the dedicated hydra database/role on first boot so a
+      # Postgres-backed Hydra (CI/test profile; concurrency-sensitive
+      # tests) can run against the dev database container. The zzz-
+      # prefix makes the entrypoint run it after db/src/init.sql. This
+      # deliberately lives outside db/src (see issue #270).
+      - "./hydra/sql/create-hydra-db.sh:/docker-entrypoint-initdb.d/zzz-create-hydra-db.sh:ro"
 
   authapp:
     environment:
@@ -36,3 +46,21 @@ services:
       # In development the stack is served at https://localhost via Caddy;
       # FQDN may be unset, so pin the MCP resource URL explicitly.
       - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-https://localhost/mcp}
+      - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-https://localhost}
+
+  hydra:
+    environment:
+      # In-memory storage for the fast interactive dev loop ONLY: all
+      # clients/tokens are lost on restart, and SQLite-in-memory masks
+      # locking races. Concurrency-sensitive tests (refresh reuse,
+      # restart survival) must use the Postgres-backed configuration
+      # (see docs/hydra.md).
+      - DSN=memory
+      # Dev serves at https://localhost via Caddy (see mcpapp above).
+      - URLS_SELF_ISSUER=${HYDRA_DEV_ISSUER:-https://localhost}
+      - URLS_LOGIN=${HYDRA_DEV_ISSUER:-https://localhost}/auth/oauth/login
+      - URLS_CONSENT=${HYDRA_DEV_ISSUER:-https://localhost}/auth/oauth/consent
+      - WEBFINGER_OIDC_DISCOVERY_CLIENT_REGISTRATION_URL=${HYDRA_DEV_ISSUER:-https://localhost}/oauth2/register
+      # A dev-only default so `./bin/dev.sh up` works out of the box;
+      # production MUST set HYDRA_SECRETS_SYSTEM in .env.
+      - SECRETS_SYSTEM=${HYDRA_SECRETS_SYSTEM:-dev-only-insecure-hydra-system-secret}

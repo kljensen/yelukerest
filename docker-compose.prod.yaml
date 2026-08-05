@@ -32,6 +32,13 @@ services:
       - archive_command=/usr/local/bin/pgbackrest-archive-push.sh %p
       - -c
       - archive_timeout=60s
+    # Lets dependents (hydra-migrate) wait for Postgres to accept
+    # connections rather than merely for the container to start.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPER_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     environment:
       # env vars specific to postgres image used on first boot
       - POSTGRES_USER=${SUPER_USER}
@@ -60,6 +67,34 @@ services:
     volumes:
       - yelukerest-pg-data:/var/lib/postgresql
       - postgres-run:/var/run/postgresql
+      # One-time hydra database/role bootstrap helper. NOT run
+      # automatically in production (initdb.d only runs on an empty data
+      # dir); see the header of the script and docs/hydra.md.
+      - "./hydra/sql/create-hydra-db.sh:/opt/hydra/create-hydra-db.sh:ro"
+
+  # One-shot Hydra schema migration job (issue #270). Runs
+  # `hydra migrate sql up` against the dedicated hydra database and
+  # exits; the hydra service waits for it to complete successfully.
+  # Prerequisite: the hydra database/role exist (docs/hydra.md).
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    command: migrate sql up -e --yes
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DSN=postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASS}@${DB_HOST}:${DB_PORT}/${HYDRA_DB_NAME:-hydra}?sslmode=disable&max_conns=8&max_idle_conns=2
+
+  hydra:
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    environment:
+      # Dedicated least-privilege database/role; Hydra never touches the
+      # application database. sslmode=disable is acceptable only because
+      # the connection stays on the internal compose network.
+      - DSN=postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASS}@${DB_HOST}:${DB_PORT}/${HYDRA_DB_NAME:-hydra}?sslmode=disable&max_conns=8&max_idle_conns=2
 
   backup:
     build: backup

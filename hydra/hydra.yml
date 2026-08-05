@@ -1,0 +1,118 @@
+# Ory Hydra configuration for yelukerest (issue #270).
+#
+# Hydra is the OAuth 2.1 authorization server for MCP clients (see
+# docs/adr/0001-mcp-and-oauth.md). Login and consent are delegated to
+# authapp's CAS-backed session via urls.login / urls.consent.
+#
+# Deployment-specific values (DSN, SECRETS_SYSTEM, URLS_*) are supplied
+# as environment variables in docker-compose; Hydra maps env vars onto
+# config keys by upper-casing and replacing dots with underscores
+# (e.g. urls.self.issuer -> URLS_SELF_ISSUER).
+#
+# Issuer / routing decision
+# -------------------------
+# We are a single-domain deployment behind Caddy. Rather than hosting
+# Hydra under a path prefix (e.g. https://FQDN/hydra), Caddy routes
+# Hydra's specific public paths at the TOP LEVEL of the domain and the
+# issuer is plain https://FQDN:
+#
+#   /oauth2/*                                   (authorize, token, DCR, revoke)
+#   /userinfo
+#   /.well-known/openid-configuration
+#   /.well-known/oauth-authorization-server
+#   /.well-known/jwks.json
+#
+# Why: RFC 8414 metadata for an issuer WITH a path component lives at
+# https://host/.well-known/oauth-authorization-server/<path>, while OIDC
+# discovery appends /.well-known/openid-configuration AFTER the path.
+# MCP clients in the wild resolve these inconsistently, and Hydra serves
+# its well-known documents only at the root of its public listener, so a
+# path-prefixed issuer would require rewriting both discovery locations
+# and every endpoint URL inside the documents. A root issuer needs none
+# of that: both discovery documents are correct as served, and none of
+# Hydra's public paths collide with existing routes (/rest, /auth, /cas,
+# /mcp, /openapi, /.well-known/oauth-protected-resource).
+
+serve:
+  public:
+    port: 4444
+  admin:
+    # The admin API manages clients, keys, and login/consent state. It is
+    # NEVER proxied by Caddy and the port is never published to the host;
+    # it is reachable only on the internal compose network.
+    port: 4445
+  tls:
+    # TLS terminates at Caddy. Hydra accepts plain-HTTP requests that
+    # arrive with X-Forwarded-Proto: https (Caddy sets this). The range
+    # is the whole RFC 1918/compose space because the public port is only
+    # reachable on the internal compose network.
+    allow_termination_from:
+      - 172.16.0.0/12
+      - 10.0.0.0/8
+      - 192.168.0.0/16
+  cookies:
+    same_site_mode: Lax
+
+# Overridden by the DSN env var: "memory" in dev, Postgres in prod.
+dsn: memory
+
+urls:
+  self:
+    # Overridden by URLS_SELF_ISSUER (https://FQDN in prod,
+    # https://localhost in dev). See routing decision above.
+    issuer: https://localhost
+  # Login/consent handlers live in authapp behind /auth/ (issue #273).
+  # Overridden by URLS_LOGIN / URLS_CONSENT.
+  login: https://localhost/auth/oauth/login
+  consent: https://localhost/auth/oauth/consent
+
+strategies:
+  # JWT access tokens so mcpapp can validate them locally against the
+  # JWKS endpoint (issuer, expiry, audience) without calling Hydra.
+  access_token: jwt
+
+oauth2:
+  # Claims that authapp's consent-accept payload may place at the top
+  # level of the access token (instead of nested under ext.*), so mcpapp
+  # can read them uniformly.
+  allowed_top_level_claims:
+    - role
+    - user_id
+    - netid
+    - scopes
+  pkce:
+    # MCP clients are public clients; OAuth 2.1 requires PKCE.
+    enforced_for_public_clients: true
+  grant:
+    refresh_token:
+      # Tolerate one retried refresh (network flakiness in agent clients)
+      # without treating rotation reuse as theft.
+      rotation_grace_period: 30s
+
+oidc:
+  dynamic_client_registration:
+    # MCP clients (Claude Desktop, claude.ai, ChatGPT) register via DCR.
+    # NOTE the #4044 caveat: Hydra's DCR responses include null/empty
+    # optional fields that break strict-parser clients; a response-
+    # cleaning proxy is tracked in issue #272.
+    enabled: true
+    default_scope:
+      - openid
+      - offline_access
+
+webfinger:
+  oidc_discovery:
+    # Hydra only advertises registration_endpoint in the discovery
+    # documents when this URL is set explicitly; enabling DCR alone is
+    # not enough. MCP clients find DCR through discovery, so it must be
+    # present. Overridden by WEBFINGER_OIDC_DISCOVERY_CLIENT_REGISTRATION_URL.
+    client_registration_url: https://localhost/oauth2/register
+
+ttl:
+  # Access tokens live 1h; refresh tokens 30 days. CAS-backed re-auth is
+  # silent, so a longer refresh TTL only widens the theft window.
+  access_token: 1h
+  refresh_token: 720h
+
+# secrets.system is supplied via the SECRETS_SYSTEM env var (never in
+# this file). Rotation procedure: docs/hydra.md.

@@ -109,6 +109,76 @@ check_authapp_jwt() {
     fi
 }
 
+check_hydra() {
+    # Hydra (OAuth 2.1 authorization server, issue #270) checks. These
+    # need the stack running; when it is not reachable we warn and skip
+    # rather than fail, matching doctor's offline-friendly behavior.
+    if ! command -v curl >/dev/null 2>&1; then
+        warn "curl not available; skipping Hydra checks"
+        return
+    fi
+
+    if [ "${DEVELOPMENT:-}" = "1" ]; then
+        compose_files='-f docker-compose.base.yaml -f docker-compose.dev.yaml'
+        hydra_base_url=${HYDRA_CHECK_URL:-https://localhost}
+        curl_tls_flag='-k'
+    else
+        compose_files='-f docker-compose.base.yaml -f docker-compose.prod.yaml'
+        hydra_base_url=${HYDRA_CHECK_URL:-https://${FQDN:-localhost}}
+        curl_tls_flag=''
+    fi
+
+    # 1. Readiness, asked on the internal compose network (the health
+    # endpoint is deliberately not routed through Caddy). The elmclient
+    # container is used because the hydra and caddy images have no shell.
+    # shellcheck disable=SC2086
+    health=$(docker compose $compose_files exec -T elmclient \
+        wget -qO- http://hydra:4444/health/ready 2>/dev/null || true)
+    if [ -z "$health" ]; then
+        warn "hydra /health/ready not reachable (is the stack up?); skipping remaining Hydra checks"
+        return
+    fi
+    if printf '%s' "$health" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+        ok "hydra /health/ready reports ok"
+    else
+        fail "hydra /health/ready returned unexpected payload: $health"
+        return
+    fi
+
+    # 2. Both discovery documents are fetchable through Caddy and agree
+    # on the issuer, which must match the expected public base URL.
+    oidc_doc=$(curl -fsS $curl_tls_flag "$hydra_base_url/.well-known/openid-configuration" 2>/dev/null || true)
+    oauth_doc=$(curl -fsS $curl_tls_flag "$hydra_base_url/.well-known/oauth-authorization-server" 2>/dev/null || true)
+    if [ -z "$oidc_doc" ] || [ -z "$oauth_doc" ]; then
+        fail "hydra discovery documents not fetchable from $hydra_base_url (.well-known/openid-configuration and .well-known/oauth-authorization-server)"
+        return
+    fi
+    ok "hydra serves both well-known discovery documents"
+
+    oidc_issuer=$(printf '%s' "$oidc_doc" | jq -r '.issuer // empty')
+    oauth_issuer=$(printf '%s' "$oauth_doc" | jq -r '.issuer // empty')
+    if [ "$oidc_issuer" = "$hydra_base_url" ] && [ "$oauth_issuer" = "$hydra_base_url" ]; then
+        ok "hydra discovery issuers match $hydra_base_url"
+    else
+        fail "hydra discovery issuers inconsistent: openid-configuration=$oidc_issuer oauth-authorization-server=$oauth_issuer expected=$hydra_base_url"
+    fi
+
+    # 3. Dynamic Client Registration is enabled and advertised (MCP
+    # clients find DCR through discovery).
+    reg_endpoint=$(printf '%s' "$oidc_doc" | jq -r '.registration_endpoint // empty')
+    if [ -n "$reg_endpoint" ]; then
+        ok "hydra advertises registration_endpoint (DCR enabled): $reg_endpoint"
+    else
+        fail "hydra discovery lacks registration_endpoint; DCR is disabled or webfinger.oidc_discovery.client_registration_url is unset"
+    fi
+
+    if printf '%s' "$oauth_doc" | jq -e '.code_challenge_methods_supported | index("S256")' >/dev/null 2>&1; then
+        ok "hydra advertises PKCE S256 support"
+    else
+        fail "hydra discovery lacks PKCE S256 support"
+    fi
+}
+
 need_command jq
 need_command openssl
 
@@ -148,6 +218,8 @@ fi
 if [ -n "${PRE_REQUEST:-}" ] && [ "$PRE_REQUEST" != "api.check_request_jwt" ]; then
     warn "PRE_REQUEST overrides the secure default: $PRE_REQUEST"
 fi
+
+check_hydra
 
 if [ "$failures" -ne 0 ]; then
     printf 'doctor failed: %d failure(s), %d warning(s)\n' "$failures" "$warnings" >&2
