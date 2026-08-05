@@ -783,3 +783,30 @@ func TestCapAssignmentOutputLeavesSmallResultsAlone(t *testing.T) {
 		t.Fatal("small output must pass through unchanged")
 	}
 }
+
+// Tokens minted by api.issue_user_jwt_for_mcp carry granular scope names;
+// hand-minted tokens may carry the coarse ones. Both must work.
+func TestAuthorizeScopeAcceptsGranularScopeNames(t *testing.T) {
+	cases := []struct {
+		scopes    []string
+		required  string
+		wantAllow bool
+	}{
+		{[]string{"course:read", "grades:read"}, scopeRead, true},
+		{[]string{"course:read", "grades:read"}, scopeWrite, false},
+		{[]string{"submissions:read", "submissions:write"}, scopeWrite, true},
+		{[]string{"read"}, scopeRead, true},
+		{[]string{"write"}, scopeWrite, true},
+		{[]string{"read"}, scopeWrite, false},
+		{[]string{"unrelated:scope"}, scopeRead, false},
+	}
+	for _, tc := range cases {
+		err := authorizeScope(&identity{Scopes: tc.scopes}, tc.required)
+		if tc.wantAllow && err != nil {
+			t.Errorf("scopes %v should grant %q: %v", tc.scopes, tc.required, err)
+		}
+		if !tc.wantAllow && err == nil {
+			t.Errorf("scopes %v must not grant %q", tc.scopes, tc.required)
+		}
+	}
+}

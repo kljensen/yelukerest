@@ -28,6 +28,9 @@ select settings.set('jwt_secret', :quoted_jwt_secret);
 select settings.set('jwt_lifetime', '3600');
 select settings.set('jwt_issuer', 'yelukerest');
 select settings.set('jwt_audience', 'yelukerest-postgrest');
+-- Second audience carried by MCP tokens so mcpapp accepts them and can
+-- forward the same token to PostgREST (auth.sign_mcp_user_jwt).
+select settings.set('jwt_mcp_audience', 'yelukerest-mcp');
 select settings.set('auth.default-role', 'student');
 
 

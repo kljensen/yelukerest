@@ -51,7 +51,13 @@ set search_path = pg_catalog, auth, settings, pgjwt, pg_temp
 return pgjwt.sign(
       json_build_object(
         'iss', settings.get('jwt_issuer'),
-        'aud', settings.get('jwt_audience'),
+        -- Array audience: this one token is presented to BOTH mcpapp
+        -- (which requires the MCP audience) and, forwarded by mcpapp,
+        -- to PostgREST (which requires its own). api.check_request_jwt
+        -- and mcpapp both accept an audience array by membership.
+        'aud', json_build_array(
+            settings.get('jwt_audience'),
+            coalesce(settings.get('jwt_mcp_audience'), 'yelukerest-mcp')),
         'sub', 'user:' || user_id::text,
         'user_id', user_id,
         'role', "role"::TEXT,

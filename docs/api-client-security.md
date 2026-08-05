@@ -77,6 +77,69 @@ For student scripts and notebooks:
   an expired-token result.
 - Do not check generated tokens into notebooks, repos, Canvas, Slack, or Piazza.
 
+## MCP Bearer Tokens
+
+Bearer-token MCP clients (Claude Code, Cursor, VS Code, scripts) need a
+credential before OAuth lands. Sign in through `/auth/login`, then trade the
+browser session for a token at `/auth/mcp-token`:
+
+```sh
+curl -sS -b cookies.txt "$YELUKEREST_BASE_URL/auth/mcp-token"
+```
+
+```json
+{
+  "token": "…",
+  "token_type": "Bearer",
+  "expires_in": 600,
+  "scopes": ["course:read", "grades:read", "submissions:read"]
+}
+```
+
+The endpoint is a `GET`: it has no request body, it mirrors `/auth/me` and
+`/auth/jwt`, and while a cross-site page can trigger the request, no CORS
+headers are emitted so it cannot read the response.
+
+Scopes are requested with the optional `scopes` query parameter, separated by
+spaces or commas:
+
+```sh
+curl -sS -b cookies.txt \
+  "$YELUKEREST_BASE_URL/auth/mcp-token?scopes=course:read,submissions:write"
+```
+
+- Omitting `scopes` grants the read-only default set: `course:read`,
+  `grades:read`, `submissions:read`.
+- Write scopes are never implicit. `submissions:write` is granted only when it
+  is named.
+- Unknown or malformed scopes get `400 Bad Request` before the database is
+  touched. The full allowlist is `course:read`, `grades:read`,
+  `submissions:read`, and `submissions:write`.
+
+These tokens live **ten minutes**, the same as every other internal JWT. Treat
+re-minting as routine rather than exceptional: on `401 Unauthorized`, request a
+fresh token and retry once. A wrapper that re-mints from a stored session
+cookie is the intended ergonomic fix; do not try to cache the token past its
+`expires_in`. The endpoint applies its own per-client throttle, tighter than
+`/auth/jwt`, so back off when it returns `429 Too Many Requests`. `503 Service
+Unavailable` means the deployment has no `MCPAPP_JWT` configured.
+
+Every mint writes an append-only audit row (`data.mcp_jwt_mint_event`) naming
+the caller, the subject, and the granted scopes. Faculty can read the history at
+`/rest/mcp_jwt_mint_events` and the burst alarm at `/rest/mcp_jwt_mint_anomalies`.
+
+### Known Gap: Token Audience
+
+The database function behind this endpoint (`api.issue_user_jwt_for_mcp` via
+`auth.sign_mcp_user_jwt`) signs tokens with `aud` set to the PostgREST audience,
+`yelukerest-postgrest`. Mcpapp currently accepts only `yelukerest-mcp`. Authapp
+holds no signing secret and cannot widen the audience itself, so tokens from
+`/auth/mcp-token` currently authenticate against `/rest/*` and are **refused at
+`/mcp`**. Closing this needs one of two changes outside authapp: teach mcpapp to
+accept the PostgREST audience, or have `auth.sign_mcp_user_jwt` emit an audience
+array containing both names. Both `api.check_request_jwt` and mcpapp's verifier
+already accept array audiences, so the array is the cleaner fix.
+
 ## Service Tokens
 
 `AUTHAPP_JWT` must be an app token:
@@ -88,6 +151,20 @@ For student scripts and notebooks:
 Authapp now validates that token shape at startup. If it is missing issuer,
 audience, subject, expiration, issued-at, not-before, role, or app name claims,
 authapp exits rather than accepting CAS callbacks that cannot mint user tokens.
+
+`MCPAPP_JWT` is a second, independent app token that authapp presents when
+minting MCP bearer tokens. `api.issue_user_jwt_for_mcp` admits only
+`app_name=mcpapp`, so the credential must say so:
+
+```sh
+./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'
+```
+
+It is validated at startup with the same checks as `AUTHAPP_JWT`. It is
+optional: when unset, authapp logs a warning at startup and `/auth/mcp-token`
+returns `503`, so deployments that predate the MCP work keep running. When it is
+set but malformed, authapp exits. Keeping the two credentials separate is the
+point — either can be revoked without disturbing the other.
 
 ## Deliberate Limitations
 

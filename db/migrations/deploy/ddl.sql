@@ -3754,7 +3754,7 @@ ALTER FUNCTION api.issue_user_jwt(requested_netid text) OWNER TO api;
 CREATE FUNCTION auth.sign_mcp_user_jwt(user_id integer, role data.user_role, netid text, scopes text, jti text) RETURNS text
     LANGUAGE sql SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'auth', 'settings', 'pgjwt', 'pg_temp'
-    RETURN pgjwt.sign(json_build_object('iss', settings.get('jwt_issuer'::text), 'aud', settings.get('jwt_audience'::text), 'sub', ('user:'::text || (user_id)::text), 'user_id', user_id, 'role', (role)::text, 'netid', netid, 'scopes', scopes, 'iat', (EXTRACT(epoch FROM now()))::integer, 'nbf', (EXTRACT(epoch FROM now()))::integer, 'jti', jti, 'exp', ((EXTRACT(epoch FROM now()))::integer + 600)), settings.get('jwt_secret'::text));
+    RETURN pgjwt.sign(json_build_object('iss', settings.get('jwt_issuer'::text), 'aud', json_build_array(settings.get('jwt_audience'::text), COALESCE(settings.get('jwt_mcp_audience'::text), 'yelukerest-mcp'::text)), 'sub', ('user:'::text || (user_id)::text), 'user_id', user_id, 'role', (role)::text, 'netid', netid, 'scopes', scopes, 'iat', (EXTRACT(epoch FROM now()))::integer, 'nbf', (EXTRACT(epoch FROM now()))::integer, 'jti', jti, 'exp', ((EXTRACT(epoch FROM now()))::integer + 600)), settings.get('jwt_secret'::text));
 
 
 ALTER FUNCTION auth.sign_mcp_user_jwt(user_id integer, role data.user_role, netid text, scopes text, jti text) OWNER TO superuser;

@@ -107,6 +107,15 @@ var teamNicknamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{2,20}-[A-Za-z0-9_]{2
 //     phase 0 token: reads are allowed, anything else is denied by default
 //     (ADR 0001 default-deny for writes).
 //   - A scope-bearing token must carry the required scope.
+// scopeAliases maps each coarse requirement to the granular scope names
+// tokens actually carry (api.issue_user_jwt_for_mcp mints
+// course:read/grades:read/submissions:read/submissions:write; the coarse
+// names remain valid for hand-minted tokens).
+var scopeAliases = map[string][]string{
+	scopeRead:  {"read", "course:read", "grades:read", "submissions:read"},
+	scopeWrite: {"write", "submissions:write"},
+}
+
 func authorizeScope(id *identity, required string) error {
 	if len(id.Scopes) == 0 {
 		if required == scopeRead {
@@ -114,10 +123,12 @@ func authorizeScope(id *identity, required string) error {
 		}
 		return fmt.Errorf("the token carries no scopes, so %q is denied by default", required)
 	}
-	if slices.Contains(id.Scopes, required) {
-		return nil
+	for _, accepted := range scopeAliases[required] {
+		if slices.Contains(id.Scopes, accepted) {
+			return nil
+		}
 	}
-	return fmt.Errorf("the token is missing the required %q scope", required)
+	return fmt.Errorf("the token is missing a scope granting %q access", required)
 }
 
 // readCaller is the one accessor read tools use for per-request state: the

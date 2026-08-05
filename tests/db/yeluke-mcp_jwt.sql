@@ -187,7 +187,9 @@ SELECT results_eq(
     $$
         SELECT
             payload->>'iss',
-            payload->>'aud',
+            -- Array audience: mcpapp accepts the token AND can forward it
+            -- to PostgREST, which requires its own audience.
+            (payload->'aud')::jsonb::text,
             payload->>'sub',
             payload->>'user_id',
             payload->>'role',
@@ -198,7 +200,7 @@ SELECT results_eq(
     $$
         VALUES (
             'yelukerest'::text,
-            'yelukerest-postgrest'::text,
+            '["yelukerest-postgrest", "yelukerest-mcp"]'::jsonb::text,
             'user:1'::text,
             '1'::text,
             'student'::text,
