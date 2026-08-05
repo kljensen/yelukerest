@@ -837,6 +837,145 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'missing tg_assignment_field_submission_event_history trigger';
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_grade_event'
+    ) THEN
+        RAISE EXCEPTION 'missing data.assignment_grade_event table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz_grade_event'
+    ) THEN
+        RAISE EXCEPTION 'missing data.quiz_grade_event table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'grade_event'
+    ) THEN
+        RAISE EXCEPTION 'missing data.grade_event table';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_grade'
+        AND t.tgname = 'tg_assignment_grade_event_history'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_assignment_grade_event_history trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz_grade'
+        AND t.tgname = 'tg_quiz_grade_event_history'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_quiz_grade_event_history trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'grade'
+        AND t.tgname = 'tg_grade_event_history'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_grade_event_history trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_grade_event'
+        AND t.tgname = 'tg_assignment_grade_event_append_only'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_assignment_grade_event_append_only trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz_grade_event'
+        AND t.tgname = 'tg_quiz_grade_event_append_only'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_quiz_grade_event_append_only trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'grade_event'
+        AND t.tgname = 'tg_grade_event_append_only'
+    ) THEN
+        RAISE EXCEPTION 'missing tg_grade_event_append_only trigger';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'assignment_grade_event'
+        AND con.conname = 'assignment_grade_event_points_in_range'
+    ) THEN
+        RAISE EXCEPTION 'data.assignment_grade_event must have the assignment_grade_event_points_in_range CHECK';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz_grade_event'
+        AND con.conname = 'quiz_grade_event_points_in_range'
+    ) THEN
+        RAISE EXCEPTION 'data.quiz_grade_event must have the quiz_grade_event_points_in_range CHECK';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint con
+        JOIN pg_class c ON c.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'data'
+        AND c.relname = 'grade_event'
+        AND con.conname = 'grade_event_points_finite_nonnegative'
+        AND pg_get_constraintdef(con.oid) LIKE '%100000%'
+    ) THEN
+        RAISE EXCEPTION 'data.grade_event must have the grade_event_points_finite_nonnegative CHECK with the 100000 upper bound';
+    END IF;
 END $$;
 
 ROLLBACK;

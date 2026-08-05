@@ -2992,6 +2992,578 @@ CREATE VIEW api.quiz_grades AS
 ALTER VIEW api.quiz_grades OWNER TO api;
 
 --
+-- Name: prevent_grade_event_mutation(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.prevent_grade_event_mutation() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RAISE EXCEPTION 'grade event history is append-only';
+END;
+$$;
+
+
+ALTER FUNCTION data.prevent_grade_event_mutation() OWNER TO superuser;
+
+--
+-- Name: record_assignment_grade_event(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.record_assignment_grade_event() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+DECLARE
+    grade_row data.assignment_grade%ROWTYPE;
+    event_kind TEXT;
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        grade_row := OLD;
+        event_kind := 'voided';
+    ELSE
+        grade_row := NEW;
+        IF (TG_OP = 'INSERT') THEN
+            event_kind := 'recorded';
+        ELSE
+            event_kind := 'corrected';
+        END IF;
+    END IF;
+
+    INSERT INTO data.assignment_grade_event (
+        event_type,
+        operation,
+        assignment_submission_id,
+        assignment_slug,
+        points_possible,
+        points,
+        description,
+        grade_created_at,
+        grade_updated_at,
+        created_by_user_id
+    )
+    VALUES (
+        event_kind,
+        lower(TG_OP),
+        grade_row.assignment_submission_id,
+        grade_row.assignment_slug,
+        grade_row.points_possible,
+        grade_row.points,
+        grade_row.description,
+        grade_row.created_at,
+        grade_row.updated_at,
+        request.user_id()
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+ALTER FUNCTION data.record_assignment_grade_event() OWNER TO superuser;
+
+--
+-- Name: record_grade_event(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.record_grade_event() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+DECLARE
+    grade_row data.grade%ROWTYPE;
+    event_kind TEXT;
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        grade_row := OLD;
+        event_kind := 'voided';
+    ELSE
+        grade_row := NEW;
+        IF (TG_OP = 'INSERT') THEN
+            event_kind := 'recorded';
+        ELSE
+            event_kind := 'corrected';
+        END IF;
+    END IF;
+
+    INSERT INTO data.grade_event (
+        event_type,
+        operation,
+        snapshot_slug,
+        user_id,
+        points,
+        description,
+        grade_created_at,
+        grade_updated_at,
+        created_by_user_id
+    )
+    VALUES (
+        event_kind,
+        lower(TG_OP),
+        grade_row.snapshot_slug,
+        grade_row.user_id,
+        grade_row.points,
+        grade_row.description,
+        grade_row.created_at,
+        grade_row.updated_at,
+        request.user_id()
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+ALTER FUNCTION data.record_grade_event() OWNER TO superuser;
+
+--
+-- Name: record_quiz_grade_event(); Type: FUNCTION; Schema: data; Owner: superuser
+--
+
+CREATE FUNCTION data.record_quiz_grade_event() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'data', 'pg_temp'
+    AS $$
+DECLARE
+    grade_row data.quiz_grade%ROWTYPE;
+    event_kind TEXT;
+BEGIN
+    IF (TG_OP = 'DELETE') THEN
+        grade_row := OLD;
+        event_kind := 'voided';
+    ELSE
+        grade_row := NEW;
+        IF (TG_OP = 'INSERT') THEN
+            event_kind := 'recorded';
+        ELSE
+            event_kind := 'corrected';
+        END IF;
+    END IF;
+
+    INSERT INTO data.quiz_grade_event (
+        event_type,
+        operation,
+        quiz_id,
+        user_id,
+        points,
+        points_possible,
+        description,
+        grade_created_at,
+        grade_updated_at,
+        created_by_user_id
+    )
+    VALUES (
+        event_kind,
+        lower(TG_OP),
+        grade_row.quiz_id,
+        grade_row.user_id,
+        grade_row.points,
+        grade_row.points_possible,
+        grade_row.description,
+        grade_row.created_at,
+        grade_row.updated_at,
+        request.user_id()
+    );
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+
+ALTER FUNCTION data.record_quiz_grade_event() OWNER TO superuser;
+
+--
+-- Name: assignment_grade_event; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.assignment_grade_event (
+    id bigint NOT NULL,
+    event_type text NOT NULL,
+    operation text NOT NULL,
+    assignment_submission_id integer NOT NULL,
+    assignment_slug text NOT NULL,
+    points_possible smallint NOT NULL,
+    points real NOT NULL,
+    description text,
+    grade_created_at timestamp with time zone NOT NULL,
+    grade_updated_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_by_user_id integer,
+    source text DEFAULT 'data.assignment_grade'::text NOT NULL,
+    reason text,
+    import_id text,
+    CONSTRAINT assignment_grade_event_assignment_slug_check CHECK ((char_length(assignment_slug) < 100)),
+    CONSTRAINT assignment_grade_event_event_type_check CHECK ((event_type = ANY (ARRAY['recorded'::text, 'corrected'::text, 'voided'::text]))),
+    CONSTRAINT assignment_grade_event_operation_check CHECK ((operation = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text]))),
+    CONSTRAINT assignment_grade_event_points_in_range CHECK (((points >= (0)::double precision) AND (points <= (points_possible)::double precision))),
+    CONSTRAINT assignment_grade_event_points_possible_check CHECK ((points_possible >= 0))
+);
+
+
+ALTER TABLE data.assignment_grade_event OWNER TO superuser;
+
+--
+-- Name: assignment_grade_event_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.assignment_grade_event ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME data.assignment_grade_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: assignment_grade_event assignment_grade_event_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.assignment_grade_event
+    ADD CONSTRAINT assignment_grade_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_assignment_grade_event_actor_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_event_actor_fk ON data.assignment_grade_event USING btree (created_by_user_id);
+
+
+--
+-- Name: idx_assignment_grade_event_natural_key; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_assignment_grade_event_natural_key ON data.assignment_grade_event USING btree (assignment_submission_id, created_at, id);
+
+
+--
+-- Name: assignment_grade_event tg_assignment_grade_event_append_only; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_assignment_grade_event_append_only BEFORE DELETE OR UPDATE ON data.assignment_grade_event FOR EACH ROW EXECUTE FUNCTION data.prevent_grade_event_mutation();
+
+
+--
+-- Name: assignment_grade tg_assignment_grade_event_history; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_assignment_grade_event_history AFTER INSERT OR DELETE OR UPDATE ON data.assignment_grade FOR EACH ROW EXECUTE FUNCTION data.record_assignment_grade_event();
+
+
+--
+-- Name: assignment_grade_event; Type: ROW SECURITY; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.assignment_grade_event ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: assignment_grade_event assignment_grade_event_access_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY assignment_grade_event_access_policy ON data.assignment_grade_event TO api USING ((request.user_role() = 'faculty'::text));
+
+
+--
+-- Name: TABLE assignment_grade_event; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT ON TABLE data.assignment_grade_event TO api;
+
+
+--
+-- Name: assignment_grade_events; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.assignment_grade_events AS
+ SELECT id,
+    event_type,
+    operation,
+    assignment_submission_id,
+    assignment_slug,
+    points_possible,
+    points,
+    description,
+    grade_created_at,
+    grade_updated_at,
+    created_at,
+    created_by_user_id,
+    source,
+    reason,
+    import_id
+   FROM data.assignment_grade_event;
+
+
+ALTER VIEW api.assignment_grade_events OWNER TO api;
+
+--
+-- Name: TABLE assignment_grade_events; Type: ACL; Schema: api; Owner: api
+--
+
+GRANT SELECT ON TABLE api.assignment_grade_events TO faculty;
+
+
+--
+-- Name: grade_event; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.grade_event (
+    id bigint NOT NULL,
+    event_type text NOT NULL,
+    operation text NOT NULL,
+    snapshot_slug text NOT NULL,
+    user_id integer NOT NULL,
+    points real NOT NULL,
+    description text,
+    grade_created_at timestamp with time zone NOT NULL,
+    grade_updated_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_by_user_id integer,
+    source text DEFAULT 'data.grade'::text NOT NULL,
+    reason text,
+    import_id text,
+    CONSTRAINT grade_event_event_type_check CHECK ((event_type = ANY (ARRAY['recorded'::text, 'corrected'::text, 'voided'::text]))),
+    CONSTRAINT grade_event_operation_check CHECK ((operation = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text]))),
+    CONSTRAINT grade_event_points_finite_nonnegative CHECK (((points >= (0)::double precision) AND (points <= (100000)::double precision)))
+);
+
+
+ALTER TABLE data.grade_event OWNER TO superuser;
+
+--
+-- Name: grade_event_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.grade_event ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME data.grade_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: grade_event grade_event_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.grade_event
+    ADD CONSTRAINT grade_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_grade_event_actor_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_grade_event_actor_fk ON data.grade_event USING btree (created_by_user_id);
+
+
+--
+-- Name: idx_grade_event_natural_key; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_grade_event_natural_key ON data.grade_event USING btree (snapshot_slug, user_id, created_at, id);
+
+
+--
+-- Name: grade_event tg_grade_event_append_only; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_grade_event_append_only BEFORE DELETE OR UPDATE ON data.grade_event FOR EACH ROW EXECUTE FUNCTION data.prevent_grade_event_mutation();
+
+
+--
+-- Name: grade tg_grade_event_history; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_grade_event_history AFTER INSERT OR DELETE OR UPDATE ON data.grade FOR EACH ROW EXECUTE FUNCTION data.record_grade_event();
+
+
+--
+-- Name: grade_event; Type: ROW SECURITY; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.grade_event ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: grade_event grade_event_access_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY grade_event_access_policy ON data.grade_event TO api USING ((request.user_role() = 'faculty'::text));
+
+
+--
+-- Name: TABLE grade_event; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT ON TABLE data.grade_event TO api;
+
+
+--
+-- Name: grade_events; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.grade_events AS
+ SELECT id,
+    event_type,
+    operation,
+    snapshot_slug,
+    user_id,
+    points,
+    description,
+    grade_created_at,
+    grade_updated_at,
+    created_at,
+    created_by_user_id,
+    source,
+    reason,
+    import_id
+   FROM data.grade_event;
+
+
+ALTER VIEW api.grade_events OWNER TO api;
+
+--
+-- Name: TABLE grade_events; Type: ACL; Schema: api; Owner: api
+--
+
+GRANT SELECT ON TABLE api.grade_events TO faculty;
+
+
+--
+-- Name: quiz_grade_event; Type: TABLE; Schema: data; Owner: superuser
+--
+
+CREATE TABLE data.quiz_grade_event (
+    id bigint NOT NULL,
+    event_type text NOT NULL,
+    operation text NOT NULL,
+    quiz_id integer NOT NULL,
+    user_id integer NOT NULL,
+    points real NOT NULL,
+    points_possible smallint NOT NULL,
+    description text,
+    grade_created_at timestamp with time zone NOT NULL,
+    grade_updated_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_by_user_id integer,
+    source text DEFAULT 'data.quiz_grade'::text NOT NULL,
+    reason text,
+    import_id text,
+    CONSTRAINT quiz_grade_event_event_type_check CHECK ((event_type = ANY (ARRAY['recorded'::text, 'corrected'::text, 'voided'::text]))),
+    CONSTRAINT quiz_grade_event_operation_check CHECK ((operation = ANY (ARRAY['insert'::text, 'update'::text, 'delete'::text]))),
+    CONSTRAINT quiz_grade_event_points_in_range CHECK (((points >= (0)::double precision) AND (points <= (points_possible)::double precision))),
+    CONSTRAINT quiz_grade_event_points_possible_check CHECK ((points_possible >= 0))
+);
+
+
+ALTER TABLE data.quiz_grade_event OWNER TO superuser;
+
+--
+-- Name: quiz_grade_event_id_seq; Type: SEQUENCE; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.quiz_grade_event ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME data.quiz_grade_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: quiz_grade_event quiz_grade_event_pkey; Type: CONSTRAINT; Schema: data; Owner: superuser
+--
+
+ALTER TABLE ONLY data.quiz_grade_event
+    ADD CONSTRAINT quiz_grade_event_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: idx_quiz_grade_event_actor_fk; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_quiz_grade_event_actor_fk ON data.quiz_grade_event USING btree (created_by_user_id);
+
+
+--
+-- Name: idx_quiz_grade_event_natural_key; Type: INDEX; Schema: data; Owner: superuser
+--
+
+CREATE INDEX idx_quiz_grade_event_natural_key ON data.quiz_grade_event USING btree (quiz_id, user_id, created_at, id);
+
+
+--
+-- Name: quiz_grade_event tg_quiz_grade_event_append_only; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_quiz_grade_event_append_only BEFORE DELETE OR UPDATE ON data.quiz_grade_event FOR EACH ROW EXECUTE FUNCTION data.prevent_grade_event_mutation();
+
+
+--
+-- Name: quiz_grade tg_quiz_grade_event_history; Type: TRIGGER; Schema: data; Owner: superuser
+--
+
+CREATE TRIGGER tg_quiz_grade_event_history AFTER INSERT OR DELETE OR UPDATE ON data.quiz_grade FOR EACH ROW EXECUTE FUNCTION data.record_quiz_grade_event();
+
+
+--
+-- Name: quiz_grade_event; Type: ROW SECURITY; Schema: data; Owner: superuser
+--
+
+ALTER TABLE data.quiz_grade_event ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: quiz_grade_event quiz_grade_event_access_policy; Type: POLICY; Schema: data; Owner: superuser
+--
+
+CREATE POLICY quiz_grade_event_access_policy ON data.quiz_grade_event TO api USING ((request.user_role() = 'faculty'::text));
+
+
+--
+-- Name: TABLE quiz_grade_event; Type: ACL; Schema: data; Owner: superuser
+--
+
+GRANT SELECT ON TABLE data.quiz_grade_event TO api;
+
+
+--
+-- Name: quiz_grade_events; Type: VIEW; Schema: api; Owner: api
+--
+
+CREATE VIEW api.quiz_grade_events AS
+ SELECT id,
+    event_type,
+    operation,
+    quiz_id,
+    user_id,
+    points,
+    points_possible,
+    description,
+    grade_created_at,
+    grade_updated_at,
+    created_at,
+    created_by_user_id,
+    source,
+    reason,
+    import_id
+   FROM data.quiz_grade_event;
+
+
+ALTER VIEW api.quiz_grade_events OWNER TO api;
+
+--
+-- Name: TABLE quiz_grade_events; Type: ACL; Schema: api; Owner: api
+--
+
+GRANT SELECT ON TABLE api.quiz_grade_events TO faculty;
+
+
+--
 -- Name: quiz_submission; Type: TABLE; Schema: data; Owner: superuser
 --
 
