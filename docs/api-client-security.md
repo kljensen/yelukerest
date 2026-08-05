@@ -77,10 +77,30 @@ For student scripts and notebooks:
   an expired-token result.
 - Do not check generated tokens into notebooks, repos, Canvas, Slack, or Piazza.
 
-## MCP Bearer Tokens
+## MCP Clients
+
+The MCP endpoint is `<site>/mcp`. Two credential paths reach it, and both end at
+the same place: a short-lived internal JWT carrying the caller's identity and a
+`scopes` claim, forwarded to PostgREST so row-level security remains the only
+authorization authority.
+
+| | Phase 0: bearer token | Phase 1: OAuth |
+| --- | --- | --- |
+| How the client gets it | `GET /auth/mcp-token` with a signed-in session | DCR + authorization code + PKCE via Hydra |
+| Discovery | none; the token is pasted in | `/.well-known/oauth-protected-resource/mcp` |
+| User interaction | sign in to the site, copy a token | CAS login, then the consent page |
+| Lifetime | 10 minutes, no refresh | 1 hour access, 30 day refresh |
+| Audience | `["yelukerest-postgrest", "yelukerest-mcp"]` | the canonical resource URL, `https://$FQDN/mcp` |
+| Scopes | `scopes` query parameter, read-only by default | consent-page checkboxes, writes unchecked |
+
+Students should be pointed at `docs/mcp-for-students.md`, which covers both paths
+in non-developer language. The architecture and threat model are in
+`docs/adr/0001-mcp-and-oauth.md`; operating the OAuth server is `docs/hydra.md`.
+
+### Phase 0: Bearer Tokens
 
 Bearer-token MCP clients (Claude Code, Cursor, VS Code, scripts) need a
-credential before OAuth lands. Sign in through `/auth/login`, then trade the
+credential without doing OAuth. Sign in through `/auth/login`, then trade the
 browser session for a token at `/auth/mcp-token`:
 
 ```sh
@@ -128,17 +148,33 @@ Every mint writes an append-only audit row (`data.mcp_jwt_mint_event`) naming
 the caller, the subject, and the granted scopes. Faculty can read the history at
 `/rest/mcp_jwt_mint_events` and the burst alarm at `/rest/mcp_jwt_mint_anomalies`.
 
-### Known Gap: Token Audience
+`auth.sign_mcp_user_jwt` signs these tokens with an **audience array**,
+`["yelukerest-postgrest", "yelukerest-mcp"]`, because the one token is presented
+to mcpapp (which requires `JWT_MCP_AUDIENCE`, default `yelukerest-mcp`) and then
+forwarded by mcpapp to PostgREST (which requires `JWT_AUDIENCE`). Both
+`api.check_request_jwt` and mcpapp's verifier accept an audience array by
+membership. Neither side widens or disables audience checking.
 
-The database function behind this endpoint (`api.issue_user_jwt_for_mcp` via
-`auth.sign_mcp_user_jwt`) signs tokens with `aud` set to the PostgREST audience,
-`yelukerest-postgrest`. Mcpapp currently accepts only `yelukerest-mcp`. Authapp
-holds no signing secret and cannot widen the audience itself, so tokens from
-`/auth/mcp-token` currently authenticate against `/rest/*` and are **refused at
-`/mcp`**. Closing this needs one of two changes outside authapp: teach mcpapp to
-accept the PostgREST audience, or have `auth.sign_mcp_user_jwt` emit an audience
-array containing both names. Both `api.check_request_jwt` and mcpapp's verifier
-already accept array audiences, so the array is the cleaner fix.
+### Phase 1: OAuth Access Tokens
+
+An OAuth-capable client needs no token from us. Pointed at `<site>/mcp`, it
+reads `/.well-known/oauth-protected-resource/mcp`, finds Hydra, registers itself
+through Dynamic Client Registration, and runs authorization code + PKCE. The
+student authenticates with CAS through authapp's delegated login handler and
+approves scopes on `/auth/oauth/consent`; read scopes are pre-checked and write
+scopes are not.
+
+Hydra's access tokens are validated by mcpapp only (JWKS, issuer, expiry, and an
+`aud` that must contain the canonical resource URL exactly) and **never reach
+PostgREST**. mcpapp exchanges the verified identity for an internal user JWT via
+`api.issue_user_jwt_for_mcp`, which is the same audited, 10-minute, scope-bearing
+token described above. Access tokens live one hour and refresh tokens 30 days, so
+a `401` on this path means re-authorize, not re-mint.
+
+A token whose scope claim is missing or empty is read-only at most; write access
+requires `submissions:write` (or the coarse `write`). Writes additionally require
+a client that can render an MCP form elicitation, so a client without one can
+read but cannot write. See `docs/hydra.md` for the operator side.
 
 ## Service Tokens
 
@@ -152,8 +188,9 @@ Authapp now validates that token shape at startup. If it is missing issuer,
 audience, subject, expiration, issued-at, not-before, role, or app name claims,
 authapp exits rather than accepting CAS callbacks that cannot mint user tokens.
 
-`MCPAPP_JWT` is a second, independent app token that authapp presents when
-minting MCP bearer tokens. `api.issue_user_jwt_for_mcp` admits only
+`MCPAPP_JWT` is a second, independent app token presented when minting MCP
+tokens. Both services need it: authapp for `/auth/mcp-token`, and mcpapp for the
+OAuth token exchange. `api.issue_user_jwt_for_mcp` admits only
 `app_name=mcpapp`, so the credential must say so:
 
 ```sh
@@ -162,8 +199,9 @@ minting MCP bearer tokens. `api.issue_user_jwt_for_mcp` admits only
 
 It is validated at startup with the same checks as `AUTHAPP_JWT`. It is
 optional: when unset, authapp logs a warning at startup and `/auth/mcp-token`
-returns `503`, so deployments that predate the MCP work keep running. When it is
-set but malformed, authapp exits. Keeping the two credentials separate is the
+returns `503`, and mcpapp logs a warning and fails every OAuth caller's first
+tool call, so deployments that predate the MCP work keep running. When it is set
+but malformed, authapp exits. Keeping the two credentials separate is the
 point — either can be revoked without disturbing the other.
 
 ## Deliberate Limitations

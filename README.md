@@ -180,8 +180,28 @@ that does not match the authenticated user/app identity.
 Run `bun run doctor` after rotating secrets or editing `.env`; it checks the
 authapp service token shape and the secure PostgREST pre-request default. See
 `docs/api-client-security.md` for direct API client guidance.
-The MCP + OAuth architecture decision is recorded in
-`docs/adr/0001-mcp-and-oauth.md`.
+
+### AI agents / MCP
+
+Students can connect an AI assistant (Claude Code, Claude Desktop, claude.ai,
+ChatGPT, or their own client) to the course app over
+[MCP](https://modelcontextprotocol.io) at `<site>/mcp`, served by the `mcpapp`
+container. Every tool call runs under the student's own JWT and row-level
+security, so an agent can see and do exactly what that student could do on the
+website. Two credential paths exist: a short-lived bearer token from
+`/auth/mcp-token`, and OAuth (authorization code + PKCE, dynamic client
+registration) through the `hydra` container with CAS login and consent delegated
+to authapp.
+
+- `docs/mcp-for-students.md` — the student-facing guide: connecting each client,
+  what the tools do, how writes are confirmed, privacy, and troubleshooting.
+- `docs/adr/0001-mcp-and-oauth.md` — architecture decision, threat model,
+  rejected alternatives, and the client-compatibility caveats register.
+- `docs/hydra.md` — operator runbook for the OAuth server: routing, delegated
+  login/consent, secrets and key rotation, backups, client pruning, upgrades.
+
+Both authapp and mcpapp need `MCPAPP_JWT`
+(`./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`) to mint MCP tokens.
 
 ## Random notes
 

@@ -16,14 +16,12 @@ package main
 // distinct is the point: either can be revoked without disturbing the
 // other, and the mint path writes an audit row naming the caller.
 //
-// AUDIENCE CAVEAT (issue #264): auth.sign_mcp_user_jwt hardcodes
-// aud = settings.get('jwt_audience'), i.e. yelukerest-postgrest. mcpapp
-// currently rejects anything whose audience is not yelukerest-mcp. authapp
-// holds no signing secret, so it cannot widen the audience on its own and
-// this endpoint returns the database's token verbatim. Until either
-// mcpapp accepts the PostgREST audience or the database signs an audience
-// array containing both names, tokens from this endpoint work against
-// /rest/* and are refused at /mcp. See docs/api-client-security.md.
+// AUDIENCE: auth.sign_mcp_user_jwt signs an audience ARRAY holding both
+// the MCP and PostgREST audiences, because mcpapp accepts the token and
+// then forwards that same token to PostgREST. Both verifiers check
+// audience by membership, so one token satisfies both. authapp holds no
+// signing secret and returns the database's token verbatim.
+// See docs/api-client-security.md.
 
 import (
 	"bytes"

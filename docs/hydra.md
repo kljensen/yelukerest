@@ -8,7 +8,9 @@ for the MCP endpoint. See `docs/adr/0001-mcp-and-oauth.md` for the
 selection rationale and threat model. Hydra owns clients, codes, tokens,
 Dynamic Client Registration (DCR), and PKCE; login and consent are
 delegated to `authapp`'s CAS-backed session (issue #273). Hydra-issued
-tokens are validated by `mcpapp` only and never reach PostgREST.
+tokens are validated by `mcpapp` only and never reach PostgREST. The
+student-facing side of this — what the browser flow looks like and what
+the consent page is asking — is `docs/mcp-for-students.md`.
 
 ## Topology And Routing
 
@@ -70,12 +72,32 @@ Key settings in `hydra.yml` (see the file for full comments):
 - `ttl.access_token: 1h`, `ttl.refresh_token: 720h` (30 days).
 - `oauth2.grant.refresh_token.rotation_grace_period: 30s`.
 
-authapp reads two variables for these handlers:
+authapp reads these variables for the OAuth and DCR handlers:
 
 | Env var | Meaning |
 | --- | --- |
 | `HYDRA_ADMIN_URL` | Hydra's admin API. Default `http://hydra:4445`; override only if the admin listener moves. Never route it through Caddy. |
 | `MCP_RESOURCE_URL` | Canonical MCP resource, granted as the access-token audience and injected into client allowlists. Falls back to `https://$FQDN/mcp`. Must match mcpapp's expected audience exactly. |
+| `HYDRA_PUBLIC_INTERNAL_URL` | Where the DCR proxy forwards `/oauth2/register`. Default `http://hydra:4444`. |
+| `MCPAPP_JWT` | Service credential for `/auth/mcp-token`. See below. |
+
+### mcpapp Configuration
+
+mcpapp is the OAuth *resource server*; both of the following are already wired in
+`docker-compose.base.yaml`, but they are the two that break silently when a
+`.env` is stale:
+
+| Env var | Meaning |
+| --- | --- |
+| `MCPAPP_JWT` | `role=app`, `app_name=mcpapp` service credential, used only to call `api.issue_user_jwt_for_mcp` when exchanging a verified OAuth token for an internal course credential. Mint with `./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`. **Unset is not fatal**: mcpapp starts, OAuth tokens still verify, and then every OAuth caller's first tool call fails. Startup logs `WARNING: MCPAPP_JWT is not set`. The same value belongs in authapp's environment, where its absence makes `/auth/mcp-token` return `503`. |
+| `HYDRA_PUBLIC_INTERNAL_URL` | Base URL for the JWKS fetch, default `http://hydra:4444`. Keeps key retrieval on the internal compose network so it never traverses Caddy's TLS — in dev that is a certificate the mcpapp container does not trust, so pointing this at the public URL breaks every token validation with a TLS error. |
+
+The rest: `MCP_RESOURCE_URL` (or `FQDN`) fixes the audience mcpapp demands;
+`HYDRA_PUBLIC_URL` is the authorization server advertised in the RFC 9728
+protected-resource metadata, and leaving it empty disables the OAuth path
+entirely (phase 0 bearer tokens only); `HYDRA_ISSUER` and `HYDRA_JWKS_URL`
+override the two values derived from it; `JWT_MCP_AUDIENCE` (default
+`yelukerest-mcp`) is the audience of the phase 0 bearer tokens.
 
 ## Delegated Login And Consent (Issue #273)
 
@@ -332,3 +354,55 @@ Set `HYDRA_CHECK_URL` to override the public base URL it probes.
 `check_hydra_client_count` additionally counts registered OAuth
 clients via the admin API and warns above `HYDRA_CLIENT_COUNT_WARN`
 (default 500); see Client Pruning above.
+
+## Audit Trail: MCP Token Mints
+
+Every internal MCP credential — minted by `/auth/mcp-token` for a bearer-token
+client, or by mcpapp's token exchange for an OAuth client — appends a row to
+`data.mcp_jwt_mint_event` **in the same transaction that signs the token**. There
+is no path that mints without recording. Two faculty-only views sit over it
+(`db/src/api/yeluke/mcp_jwt.sql`; row access is enforced by RLS on the underlying
+table, and only `faculty` holds SELECT):
+
+- `api.mcp_jwt_mint_events` — the raw history: `user_id`, `netid`, `user_role`,
+  granted `scopes`, the token's `jti`, the `caller_app_name` of the service
+  credential that asked (`mcpapp`), the `external_issuer`/`external_sub`/
+  `external_jti`/`external_client_id` of the OAuth token exchanged when there was
+  one, and `created_at`. Phase 0 mints record
+  `client_id = authapp:/auth/mcp-token` and no external subject.
+- `api.mcp_jwt_mint_anomalies` — the alarm from the ADR threat model: one caller
+  credential minting for **more than 10 distinct subjects in a sliding 10-minute
+  window**, which is the signature of a stolen minting credential rather than
+  normal per-student traffic. Empty is the healthy state. Each row reports
+  `caller_app_name`, `window_start`, `window_end`, `distinct_subjects`, and
+  `mint_count`.
+
+Read them through PostgREST with a faculty token
+(`./bin/jwt.sh '{"user_id":1,"role":"faculty"}'`):
+
+```sh
+# Anything anomalous? Empty output is good.
+curl -sS -H "Authorization: Bearer $YELUKEREST_CLIENT_JWT" \
+  "https://$FQDN/rest/mcp_jwt_mint_anomalies"
+
+# Recent mints, newest first.
+curl -sS -H "Authorization: Bearer $YELUKEREST_CLIENT_JWT" \
+  "https://$FQDN/rest/mcp_jwt_mint_events?order=created_at.desc&limit=50"
+
+# Everything minted for one student today.
+curl -sS -H "Authorization: Bearer $YELUKEREST_CLIENT_JWT" \
+  "https://$FQDN/rest/mcp_jwt_mint_events?netid=eq.abc12&created_at=gte.2026-08-05"
+```
+
+Or directly in SQL via `./bin/pg_connect.sh`:
+
+```sql
+select caller_app_name, window_start, distinct_subjects, mint_count
+  from api.mcp_jwt_mint_anomalies order by window_end desc limit 20;
+```
+
+Check the anomalies view when rotating `MCPAPP_JWT`, after any suspected
+credential exposure, and as part of the start-of-semester caveats review. A
+non-empty result means revoking `MCPAPP_JWT` (mint a new one, update both authapp
+and mcpapp, restart) — the tokens it already produced expire on their own within
+ten minutes.

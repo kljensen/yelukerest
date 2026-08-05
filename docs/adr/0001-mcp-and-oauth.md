@@ -77,9 +77,11 @@ client-compatibility bugs) can never produce a token PostgREST accepts.
 ### Phased rollout
 
 - **Phase 0 — bearer tokens.** Session-gated `/auth/mcp-token` endpoint mints
-  MCP-audience bearer tokens (`aud=yelukerest-mcp`, distinct from
-  `yelukerest-postgrest`) via the audited function. Serves Claude Code, Cursor,
-  VS Code, curl, and self-written clients before OAuth lands.
+  bearer tokens via the audited function. Their audience is an array holding
+  both `yelukerest-mcp` and `yelukerest-postgrest`: mcpapp accepts the token
+  and forwards that same token to PostgREST, and both verifiers check
+  audience by membership. Serves Claude Code, Cursor, VS Code, curl, and
+  self-written clients before OAuth lands.
 - **Phase 1 — Hydra OAuth.** DCR + PKCE + delegated CAS consent for Claude
   Desktop, claude.ai, and ChatGPT. Gated by a spike proving the audience/RFC
   8707 story end-to-end (issue #271) and a real-client pilot on low-stakes
