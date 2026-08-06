@@ -298,7 +298,7 @@ describe('oauth security negatives', () => {
         it('should refuse a write for a read-only token', async () => {
             const mcp = new McpClient(studentTokens.access_token);
             await mcp.initialize();
-            const message = await mcp.callExpectError('prepare_submission_change', {
+            const message = await mcp.callExpectError('submit_submission_change', {
                 assignment_slug: 'exam-1', field_slug: 'profound', body: 'nope',
             });
             expect(message.toLowerCase())

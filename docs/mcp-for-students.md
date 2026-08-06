@@ -176,10 +176,9 @@ to a repo or paste them into Canvas, Slack, or a notebook you share.
 | `get_my_quiz_grades` | Your quiz grades, with the anonymized class distribution |
 | `get_my_grades` | Your course grades, with the anonymized class distribution |
 | `get_my_engagements` | Your participation record per meeting |
-| `prepare_submission_change` | Step 1 of editing a submission — shows what would change, writes nothing |
-| `commit_submission_change` | Step 2 — performs the change you confirmed |
+| `preview_submission_change` | Shows exactly what an edit would change, and writes nothing |
+| `submit_submission_change` | Writes one field of your submission |
 | `get_api_schema` | The REST API views and filter syntax, for the escape hatch |
-| `prepare_api_request` | Step 1 for a non-GET raw API call |
 | `postgrest_request` | Escape hatch: one raw REST API call under your own permissions |
 
 **Grades appear only in `get_my_grades` and `get_my_quiz_grades`.** No other tool
@@ -187,26 +186,31 @@ returns your scores, so an assistant that only reads assignments never sees them
 
 ## How editing a submission works
 
-Writing is deliberately awkward. It takes two calls plus a confirmation you see
-with your own eyes:
+An assistant can change your submitted work only if you gave it permission to.
+When you connect it, the consent screen lists what it is asking for; granting
+the write permission is what lets it call `submit_submission_change`. An
+assistant you connected read-only can look at everything you can see and change
+nothing, no matter what it is asked to do.
 
-1. The assistant calls `prepare_submission_change`. Nothing is written. It gets
-   back a summary — the current value, the proposed value, whether this creates
-   or overwrites, whether the assignment is still open — plus a single-use token
-   that expires in five minutes.
-2. The assistant shows you that summary and calls `commit_submission_change`.
-   Your client pops up a confirmation box naming the assignment and field. Only
-   after you say yes does anything get written.
+Beyond that, an edit is an ordinary write. A good assistant will call
+`preview_submission_change` first and show you the current value, the proposed
+value, and whether the assignment is still open — and most MCP clients also ask
+you to approve each tool call, showing you the text being written. Neither is
+something the server can force, which is why the permission you grant at connect
+time is the decision that actually matters.
 
-**Clients that cannot show that confirmation box can read but cannot write.**
-That is on purpose. Tool results contain text other people wrote — a teammate's
-submission, an assignment description — and an assistant that reads such text can
-be talked into doing something you never asked for, so the last word before your
-official coursework changes has to be yours, in a prompt you actually see.
+This is the same access you already have. You can change your own submissions
+through the course website, and you could do it by calling the API directly with
+your own credentials. The assistant gets no more than that: every read and every
+write runs as you, so it can never touch another student's work, and deadlines
+still apply — the database rejects a write to a closed assignment regardless of
+what the assistant intends.
 
-If the submission changed between the two steps, the commit is refused and you
-start over with a fresh summary. Deadlines still apply: the database rejects a
-write to a closed assignment regardless of what the assistant intends.
+Two honest cautions. Tool results contain text other people wrote — an
+assignment description, a teammate's submission — and an assistant that reads
+such text can be talked into doing something you never asked for. And an
+assistant can simply be wrong. If either worries you for a particular piece of
+work, connect it read-only and submit through the website yourself.
 
 ## Privacy and honesty
 

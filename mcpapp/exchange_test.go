@@ -411,7 +411,6 @@ func newOAuthTestApp(t *testing.T, jwks *fakeJWKS, serviceJWT string) (*httptest
 	deps := &toolDeps{
 		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		postgrest: fake.client(t),
-		intent:    newIntentSigner([]byte(testSecret), time.Now),
 		exchanger: newTokenExchanger(fake.client(t), serviceJWT),
 	}
 	config := testAppConfig(100)

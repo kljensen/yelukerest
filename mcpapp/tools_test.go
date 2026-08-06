@@ -124,7 +124,6 @@ func (f *fakePostgREST) deps(t *testing.T) *toolDeps {
 	return &toolDeps{
 		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		postgrest: f.client(t),
-		intent:    newIntentSigner([]byte(testSecret), time.Now),
 	}
 }
 

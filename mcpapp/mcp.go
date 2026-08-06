@@ -35,9 +35,6 @@ func newPostgRESTClient(host string, port string) *postgrestClient {
 type toolDeps struct {
 	logger    *slog.Logger
 	postgrest *postgrestClient
-	// intent mints and verifies the single-use intent tokens the write tools
-	// (issue #267) and the escape hatch (issue #268) require.
-	intent *intentSigner
 	// exchanger turns a verified OAuth identity into an internal PostgREST
 	// credential (issue #274). Nil when no authorization server is wired up.
 	exchanger *tokenExchanger

@@ -152,7 +152,6 @@ func main() {
 	deps := &toolDeps{
 		logger:    logger,
 		postgrest: postgrest,
-		intent:    newIntentSigner(config.JWT.Secret, time.Now),
 		exchanger: newTokenExchanger(postgrest, mcpappJWT),
 	}
 

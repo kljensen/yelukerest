@@ -1,8 +1,8 @@
 package main
 
 // Tests for the escape hatch (issue #268): GET happy path and query
-// building, path constraints, the verb-keyed intent gate for non-GET
-// requests, response size caps, audit logging, and the schema tool bound.
+// building, path constraints, the verb-keyed scope gate for non-GET requests,
+// response size caps, audit logging, and the schema tool bound.
 
 import (
 	"context"
@@ -97,6 +97,17 @@ func TestPostgrestRequestRejectsBadPathsAndMethods(t *testing.T) {
 	if _, _, err := deps.postgrestRequest(ctx, req, postgrestRequestInput{Method: "GET", Path: "/assignments", Body: `{"x":1}`}); err == nil {
 		t.Fatal("GET with a body was accepted")
 	}
+	// The escape hatch shares the curated write tools' 64KB ceiling, which
+	// mirrors the database CHECK constraint on submission bodies.
+	writeReq, _ := writeToolRequest(t, nil)
+	oversized := `{"body":"` + strings.Repeat("a", maxSubmissionWriteBytes) + `"}`
+	if _, _, err := deps.postgrestRequest(ctx, writeReq, postgrestRequestInput{Method: "POST", Path: "/assignments", Body: oversized}); err == nil || !strings.Contains(err.Error(), "64KB") {
+		t.Fatalf("oversized body: %v", err)
+	}
+	// An empty query parameter name would build a nonsense upstream URL.
+	if _, _, err := deps.postgrestRequest(ctx, req, postgrestRequestInput{Method: "GET", Path: "/assignments", Query: map[string]string{"": "eq.1"}}); err == nil {
+		t.Fatal("an empty query parameter name was accepted")
+	}
 	if len(fake.recorded()) != 0 {
 		t.Fatal("invalid requests reached PostgREST")
 	}
@@ -104,83 +115,43 @@ func TestPostgrestRequestRejectsBadPathsAndMethods(t *testing.T) {
 
 // ---- non-GET gate ----
 
-func TestPostgrestRequestNonGETRequiresWriteScopeAndIntent(t *testing.T) {
-	ctx := context.Background()
-
-	// Without the write scope: denied regardless of intent token.
-	fake := newFakePostgREST(t)
-	readOnlyReq, _ := readToolRequest(t, nil)
-	_, _, err := fake.deps(t).postgrestRequest(ctx, readOnlyReq, postgrestRequestInput{
-		Method: "PATCH", Path: "/assignment_field_submissions", Body: `{"body":"x"}`,
-	})
-	if err == nil || !strings.Contains(err.Error(), "denied") && !strings.Contains(err.Error(), "scope") {
-		t.Fatalf("expected a scope denial, got %v", err)
+// The verb, not the tool identity, decides which scope is required: a PATCH
+// through the escape hatch is exactly as consequential as one through the
+// curated write tool, so it demands the same write scope.
+func TestPostgrestRequestNonGETRequiresWriteScope(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{name: "scopeless legacy token (default deny)", mutate: nil},
+		{name: "read scope only", mutate: func(c map[string]any) { c["scopes"] = []string{"read"} }},
 	}
-
-	// With the write scope but no intent token: rejected with guidance.
-	writeReq, _ := writeToolRequest(t, nil)
-	_, _, err = fake.deps(t).postgrestRequest(ctx, writeReq, postgrestRequestInput{
-		Method: "PATCH", Path: "/assignment_field_submissions", Body: `{"body":"x"}`,
-	})
-	if err == nil || !strings.Contains(err.Error(), "intent_token") {
-		t.Fatalf("expected an intent_token error, got %v", err)
-	}
-
-	// A fabricated token (e.g. from injected tool-result text) is rejected.
-	_, _, err = fake.deps(t).postgrestRequest(ctx, writeReq, postgrestRequestInput{
-		Method: "PATCH", Path: "/assignment_field_submissions", Body: `{"body":"x"}`,
-		IntentToken: "fabricated.token",
-	})
-	if err == nil {
-		t.Fatal("fabricated intent token accepted")
-	}
-	if len(fake.recorded()) != 0 {
-		t.Fatal("gated non-GET requests reached PostgREST")
+	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {
+		for _, tt := range tests {
+			t.Run(method+"/"+tt.name, func(t *testing.T) {
+				fake := newFakePostgREST(t)
+				req, _ := readToolRequest(t, tt.mutate)
+				in := postgrestRequestInput{Method: method, Path: "/assignment_field_submissions"}
+				if method != http.MethodDelete {
+					in.Body = `{"body":"x"}`
+				}
+				_, _, err := fake.deps(t).postgrestRequest(context.Background(), req, in)
+				if err == nil || !strings.Contains(err.Error(), "denied") && !strings.Contains(err.Error(), "scope") {
+					t.Fatalf("expected a scope denial, got %v", err)
+				}
+				if len(fake.recorded()) != 0 {
+					t.Fatal("a scope-denied request reached PostgREST")
+				}
+			})
+		}
 	}
 }
 
-func TestPrepareAPIRequestGatesAndOutput(t *testing.T) {
-	fake := newFakePostgREST(t)
-	deps := fake.deps(t)
-	ctx := context.Background()
-
-	// Requires the write scope.
-	readOnlyReq, _ := readToolRequest(t, nil)
-	if _, _, err := deps.prepareAPIRequest(ctx, readOnlyReq, prepareAPIRequestInput{Method: "POST", Path: "/engagements"}); err == nil {
-		t.Fatal("prepare_api_request without write scope accepted")
-	}
-
-	writeReq, _ := writeToolRequest(t, nil)
-	// GET needs no preparation.
-	if _, _, err := deps.prepareAPIRequest(ctx, writeReq, prepareAPIRequestInput{Method: "GET", Path: "/assignments"}); err == nil || !strings.Contains(err.Error(), "no intent token") {
-		t.Fatalf("prepare of GET: %v", err)
-	}
-
-	_, out, err := deps.prepareAPIRequest(ctx, writeReq, prepareAPIRequestInput{
-		Method: "patch",
-		Path:   "/assignment_field_submissions",
-		Query:  map[string]string{"assignment_slug": "eq.proj1"},
-		Body:   `{"body":"new"}`,
-	})
-	if err != nil {
-		t.Fatalf("prepare_api_request: %v", err)
-	}
-	if out.Method != "PATCH" || out.Path != "/assignment_field_submissions" || out.IntentToken == "" {
-		t.Fatalf("output = %+v", out)
-	}
-	payload := decodeIntentToken(t, out.IntentToken)
-	if payload.Kind != intentKindAPIRequest || payload.Method != "PATCH" || payload.Path != "/assignment_field_submissions" {
-		t.Fatalf("token payload = %+v", payload)
-	}
-	if payload.BodySHA256 != canonicalAPIRequestHash(map[string]string{"assignment_slug": "eq.proj1"}, `{"body":"new"}`) {
-		t.Fatalf("token hash = %q", payload.BodySHA256)
-	}
-	if len(fake.recorded()) != 0 {
-		t.Fatal("prepare_api_request must not reach PostgREST")
-	}
-}
-
-func TestPostgrestRequestNonGETWithValidIntentExecutes(t *testing.T) {
+// With the write scope the request simply executes: there is no intent token,
+// no preparation step, and no confirmation round trip left on this path. The
+// scope the student granted on the consent screen is the whole gate, and RLS
+// enforces the rest.
+func TestPostgrestRequestNonGETWithWriteScopeExecutes(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusOK,
 		`[{"assignment_submission_id":1,"assignment_field_slug":"secret","body":"new"}]`)
@@ -193,16 +164,8 @@ func TestPostgrestRequestNonGETWithValidIntentExecutes(t *testing.T) {
 
 	query := map[string]string{"assignment_slug": "eq.team-selection"}
 	body := `{"body":"new"}`
-	_, prepared, err := deps.prepareAPIRequest(ctx, req, prepareAPIRequestInput{
+	_, out, err := deps.postgrestRequest(ctx, req, postgrestRequestInput{
 		Method: "PATCH", Path: "/assignment_field_submissions", Query: query, Body: body,
-	})
-	if err != nil {
-		t.Fatalf("prepare: %v", err)
-	}
-
-	_, out, err := deps.postgrestRequest(ctx, confirmWrite(req), postgrestRequestInput{
-		Method: "PATCH", Path: "/assignment_field_submissions", Query: query, Body: body,
-		IntentToken: prepared.IntentToken,
 	})
 	if err != nil {
 		t.Fatalf("execute: %v", err)
@@ -243,45 +206,27 @@ func TestPostgrestRequestNonGETWithValidIntentExecutes(t *testing.T) {
 	if strings.Contains(logText, `"body":"new"`) || strings.Contains(logText, "team-selection") {
 		t.Fatalf("audit log leaks request contents: %s", logText)
 	}
-
-	// The intent token is single use.
-	_, _, err = deps.postgrestRequest(ctx, confirmWrite(req), postgrestRequestInput{
-		Method: "PATCH", Path: "/assignment_field_submissions", Query: query, Body: body,
-		IntentToken: prepared.IntentToken,
-	})
-	if err == nil || !strings.Contains(err.Error(), "already used") {
-		t.Fatalf("replay: %v", err)
-	}
 }
 
-func TestPostgrestRequestIntentMustMatchExactRequest(t *testing.T) {
+// /rpc/* function calls are excluded by the path pattern rather than by a
+// denylist, because server functions carry side effects (bulk imports,
+// credential minting) that no student-facing agent should be able to trigger
+// from instructions found in course content.
+func TestPostgrestRequestRejectsRPCForEveryVerb(t *testing.T) {
 	fake := newFakePostgREST(t)
 	deps := fake.deps(t)
 	req, _ := writeToolRequest(t, nil)
 	ctx := context.Background()
 
-	_, prepared, err := deps.prepareAPIRequest(ctx, req, prepareAPIRequestInput{
-		Method: "PATCH", Path: "/engagements",
-		Query: map[string]string{"user_id": "eq.42"},
-		Body:  `{"participation":"attended"}`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	mismatches := []postgrestRequestInput{
-		{Method: "DELETE", Path: "/engagements", Query: map[string]string{"user_id": "eq.42"}, IntentToken: prepared.IntentToken},
-		{Method: "PATCH", Path: "/grades", Query: map[string]string{"user_id": "eq.42"}, Body: `{"participation":"attended"}`, IntentToken: prepared.IntentToken},
-		{Method: "PATCH", Path: "/engagements", Query: map[string]string{"user_id": "eq.43"}, Body: `{"participation":"attended"}`, IntentToken: prepared.IntentToken},
-		{Method: "PATCH", Path: "/engagements", Query: map[string]string{"user_id": "eq.42"}, Body: `{"participation":"led"}`, IntentToken: prepared.IntentToken},
-	}
-	for i, input := range mismatches {
-		if _, _, err := deps.postgrestRequest(ctx, req, input); err == nil {
-			t.Fatalf("mismatch %d accepted: %+v", i, input)
+	for _, method := range allowedAPIMethods {
+		for _, path := range []string{"/rpc/sync_meetings", "/rpc/sync_assignments", "/rpc/issue_user_jwt"} {
+			if _, _, err := deps.postgrestRequest(ctx, req, postgrestRequestInput{Method: method, Path: path}); err == nil {
+				t.Fatalf("%s %s was accepted", method, path)
+			}
 		}
 	}
 	if len(fake.recorded()) != 0 {
-		t.Fatal("mismatched requests reached PostgREST")
+		t.Fatalf("an RPC path reached PostgREST: %+v", fake.recorded())
 	}
 }
 
@@ -341,7 +286,7 @@ func TestGetAPISchemaSizeAndScope(t *testing.T) {
 		"select=",
 		"order=",
 		"rpc/sync_meetings",
-		"prepare_api_request",
+		"postgrest_request",
 	} {
 		if !strings.Contains(apiSchemaDocument, want) {
 			t.Fatalf("schema document missing %q", want)

@@ -1,17 +1,15 @@
 package main
 
-// Escape hatch (issue #268): postgrest_request + prepare_api_request +
-// get_api_schema.
+// Escape hatch (issue #268): postgrest_request + get_api_schema.
 //
 // postgrest_request exposes the whole PostgREST API behind the caller's own
 // forwarded credential, so it grants nothing a student lacks via the direct
 // API (they can already curl PostgREST with their own JWT); RLS applies
-// identically. Per the recorded decision on the issue: GET only by default;
-// any non-GET verb requires the write scope AND a valid single-use intent
-// token minted by prepare_api_request — the same confirmation gate as the
-// curated write tools, keyed on the HTTP verb, not the tool identity. Every
-// call is audit-logged as method+path; query values and bodies are never
-// logged.
+// identically. The gate is keyed on the HTTP verb, not on the tool identity:
+// GET needs the read scope, any other verb needs the write scope. That is the
+// same boundary the curated write tool enforces, and the same one the student
+// crossed on the consent screen. Every call is audit-logged as method+path;
+// query values and bodies are never logged.
 
 import (
 	"context"
@@ -21,7 +19,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -50,7 +47,7 @@ func registerEscapeHatchTools(server *mcp.Server, deps *toolDeps) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "postgrest_request",
 		Description: "Escape hatch: perform one request against the course REST API under the caller's own credential and row-level security. " +
-			"GET works directly (read scope). POST, PATCH, and DELETE additionally require the write scope and a single-use intent_token from prepare_api_request; show the user what will be executed and get their confirmation before committing. " +
+			"GET requires the read scope; POST, PATCH, and DELETE require the write scope. This grants nothing beyond what the caller could do by calling the API directly with their own token. " +
 			"Call get_api_schema for the available views and filter syntax." + untrustedTextNote,
 		Annotations: &mcp.ToolAnnotations{
 			Title:           "PostgREST request",
@@ -60,21 +57,10 @@ func registerEscapeHatchTools(server *mcp.Server, deps *toolDeps) {
 			OpenWorldHint:   boolPtr(false),
 		},
 	}, deps.postgrestRequest)
-	mcp.AddTool(server, &mcp.Tool{
-		Name: "prepare_api_request",
-		Description: "Step 1 of 2 for a non-GET postgrest_request: validate the request and return a single-use intent token bound to the exact method, path, query, and body. " +
-			"No request is executed here. Show the user what will be executed, get their explicit confirmation, then call postgrest_request with the identical arguments plus the intent_token. " +
-			"Requires a token with the write scope.",
-		Annotations: &mcp.ToolAnnotations{
-			Title:         "Prepare API request",
-			ReadOnlyHint:  true, // prepare performs no request
-			OpenWorldHint: boolPtr(false),
-		},
-	}, deps.prepareAPIRequest)
 }
 
-// validateAPIRequest normalizes and checks the shared postgrest_request /
-// prepare_api_request inputs. It returns the canonical (uppercase) method.
+// validateAPIRequest normalizes and checks postgrest_request's inputs. It
+// returns the canonical (uppercase) method.
 func validateAPIRequest(method string, path string, query map[string]string, body string) (string, error) {
 	normalized := strings.ToUpper(strings.TrimSpace(method))
 	if !slices.Contains(allowedAPIMethods, normalized) {
@@ -97,95 +83,13 @@ func validateAPIRequest(method string, path string, query map[string]string, bod
 	return normalized, nil
 }
 
-// canonicalAPIRequestHash hashes the query and body into the digest the
-// intent token binds. Every field is length-prefixed so no combination of
-// keys, values, and body can collide with a different one: joining raw
-// key=value pairs with separators would let a value containing "&" or "="
-// produce the digest of an entirely different request, letting a commit
-// execute something other than what was prepared. Deterministic regardless
-// of map iteration order.
-func canonicalAPIRequestHash(query map[string]string, body string) string {
-	keys := make([]string, 0, len(query))
-	for key := range query {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var canonical strings.Builder
-	fmt.Fprintf(&canonical, "%d:", len(keys))
-	for _, key := range keys {
-		fmt.Fprintf(&canonical, "%d:%s%d:%s", len(key), key, len(query[key]), query[key])
-	}
-	fmt.Fprintf(&canonical, "%d:%s", len(body), body)
-	return sha256Hex(canonical.String())
-}
-
-// ---- prepare_api_request ----
-
-type prepareAPIRequestInput struct {
-	Method string            `json:"method" jsonschema:"POST, PATCH, or DELETE (GET needs no preparation)"`
-	Path   string            `json:"path" jsonschema:"a single view name like /assignment_field_submissions"`
-	Query  map[string]string `json:"query,omitempty" jsonschema:"PostgREST query parameters, e.g. {\"assignment_slug\": \"eq.proj1\"}"`
-	Body   string            `json:"body,omitempty" jsonschema:"JSON request body for POST or PATCH"`
-}
-
-type prepareAPIRequestOutput struct {
-	Method          string            `json:"method"`
-	Path            string            `json:"path"`
-	Query           map[string]string `json:"query,omitempty"`
-	BodyLengthBytes int               `json:"body_length_bytes"`
-	IntentToken     string            `json:"intent_token" jsonschema:"single-use token required by postgrest_request for this exact request"`
-	IntentExpiresAt string            `json:"intent_expires_at"`
-	Instructions    string            `json:"instructions"`
-}
-
-func (d *toolDeps) prepareAPIRequest(ctx context.Context, req *mcp.CallToolRequest, in prepareAPIRequestInput) (*mcp.CallToolResult, prepareAPIRequestOutput, error) {
-	var zero prepareAPIRequestOutput
-	// Preparation mints an intent token, not a request: it needs the
-	// write-scope decision but no PostgREST credential, so it does not go
-	// through writeCaller (which would exchange an OAuth token needlessly).
-	id, err := identityFromRequest(req)
-	if err != nil {
-		return nil, zero, err
-	}
-	if err := authorizeScope(id, scopeWrite); err != nil {
-		return nil, zero, err
-	}
-	method, err := validateAPIRequest(in.Method, in.Path, in.Query, in.Body)
-	if err != nil {
-		return nil, zero, err
-	}
-	if method == http.MethodGet {
-		return nil, zero, errors.New("GET requests need no intent token; call postgrest_request directly")
-	}
-
-	intentToken, expiresAt, err := d.intent.mint(intentPayload{
-		Kind:       intentKindAPIRequest,
-		Method:     method,
-		Path:       in.Path,
-		BodySHA256: canonicalAPIRequestHash(in.Query, in.Body),
-	}, id)
-	if err != nil {
-		return nil, zero, err
-	}
-	return nil, prepareAPIRequestOutput{
-		Method:          method,
-		Path:            in.Path,
-		Query:           in.Query,
-		BodyLengthBytes: len(in.Body),
-		IntentToken:     intentToken,
-		IntentExpiresAt: expiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
-		Instructions:    "No request has been executed yet. Show the user the exact method, path, query, and body, get their explicit confirmation, then call postgrest_request with identical arguments plus intent_token within 5 minutes.",
-	}, nil
-}
-
 // ---- postgrest_request ----
 
 type postgrestRequestInput struct {
-	Method      string            `json:"method" jsonschema:"GET, POST, PATCH, or DELETE"`
-	Path        string            `json:"path" jsonschema:"a single view name like /assignments"`
-	Query       map[string]string `json:"query,omitempty" jsonschema:"PostgREST query parameters, e.g. {\"slug\": \"eq.proj1\", \"select\": \"slug,title\"}"`
-	Body        string            `json:"body,omitempty" jsonschema:"JSON request body for POST or PATCH"`
-	IntentToken string            `json:"intent_token,omitempty" jsonschema:"required for POST, PATCH, and DELETE: the token from prepare_api_request for this exact request"`
+	Method string            `json:"method" jsonschema:"GET, POST, PATCH, or DELETE"`
+	Path   string            `json:"path" jsonschema:"a single view name like /assignments"`
+	Query  map[string]string `json:"query,omitempty" jsonschema:"PostgREST query parameters, e.g. {\"slug\": \"eq.proj1\", \"select\": \"slug,title\"}"`
+	Body   string            `json:"body,omitempty" jsonschema:"JSON request body for POST or PATCH"`
 }
 
 type postgrestRequestOutput struct {
@@ -205,38 +109,16 @@ func (d *toolDeps) postgrestRequest(ctx context.Context, req *mcp.CallToolReques
 		return nil, zero, err
 	}
 
-	// Gate keyed on the HTTP verb (issue #268): GET is read-scoped; anything
-	// else needs the write scope AND a valid intent token, checked and
-	// consumed before the request is executed.
+	// Gate keyed on the HTTP verb (issue #268): GET is read-scoped, anything
+	// else needs the write scope. That scope is the authorization boundary —
+	// the same one a student crosses by using their own API token — and the
+	// database's row-level security enforces the rest.
 	if method == http.MethodGet {
 		if err := authorizeScope(id, scopeRead); err != nil {
 			return nil, zero, err
 		}
 	} else {
 		if err := authorizeScope(id, scopeWrite); err != nil {
-			return nil, zero, err
-		}
-		if in.IntentToken == "" {
-			return nil, zero, fmt.Errorf("%s requests require an intent_token; call prepare_api_request first and show the user what will be executed", method)
-		}
-		payload, err := d.intent.verify(in.IntentToken, intentKindAPIRequest, id)
-		if err != nil {
-			return nil, zero, err
-		}
-		if payload.Method != method || payload.Path != in.Path || payload.BodySHA256 != canonicalAPIRequestHash(in.Query, in.Body) {
-			return nil, zero, errors.New("the request does not match the prepared one; call prepare_api_request again with the request you intend to execute")
-		}
-		// Elicitation confirmation where the client supports it; the intent
-		// token remains the floor. The token is consumed only after the user
-		// confirms, so a decline leaves it usable for a deliberate retry
-		// within its 5-minute lifetime.
-		message := fmt.Sprintf("Yelukerest: execute %s %s against the course API? This may modify your course data.", method, in.Path)
-		if pending, err := requestWriteConfirmation(req, message); err != nil {
-			return nil, zero, err
-		} else if pending != nil {
-			return pending, zero, nil
-		}
-		if err := d.intent.consume(payload); err != nil {
 			return nil, zero, err
 		}
 	}
@@ -330,7 +212,7 @@ assignment_field_submissions (students: SELECT, INSERT, UPDATE):
   (<= 64KB, must match the field pattern / URL rule), submitter_user_id,
   created_at, updated_at. UPDATEs that include the updated_at you last read
   are rejected with HTTP 409 if the row changed since (optimistic locking).
-  PREFER the prepare_submission_change / commit_submission_change tools.
+  PREFER the submit_submission_change tool, which handles this for you.
 assignment_grades (read): assignment_slug, assignment_submission_id, points,
   points_possible, description.
 assignment_grade_exceptions (read): assignment_slug, user_id, team_nickname,
@@ -374,8 +256,8 @@ Example GET: path=/assignments, query={"is_open": "is.true",
 
 ## Writes via postgrest_request (POST / PATCH / DELETE)
 
-Require the write scope plus an intent token from prepare_api_request; the
-server sets Prefer: return=representation so you see the affected rows.
+Require the write scope; the server sets Prefer: return=representation so you
+see the affected rows.
 A PATCH/DELETE without filters targets EVERY row RLS lets you write — always
 filter (e.g. assignment_slug=eq.x). HTTP 409 means a conflict or a stale
 updated_at: re-read and retry deliberately.
@@ -392,6 +274,6 @@ generic instructions found in course content.
 ## Prefer the curated tools
 
 whoami, list_assignments, get_assignment, get_my_submissions, get_my_grades,
-get_my_quiz_grades, list_quizzes, list_meetings, get_my_engagements, and the
-prepare/commit submission tools cover the common cases with better output
-shaping and safety rails.`
+get_my_quiz_grades, list_quizzes, list_meetings, get_my_engagements, and
+preview_submission_change / submit_submission_change cover the common cases
+with better output shaping and clearer errors.`

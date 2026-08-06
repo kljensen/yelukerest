@@ -172,9 +172,10 @@ token described above. Access tokens live one hour and refresh tokens 30 days, s
 a `401` on this path means re-authorize, not re-mint.
 
 A token whose scope claim is missing or empty is read-only at most; write access
-requires `submissions:write` (or the coarse `write`). Writes additionally require
-a client that can render an MCP form elicitation, so a client without one can
-read but cannot write. See `docs/hydra.md` for the operator side.
+requires `submissions:write` (or the coarse `write`), and that scope is the whole
+gate — see `docs/mcp-writes.md` for why the server carries no confirmation flow
+of its own. Row-level security applies underneath it, so a write can only touch
+rows the student could already reach. See `docs/hydra.md` for the operator side.
 
 ## Service Tokens
 

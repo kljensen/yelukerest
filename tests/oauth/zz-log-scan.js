@@ -46,22 +46,21 @@ describe('service logs', () => {
 
     before(async () => {
         // One more round trip, so this file still means something when it is
-        // run on its own: a token, a code, an intent token and a piece of
-        // student coursework pushed through the whole stack.
+        // run on its own: a token, a code, and a piece of student coursework
+        // pushed through the whole stack.
         const clientId = (await sharedClient()).client_id;
         const flow = await fullFlow({
             clientId, netid: NETIDS.student, scope: WRITE_SCOPES,
         });
         const body = `Log scan canary ${Date.now()} zzq.`;
         recordSecret(body);
-        const mcp = new McpClient(flow.tokens.access_token, {
-            capabilities: { elicitation: { form: {} } },
-        });
+        const mcp = new McpClient(flow.tokens.access_token);
         await mcp.initialize();
-        const summary = await mcp.callOk('prepare_submission_change', {
+        // A real write, so the student's own coursework travels the whole
+        // stack during the scan window.
+        await mcp.callOk('submit_submission_change', {
             assignment_slug: 'exam-1', field_slug: 'profound', body,
         });
-        recordSecret(summary.intent_token);
 
         // Pull real grade and submission content through the tools during
         // the scan window, and take the canaries from what came back. Fixed

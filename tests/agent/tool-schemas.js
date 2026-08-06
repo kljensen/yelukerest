@@ -9,20 +9,17 @@
 // schema drifts out of shape breaks real clients silently; it should break a
 // test loudly.
 //
-// The elicitation checks drive BOTH write mechanisms -- the curated
-// prepare/commit pair and the prepare_api_request + non-GET postgrest_request
-// escape hatch -- through the same generic execution path the agent loop uses,
-// under each of the three policies. This is what actually proves that path
-// works on both mechanisms, and it deliberately does not involve a model: the
-// injection scenario cannot prove it, because a model is free to attempt
-// neither. Deterministic coverage of the mechanism, stochastic coverage of the
-// behaviour.
+// The scope checks pin down the write path's only gate on both mechanisms --
+// submit_submission_change and the postgrest_request escape hatch -- without a
+// model in the loop. The agent files exercise the same boundary through a real
+// model, but a model is free to attempt no write at all, so the mechanism is
+// established here and the behaviour is measured there.
 
 const { expect } = require('chai');
 const bunTest = require('bun:test');
 
 const {
-    NETIDS, WRITE_SCOPES, baseURL, sql,
+    NETIDS, WRITE_SCOPES, READ_SCOPES, baseURL, sql,
 } = require('../oauth/helpers.js');
 const {
     assertLocalTarget,
@@ -63,7 +60,7 @@ describe('agent tool bridge', () => {
     before(async () => {
         assertLocalTarget(baseURL);
         resetdb();
-        session = await agentSession(NETIDS.student, WRITE_SCOPES, { eliciting: true });
+        session = await agentSession(NETIDS.student, WRITE_SCOPES);
         mcpTools = await session.mcp.listTools();
         tools = bridgeTools(mcpTools);
     });
@@ -101,130 +98,64 @@ describe('agent tool bridge', () => {
             .to.contain('untrusted');
     });
 
-    describe('the generic elicitation path', () => {
-        // Both write mechanisms reach the same requestWriteConfirmation, so
-        // the agent loop answers elicitation for ANY tool rather than for one
-        // known tool name. These tests are that promise, checked directly.
+    describe('the scope boundary', () => {
+        // Deterministic coverage of the only gate the write path has. The
+        // model-driven files exercise the same boundary through an agent, but
+        // a model is free not to attempt a write at all, so the mechanism is
+        // pinned down here.
 
-        // Each exchange gets its OWN session, which is a workaround for a real
-        // bug rather than tidiness: after a few elicitation round-trips on one
-        // session, the next one never delivers its result and the client waits
-        // out its 90-second abort (issue #286 -- it makes the older
-        // tests/oauth/write-path.js suite intermittently fail too, so it
-        // predates this file). A fresh session helps but is not a cure: the
-        // resource that runs out is cumulative in the mcpapp PROCESS, and a
-        // restart is what actually clears it. When #286 is fixed these can
-        // share `session` again, and the shared-session case earns its own
-        // regression test at that point.
-        const elicitingSession = () => agentSession(NETIDS.student, WRITE_SCOPES, { eliciting: true });
-
-        it('should refuse a curated write when the client cannot confirm', async () => {
-            const silent = await agentSession(NETIDS.student, WRITE_SCOPES, { eliciting: false });
-            const before_ = storedBodies();
-            const body = 'Written with no confirmation channel.';
-            const summary = await silent.mcp.callOk('prepare_submission_change', {
+        it('should let a write-scoped token write, with no ceremony', async () => {
+            const body = `Written with the write scope ${Date.now()}.`;
+            const result = await session.mcp.callOk('submit_submission_change', {
                 assignment_slug: ASSIGNMENT, field_slug: FIELD, body,
             });
-            const outcome = await silent.mcp.callAnsweringElicitation(
-                'commit_submission_change',
-                { intent_token: summary.intent_token, body },
-                { action: 'decline' },
-            );
-            expect(outcome.elicitations, 'a client that cannot elicit must not be asked')
-                .to.have.lengthOf(0);
-            expect(outcome.result.isError)
-                .to.equal(true);
-            expect(storedBodies())
-                .to.deep.equal(before_);
-            await silent.mcp.close();
-        });
-
-        it('should ask, and write, when the curated confirmation is accepted', async () => {
-            const fresh = await elicitingSession();
-            const body = `Accepted through the generic path ${Date.now()}.`;
-            const summary = await fresh.mcp.callOk('prepare_submission_change', {
-                assignment_slug: ASSIGNMENT, field_slug: FIELD, body,
-            });
-            const outcome = await fresh.mcp.callAnsweringElicitation(
-                'commit_submission_change',
-                { intent_token: summary.intent_token, body },
-                { action: 'accept', content: { confirm: true } },
-            );
-            expect(outcome.elicitations)
-                .to.have.lengthOf(1);
-            expect(outcome.result.isError)
-                .to.not.equal(true);
+            expect(result.body)
+                .to.equal(body);
             expect(storedBodies())
                 .to.contain(body);
-            await fresh.mcp.close();
         });
 
-        it('should ask, and write nothing, when the curated confirmation is declined', async () => {
-            const fresh = await elicitingSession();
+        it('should refuse a write for a read-only token, and write nothing', async () => {
+            const reader = await agentSession(NETIDS.student, READ_SCOPES);
             const before_ = storedBodies();
-            const body = `Declined through the generic path ${Date.now()}.`;
-            const summary = await fresh.mcp.callOk('prepare_submission_change', {
-                assignment_slug: ASSIGNMENT, field_slug: FIELD, body,
+            const message = await reader.mcp.callExpectError('submit_submission_change', {
+                assignment_slug: ASSIGNMENT, field_slug: FIELD, body: 'Written without the scope.',
             });
-            const outcome = await fresh.mcp.callAnsweringElicitation(
-                'commit_submission_change',
-                { intent_token: summary.intent_token, body },
-                { action: 'decline' },
-            );
-            expect(outcome.elicitations)
-                .to.have.lengthOf(1);
-            expect(outcome.result.isError)
-                .to.equal(true);
+            expect(message.toLowerCase())
+                .to.contain('scope');
             expect(storedBodies())
                 .to.deep.equal(before_);
-            await fresh.mcp.close();
+            await reader.mcp.close();
         });
 
-        it('should ask before a non-GET escape-hatch request, and honour a decline', async () => {
-            // The second write mechanism. A loop that only answered
-            // elicitation for commit_submission_change would hang here until
-            // the client's abort timer, which is exactly the bug this covers.
-            const fresh = await elicitingSession();
-            const before_ = storedBodies('fooword');
-            const payload = JSON.stringify({
-                assignment_slug: ASSIGNMENT,
-                assignment_field_slug: 'fooword',
-                body: `Escape hatch decline ${Date.now()}.`,
+        it('should preview without needing the write scope, and write nothing', async () => {
+            const reader = await agentSession(NETIDS.student, READ_SCOPES);
+            const before_ = storedBodies();
+            const summary = await reader.mcp.callOk('preview_submission_change', {
+                assignment_slug: ASSIGNMENT, field_slug: FIELD, body: 'Only previewed.',
             });
-            const prepared = await fresh.mcp.callOk('prepare_api_request', {
-                method: 'POST', path: '/assignment_field_submissions', body: payload,
-            });
-            const outcome = await fresh.mcp.callAnsweringElicitation(
-                'postgrest_request',
-                {
-                    method: 'POST',
-                    path: '/assignment_field_submissions',
-                    body: payload,
-                    intent_token: prepared.intent_token,
-                },
-                { action: 'decline' },
-            );
-            expect(outcome.elicitations, 'the escape hatch must ask before a non-GET request')
-                .to.have.lengthOf(1);
-            expect(outcome.elicitations[0].method)
-                .to.equal('elicitation/create');
-            expect(outcome.result.isError)
-                .to.equal(true);
-            expect(storedBodies('fooword'))
+            expect(summary.proposed_body)
+                .to.equal('Only previewed.');
+            expect(storedBodies())
                 .to.deep.equal(before_);
-            await fresh.mcp.close();
+            await reader.mcp.close();
         });
 
-        it('should not ask before a GET through the escape hatch', async () => {
-            const outcome = await session.mcp.callAnsweringElicitation(
-                'postgrest_request',
-                { method: 'GET', path: '/assignments', query: { select: 'slug' } },
-                { action: 'decline' },
-            );
-            expect(outcome.elicitations, 'a read must not interrupt the user')
-                .to.have.lengthOf(0);
-            expect(outcome.result.isError)
-                .to.not.equal(true);
+        it('should gate the escape hatch on the verb, not on a token dance', async () => {
+            const reader = await agentSession(NETIDS.student, READ_SCOPES);
+            const read = await reader.mcp.callOk('postgrest_request', {
+                method: 'GET', path: '/assignments', query: { select: 'slug' },
+            });
+            expect(read.status)
+                .to.equal(200);
+            const message = await reader.mcp.callExpectError('postgrest_request', {
+                method: 'DELETE',
+                path: '/assignment_field_submissions',
+                query: { assignment_slug: `eq.${ASSIGNMENT}` },
+            });
+            expect(message.toLowerCase())
+                .to.contain('scope');
+            await reader.mcp.close();
         });
     });
 

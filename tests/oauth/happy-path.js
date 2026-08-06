@@ -24,10 +24,9 @@ const {
 // them room.
 bunTest.setDefaultTimeout(120_000);
 
-// Every tool the server registers: 9 curated reads, 2 curated writes, 3
+// Every tool the server registers: 9 curated reads, 2 submission tools, 2
 // escape-hatch tools. A change here is a deliberate API change.
 const EXPECTED_TOOLS = [
-    'commit_submission_change',
     'get_api_schema',
     'get_assignment',
     'get_my_engagements',
@@ -38,8 +37,8 @@ const EXPECTED_TOOLS = [
     'list_meetings',
     'list_quizzes',
     'postgrest_request',
-    'prepare_api_request',
-    'prepare_submission_change',
+    'preview_submission_change',
+    'submit_submission_change',
     'whoami',
 ];
 
@@ -178,13 +177,13 @@ describe('oauth happy path', () => {
                 .to.equal('2025-11-25');
         });
 
-        it('should advertise all fourteen tools', async () => {
+        it('should advertise all thirteen tools', async () => {
             const tools = await sessions.student.mcp.listTools();
             expect(tools.map(tool => tool.name)
                 .sort())
                 .to.deep.equal(EXPECTED_TOOLS);
             expect(tools)
-                .to.have.lengthOf(14);
+                .to.have.lengthOf(13);
         });
 
         it('should reject an unauthenticated call with RFC 9728 metadata', async () => {
@@ -346,7 +345,7 @@ describe('oauth happy path', () => {
         });
 
         it('should deny a read-scoped token any write', async () => {
-            const message = await sessions.student.mcp.callExpectError('prepare_submission_change', {
+            const message = await sessions.student.mcp.callExpectError('submit_submission_change', {
                 assignment_slug: 'exam-1',
                 field_slug: 'profound',
                 body: 'should never be written',

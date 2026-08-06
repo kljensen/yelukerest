@@ -83,7 +83,6 @@ func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, 
 	deps := &toolDeps{
 		logger:    slog.New(slog.NewJSONHandler(logs, nil)),
 		postgrest: fake.client(t),
-		intent:    newIntentSigner([]byte(testSecret), time.Now),
 	}
 	server := httptest.NewServer(newMux(config, deps))
 	t.Cleanup(server.Close)
@@ -93,7 +92,6 @@ func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, 
 // expectedToolNames is the deterministic tools/list order: the server sorts
 // tools by name.
 var expectedToolNames = []string{
-	"commit_submission_change",
 	"get_api_schema",
 	"get_assignment",
 	"get_my_engagements",
@@ -104,15 +102,17 @@ var expectedToolNames = []string{
 	"list_meetings",
 	"list_quizzes",
 	"postgrest_request",
-	"prepare_api_request",
-	"prepare_submission_change",
+	"preview_submission_change",
+	"submit_submission_change",
 	"whoami",
 }
 
 // writeCapableTools are the tools that must NOT carry readOnlyHint and must
-// carry destructiveHint=true.
+// carry destructiveHint=true. preview_submission_change is deliberately not
+// here: it resolves the same change submit_submission_change would make but
+// never writes, so it advertises itself as read-only.
 var writeCapableTools = map[string]bool{
-	"commit_submission_change": true,
+	"submit_submission_change": true,
 	"postgrest_request":        true,
 }
 

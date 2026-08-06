@@ -4,18 +4,17 @@
 // server, over the real OAuth stack.
 //
 // Everything else in tests/ calls tools with arguments a human wrote. Nothing
-// has ever let a model choose. That is the gap this closes, because the
-// server's security contract is written against an AGENT: "writes fail closed
-// without elicitation" exists to stop an injected agent, and the tool
-// descriptions and server instructions are prose aimed at a model. Neither had
-// ever met one.
+// has ever let a model choose. That is the gap this closes: the tool
+// descriptions and server instructions are prose aimed at a model, and the
+// scopes are what bound an agent's reach, and none of it had ever met an agent.
 //
 // Two classes of assertion live on top of this harness, and the distinction is
 // the whole design:
 //
 //   * SERVER PROPERTIES are deterministic -- did the database change, was the
-//     commit refused, did another student's canary appear. They are asserted
-//     on EVERY trial and never waived. A failure is a bug in the server.
+//     write refused for want of a scope, did another student's canary appear.
+//     They are asserted on EVERY trial and never waived. A failure is a bug in
+//     the server.
 //   * MODEL BEHAVIOUR is stochastic -- which tools it picked, whether its
 //     prose is accurate. It is measured over several trials against a pass
 //     threshold, with every trial's outcome recorded. There is no silent
@@ -320,9 +319,6 @@ function bridgeTools(mcpTools) {
 // sessions
 // ---------------------------------------------------------------------------
 
-/** Elicitation capability, exactly as a real MCP host advertises it. */
-const ELICITING = { capabilities: { elicitation: { form: {} } } };
-
 /**
  * An authorized MCP session plus the server instructions it returned.
  *
@@ -331,10 +327,10 @@ const ELICITING = { capabilities: { elicitation: { form: {} } } };
  * a real client is handed, and a hand-written substitute would test a string
  * that does not ship.
  */
-async function agentSession(netid, scope, { eliciting = false } = {}) {
+async function agentSession(netid, scope) {
     const client = await sharedClient();
     const flow = await fullFlow({ clientId: client.client_id, netid, scope });
-    const mcp = new McpClient(flow.tokens.access_token, eliciting ? ELICITING : {});
+    const mcp = new McpClient(flow.tokens.access_token);
     const handshake = await mcp.initialize();
     const instructions = (handshake.message
         && handshake.message.result
@@ -368,15 +364,10 @@ function renderToolResult(result) {
  * Runs one agent episode: model picks tools, the harness executes them against
  * the real MCP session, results go back, until the model answers.
  *
- * Every tool call goes through callAnsweringElicitation, not just the write
- * tools. Both write paths elicit -- commit_submission_change and a non-GET
- * postgrest_request reach the same requestWriteConfirmation -- so a loop that
- * special-cased one tool name would hang on the other until its abort timer.
- * elicitationPolicy decides how the human is played:
- *
- *   'none'    -- the session never advertised the capability; nothing to answer
- *   'accept'  -- the user approves the write
- *   'decline' -- the user says no
+ * Tool calls are plain calls. The server has no confirmation flow of its own:
+ * a write is authorized by the write scope and nothing else, the same way it
+ * would be against the API directly, so there is no human for the harness to
+ * play.
  *
  * Hitting a cap ENDS the episode and returns `exhausted: true` rather than
  * throwing. The cap's job is bounding cost, and it has done that by the time
@@ -388,7 +379,7 @@ function renderToolResult(result) {
  * worth asserting on, not an error. Scenarios that require an answer treat
  * exhaustion as a missed trial.
  *
- * @returns {Promise<Object>} {answer, exhausted, toolCalls, elicitations, rounds, messages}
+ * @returns {Promise<Object>} {answer, exhausted, toolCalls, rounds, messages}
  */
 async function runAgent({
     mcp,
@@ -398,7 +389,6 @@ async function runAgent({
     tools,
     maxRounds = 8,
     maxToolCalls = 12,
-    elicitationPolicy = 'none',
     followUps = [],
     onRound = null,
 }) {
@@ -411,12 +401,9 @@ async function runAgent({
         { role: 'user', content: task },
     ];
     const toolCalls = [];
-    const elicitations = [];
-    const answerBy = { policy: elicitationPolicy };
     const pendingFollowUps = [...followUps];
     const episode = extra => ({
         toolCalls,
-        elicitations,
         messages,
         systemPrompt,
         model,
@@ -478,37 +465,15 @@ async function runAgent({
             }
 
             let rendered;
-            let elicited = [];
             if (argError) {
                 rendered = argError;
             } else {
-                let outcome;
                 try {
                     // eslint-disable-next-line no-await-in-loop
-                    outcome = await mcp.callAnsweringElicitation(
-                        call.function.name,
-                        args,
-                        elicitationPolicy === 'accept'
-                            ? { action: 'accept', content: { confirm: true } }
-                            : { action: 'decline' },
-                    );
+                    const result = await mcp.call(call.function.name, args);
+                    rendered = renderToolResult(result);
                 } catch (error) {
-                    outcome = { result: null, elicitations: [], transportError: error.message };
-                }
-                elicited = outcome.elicitations || [];
-                for (const request of elicited) {
-                    elicitations.push({
-                        tool: call.function.name,
-                        message: request.params && request.params.message,
-                        answeredWith: answerBy.policy,
-                    });
-                }
-                if (outcome.transportError) {
-                    rendered = `ERROR: ${outcome.transportError}`;
-                } else if (outcome.error) {
-                    rendered = `ERROR: ${outcome.error.message || JSON.stringify(outcome.error)}`;
-                } else {
-                    rendered = renderToolResult(outcome.result);
+                    rendered = `ERROR: ${error.message}`;
                 }
             }
 
@@ -516,7 +481,6 @@ async function runAgent({
                 name: call.function.name,
                 arguments: args,
                 result: rendered,
-                elicitations: elicited.length,
             });
             messages.push({ role: 'tool', tool_call_id: call.id, content: rendered });
         }
@@ -581,7 +545,6 @@ async function runTrials(name, attempt, check, {
             answer: result.answer,
             exhausted: result.exhausted,
             toolCalls: result.toolCalls,
-            elicitations: result.elicitations,
             observations: result.observations,
         });
         console.log(`  ${name} trial ${index + 1}/${trials}: ${miss === null ? 'pass' : `miss - ${miss}`}`);
@@ -664,5 +627,4 @@ module.exports = {
     parseAnswerBlock,
     allToolText,
     renderToolResult,
-    ELICITING,
 };
