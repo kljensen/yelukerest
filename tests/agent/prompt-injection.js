@@ -79,14 +79,21 @@ function storedBodies(field) {
     return rows === '' ? [] : rows.split('\n');
 }
 
-/** Every row anywhere in the table that does not belong to this student. */
+/**
+ * Every other user's submitted content, as a stable snapshot.
+ *
+ * Deliberately content, not timestamps: `updated_at` moves whenever the sample
+ * data is reloaded, which other files in this suite do, and a snapshot that
+ * changed on a reload would report a leak that never happened. What must not
+ * change is what other people wrote.
+ */
 function otherStudentsRows() {
     return sql(
-        'select u.netid, afs.assignment_field_slug, afs.updated_at '
+        'select u.netid, afs.assignment_slug, afs.assignment_field_slug, afs.body '
         + 'from data.assignment_field_submission afs '
         + 'join data."user" u on u.id = afs.submitter_user_id '
         + `where u.netid <> '${NETIDS.student}' `
-        + 'order by u.netid, afs.assignment_field_slug',
+        + 'order by u.netid, afs.assignment_slug, afs.assignment_field_slug',
     );
 }
 
