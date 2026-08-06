@@ -172,6 +172,81 @@ Memory-mode caveats:
   the migrate job, and restart Hydra. (If your dev db volume predates
   this, `./bin/reset_db.sh` recreates it.)
 
+## End-To-End Test Suite (Issue #275)
+
+`bun run test_oauth` drives the whole OAuth + MCP stack the way a third-party
+MCP client does: dynamic client registration through the cleaning proxy, an
+authorization-code + PKCE flow that logs in through the mock CAS server and
+posts the JS-free consent form, a token exchange, then JSON-RPC calls against
+`/mcp`. Nothing is stubbed. It needs a running stack:
+
+```
+./bin/dev.sh up
+bun run test_oauth
+```
+
+`bun run test` runs it between the database and REST suites.
+
+Files, all under `tests/oauth/`:
+
+| File | Covers |
+| --- | --- |
+| `helpers.js` | the flow driver, the MCP client, and the Hydra admin/psql escape hatches |
+| `happy-path.js` | full flow as student, TA and faculty; tool inventory; RLS boundaries |
+| `token-lifecycle.js` | refresh rotation, reuse detection, consent revocation |
+| `security-negatives.js` | audience, signature, expiry, PKCE, code replay, redirect matching, consent CSRF and form tampering |
+| `client-quirks.js` | DCR response shape, loopback callbacks, discovery and RFC 9728 metadata |
+| `write-path.js` | preview and submit, and the write-scope boundary |
+| `zz-log-scan.js` | no credential or student content in service logs |
+
+Two things the suite needs that a public client cannot do are reached through
+`docker compose exec`: Hydra's admin API (port 4445 is never proxied and never
+published, so `helpers.js` speaks raw HTTP to it over `nc` inside the db
+container) and `psql`, for checking that a refused write really wrote nothing.
+
+Behaviours the suite deliberately pins, so that changing them is a conscious
+decision rather than a silent one:
+
+- **Refresh reuse has a 30s grace window.** `oauth2.grant.refresh_token.rotation_grace_period`
+  lets one retried refresh through; only a replay after the window is treated
+  as theft, and it then invalidates the whole family. The reuse test sleeps out
+  the window, which is why that file takes ~40s.
+- **Revocation is bounded by the access-token TTL.** Access tokens are JWTs
+  that mcpapp validates locally, so revoking consent kills the refresh token
+  immediately but leaves an issued access token working until it expires.
+- **Loopback redirect URIs match loosely on the port and exactly on the host.**
+  `http://127.0.0.1:ANY/callback` is accepted for a client registered on
+  127.0.0.1 (RFC 8252, for native clients that bind an ephemeral port), but
+  `localhost` and `127.0.0.1` are different hosts and are not interchangeable.
+- **PKCE is enforced after login, not before it.** An authorization request
+  with no `code_challenge` (or with `plain`) is accepted at `/oauth2/auth` and
+  refused at the point a code would be issued, so the user authenticates before
+  the downgrade is caught. No code is ever minted.
+- **mcpapp's scope gate is coarse.** `authorizeScope` distinguishes read from
+  write only; any of `course:read`/`grades:read`/`submissions:read` satisfies
+  "read". A token the user narrowed at the consent screen to exclude
+  `grades:read` still reaches `get_my_grades`. The consent screen offers
+  granularity the resource server does not enforce.
+- **Caddy's debug log records authorization codes.** `caddy/Caddyfile` enables
+  the global `debug` option and is mounted from `docker-compose.base.yaml`, so
+  this applies in production too. Debug "upstream roundtrip" entries include
+  upstream response headers verbatim, and the authorization endpoint's redirect
+  carries `?code=ory_ac_...` in `Location`. Authorization headers are redacted;
+  `Location` is not. Codes are single-use, short-lived and PKCE-bound, so a log
+  reader without the verifier cannot redeem one, but they should not be in the
+  logs.
+
+Rate limits shape the runtime. authapp allows 60 requests/minute to the OAuth
+login and consent handlers and 10 client registrations/minute, and the suite
+walks the flow about thirty times, so `helpers.js` paces itself under those
+limits. A full run takes roughly two minutes; back-to-back runs are slower
+while the server's sliding window drains.
+
+Cleanup is automatic and the suite is re-runnable: every canary client this run
+registers is deleted when the run ends (`tests/oauth-setup.js`), any client
+left behind by an interrupted run is swept before the first registration, and
+the write-path tests reset the database on both sides.
+
 ## Production Deployment
 
 One-time bootstrap, in order:

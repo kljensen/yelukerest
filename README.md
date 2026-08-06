@@ -76,11 +76,14 @@ PostgREST, authapp login routing, the static OpenAPI UI, and database reachabili
 not replace the database, REST, or Elm test suites. See
 `docs/smoke-test.md` for the exact checks and production overrides.
 
-To run the database and REST tests, do `bun run test` from the root of this
-project. The containers will need to be running. This will run
-[pgTAP](http://pgtap.org/) tests through local `pg_prove` and tests of the REST
-API using [supertest](https://github.com/ladjs/supertest). See the `tests`
-directory.
+To run the database, OAuth/MCP, and REST tests, do `bun run test` from the root
+of this project. The containers will need to be running. This will run
+[pgTAP](http://pgtap.org/) tests through local `pg_prove`, an end-to-end
+OAuth + MCP suite that drives the real authorization flow against `/mcp`, and
+tests of the REST API using [supertest](https://github.com/ladjs/supertest).
+The three suites can also be run individually with `bun run test_db`,
+`bun run test_oauth`, and `bun run test_rest`. See the `tests` directory, and
+`docs/hydra.md` for what the OAuth suite covers.
 
 To run the Elm client tests:
 
