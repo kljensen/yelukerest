@@ -28,6 +28,8 @@
 //	HYDRA_ISSUER, HYDRA_JWKS_URL                       overrides for the two
 //	                                                   values derived above
 //	MCP_STATELESS_ENABLED                              2026-07-28 era flag
+//	MCP_RATE_LIMIT_PER_MINUTE                          per-subject request
+//	                                                   ceiling (default 120)
 package main
 
 import (
@@ -35,6 +37,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,8 +118,15 @@ func main() {
 		// no Mcp-Session-Id header; GET and DELETE return 405. Off by default
 		// because current Claude/ChatGPT traffic is legacy-era.
 		StatelessEnabled: boolEnabled(os.Getenv("MCP_STATELESS_ENABLED")),
-		RateLimit:        120,
-		RateWindow:       time.Minute,
+		// 120 requests per minute per token subject is generous for a human
+		// working through a client and tight enough to bound a runaway agent.
+		// The agent dogfood suite is neither: it runs several scenarios of
+		// several trials each under ONE subject, where every trial is a model
+		// deciding to call a handful of tools, so it brushes the ceiling in a
+		// way real traffic does not. The limit is therefore configurable and
+		// raised for the test stack rather than lowered for production.
+		RateLimit:  envIntOrDefault("MCP_RATE_LIMIT_PER_MINUTE", 120),
+		RateWindow: time.Minute,
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -239,6 +249,21 @@ func envOrDefault(name string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// envIntOrDefault reads a positive integer from the environment, falling
+// back when the variable is unset, empty, or not a positive number.
+func envIntOrDefault(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		log.Printf("%s=%q is not a positive integer; using %d", name, value, fallback)
+		return fallback
+	}
+	return parsed
 }
 
 func boolEnabled(value string) bool {

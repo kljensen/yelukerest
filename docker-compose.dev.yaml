@@ -55,6 +55,10 @@ services:
       # FQDN may be unset, so pin the MCP resource URL explicitly.
       - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-https://localhost/mcp}
       - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-https://localhost}
+      # The agent dogfood suite drives many tool calls under one token
+      # subject while a model decides what to call, which real traffic does
+      # not; production keeps the 120/min default. See mcpapp/main.go.
+      - MCP_RATE_LIMIT_PER_MINUTE=${MCP_RATE_LIMIT_PER_MINUTE:-1000}
 
   hydra:
     environment:

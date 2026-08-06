@@ -15,6 +15,7 @@
         "test_rest": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun test --max-concurrency=1 --preload ./tests/bun-rest-setup.js ./tests/rest/*.js ./tests/rest/**/*.js",
         "test_db": "./bin/test-db.sh",
         "test_oauth": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun test --max-concurrency=1 --preload ./tests/bun-rest-setup.js --preload ./tests/oauth-setup.js ./tests/oauth/*.js",
+        "test_agent": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun test --max-concurrency=1 --preload ./tests/bun-rest-setup.js --preload ./tests/oauth-setup.js ./tests/agent/*.js",
         "test": "bun run test_db && bun run test_oauth && bun run test_rest"
     },
     "author": "kyle.jensen@yale.edu",
