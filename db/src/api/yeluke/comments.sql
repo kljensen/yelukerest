@@ -288,6 +288,16 @@ COMMENT ON COLUMN mcp_jwt_mint_events.external_issuer IS 'Issuer of the external
 COMMENT ON COLUMN mcp_jwt_mint_events.external_sub IS 'Subject of the external token exchanged for this JWT, if any';
 COMMENT ON COLUMN mcp_jwt_mint_events.external_jti IS 'Token id of the external token exchanged for this JWT, if any';
 COMMENT ON COLUMN mcp_jwt_mint_events.external_client_id IS 'OAuth client id associated with the external token, if any';
+
+COMMENT ON VIEW mcp_grant_revocations IS
+    'Append-only record of MCP application grants a user disconnected; the mint path refuses tokens issued before the revocation';
+COMMENT ON COLUMN mcp_grant_revocations.id IS 'Unique revocation id';
+COMMENT ON COLUMN mcp_grant_revocations.user_id IS 'User who disconnected the application';
+COMMENT ON COLUMN mcp_grant_revocations.netid IS 'Netid of the user who disconnected the application';
+COMMENT ON COLUMN mcp_grant_revocations.client_id IS 'OAuth client id that was disconnected';
+COMMENT ON COLUMN mcp_grant_revocations.client_name IS 'Human-readable client name captured at disconnect time';
+COMMENT ON COLUMN mcp_grant_revocations.scopes IS 'Space-separated scopes the grant could reach when it was cut off';
+COMMENT ON COLUMN mcp_grant_revocations.revoked_at IS 'When the user disconnected the application';
 COMMENT ON COLUMN mcp_jwt_mint_events.created_at IS 'When this mint event was appended';
 
 COMMENT ON VIEW mcp_jwt_mint_anomalies IS

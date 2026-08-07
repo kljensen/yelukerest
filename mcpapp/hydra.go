@@ -199,6 +199,7 @@ func (v *hydraVerifier) verify(ctx context.Context, token string, now time.Time)
 	// iat and nbf are optional here (the spec makes them so), but when the
 	// authorization server sends them they are enforced with the same clock
 	// skew allowance the internal path uses.
+	var issuedAt int64
 	if _, present := claims["iat"]; present {
 		iat, err := numericDateClaim(claims, "iat")
 		if err != nil {
@@ -207,6 +208,7 @@ func (v *hydraVerifier) verify(ctx context.Context, token string, now time.Time)
 		if iat > now.Add(clockSkewAllowance).Unix() {
 			return nil, noRef, errors.New("token iat is in the future")
 		}
+		issuedAt = iat
 	}
 	if _, present := claims["nbf"]; present {
 		nbf, err := numericDateClaim(claims, "nbf")
@@ -232,6 +234,11 @@ func (v *hydraVerifier) verify(ctx context.Context, token string, now time.Time)
 		Subject:  subject,
 		JTI:      hydraStringClaim(claims, "jti"),
 		ClientID: hydraClientID(claims),
+		// Carried so the database can tell a token issued before the user
+		// disconnected this application from one issued after they
+		// reconnected it (issue #277). Zero when the token omits iat, which
+		// the mint check reads as "older than any revocation".
+		IssuedAt: issuedAt,
 	}
 
 	id := &identity{

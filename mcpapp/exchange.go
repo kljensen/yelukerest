@@ -24,6 +24,7 @@ package main
 //     it was minted under a longer-lived one.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -59,6 +60,11 @@ type externalRef struct {
 	Subject  string
 	JTI      string
 	ClientID string
+	// IssuedAt is the token's iat as a Unix timestamp, or zero when absent.
+	// The database compares it against any recorded disconnect for this
+	// (user, client) pair, so a reconnection mints again while the grant the
+	// user cut off does not (issue #277).
+	IssuedAt int64
 }
 
 // exchangeRequest is everything the exchange needs about one caller.
@@ -118,9 +124,24 @@ func newTokenExchanger(postgrest *postgrestClient, serviceJWT string) *tokenExch
 //
 // Components are length-prefixed so no component's contents can be arranged to
 // look like a different tuple.
-func exchangeCacheKey(netID string, clientID string, scopes []string) string {
+func exchangeCacheKey(netID string, clientID string, issuedAt int64, scopes []string) string {
+	// issuedAt is part of the identity, not decoration. Keyed by
+	// (user, client, scopes) alone, the cache would serve the credential
+	// minted for a NEW grant to a token from the old one after a disconnect
+	// and reconnect — and a cache hit never reaches the database, so it never
+	// meets the revocation check (issue #277). Keying on the token's
+	// issued-at keeps each grant's credentials to itself, while still saving
+	// a mint on every request across that token's life, which is the point of
+	// the cache.
+	//
+	// Every component stays length-prefixed so no value containing the
+	// separators can impersonate a different tuple.
 	joined := strings.Join(scopes, " ")
-	return fmt.Sprintf("%d:%s|%d:%s|%d:%s", len(netID), netID, len(clientID), clientID, len(joined), joined)
+	return fmt.Sprintf("%d:%s|%d:%s|%d:%d|%d:%s",
+		len(netID), netID,
+		len(clientID), clientID,
+		len(strconv.FormatInt(issuedAt, 10)), issuedAt,
+		len(joined), joined)
 }
 
 // exchangeCacheKeyPrefix is the prefix every entry for one netid shares.
@@ -145,7 +166,7 @@ func (e *tokenExchanger) tokenFor(ctx context.Context, request exchangeRequest) 
 	}
 
 	now := e.now()
-	key := exchangeCacheKey(request.netID, request.external.ClientID, request.scopes)
+	key := exchangeCacheKey(request.netID, request.external.ClientID, request.external.IssuedAt, request.scopes)
 	if entry, ok := e.lookup(key); ok && now.Before(entry.notAfter) && now.Before(request.outerExp) {
 		return entry.minted, nil
 	}
@@ -244,6 +265,13 @@ func (e *tokenExchanger) mint(ctx context.Context, request exchangeRequest) (min
 			external[key] = value
 		}
 	}
+	// The database compares this against any recorded disconnect for the
+	// same (user, client), so a token issued after the user reconnected the
+	// application still mints while the one they cut off does not. Sent as
+	// text because p_external is a jsonb of strings; the function casts it.
+	if request.external.IssuedAt > 0 {
+		external["iat"] = strconv.FormatInt(request.external.IssuedAt, 10)
+	}
 	payload, err := json.Marshal(map[string]any{
 		"p_netid":    request.netID,
 		"p_scopes":   request.scopes,
@@ -261,7 +289,7 @@ func (e *tokenExchanger) mint(ctx context.Context, request exchangeRequest) (min
 		return mintedToken{}, err
 	}
 	if status != http.StatusOK {
-		return mintedToken{}, mintStatusError(status)
+		return mintedToken{}, mintStatusError(status, body)
 	}
 
 	var result mintResult
@@ -290,14 +318,23 @@ func (e *tokenExchanger) mint(ctx context.Context, request exchangeRequest) (min
 	return minted, nil
 }
 
-func mintStatusError(status int) error {
+func mintStatusError(status int, body []byte) error {
 	switch status {
 	case http.StatusNotFound, http.StatusNotAcceptable:
 		// No row: the netid is unknown to the course database.
 		return errors.New("your account is not enrolled in this course app")
 	case http.StatusForbidden:
-		// insufficient_privilege: the role is not mintable for MCP, or the
-		// service credential is not app_name=mcpapp.
+		// insufficient_privilege covers several refusals, and telling them
+		// apart matters to the person reading the answer. A disconnected
+		// application is the one they can fix themselves, and "not permitted
+		// by course policy" would send them to the registrar instead of to
+		// the reconnect button. The database's own message is matched rather
+		// than echoed, so nothing from upstream reaches an MCP client.
+		if bytes.Contains(body, []byte("this application was disconnected")) {
+			return errors.New("you disconnected this application from your course account; reconnect it to continue")
+		}
+		// The role is not mintable for MCP, or the service credential is not
+		// app_name=mcpapp.
 		return errors.New("MCP access is not permitted for your account by course policy")
 	case http.StatusUnauthorized:
 		return errors.New("the MCP service credential was rejected by the course API; ask the operator to check MCPAPP_JWT")

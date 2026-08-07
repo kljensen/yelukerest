@@ -45,6 +45,16 @@ func issueUserJWTURL(config FetchJWTConfig) string {
 	return endpoint.String()
 }
 
+// postgrestRPCURL builds the URL for a PostgREST RPC endpoint by name.
+func postgrestRPCURL(config FetchJWTConfig, function string) string {
+	endpoint := url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(config.PostgrestHost, config.PostgrestPort),
+		Path:   "/rpc/" + function,
+	}
+	return endpoint.String()
+}
+
 func userInfoURL(config FetchJWTConfig, netID string) string {
 	endpoint := url.URL{
 		Scheme: "http",

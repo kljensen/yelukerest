@@ -198,6 +198,7 @@ Files, all under `tests/oauth/`:
 | `client-quirks.js` | DCR response shape, loopback callbacks, discovery and RFC 9728 metadata |
 | `write-path.js` | preview and submit, the write-scope boundary, and retry safety |
 | `stateless-conformance.js` | both protocol eras on the wire (issue #278) |
+| `connected-apps.js` | listing, disconnecting, the grace period, and reconnecting (issue #277) |
 | `zz-log-scan.js` | no credential or student content in service logs |
 
 Two things the suite needs that a public client cannot do are reached through
@@ -285,6 +286,81 @@ passes `expected_updated_at` from before its own successful write will be told
 the value changed — correct, if briefly confusing.
 
 `tests/oauth/stateless-conformance.js` covers both eras on the wire.
+
+## Connected Applications And Disconnecting (Issue #277)
+
+Students see what has access to their coursework at `/auth/connected-apps` and
+can cut any of it off. The page is session-authenticated and JS-free, like the
+consent page; the same URL answers JSON to a client that asks for it.
+
+**A disconnect does three things, and needs all three.**
+
+1. Hydra's consent sessions for that (subject, client) are revoked. The refresh
+   token dies immediately — a refresh straight afterwards returns
+   `invalid_grant` — so the application cannot renew itself.
+2. A row is appended to `data.mcp_grant_revocation`. This is what stops the
+   access token the application is **already holding**: mcpapp verifies those
+   offline against Hydra's JWKS, so step 1 is invisible to it. What is not
+   invisible is that mcpapp must exchange that token for a fresh internal
+   credential every ten minutes, and `api.issue_user_jwt_for_mcp` refuses once
+   a revocation is on record.
+3. That same row is the audit trail. The table is append-only, enforced by
+   trigger, because the mint path reads it as fact.
+
+**The grace period is the internal credential's lifetime: at most ten minutes**
+(`auth.sign_mcp_user_jwt` signs a 600-second token, and mcpapp's exchange cache
+cannot outlive it). Without step 2 it would be the Hydra access token's hour.
+Tell students "within a few minutes", which is what the page says.
+
+**Reconnecting works.** The revocation is compared against the token's `iat`,
+so a token from a new authorization mints normally while the one they cut off
+does not. The comparison errs toward refusing: a token issued in the same
+second as the revocation counts as revoked, and a five-second allowance is
+applied on top.
+
+**That allowance is for clock skew, and it is a deployment requirement.**
+`iat` comes from Hydra's clock and `revoked_at` from the database's. If Hydra
+runs ahead, a token issued *before* a disconnect can carry a later `iat` and
+would look like a fresh grant — a bypass lasting until that token expires.
+Five seconds covers hosts sharing an NTP source. **Keep Hydra and the database
+on synchronised clocks**; drift beyond a few seconds reopens the hole, and no
+amount of application logic fixes it. The visible cost is that a reconnection
+finished within five seconds of a disconnect is refused and the student clicks
+again.
+
+**Order of operations, if you are reading the code.** The database row is
+written *before* Hydra's consent is revoked. Either write can fail, and only
+that order fails safe: with the row written, the outstanding access token is
+already dead and the application still appears in the list so the user can
+retry. The reverse would kill refresh, leave the access token alive for its
+remaining hour, and remove the application from the list — so the user could
+no longer reach the button that would stop it.
+
+**A disconnected application reports it plainly.** mcpapp turns the database's
+refusal into "you disconnected this application from your course account;
+reconnect it to continue", rather than the generic policy refusal, so the
+person is sent to the reconnect button instead of to the registrar.
+
+### Semester Rollover
+
+Grants do not survive a course rebuild, and must not: netids are reused across
+semesters, so a token minted against last year's course must never validate
+against this year's.
+
+1. Revoke every grant: `DELETE /admin/oauth2/auth/sessions/consent?subject=<netid>`
+   per subject, or drop Hydra's database entirely if the deployment is new each
+   semester (the usual case — see the migrations note in
+   `bin/create-initial-migrations.sh`).
+2. Rotate `JWT_SECRET`. This is the backstop that does not depend on
+   enumerating anyone: every previously minted internal credential fails
+   signature verification immediately, whatever Hydra thinks.
+3. Rotate Hydra's signing keys (`## Signing Key (JWKS) Rotation`) so
+   outstanding access tokens fail verification too.
+4. Re-register clients. Students reconnect through the normal consent flow.
+
+`data.mcp_grant_revocation` and `data.mcp_jwt_mint_event` are history, not
+state: they can be carried across a rollover or dropped with the rest of the
+course database without affecting access.
 
 ## Production Deployment
 

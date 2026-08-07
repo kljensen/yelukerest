@@ -53,6 +53,10 @@ func newTestExchanger(t *testing.T, fake *fakePostgREST, now time.Time) *tokenEx
 	return exchanger
 }
 
+// testExchangeIssuedAt is the iat every test request carries; the cache is
+// keyed on it, so it has to be stable across a test's calls.
+const testExchangeIssuedAt int64 = 1_700_000_000
+
 func testExchangeRequest(outerExp time.Time) exchangeRequest {
 	return exchangeRequest{
 		netID:  "abc123",
@@ -62,6 +66,7 @@ func testExchangeRequest(outerExp time.Time) exchangeRequest {
 			Subject:  "abc123",
 			JTI:      "6b2d0a1e-8b62-4a8e-9c1f-1b0dd2b53d9f",
 			ClientID: testHydraClientID,
+			IssuedAt: testExchangeIssuedAt,
 		},
 		outerExp: outerExp,
 	}
@@ -204,8 +209,8 @@ func TestExchangeCachesWithinTTL(t *testing.T) {
 func TestExchangeCacheKeyIsInjective(t *testing.T) {
 	// A client id chosen to look like a different (client, scopes) split must
 	// not collide with the genuine tuple.
-	forged := exchangeCacheKey("abc123", "x|24:course:read grades:read", []string{"submissions:write"})
-	genuine := exchangeCacheKey("abc123", "x", []string{"course:read", "grades:read", "submissions:write"})
+	forged := exchangeCacheKey("abc123", "x|24:course:read grades:read", testExchangeIssuedAt, []string{"submissions:write"})
+	genuine := exchangeCacheKey("abc123", "x", testExchangeIssuedAt, []string{"course:read", "grades:read", "submissions:write"})
 	if forged == genuine {
 		t.Fatal("cache keys collide across different (client, scopes) tuples")
 	}
@@ -291,7 +296,7 @@ func TestExchangeCacheDeadlineIsBounded(t *testing.T) {
 			if _, err := exchanger.tokenFor(context.Background(), testExchangeRequest(outerExp)); err != nil {
 				t.Fatalf("tokenFor(internal=%s, outer=%s): %v", internal, outer, err)
 			}
-			entry, cached := exchanger.lookup(exchangeCacheKey("abc123", testHydraClientID, testExchangeRequest(outerExp).scopes))
+			entry, cached := exchanger.lookup(exchangeCacheKey("abc123", testHydraClientID, testExchangeIssuedAt, testExchangeRequest(outerExp).scopes))
 			if !cached {
 				// Correct when the usable window would already be gone.
 				if internal > exchangeSafetyMargin+exchangeMaxJitter && outer > exchangeSafetyMargin+exchangeMaxJitter {
@@ -362,7 +367,7 @@ func TestExchangeFailuresSurfaceClearErrors(t *testing.T) {
 				t.Fatalf("error = %q, want it to contain %q", err, tt.want)
 			}
 			// A failed mint is never cached.
-			if _, cached := exchanger.lookup(exchangeCacheKey("abc123", testHydraClientID, testExchangeRequest(now).scopes)); cached {
+			if _, cached := exchanger.lookup(exchangeCacheKey("abc123", testHydraClientID, testExchangeIssuedAt, testExchangeRequest(now).scopes)); cached {
 				t.Fatal("a failed exchange was cached")
 			}
 		})

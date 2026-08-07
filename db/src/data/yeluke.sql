@@ -20,4 +20,5 @@
 \ir ./yeluke/grade_event.sql
 \ir ./yeluke/assignment_field_submission_event.sql
 \ir ./yeluke/mcp_jwt_mint_event.sql
+\ir ./yeluke/mcp_grant_revocation.sql
 -- KEEP ME FOR new-table.sh

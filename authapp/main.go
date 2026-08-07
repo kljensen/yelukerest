@@ -156,6 +156,10 @@ func main() {
 	mux.Handle(oauthLoginPath, rateLimitMiddleware(oauthLimiter, getOAuthLoginHandler(oauthConfig, sessionManager)))
 	mux.Handle(oauthConsentPath, rateLimitMiddleware(oauthLimiter, getOAuthConsentHandler(oauthConfig, sessionManager)))
 	mux.Handle(oauthStylesheetPath, rateLimitMiddleware(oauthLimiter, getOAuthStylesheetHandler()))
+	// Connected applications (issue #277): session-authenticated, so an
+	// application can never disconnect another on the user's behalf. Shares
+	// the OAuth limiter because it is the same browser-facing surface.
+	mux.Handle(connectedAppsPath, rateLimitMiddleware(oauthLimiter, getConnectedAppsHandler(oauthConfig, fetchJWTConfig, sessionManager)))
 
 	// In development, add endpoints for a mock CAS server.
 	if casConfig.IsDevelopment {
