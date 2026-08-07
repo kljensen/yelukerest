@@ -168,13 +168,17 @@ describe('oauth happy path', () => {
     });
 
     describe('the MCP session', () => {
-        it('should negotiate a protocol version and hand out a session id', () => {
+        it('should negotiate the legacy protocol version without a session', () => {
+            // A legacy client still gets the handshake it expects, but the
+            // server is stateless (issue #278), so it assigns no session id —
+            // which the spec permits and which nothing here needs, since every
+            // tool re-derives the caller from the bearer token. See
+            // tests/oauth/stateless-conformance.js for both eras on the wire.
             const { mcp } = sessions.student;
-            expect(mcp.sessionId)
-                .to.be.a('string')
-                .with.length.greaterThan(8);
             expect(mcp.negotiatedVersion)
                 .to.equal('2025-11-25');
+            expect(mcp.sessionId, 'a stateless server assigns no session')
+                .to.equal(null);
         });
 
         it('should advertise all thirteen tools', async () => {

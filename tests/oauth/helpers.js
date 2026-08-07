@@ -804,10 +804,12 @@ class McpClient {
      */
     constructor(accessToken, options = {}) {
         this.accessToken = accessToken;
-        // The deployed handler is stateful, so the 2026-07-28 sessionless
-        // protocol is not available (the SDK rejects it outside
-        // MCP_STATELESS_ENABLED). Sessions therefore use the legacy
-        // initialize handshake, which caps at 2025-11-25.
+        // The deployed handler is stateless, which speaks BOTH eras: legacy
+        // clients still get the `initialize` handshake they expect (this
+        // client's default, since that is what real clients send today), and
+        // 2026-07-28 is available to anything that asks for it. What a
+        // stateless server does not do is issue an Mcp-Session-Id, so this
+        // client works with or without one.
         this.protocolVersion = options.protocolVersion || LEGACY_PROTOCOL;
         this.capabilities = options.capabilities || {};
         this.url = options.url || mcpURL;
@@ -1042,6 +1044,9 @@ class McpClient {
     }
 
     async close() {
+        // A stateless server issues no session and answers DELETE with 405,
+        // so there is nothing to tear down. Only bother when a session was
+        // actually assigned (the stateful fallback).
         if (!this.sessionId) {
             return;
         }

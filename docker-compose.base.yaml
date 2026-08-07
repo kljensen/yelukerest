@@ -159,7 +159,7 @@ services:
             # MCP clients can discover the authorization server. Hydra's
             # issuer is the domain root (see hydra/hydra.yml).
             - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-https://${FQDN}}
-            - MCP_STATELESS_ENABLED=${MCP_STATELESS_ENABLED:-false}
+            - MCP_STATELESS_ENABLED=${MCP_STATELESS_ENABLED:-true}
             - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
             - FQDN=${FQDN}
             # role=app app_name=mcpapp service credential used to exchange

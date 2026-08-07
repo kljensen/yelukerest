@@ -27,7 +27,11 @@
 //	                                                   Caddy's TLS
 //	HYDRA_ISSUER, HYDRA_JWKS_URL                       overrides for the two
 //	                                                   values derived above
-//	MCP_STATELESS_ENABLED                              2026-07-28 era flag
+//	MCP_STATELESS_ENABLED                              default true; "false"
+//	                                                   falls back to the
+//	                                                   stateful handler, which
+//	                                                   speaks legacy protocol
+//	                                                   versions only
 //	MCP_RATE_LIMIT_PER_MINUTE                          per-subject request
 //	                                                   ceiling (default 120)
 package main
@@ -114,10 +118,19 @@ func main() {
 		MetadataURL:            metadataURL,
 		AuthorizationServerURL: authorizationServerURL,
 		Hydra:                  hydraConfigFromEnv(authorizationServerURL, resourceURL),
-		// Stateless mode (SEP-2567, go-sdk StreamableHTTPOptions.Stateless):
-		// no Mcp-Session-Id header; GET and DELETE return 405. Off by default
-		// because current Claude/ChatGPT traffic is legacy-era.
-		StatelessEnabled: boolEnabled(os.Getenv("MCP_STATELESS_ENABLED")),
+		// Stateless (SEP-2567, go-sdk StreamableHTTPOptions.Stateless) is the
+		// default, and it is what makes this server dual-era: the transport
+		// accepts every legacy protocol version either way, but 2026-07-28 is
+		// only offered when it is stateless (SupportsProtocolVersion in the
+		// SDK). Each POST gets an ephemeral session, so no Mcp-Session-Id is
+		// issued, GET and DELETE answer 405, and there is no per-session state
+		// to leak. Legacy clients are unaffected: a server MAY decline to
+		// assign a session, and none of our tools carry state between calls —
+		// every one re-derives the caller from the bearer token.
+		//
+		// MCP_STATELESS_ENABLED=false restores the old stateful handler, which
+		// speaks legacy only. It exists as a rollback, not as a supported mode.
+		StatelessEnabled: envBoolOrDefault("MCP_STATELESS_ENABLED", true),
 		// 120 requests per minute per token subject is generous for a human
 		// working through a client and tight enough to bound a runaway agent.
 		// The agent dogfood suite is neither: it runs several scenarios of
@@ -201,9 +214,9 @@ func newMux(config appConfig, deps *toolDeps) *http.ServeMux {
 		func(*http.Request) *mcp.Server { return server },
 		&mcp.StreamableHTTPOptions{
 			Stateless: config.StatelessEnabled,
-			// Bound idle-session retention in stateful mode; otherwise an
-			// authenticated client that never sends DELETE grows the
-			// session map without limit.
+			// Only consulted by the stateful handler, where an authenticated
+			// client that never sends DELETE would otherwise grow the session
+			// map without limit. A stateless server retains nothing.
 			SessionTimeout: sessionIdleTimeout,
 		},
 	)
@@ -263,6 +276,17 @@ func envIntOrDefault(name string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+// envBoolOrDefault reads a boolean from the environment, returning fallback
+// when the variable is unset or empty. Unlike boolEnabled it can default to
+// true, which is what a flag being flipped on needs.
+func envBoolOrDefault(name string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	return boolEnabled(value)
 }
 
 func boolEnabled(value string) bool {

@@ -196,7 +196,8 @@ Files, all under `tests/oauth/`:
 | `token-lifecycle.js` | refresh rotation, reuse detection, consent revocation |
 | `security-negatives.js` | audience, signature, expiry, PKCE, code replay, redirect matching, consent CSRF and form tampering |
 | `client-quirks.js` | DCR response shape, loopback callbacks, discovery and RFC 9728 metadata |
-| `write-path.js` | preview and submit, and the write-scope boundary |
+| `write-path.js` | preview and submit, the write-scope boundary, and retry safety |
+| `stateless-conformance.js` | both protocol eras on the wire (issue #278) |
 | `zz-log-scan.js` | no credential or student content in service logs |
 
 Two things the suite needs that a public client cannot do are reached through
@@ -246,6 +247,44 @@ Cleanup is automatic and the suite is re-runnable: every canary client this run
 registers is deleted when the run ends (`tests/oauth-setup.js`), any client
 left behind by an interrupted run is swept before the first registration, and
 the write-path tests reset the database on both sides.
+
+## MCP Transport: Stateless And Dual-Era (Issue #278)
+
+`mcpapp` runs the **stateless** streamable-HTTP handler, and that is what makes
+it speak two protocol eras at once. The go-sdk transport accepts every legacy
+protocol version either way, but `2026-07-28` is only offered when the handler
+is stateless, so one deployment serves both the clients that exist today and
+the ones that are coming.
+
+What each era sees:
+
+| | legacy (`2025-11-25` and earlier) | `2026-07-28` |
+| --- | --- | --- |
+| handshake | `initialize`, as before | none; per-request `_meta` |
+| `Mcp-Session-Id` | **not issued** | not issued |
+| `GET` / `DELETE` on `/mcp` | `405` with `Allow: POST` | same |
+| required headers | none beyond auth | `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name` |
+| header vs body disagreement | n/a | `400` with `-32020` |
+| unknown method | `404` with `-32601` | same |
+
+**No session id is issued to anyone.** The legacy spec lets a server decline to
+assign one, and nothing here needs it: every tool re-derives the caller from the
+bearer token, so there is no per-connection state a session could hold. That is
+also what removed a whole class of failure — the withdrawn server-initiated
+request mechanism used to hold a POST open and leak sessions until the process
+restarted (see `docs/mcp-writes.md`).
+
+`MCP_STATELESS_ENABLED=false` falls back to the stateful handler, which speaks
+legacy only. It is a rollback, not a supported mode.
+
+**Retry safety.** In this model a lost response is indistinguishable from a
+request that never ran, so clients retry. Writes converge: repeating
+`submit_submission_change` with the same body is a no-op overwrite rather than a
+duplicate row, and there is no single-use token left to burn. A caller that
+passes `expected_updated_at` from before its own successful write will be told
+the value changed — correct, if briefly confusing.
+
+`tests/oauth/stateless-conformance.js` covers both eras on the wire.
 
 ## Production Deployment
 

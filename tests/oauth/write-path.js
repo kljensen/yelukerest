@@ -220,6 +220,27 @@ describe('oauth write path', () => {
                 .to.contain('changed since you read it');
         });
 
+        it('should leave the same state when a write is blindly retried', async () => {
+            // The stateless failure model (issue #278): a response that never
+            // arrives looks identical to a request that never ran, so a client
+            // retries. Without intent tokens there is nothing single-use to
+            // burn, and a repeat of the same write is a no-op overwrite — so
+            // the retry converges instead of erroring or duplicating.
+            const body = `Written twice ${Date.now()}.`;
+            const first = await writer.mcp.callOk('submit_submission_change', {
+                assignment_slug: ASSIGNMENT, field_slug: FIELD, body,
+            });
+            const second = await writer.mcp.callOk('submit_submission_change', {
+                assignment_slug: ASSIGNMENT, field_slug: FIELD, body,
+            });
+            expect(second.body)
+                .to.equal(first.body);
+            expect(second.submission_id)
+                .to.equal(first.submission_id);
+            expect(storedBodies(), 'a retry must not duplicate the row')
+                .to.deep.equal([body]);
+        });
+
         it('should refuse a body that exceeds the size limit', async () => {
             const before_ = storedBodies();
             const message = await writer.mcp.callExpectError('submit_submission_change', {
