@@ -247,19 +247,32 @@ func serveConnectedApps(w http.ResponseWriter, r *http.Request, config oauthFlow
 		return
 	}
 
-	if wantsJSON(r) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		_ = json.NewEncoder(w).Encode(map[string]any{"connected_apps": apps})
-		return
-	}
-
+	// A fresh token per GET, consumed by the POST that uses it. Both clients
+	// re-read the list after acting, so both always hold a current one. The
+	// visible edge is two open views of this page at once: the older one's
+	// token has been replaced, and its disconnect is refused with "reload and
+	// try again" rather than acted on, which is the right way for that race
+	// to end.
 	token, err := newCSRFToken()
 	if err != nil {
 		http.Error(w, "could not prepare the page", http.StatusInternalServerError)
 		return
 	}
 	sessionManager.Put(r.Context(), sessionKeyConnectedAppsCSRF, token)
+
+	if wantsJSON(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		// The token rides along so the single-page client can post a
+		// disconnect the same way the form does. It is bound to the session,
+		// not to this response, so a page that fetches the list and then acts
+		// on it holds something usable exactly once.
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"connected_apps": apps,
+			"csrf_token":     token,
+		})
+		return
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")

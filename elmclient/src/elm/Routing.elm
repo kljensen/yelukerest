@@ -18,6 +18,7 @@ matchers =
         , map AssignmentDetailRoute (s "assignments" </> string)
         , map AssignmentGradeDetailRoute (s "assignments" </> string </> s "grade" )
         , map EditEngagementsRoute (s "engagements" </> string)
+        , map ConnectedAppsRoute (s "connected-apps")
         ]
 
 

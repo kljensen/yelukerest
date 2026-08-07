@@ -12,6 +12,8 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Browser exposing (UrlRequest(..))
+import ConnectedApps.Model exposing (ConnectedApps)
+import Http
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
 import Quizzes.Model
@@ -35,6 +37,9 @@ type BrowserLocation
 
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
+    | OnFetchConnectedApps (WebData ConnectedApps)
+    | DisconnectApp String String
+    | OnDisconnectApp String (Result Http.Error ())
     | OnFetchAssignments (WebData (List Assignment))
     | OnFetchAssignmentGrades (WebData (List AssignmentGrade))
     | OnFetchTimeZone Time.Zone

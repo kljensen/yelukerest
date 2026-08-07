@@ -5,6 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Browser exposing (Document)
 import Common.Views exposing (piazzaLink, slackLink)
+import ConnectedApps.Views
 import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
@@ -52,6 +53,9 @@ page model =
         Models.EditEngagementsRoute meetingSlug ->
             lazy6 maybeEditEngagements model.currentUser model.engagementUserQuery model.users model.engagements model.meetings meetingSlug
 
+        Models.ConnectedAppsRoute ->
+            ConnectedApps.Views.listView model.connectedApps model.pendingDisconnects
+
         Models.NotFoundRoute ->
             notFoundView
 
@@ -63,6 +67,7 @@ indexView currentUser uiElements =
         , div [] [ a [ href uiElements.aboutURL ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
+        , div [] [ a [ href "#/connected-apps" ] [ text "Connected apps" ] ]
         , div [] [ Html.a [ href uiElements.canvasURL ] [ Html.text "Canvas" ] ]
         , piazzaLink uiElements.piazzaURL
         , slackLink uiElements.slackURL

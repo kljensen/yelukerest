@@ -44,6 +44,7 @@ import Quizzes.Updates
         , onFetchQuizSubmissions
         )
 import RemoteData exposing (WebData)
+import ConnectedApps.Commands exposing (disconnectApp, fetchConnectedApps)
 import Routing exposing (parseLocation)
 import Set
 import Time exposing (Posix)
@@ -87,7 +88,41 @@ update msg model =
                 newRoute =
                     parseLocation location
             in
-            ( { model | route = newRoute }, Cmd.none )
+            -- The connected-apps listing is deliberately fetched on every
+            -- entry rather than cached: it reflects what Hydra believes right
+            -- now, and it carries the CSRF token a disconnect needs.
+            ( { model | route = newRoute }
+            , case newRoute of
+                ConnectedAppsRoute ->
+                    fetchConnectedApps
+
+                _ ->
+                    Cmd.none
+            )
+
+        Msgs.OnFetchConnectedApps response ->
+            ( { model | connectedApps = response, pendingDisconnects = Set.empty }, Cmd.none )
+
+        Msgs.DisconnectApp csrfToken clientId ->
+            ( { model | pendingDisconnects = Set.insert clientId model.pendingDisconnects }
+            , disconnectApp csrfToken clientId
+            )
+
+        Msgs.OnDisconnectApp clientId result ->
+            case result of
+                Ok () ->
+                    -- Refetch rather than removing the row locally: the server
+                    -- is the authority on what is still connected, and the
+                    -- next disconnect needs a fresh CSRF token anyway.
+                    ( model, fetchConnectedApps )
+
+                Err _ ->
+                    -- Leave the list as it was and let the button come back,
+                    -- so a failed disconnect does not look like a successful
+                    -- one.
+                    ( { model | pendingDisconnects = Set.remove clientId model.pendingDisconnects }
+                    , Cmd.none
+                    )
 
         Msgs.Tick theTime ->
             ( { model | current_date = Just theTime }, Cmd.none )

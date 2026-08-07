@@ -18,6 +18,10 @@ tests =
             \_ ->
                 parseLocation (StringLocation "https://example.test/#assignments/homework-1/grade")
                     |> Expect.equal (AssignmentGradeDetailRoute "homework-1")
+        , test "parses the connected-applications route" <|
+            \_ ->
+                parseLocation (StringLocation "https://example.test/#connected-apps")
+                    |> Expect.equal ConnectedAppsRoute
         , test "online quiz-taking route is no longer available" <|
             \_ ->
                 parseLocation (StringLocation "https://example.test/#quiz-submissions/123")

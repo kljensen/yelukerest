@@ -26,14 +26,18 @@ const bunTest = require('bun:test');
 const {
     NETIDS,
     READ_SCOPES,
+    WRITE_SCOPES,
     baseURL,
     sharedClient,
+    registerClient,
     authorize,
     exchangeCode,
     refreshToken,
     jarFetch,
     McpClient,
+    mcpURL,
     compose,
+    sleep,
     sql,
 } = require('./helpers.js');
 
@@ -41,14 +45,33 @@ bunTest.setDefaultTimeout(240_000);
 
 const connectedAppsURL = `${baseURL}/auth/connected-apps`;
 
-/** Authorizes the shared client and returns {tokens, jar}. */
-async function connect(netid = NETIDS.student, scope = READ_SCOPES) {
-    const client = await sharedClient();
-    const auth = await authorize({ clientId: client.client_id, netid, scope });
+/**
+ * Authorizes a client and returns {tokens, jar, clientId}.
+ *
+ * Every test that disconnects gets its OWN client. A revocation is recorded
+ * per (user, client) and carries a few seconds of clock-skew allowance, so
+ * tests sharing one client would refuse each other's reconnections purely
+ * because a test suite reconnects faster than a person ever would. Passing an
+ * existing client is how a test reconnects the same application deliberately.
+ */
+async function connect(options = {}) {
+    const {
+        netid = NETIDS.student,
+        scope = READ_SCOPES,
+        client = null,
+    } = options;
+    // registerClient returns the HTTP result; the client is its body.
+    const useClient = client || (await registerClient({ scope: WRITE_SCOPES })).body;
+    const auth = await authorize({ clientId: useClient.client_id, netid, scope });
     const exchanged = await exchangeCode({
-        code: auth.code, verifier: auth.verifier, clientId: client.client_id,
+        code: auth.code, verifier: auth.verifier, clientId: useClient.client_id,
     });
-    return { tokens: exchanged.body, jar: auth.jar, clientId: client.client_id };
+    return {
+        tokens: exchanged.body,
+        jar: auth.jar,
+        clientId: useClient.client_id,
+        client: useClient,
+    };
 }
 
 /** Reads the page and returns its CSRF token. */
@@ -79,11 +102,41 @@ function expireCachedCredentials() {
     compose(['restart', 'mcpapp']);
 }
 
+/** Waits until mcpapp answers again after a restart. */
+async function waitForMcp() {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+        try {
+            // eslint-disable-next-line no-await-in-loop
+            const response = await fetch(mcpURL, { method: 'POST' });
+            await response.text();
+            // 401 is mcpapp itself answering an unauthenticated POST. A 502
+            // is Caddy saying it cannot reach mcpapp yet, which is exactly
+            // the race this waits out.
+            if (response.status === 401) {
+                return;
+            }
+        } catch (error) {
+            // not listening yet
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(500);
+    }
+    throw new Error('mcpapp did not come back after a restart');
+}
+
 async function callWhoami(accessToken) {
+    await waitForMcp();
     const mcp = new McpClient(accessToken);
     await mcp.initialize();
     const response = await mcp.callRaw('whoami');
     const result = response.message && response.message.result;
+    // A transport failure must not read as "the tool call succeeded"; that
+    // would turn a restart race into a silent pass on the assertions below.
+    if (!result) {
+        throw new Error(
+            `whoami returned no result (HTTP ${response.status}): ${JSON.stringify(response.message)}`,
+        );
+    }
     return {
         isError: Boolean(result && result.isError),
         text: result ? (result.content || []).map(part => part.text || '').join(' ') : '',
@@ -137,6 +190,55 @@ describe('connected applications', () => {
                 .to.contain('course:read');
             expect(app.last_activity)
                 .to.be.a('string');
+        });
+    });
+
+    describe('the shape the single-page client depends on', () => {
+        // ConnectedApps.Model decodes exactly these fields, and its own tests
+        // pin the client half. This is the server half: a rename here would
+        // otherwise break the Elm page silently, since a decoder failure looks
+        // like an empty list.
+        it('should carry a csrf token and the fields the decoder requires', async () => {
+            const session = await connect();
+            const response = await jarFetch(connectedAppsURL, {
+                headers: { Accept: 'application/json' },
+            }, session.jar);
+            const body = await response.json();
+
+            expect(body.csrf_token, 'the page cannot post a disconnect without this')
+                .to.be.a('string')
+                .with.length.greaterThan(16);
+            const app = body.connected_apps.find(entry => entry.client_id === session.clientId);
+            expect(Object.keys(app).sort())
+                .to.include.members(['client_id', 'client_name', 'last_activity', 'scopes']);
+            expect(app.scopes)
+                .to.be.an('array');
+        });
+
+        it('should accept the disconnect the client actually sends', async () => {
+            // Form-encoded body with Accept: application/json, which is what
+            // ConnectedApps.Commands builds. The HTML form path is covered
+            // below; this is the other caller.
+            const session = await connect();
+            const listed = await jarFetch(connectedAppsURL, {
+                headers: { Accept: 'application/json' },
+            }, session.jar);
+            const { csrf_token: token } = await listed.json();
+
+            const response = await jarFetch(connectedAppsURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    Accept: 'application/json',
+                },
+                body: new URLSearchParams({
+                    csrf_token: token, client_id: session.clientId,
+                }).toString(),
+            }, session.jar);
+            expect(response.status)
+                .to.equal(200);
+            expect(await response.json())
+                .to.have.property('disconnected', session.clientId);
         });
     });
 
@@ -230,7 +332,7 @@ describe('connected applications', () => {
             // mint check applies (see api.issue_user_jwt_for_mcp). A person
             // clicking through CAS and consent always takes longer.
             await new Promise((resolve) => { setTimeout(resolve, 6000); });
-            const again = await connect();
+            const again = await connect({ client: session.client });
             expireCachedCredentials();
             const after = await callWhoami(again.tokens.access_token);
             expect(after.isError, 'a reconnected application was still refused')

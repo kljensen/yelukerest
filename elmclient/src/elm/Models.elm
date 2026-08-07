@@ -14,6 +14,7 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Browser.Navigation exposing (Key)
+import ConnectedApps.Model exposing (ConnectedApps)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting, MeetingSlug)
@@ -77,6 +78,11 @@ type alias Model =
     , assignmentGrades : WebData (List AssignmentGrade)
     , assignmentGradeDistributions : WebData (List AssignmentGradeDistribution)
 
+    -- Applications the student has authorized to reach their course data,
+    -- and the client ids whose disconnect is currently in flight.
+    , connectedApps : WebData ConnectedApps
+    , pendingDisconnects : Set String
+
     -- A dictionary that tracks requests initiated to begin a
     -- particular assignment, that is, to create an assignment submission
     -- for the current user.
@@ -124,6 +130,8 @@ initialModel flags route key =
     , assignmentSubmissions = RemoteData.NotAsked
     , assignmentGrades = RemoteData.NotAsked
     , assignmentGradeDistributions = RemoteData.NotAsked
+    , connectedApps = RemoteData.NotAsked
+    , pendingDisconnects = Set.empty
     , pendingBeginAssignments = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
@@ -143,4 +151,5 @@ type Route
     | AssignmentDetailRoute AssignmentSlug
     | AssignmentGradeDetailRoute AssignmentSlug
     | EditEngagementsRoute String
+    | ConnectedAppsRoute
     | NotFoundRoute
