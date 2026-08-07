@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(35);
 
 -- We test exceptions elsewhere.
 DELETE FROM api.assignment_grade_exceptions;
@@ -10,8 +10,8 @@ SELECT view_owner_is(
 );
 
 SELECT table_privs_are(
-    'api', 'assignment_submissions', 'student', ARRAY['SELECT', 'INSERT'],
-    'student should only be granted SELECT, INSERT on view "api.assignment_submissions"'
+    'api', 'assignment_submissions', 'student', ARRAY['SELECT', 'INSERT', 'DELETE'],
+    'student should only be granted SELECT, INSERT, DELETE on view "api.assignment_submissions"'
 );
 
 SELECT table_privs_are(
@@ -324,6 +324,62 @@ SELECT set_eq(
     'late team joiners should not be added to existing participant snapshots'
 );
 
+
+-- What a student's DELETE grant can and cannot reach (issue #287).
+--
+-- The grant exists so a student can clear away an EMPTY submission — the row
+-- left behind when creating a submission succeeds and writing its first field
+-- then fails. The foreign keys are what keep it that narrow, so they are
+-- asserted here rather than assumed: a submission holding any field content
+-- must be undeletable even by its own author.
+
+-- Start from a known state: earlier tests in this file leave exam-1
+-- submissions behind, and this block needs to own the only one.
+DELETE FROM data.assignment_field_submission WHERE assignment_slug = 'exam-1';
+DELETE FROM data.assignment_submission WHERE assignment_slug = 'exam-1';
+
+SELECT set_config('request.jwt.claims',
+    (SELECT json_build_object('role', 'student', 'user_id', u.id, 'netid', u.netid)::text
+     FROM data."user" u WHERE u.netid = 'abc123'), true);
+SET LOCAL ROLE student;
+
+SELECT lives_ok(
+    $$INSERT INTO api.assignment_submissions (assignment_slug) VALUES ('exam-1')$$,
+    'a student can create a submission for an open assignment'
+);
+
+SELECT lives_ok(
+    $$DELETE FROM api.assignment_submissions WHERE assignment_slug = 'exam-1'$$,
+    'a student can delete their own empty submission'
+);
+
+SELECT is(
+    (SELECT count(*)::int FROM api.assignment_submissions WHERE assignment_slug = 'exam-1'),
+    0,
+    'the empty submission is gone'
+);
+
+-- A submission that holds work: the foreign key refuses, whoever asks.
+INSERT INTO api.assignment_submissions (assignment_slug) VALUES ('exam-1');
+INSERT INTO api.assignment_field_submissions
+    (assignment_submission_id, assignment_slug, assignment_field_slug, body)
+SELECT id, 'exam-1', 'fooword', 'foobar counts as an answer'
+FROM api.assignment_submissions WHERE assignment_slug = 'exam-1';
+
+SELECT is(
+    (SELECT count(*)::int FROM api.assignment_field_submissions WHERE assignment_slug = 'exam-1'),
+    1,
+    'a student can write a field into their own submission'
+);
+
+SELECT throws_ok(
+    $$DELETE FROM api.assignment_submissions WHERE assignment_slug = 'exam-1'$$,
+    '23503',
+    NULL,
+    'a submission holding field content cannot be deleted, even by its author'
+);
+
+RESET ROLE;
 
 select * from finish();
 rollback;

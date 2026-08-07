@@ -5477,8 +5477,8 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_grades TO faculty;
 -- Name: TABLE assignment_submissions; Type: ACL; Schema: api; Owner: api
 --
 
-GRANT SELECT,INSERT ON TABLE api.assignment_submissions TO student;
-GRANT SELECT,INSERT ON TABLE api.assignment_submissions TO ta;
+GRANT SELECT,INSERT,DELETE ON TABLE api.assignment_submissions TO student;
+GRANT SELECT,INSERT,DELETE ON TABLE api.assignment_submissions TO ta;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE api.assignment_submissions TO faculty;
 
 

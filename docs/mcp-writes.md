@@ -19,7 +19,14 @@ was deliberate.
 2. **Row-level security.** Every tool call runs under the caller's own
    credential, so an agent can only reach rows the student can reach. This is
    the guarantee that holds even when a model does something stupid.
-3. **Optimistic concurrency.** `preview_submission_change` returns
+3. **Deletion is narrow by construction.** Students hold `DELETE` on
+   `api.assignment_submissions`, which sounds broader than it is: the foreign
+   keys from `assignment_field_submission` and `assignment_grade` are `NO
+   ACTION`, so a submission holding any content, or carrying a grade, cannot be
+   deleted by anyone through this path. What the grant actually permits is
+   clearing away an *empty* submission — which is what a failed first write
+   leaves behind (issue #287).
+4. **Optimistic concurrency.** `preview_submission_change` returns
    `current_updated_at`; pass it back as `expected_updated_at` and a write that
    would clobber a value that moved is rejected instead. This is a correctness
    feature for concurrent writers, not a security control.

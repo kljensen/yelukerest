@@ -241,6 +241,52 @@ describe('oauth write path', () => {
                 .to.deep.equal([body]);
         });
 
+        it('should leave nothing behind when a first write fails', async () => {
+            // Issue #287. A student's first field write on an assignment is two
+            // requests: create the submission, then write the field. When the
+            // second fails — a body that violates the field's pattern is the
+            // everyday way in — the first must be undone, or the student is
+            // left with an empty submission that reads to a grader as a blank
+            // one they meant to hand in.
+            //
+            // This lives here rather than in the Go tests because the defect
+            // was invisible to them: their fake PostgREST accepted a DELETE
+            // that the real database refused for want of a grant. Only the
+            // real stack can tell us the rollback works.
+            const submissionCount = () => sql(
+                'select count(*) from data.assignment_submission s '
+                + 'join data."user" u on u.id = s.submitter_user_id '
+                + `where s.assignment_slug = '${ASSIGNMENT}' and u.netid = '${NETIDS.student}'`,
+            );
+
+            // Clear this student's exam-1 submission so the write below really
+            // is a first one, which is the only case that creates a row.
+            sql(
+                'delete from data.assignment_field_submission afs using data."user" u '
+                + `where u.id = afs.submitter_user_id and afs.assignment_slug = '${ASSIGNMENT}' `
+                + `and u.netid = '${NETIDS.student}'`,
+            );
+            sql(
+                'delete from data.assignment_submission s using data."user" u '
+                + `where u.id = s.submitter_user_id and s.assignment_slug = '${ASSIGNMENT}' `
+                + `and u.netid = '${NETIDS.student}'`,
+            );
+            expect(submissionCount(), 'the setup must leave no submission')
+                .to.equal('0');
+
+            // 'fooword' carries a `.*foo.*` check constraint, so this body is
+            // rejected by the database after the submission row exists.
+            const message = await writer.mcp.callExpectError('submit_submission_change', {
+                assignment_slug: ASSIGNMENT,
+                field_slug: 'fooword',
+                body: 'this body lacks the required word',
+            });
+            expect(message)
+                .to.contain('body_matches_pattern');
+            expect(submissionCount(), 'a failed first write left an empty submission behind')
+                .to.equal('0');
+        });
+
         it('should refuse a body that exceeds the size limit', async () => {
             const before_ = storedBodies();
             const message = await writer.mcp.callExpectError('submit_submission_change', {
@@ -271,6 +317,15 @@ describe('oauth write path', () => {
         it('should allow a non-GET with the write scope', async () => {
             // No token ceremony: the write scope is the whole gate, exactly as
             // it would be against PostgREST directly.
+            //
+            // The PATCH needs something to patch, and this file's other tests
+            // legitimately leave the field either present or absent, so put a
+            // value there rather than inheriting one.
+            await writer.mcp.callOk('submit_submission_change', {
+                assignment_slug: ASSIGNMENT,
+                field_slug: FIELD,
+                body: `A value for the escape hatch to change ${Date.now()}.`,
+            });
             const body = `Written through the escape hatch ${Date.now()}.`;
             const response = await writer.mcp.callOk('postgrest_request', {
                 method: 'PATCH',

@@ -107,7 +107,17 @@ using (
 
 -- student users can select from this view. The RLS will
 -- limit them to viewing their own assignment_submissions.
-grant select, insert on api.assignment_submissions to student, ta;
+--
+-- DELETE is granted too, and it is narrower than it looks. The access policy
+-- above already limits a student to their own (or their team's) rows, and the
+-- foreign keys do the rest: assignment_field_submission and assignment_grade
+-- both reference this table with NO ACTION, so a submission that has any field
+-- content, or any grade, cannot be deleted at all. What a student can actually
+-- delete is an empty, ungraded submission of their own — which is exactly the
+-- wreckage left behind when creating a submission succeeds and writing its
+-- first field then fails (issue #287). Without this, that empty row survives
+-- and reads to a grader as a blank submission.
+grant select, insert, delete on api.assignment_submissions to student, ta;
 
 -- faculty have CRUD privileges
 grant select, insert, update, delete on data.assignment_submission_participant to api;
