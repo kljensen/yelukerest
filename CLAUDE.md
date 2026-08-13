@@ -26,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Development Utilities
 - **Generate JWT tokens**: `./bin/jwt.sh '{"role": "student"}'`
-- **Create new table**: `./bin/new-table.sh [tablename]` (scaffolds new table files)
+- **Create migration**: `zapadka new add-[change]` (or `./bin/new-table.sh [table]`)
 
 ## Architecture
 
@@ -63,14 +63,9 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
 
 ### Development Workflow
 
-1. Database changes require updates to multiple files:
-   - Add table: `db/src/data/yeluke/[table].sql`
-   - Add API views: `db/src/api/yeluke/[table].sql` 
-   - Add authorization: `db/src/authorization/yeluke/[table].sql`
-   - Add sample data: `db/src/sample_data/yeluke/[table].sql`
-   - Add tests: `tests/db/yeluke-[table].sql`
+1. Deployable schema changes live in a new Zapadka migration under `migrations/`; provide `deploy.sql` and `verify.sql`, and `revert.sql` when reversible. Run `zapadka lint`, deploy to a disposable target, then run `bun run test_db`.
 
-2. Zapadka manages database migrations (`migrations/`); its immutable bootstrap captures the current schema.
+2. `db/src/` is the immutable-bootstrap input and test fixtures. Do not add deployable schema changes there.
 
 3. All API access goes through PostgREST which enforces PostgreSQL's row-level security
 

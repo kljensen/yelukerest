@@ -16,6 +16,6 @@ fi
 
 : "${YELUKEREST_TEST_DATABASE_URL:?YELUKEREST_TEST_DATABASE_URL is required and must use a privileged disposable-test role}"
 
-./bin/reset_db.sh
+YELUKEREST_RESET_DATABASE_URL="$YELUKEREST_TEST_DATABASE_URL" ./bin/reset_db.sh
 
 exec "$ZAPADKA_BIN" test --target test

@@ -12,6 +12,11 @@ RESET_FILE="sample_data/reset.sql"
 DB_TEST_HOST="${DB_TEST_HOST:-localhost}"
 DB_TEST_PORT="${DB_TEST_PORT:-$DB_PORT}"
 
+if [ -n "${YELUKEREST_RESET_DATABASE_URL:-}" ]; then
+    exec psql -X --set ON_ERROR_STOP=1 "$YELUKEREST_RESET_DATABASE_URL" \
+        -f "./db/src/$RESET_FILE"
+fi
+
 # See if we have psql installed locally
 if [ -x "$(command -v psql)" ]; then
     # Connect through our host system psql (thus loading

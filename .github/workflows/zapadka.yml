@@ -1,0 +1,53 @@
+name: Zapadka database
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  database:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: cluster_admin
+          POSTGRES_PASSWORD: bootstrap-admin-password
+          POSTGRES_DB: yelukerest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cluster_admin -d yelukerest"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DB_NAME: yelukerest
+      DB_USER: postgrest_authenticator
+      DB_PASS: postgrest-authenticator-password
+      SUPER_USER: cluster_admin
+      SUPER_USER_PASSWORD: bootstrap-admin-password
+      JWT_SECRET: 0123456789abcdef0123456789abcdef
+      YELUKEREST_MIGRATOR_PASSWORD: yelukerest-migrator-password
+      YELUKEREST_TEST_MIGRATOR_DATABASE_URL: postgresql://yelukerest_migrator:yelukerest-migrator-password@localhost:5432/yelukerest?sslmode=disable
+      YELUKEREST_TEST_DATABASE_URL: postgresql://cluster_admin:bootstrap-admin-password@localhost:5432/yelukerest?sslmode=disable
+      ZAPADKA_BIN: /usr/local/bin/zapadka
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install Zapadka v0.4.1
+        run: |
+          curl --fail --location --silent --show-error \
+            --output /tmp/zapadka \
+            https://github.com/kljensen/zapadka/releases/download/v0.4.1/zapadka-x86_64-unknown-linux-musl
+          echo '3bf73f20b018cd801280c1e0a8c5a108c65d8fe18a78be689060bbc9a9770e1e  /tmp/zapadka' | sha256sum --check
+          install -m 0755 /tmp/zapadka /usr/local/bin/zapadka
+          zapadka --version
+      - name: Lint and deploy a fresh PostgreSQL 18 database
+        run: |
+          zapadka lint
+          ./bin/bootstrap-db.sh test-migrator
+          zapadka verify --target test
+          zapadka status --target test --output json
+      - name: Run database tests
+        run: ./bin/test-db.sh

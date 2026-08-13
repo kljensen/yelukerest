@@ -105,8 +105,11 @@ known external image exceptions.
 When you checkout this repo anew and wish to work on yelukerest you'll
 need to complete a few steps.
 
-3. Create the `.env` file with all the variables you need. Likely best to get this from another
-   machine on which the code is working.
+3. Create `.env`. Install Zapadka v0.4.1 or newer, and set
+   `YELUKEREST_DEV_DATABASE_URL` to the local `yelukerest_migrator` connection.
+   Database tests additionally require `YELUKEREST_TEST_MIGRATOR_DATABASE_URL`
+   (the migrator connection) and `YELUKEREST_TEST_DATABASE_URL` (a privileged
+   disposable-test connection). All three URLs must name their intended database.
 4. Start the server
    `./bin/dev.sh up -d db`
 5. Bootstrap the empty database with Zapadka:
@@ -223,11 +226,11 @@ restore a physical backup. WAL archiving is enabled in the production Compose
 Postgres service so backups can support point-in-time recovery when the S3
 repository retains the needed WAL range.
 
-### Adding a table when working on the database
+### Changing the database
 
-1. Add the table in `db/src/data/yeluke.sql`
-2. Add the table in `db/src/sample_data/yeluke/reset.sql`
-3. Add the api views in `db/src/api/yeluke.sql`
-4. Add the auth in `db/src/authorization/yeluke.sql`
-5. Add sample data in `db/src/sample_data/yeluke/data.sql`
-6. Add the tests in `tests/db/`
+Create a migration with `zapadka new add-thing` (or
+`./bin/new-table.sh thing`). Put the deployable schema change in its
+`deploy.sql`, its invariant checks in `verify.sql`, and `revert.sql` when the
+change is reversible. Run `zapadka lint`, deploy it to a disposable target, and
+run `bun run test_db`. `db/src` is retained only as immutable-bootstrap input
+and test fixtures; do not add deployable schema changes there.

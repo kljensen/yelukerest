@@ -3,13 +3,24 @@ set -eu
 
 ROOT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
+cd "$ROOT_DIR"
+
+if [ -f "${ENV_FILE:-.env}" ]; then
+    set -a
+    . "${ENV_FILE:-.env}"
+    set +a
+fi
+
 DB_PORT=${YELUKEREST_TEST_DB_PORT:-55432}
 HTTP_PORT=${YELUKEREST_TEST_HTTP_PORT:-8080}
 HTTPS_PORT=${YELUKEREST_TEST_HTTPS_PORT:-8443}
 KEEP_STACK=${YELUKEREST_TEST_KEEP_STACK:-}
 OVERRIDE_FILE=${YELUKEREST_TEST_COMPOSE_OVERRIDE:-tmp/docker-compose.test-rest-stack.yaml}
 
-cd "$ROOT_DIR"
+: "${YELUKEREST_TEST_MIGRATOR_DATABASE_URL:?YELUKEREST_TEST_MIGRATOR_DATABASE_URL is required}"
+: "${YELUKEREST_TEST_DATABASE_URL:?YELUKEREST_TEST_DATABASE_URL is required}"
+: "${DB_NAME:?DB_NAME is required}"
+
 mkdir -p "$(dirname "$OVERRIDE_FILE")"
 TEST_AUTHAPP_JWT="$(./bin/jwt.sh '{"role":"app","app_name":"authapp"}')"
 export TEST_AUTHAPP_JWT
@@ -53,8 +64,21 @@ compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_D
 
 PGHOST=127.0.0.1 \
 PGPORT=$DB_PORT \
-YELUKEREST_TEST_MIGRATOR_DATABASE_URL=${YELUKEREST_TEST_MIGRATOR_DATABASE_URL:?YELUKEREST_TEST_MIGRATOR_DATABASE_URL is required} \
     ./bin/bootstrap-db.sh test-migrator
+
+test_database=$(psql -X --tuples-only --no-align "$YELUKEREST_TEST_DATABASE_URL" \
+    --command 'select current_database()')
+if [ "$test_database" != "$DB_NAME" ]; then
+    echo "YELUKEREST_TEST_DATABASE_URL connects to $test_database, expected $DB_NAME." >&2
+    exit 1
+fi
+
+bootstrap_count=$(psql -X --tuples-only --no-align "$YELUKEREST_TEST_DATABASE_URL" \
+    --command "select count(*) from zapadka.applied_migrations where slug = 'bootstrap-yelukerest'")
+if [ "$bootstrap_count" != 1 ]; then
+    echo 'YELUKEREST_TEST_DATABASE_URL is not the database Zapadka bootstrapped.' >&2
+    exit 1
+fi
 
 compose up -d --build postgrest authapp elmclient caddy
 

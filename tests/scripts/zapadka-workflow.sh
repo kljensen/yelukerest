@@ -21,8 +21,12 @@ assert_not_contains() {
 
 assert_contains bin/migrate.sh 'deploy --target "$target"'
 assert_contains bin/test-db.sh 'test --target test'
+assert_contains bin/test-db.sh 'YELUKEREST_RESET_DATABASE_URL="$YELUKEREST_TEST_DATABASE_URL"'
+assert_contains bin/new-table.sh 'new "add-$1"'
+assert_contains README.md 'Create a migration with `zapadka new add-thing`'
+assert_contains bin/test-rest-stack.sh 'YELUKEREST_TEST_DATABASE_URL is not the database Zapadka bootstrapped.'
 
-for file in CLAUDE.md tests/db/README.md bin/migrate.sh; do
+for file in CLAUDE.md tests/db/README.md bin/migrate.sh bin/new-table.sh; do
   assert_not_contains "$file" sqitch
   assert_not_contains "$file" pgtap
   assert_not_contains "$file" pg_prove
@@ -41,5 +45,13 @@ expected=$(printf 'deploy\n--target\ndevelopment')
 actual=$(cat "$fake_zapadka.args")
 if [ "$actual" != "$expected" ]; then
   echo "unexpected Zapadka arguments: $actual" >&2
+  exit 1
+fi
+
+ZAPADKA_BIN="$fake_zapadka" ./bin/new-table.sh widgets
+expected=$(printf 'new\nadd-widgets')
+actual=$(cat "$fake_zapadka.args")
+if [ "$actual" != "$expected" ]; then
+  echo "unexpected new-table Zapadka arguments: $actual" >&2
   exit 1
 fi
