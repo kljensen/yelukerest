@@ -66,10 +66,13 @@ PGHOST=127.0.0.1 \
 PGPORT=$DB_PORT \
     ./bin/bootstrap-db.sh test-migrator
 
-test_database=$(psql -X --tuples-only --no-align "$YELUKEREST_TEST_DATABASE_URL" \
-    --command 'select current_database()')
-if [ "$test_database" != "$DB_NAME" ]; then
-    echo "YELUKEREST_TEST_DATABASE_URL connects to $test_database, expected $DB_NAME." >&2
+identity_sql="select current_database() || '|' || system_identifier from pg_control_system()"
+migrator_identity=$(psql -X --tuples-only --no-align "$YELUKEREST_TEST_MIGRATOR_DATABASE_URL" \
+    --command "$identity_sql")
+test_identity=$(psql -X --tuples-only --no-align "$YELUKEREST_TEST_DATABASE_URL" \
+    --command "$identity_sql")
+if [ "$migrator_identity" != "$test_identity" ]; then
+    echo 'YELUKEREST_TEST_MIGRATOR_DATABASE_URL and YELUKEREST_TEST_DATABASE_URL do not identify the same database.' >&2
     exit 1
 fi
 
