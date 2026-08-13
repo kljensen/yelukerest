@@ -15,13 +15,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Database Operations
 - **Reset database**: `./bin/reset_db.sh` (resets database to initial state with sample data)
-- **Run migrations**: `./bin/migrate.sh`
+- **Run migrations**: `./bin/migrate.sh [development|production]` (Zapadka verifies by default)
 - **Connect to database**: `./bin/pg_connect.sh`
 - **Dump database**: `./bin/dumpdb.sh`
 
 ### Testing
 - **Run all tests**: `bun run test` (runs both database and REST API tests)
-- **Run database tests only**: `bun run test_db` (uses local pgTAP `pg_prove`)
+- **Run database tests only**: `bun run test_db` (Zapadka structured SQL tests)
 - **Run REST API tests only**: `bun run test_rest` (uses Bun test + Supertest)
 
 ### Development Utilities
@@ -70,7 +70,7 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
    - Add sample data: `db/src/sample_data/yeluke/[table].sql`
    - Add tests: `tests/db/yeluke-[table].sql`
 
-2. The system uses Sqitch for database migrations (`db/migrations/`)
+2. Zapadka manages database migrations (`migrations/`); its immutable bootstrap captures the current schema.
 
 3. All API access goes through PostgREST which enforces PostgreSQL's row-level security
 
