@@ -1,8 +1,14 @@
-begin;
 select * from no_plan();
 
-select * from check_test(
-    views_are('api', array[
+SELECT set_eq(
+    $$
+        SELECT relname
+        FROM pg_class
+        JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+        WHERE nspname = 'api'
+          AND relkind IN ('v', 'm')
+    $$,
+    ARRAY[
         'platform_version',
         'artifacts', 'meetings', 'engagements', 'teams', 'users', 'quizzes',
         'quiz_submissions', 'ui_elements',
@@ -14,41 +20,48 @@ select * from check_test(
         'quiz_grade_distributions', 'assignment_grade_distributions',
         'grade_snapshot_distributions',
         'mcp_jwt_mint_events', 'mcp_jwt_mint_anomalies', 'mcp_grant_revocations',
-        'user_secrets', 'user_jwts', 'grade_snapshots', 'grades'], 'tables present'),
-    true,
-    'all views are present in api schema',
-    'tables present',
-    ''
+        'user_secrets', 'user_jwts', 'grade_snapshots', 'grades'
+    ]::text[],
+    'all views are present in api schema'
 );
 
 SELECT set_eq(
-    format($$
+    $$
         SELECT rolname
         FROM pg_roles
         WHERE rolname IN (
             'faculty',
-            %L,
             'observer',
             'student',
-            'superuser',
             'app',
             'anonymous',
             'api',
             'ta'
         )
-    $$, :'authenticator_user'),
+    $$,
     ARRAY[
         'faculty',
-        :'authenticator_user',
         'observer',
         'student',
-        'superuser',
         'app',
         'anonymous',
         'api',
         'ta'
-    ],
-    'Yelukerest roles are present'
+    ]::text[],
+    'fixed Yelukerest roles are present'
+);
+
+SELECT set_eq(
+    $$
+        SELECT granted.rolname
+        FROM pg_auth_members membership
+        JOIN pg_roles granted ON granted.oid = membership.roleid
+        JOIN pg_roles member ON member.oid = membership.member
+        WHERE member.rolcanlogin
+          AND granted.rolname IN ('anonymous', 'app', 'faculty', 'observer', 'student', 'ta')
+    $$,
+    ARRAY['anonymous', 'app', 'faculty', 'observer', 'student', 'ta']::text[],
+    'the provisioned authenticator inherits every runtime role'
 );
 
 SELECT is_empty(
@@ -79,4 +92,3 @@ SELECT is_empty(
 );
 
 select * from finish();
-rollback;

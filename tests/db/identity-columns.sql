@@ -1,4 +1,3 @@
-begin;
 select plan(3);
 
 SELECT set_eq(
@@ -58,4 +57,3 @@ SELECT is_empty(
 );
 
 select * from finish();
-rollback;

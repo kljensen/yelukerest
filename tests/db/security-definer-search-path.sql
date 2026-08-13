@@ -1,4 +1,3 @@
-begin;
 select plan(16);
 
 SELECT is(
@@ -126,4 +125,3 @@ SELECT is(
 );
 
 select * from finish();
-rollback;

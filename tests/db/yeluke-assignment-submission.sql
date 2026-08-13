@@ -1,4 +1,3 @@
-begin;
 select plan(35);
 
 -- We test exceptions elsewhere.
@@ -382,4 +381,3 @@ SELECT throws_ok(
 RESET ROLE;
 
 select * from finish();
-rollback;

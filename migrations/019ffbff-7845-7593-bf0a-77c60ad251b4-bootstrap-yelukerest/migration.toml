@@ -1,0 +1,22 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "019ffbff-7845-7593-bf0a-77c60ad251b4"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = []
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+reversibility = "irreversible"
+irreversible_reason = "This adopts the current course schema; recovery is restore or rebuild, not SQL rollback."
+
+[[allow]]
+lint = "lint.constraint_scans_table"
+reason = "This is a fresh-database bootstrap: every validated constraint is created before application data exists."
+
+[[allow]]
+lint = "lint.index_without_concurrently"
+reason = "This is a fresh-database bootstrap: each index is created before application data and concurrent writers exist."

@@ -1,0 +1,34 @@
+# Zapadka project configuration.
+#
+# This file is checked in, so it holds no credentials. A target names where to
+# find its connection information; Zapadka resolves it when it connects.
+
+format_version = 1
+
+[project]
+# This project's permanent identity. The registry records it so one database is
+# never shared by two Zapadka projects by accident.
+id = "019ffbff-146b-7600-91c3-c195dad0b15e"
+registry_schema = "zapadka"
+
+[targets.development]
+uri_env = "YELUKEREST_DEV_DATABASE_URL"
+application_schemas = ["api", "auth", "data", "pgjwt", "request", "settings"]
+
+[targets.test-migrator]
+uri_env = "YELUKEREST_TEST_MIGRATOR_DATABASE_URL"
+application_schemas = ["api", "auth", "data", "pgjwt", "request", "settings"]
+
+[targets.test]
+uri_env = "YELUKEREST_TEST_DATABASE_URL"
+application_schemas = ["api", "auth", "data", "pgjwt", "request", "settings"]
+
+[targets.production]
+pg_service = "yelukerest-production"
+
+[policy]
+# How long a deploy waits for the deployment lock before giving up.
+advisory_lock_timeout = "5s"
+
+# Lint codes to treat as errors rather than warnings, for example:
+# deny = ["lint.index_without_concurrently"]

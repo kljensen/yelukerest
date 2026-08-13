@@ -1,4 +1,3 @@
-begin;
 select plan(8);
 
 SELECT view_owner_is(
@@ -71,4 +70,3 @@ select set_eq (
   'faculty should be able to update quiz grade exceptions'
 );
 select * from finish();
-rollback;

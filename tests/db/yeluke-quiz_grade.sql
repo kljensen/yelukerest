@@ -1,4 +1,3 @@
-begin;
 select plan(11);
 
 SELECT view_owner_is(
@@ -77,4 +76,3 @@ SELECT throws_like(
 
 
 select * from finish();
-rollback;

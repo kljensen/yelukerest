@@ -1,4 +1,3 @@
-begin;
 select plan(9);
 
 SELECT view_owner_is(
@@ -67,4 +66,3 @@ SELECT lives_ok(
 
 
 select * from finish();
-rollback;

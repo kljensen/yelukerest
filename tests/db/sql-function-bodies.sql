@@ -1,4 +1,3 @@
-begin;
 select plan(1);
 
 SELECT set_eq(
@@ -38,4 +37,3 @@ SELECT set_eq(
 );
 
 select * from finish();
-rollback;

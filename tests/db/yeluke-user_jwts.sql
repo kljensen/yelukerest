@@ -1,7 +1,6 @@
-begin;
 select plan(26);
 
-create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean)
+create or replace function zapadka_test.verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean)
 stable
 security definer
 language sql
@@ -81,7 +80,7 @@ SELECT set_eq(
 
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts where id=4;
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts where id=4;
     $$,
     ARRAY['4'],
     'ta should be able to select their own jwt'
@@ -89,7 +88,7 @@ SELECT set_eq(
 
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
     $$,
     ARRAY['4', null],
     'ta should be able to select their own jwt and not that of others'
@@ -100,7 +99,7 @@ set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1';
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
     $$,
     ARRAY['1'],
     'students should be able to select their own jwt and not that of others'
@@ -111,7 +110,7 @@ set request.jwt.claim.role = 'faculty';
 set request.jwt.claim.user_id = '3';
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'user_id' "user_id" FROM api.user_jwts;
     $$,
     ARRAY['1', '2', '3', '4', null],
     'faculty should be able to select non-observer user jwts'
@@ -229,4 +228,3 @@ SELECT isnt_empty(
 
 
 select * from finish();
-rollback;

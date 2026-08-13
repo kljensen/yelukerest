@@ -1,9 +1,8 @@
-begin;
 select plan(10);
 
 SELECT view_owner_is(
-    'api', 'quiz_grade_distributions', 'superuser',
-    'api.quiz_grade_distributions view should be owned by the superuser role'
+    'api', 'quiz_grade_distributions', 'yelukerest_migrator',
+    'api.quiz_grade_distributions view should be owned by the migrator role'
 );
 
 SELECT table_privs_are(
@@ -101,4 +100,3 @@ SELECT throws_like(
 );
 
 select * from finish();
-rollback;

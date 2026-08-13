@@ -1,4 +1,3 @@
-begin;
 select plan(16);
 
 SELECT view_owner_is(
@@ -135,6 +134,5 @@ SELECT throws_like(
 );
 
 select * from finish();
-rollback;
 
 -- TODO, test team submission!!!

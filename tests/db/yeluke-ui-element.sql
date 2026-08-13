@@ -1,5 +1,4 @@
 
-BEGIN;
 
 -- Plan the tests.
 SELECT plan(9);
@@ -67,4 +66,3 @@ select lives_ok(
 
 -- Finish the tests and clean up.
 SELECT * FROM finish();
-ROLLBACK;

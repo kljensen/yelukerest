@@ -1,4 +1,3 @@
-begin;
 select plan(5);
 
 INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example)
@@ -86,4 +85,3 @@ select set_eq (
 
 
 select * from finish();
-rollback;

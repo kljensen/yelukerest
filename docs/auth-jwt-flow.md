@@ -155,7 +155,7 @@ Swagger:
 | CAS validation failure | `401 Unauthorized` | not yet covered directly |
 | CAS back-channel or PostgREST error | authapp returns an error status, often collapsed to `403`/`500` | follow-up issue needed |
 | Expired or invalid PostgREST user JWT | PostgREST rejects `/rest/*` request | covered indirectly by PostgREST; app UX follow-up needed |
-| Observer login | no session/JWT is created because `api.user_jwts` does not mint observer JWTs | REST auth and pgTAP tests |
+| Observer login | no session/JWT is created because `api.user_jwts` does not mint observer JWTs | REST auth and Zapadka tests |
 
 ## Known Follow-Ups
 

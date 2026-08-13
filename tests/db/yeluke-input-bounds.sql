@@ -2,7 +2,6 @@
 -- Every bound gets an accept-at-limit case and a reject-over-limit case.
 -- These are pure constraint tests, so we write to the data schema as the
 -- superuser rather than exercising RLS (covered by other test files).
-begin;
 select * from no_plan();
 
 -- ---------------------------------------------------------------
@@ -334,4 +333,3 @@ SELECT throws_like(
 );
 
 select * from finish();
-rollback;

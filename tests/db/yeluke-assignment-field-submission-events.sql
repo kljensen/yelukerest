@@ -1,7 +1,6 @@
 -- Tests for the append-only assignment field submission audit history
 -- and the optimistic-concurrency (stale write) protection added for
 -- issue #262.
-begin;
 select * from no_plan();
 
 SELECT view_owner_is(
@@ -225,4 +224,3 @@ SELECT throws_like(
 );
 
 select * from finish();
-rollback;

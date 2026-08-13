@@ -1,4 +1,3 @@
-begin;
 select plan(25);
 
 SELECT set_eq(
@@ -197,13 +196,13 @@ SELECT results_eq(
                 SELECT begins_at - '5 days'::interval
                 FROM data.meeting
                 WHERE slug = 'server-side-apps'
-            ),
+            ) AS open_at_is_default,
             closed_at = (
                 SELECT begins_at
                 FROM data.meeting
                 WHERE slug = 'server-side-apps'
-            ),
-            updated_at > '2020-01-01'::timestamptz
+            ) AS closed_at_is_default,
+            updated_at > '2020-01-01'::timestamptz AS updated_at_is_fresh
     $$,
     $$ VALUES (true, true, true) $$,
     'tg_quiz_default fills open_at and closed_at from the meeting'
@@ -309,9 +308,9 @@ SELECT results_eq(
                 FROM data.assignment_submission
                 WHERE assignment_slug = 'team-selection'
                 AND user_id = 4
-            ),
+            ) AS submission_id_is_default,
             submitter_user_id,
-            updated_at > '2020-01-01'::timestamptz
+            updated_at > '2020-01-01'::timestamptz AS updated_at_is_fresh
     $$,
     $$ VALUES (true, 4, true) $$,
     'tg_assignment_field_submission_default fills submission id from assignment slug and request user'
@@ -331,4 +330,3 @@ SELECT results_eq(
 );
 
 select * from finish();
-rollback;

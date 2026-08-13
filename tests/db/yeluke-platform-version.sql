@@ -1,4 +1,3 @@
-BEGIN;
 
 SELECT plan(9);
 
@@ -67,4 +66,3 @@ SELECT is(
 );
 
 SELECT * FROM finish();
-ROLLBACK;

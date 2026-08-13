@@ -1,9 +1,8 @@
-begin;
 select plan(10);
 
 SELECT view_owner_is(
-    'api', 'grade_snapshot_distributions', 'superuser',
-    'api.grade_snapshot_distributions view should be owned by the superuser role'
+    'api', 'grade_snapshot_distributions', 'yelukerest_migrator',
+    'api.grade_snapshot_distributions view should be owned by the migrator role'
 );
 
 SELECT table_privs_are(
@@ -92,4 +91,3 @@ SELECT is_empty(
 );
 
 select * from finish();
-rollback;

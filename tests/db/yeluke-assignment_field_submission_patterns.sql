@@ -1,5 +1,4 @@
 
-begin;
 select plan(5);
 
 
@@ -68,4 +67,3 @@ SELECT lives_ok(
 );
 
 select * from finish();
-rollback;

@@ -77,13 +77,12 @@ not replace the database, REST, or Elm test suites. See
 `docs/smoke-test.md` for the exact checks and production overrides.
 
 To run the database, OAuth/MCP, and REST tests, do `bun run test` from the root
-of this project. The containers will need to be running. This will run
-[pgTAP](http://pgtap.org/) tests through local `pg_prove`, an end-to-end
-OAuth + MCP suite that drives the real authorization flow against `/mcp`, and
-tests of the REST API using [supertest](https://github.com/ladjs/supertest).
-The three suites can also be run individually with `bun run test_db`,
-`bun run test_oauth`, and `bun run test_rest`. See the `tests` directory, and
-`docs/hydra.md` for what the OAuth suite covers.
+of this project. The containers will need to be running. Database tests use
+[Zapadka](https://github.com/kljensen/zapadka); the end-to-end OAuth + MCP
+suite drives the real authorization flow against `/mcp`; REST tests use
+[supertest](https://github.com/ladjs/supertest). The suites can also be run
+individually with `bun run test_db`, `bun run test_oauth`, and `bun run
+test_rest`. See the `tests` directory and `docs/hydra.md` for OAuth coverage.
 
 To run the Elm client tests:
 
@@ -109,17 +108,19 @@ need to complete a few steps.
 3. Create the `.env` file with all the variables you need. Likely best to get this from another
    machine on which the code is working.
 4. Start the server
+   `./bin/dev.sh up -d db`
+5. Bootstrap the empty database with Zapadka:
+   `./bin/bootstrap-db.sh development`
+6. Start the remaining services:
    `./bin/dev.sh up`
 
 ## Starting in a new production environment
 
-When I begin a new school year, I'll likely want to
-run the `create-initial-migrations.sh` script to get fresh migrations.
-I'll likely want to throw out the old ones first. I only keep migrations
-for a semester then start over. These Sqitch migrations are a verified
-bootstrap for a new course database, not a reversible production history:
-`./bin/migrate.sh` deploys with verification, and rollback is restore from
-backup or rebuild/drop the disposable database rather than `sqitch revert`.
+Yelukerest uses an immutable Zapadka bootstrap plus subsequent forward-only
+migrations. A new course database is provisioned with `bin/provision-db.sh`,
+deployed with `zapadka deploy --target production`, then configured with
+`bin/configure-jwt-secret.sh`. Rollback is restore from backup or rebuilding a
+disposable database, not migration reversal.
 PostgreSQL major upgrades are the same kind of operation: dump/restore,
 `pg_upgrade`, or create a fresh course database, but do not expect an old data
 volume to start in place under a new major version. PostgreSQL 18 Docker images
@@ -141,8 +142,7 @@ Then...
    docker volume create --name=yelukerest-letsencrypt
    ```
 2. Start database `./bin/prod.sh up db`
-3. Run the migrations (make sure these are up-to-date ;P )
-   `./bin/migrate.sh`
+3. Provision roles, deploy the Zapadka bootstrap, and configure the JWT secret.
 4. Stop database
 6. Get AWS S3 bucket permissions all set up for backups.
 7. Insert the klj39 user

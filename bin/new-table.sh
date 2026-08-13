@@ -83,7 +83,6 @@ ANALYZE data.$1;
 EOF
 
 cat << EOF > tests/db/yeluke-$2.sql
-begin;
 select plan(5);
 
 SELECT view_owner_is(
@@ -125,7 +124,6 @@ set local role faculty;
 set request.jwt.claim.role = 'faculty';
 
 select * from finish();
-rollback;
 EOF
 
 # Now, ensure that these files get sourced.

@@ -1,4 +1,3 @@
-begin;
 select plan(1);
 
 set local role faculty;
@@ -21,5 +20,4 @@ select set_eq (
 
 
 select * from finish();
-rollback;
 

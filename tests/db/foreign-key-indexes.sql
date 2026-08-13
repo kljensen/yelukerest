@@ -1,4 +1,3 @@
-begin;
 select plan(1);
 
 WITH fk AS (
@@ -42,4 +41,3 @@ SELECT is(
 );
 
 select * from finish();
-rollback;

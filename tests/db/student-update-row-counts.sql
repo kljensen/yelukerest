@@ -1,4 +1,3 @@
-begin;
 select plan(5);
 
 SELECT set_eq(
@@ -85,4 +84,3 @@ SELECT results_eq(
 );
 
 select * from finish();
-rollback;

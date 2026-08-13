@@ -6,7 +6,7 @@ services:
   # use a separate database instance, like Amazon RDS, i.e. in production this section will be
   # commented and in the .env file you will specify the ip of your separate database instance
   db:
-    image: ${POSTGRES_DEV_IMAGE:-ghcr.io/kljensen/docker-postgres-pgtap:18.4-pgtap-1.3.4}
+    image: ${POSTGRES_DEV_IMAGE:-postgres:18.4}
     ports:
       - "127.0.0.1:5432:${DB_PORT}"
     environment:
@@ -14,26 +14,15 @@ services:
       - POSTGRES_USER=${SUPER_USER}
       - POSTGRES_PASSWORD=${SUPER_USER_PASSWORD}
       - POSTGRES_DB=${DB_NAME}
-      # env vars useful for our sql scripts
-      - SUPER_USER=${SUPER_USER}
-      - SUPER_USER_PASSWORD=${SUPER_USER_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - DB_USER=${DB_USER}
-      - DB_PASS=${DB_PASS}
-      - DB_ANON_ROLE=${DB_ANON_ROLE}
-      - DEVELOPMENT=${DEVELOPMENT}
-      - JWT_SECRET=${JWT_SECRET}
-
       # Used by the hydra init script below (not by db/src scripts).
       - HYDRA_DB_USER=${HYDRA_DB_USER:-hydra}
       - HYDRA_DB_PASS=${HYDRA_DB_PASS:-hydra-dev-password}
 
     volumes:
-      - "./db/src:/docker-entrypoint-initdb.d"
       # Create the dedicated hydra database/role on first boot so a
       # Postgres-backed Hydra (CI/test profile; concurrency-sensitive
       # tests) can run against the dev database container. The zzz-
-      # prefix makes the entrypoint run it after db/src/init.sql. This
+      # prefix makes the entrypoint run it during first boot. This
       # deliberately lives outside db/src (see issue #270).
       - "./hydra/sql/create-hydra-db.sh:/docker-entrypoint-initdb.d/zzz-create-hydra-db.sh:ro"
 

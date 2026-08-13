@@ -47,9 +47,16 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-compose up -d --build --force-recreate db postgrest authapp elmclient caddy
+compose up -d --build --force-recreate db
 # shellcheck disable=SC2016
 compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done'
+
+PGHOST=127.0.0.1 \
+PGPORT=$DB_PORT \
+YELUKEREST_TEST_MIGRATOR_DATABASE_URL=${YELUKEREST_TEST_MIGRATOR_DATABASE_URL:?YELUKEREST_TEST_MIGRATOR_DATABASE_URL is required} \
+    ./bin/bootstrap-db.sh test-migrator
+
+compose up -d --build postgrest authapp elmclient caddy
 
 retries=30
 while [ "$retries" -gt 0 ]; do

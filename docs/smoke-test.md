@@ -85,5 +85,5 @@ The command verifies:
 ## Scope
 
 Use `./bin/smoke.sh` to answer whether a running stack is basically wired
-through the public proxy. Use pgTAP and REST tests for database invariants,
+through the public proxy. Use Zapadka and REST tests for database invariants,
 row-level security, and API behavior. Use Elm tests for frontend pure logic.

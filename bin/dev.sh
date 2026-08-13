@@ -1,3 +1,5 @@
 #!/bin/sh
 set -o xtrace
-docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml "$@"
+
+# Provisioning and migrations are a separate bootstrap step.
+exec docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml "$@"

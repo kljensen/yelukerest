@@ -2,10 +2,9 @@
 -- api.issue_user_jwt_for_mcp, the data.mcp_jwt_mint_event append-only
 -- audit table, the faculty-only api.mcp_jwt_mint_events view, and the
 -- api.mcp_jwt_mint_anomalies mint-rate report.
-begin;
 select * from no_plan();
 
-create or replace function verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean)
+create or replace function zapadka_test.verify_jwt(jwt text) RETURNS TABLE(header json, payload json, valid boolean)
 stable
 security definer
 language sql
@@ -146,7 +145,7 @@ SELECT throws_like(
 set request.jwt.claim.app_name = 'authapp';
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'user_id' FROM api.issue_user_jwt('abc123');
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'user_id' FROM api.issue_user_jwt('abc123');
     $$,
     ARRAY['1'],
     'the authapp should still mint user jwts through the issue_user_jwt RPC'
@@ -178,7 +177,7 @@ SELECT results_eq(
 );
 
 SELECT is(
-    (SELECT (verify_jwt(jwt)).valid FROM minted_jwt),
+    (SELECT (zapadka_test.verify_jwt(jwt)).valid FROM minted_jwt),
     true,
     'the minted MCP JWT should be signed with the configured secret'
 );
@@ -186,16 +185,16 @@ SELECT is(
 SELECT results_eq(
     $$
         SELECT
-            payload->>'iss',
+            payload->>'iss' AS issuer,
             -- Array audience: mcpapp accepts the token AND can forward it
             -- to PostgREST, which requires its own audience.
-            (payload->'aud')::jsonb::text,
-            payload->>'sub',
-            payload->>'user_id',
-            payload->>'role',
-            payload->>'netid',
-            payload->>'scopes'
-        FROM (SELECT (verify_jwt(jwt)).payload::json AS payload FROM minted_jwt) t
+            (payload->'aud')::jsonb::text AS audience,
+            payload->>'sub' AS subject,
+            payload->>'user_id' AS user_id,
+            payload->>'role' AS role,
+            payload->>'netid' AS netid,
+            payload->>'scopes' AS scopes
+        FROM (SELECT (zapadka_test.verify_jwt(jwt)).payload::json AS payload FROM minted_jwt) t
     $$,
     $$
         VALUES (
@@ -215,7 +214,7 @@ SELECT isnt_empty(
     $$
         SELECT 1
         FROM minted_jwt
-        CROSS JOIN LATERAL verify_jwt(jwt) verified
+        CROSS JOIN LATERAL zapadka_test.verify_jwt(jwt) verified
         WHERE (verified.payload::json->>'iat')::integer <= extract(epoch from now())::integer
         AND (verified.payload::json->>'nbf')::integer <= extract(epoch from now())::integer
         AND (verified.payload::json->>'exp')::integer > extract(epoch from now())::integer
@@ -228,7 +227,7 @@ SELECT isnt_empty(
     $$
         SELECT 1
         FROM minted_jwt
-        CROSS JOIN LATERAL verify_jwt(jwt) verified
+        CROSS JOIN LATERAL zapadka_test.verify_jwt(jwt) verified
         WHERE (verified.payload::json->>'jti') ~ '^[0-9a-f-]{36}$'
     $$,
     'minted MCP JWTs should include a token id'
@@ -250,7 +249,7 @@ SELECT throws_like(
 -- Faculty are mintable by default (needed for the pilot).
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'role' FROM api.issue_user_jwt_for_mcp('klj39', ARRAY['course:read'])
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'role' FROM api.issue_user_jwt_for_mcp('klj39', ARRAY['course:read'])
     $$,
     ARRAY['faculty'],
     'faculty should be mintable with the default allowlist'
@@ -323,7 +322,7 @@ SELECT throws_like(
 
 SELECT set_eq(
     $$
-        SELECT (verify_jwt(jwt)).payload::json->>'user_id' FROM api.issue_user_jwt_for_mcp('bde456', ARRAY['course:read'])
+        SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'user_id' FROM api.issue_user_jwt_for_mcp('bde456', ARRAY['course:read'])
     $$,
     ARRAY['2'],
     'students should still be mintable after the allowlist is tightened'
@@ -359,7 +358,7 @@ SELECT results_eq(
 
 SELECT set_eq(
     $$ SELECT jti FROM data.mcp_jwt_mint_event WHERE netid = 'abc123' $$,
-    $$ SELECT (verify_jwt(jwt)).payload::json->>'jti' FROM minted_jwt $$,
+    $$ SELECT (zapadka_test.verify_jwt(jwt)).payload::json->>'jti' FROM minted_jwt $$,
     'the audit row jti should match the jti of the minted JWT'
 );
 
@@ -531,4 +530,3 @@ SELECT is(
 );
 
 select * from finish();
-rollback;

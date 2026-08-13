@@ -1,4 +1,3 @@
-begin;
 select plan(7);
 
 SELECT view_owner_is(
@@ -57,4 +56,3 @@ SELECT set_eq(
 
 
 select * from finish();
-rollback;

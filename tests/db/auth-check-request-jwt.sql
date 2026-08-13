@@ -1,4 +1,3 @@
-begin;
 select plan(9);
 
 set local role student;
@@ -72,4 +71,3 @@ SELECT lives_ok(
 );
 
 select * from finish();
-rollback;

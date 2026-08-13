@@ -1,5 +1,4 @@
 
-BEGIN;
 
 -- Plan the tests.
 SELECT plan(39);
@@ -90,7 +89,7 @@ SELECT lives_ok(
 
 SELECT throws_like(
     $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('bad-type', 'Bad Type', '', 'Invalid', '2018-03-25T14:00:00Z', '1 hour', 'field-trip', false) $$,
-    '%invalid input value for enum data.meeting_type_enum%',
+    '%invalid input value for enum meeting_type_enum%',
     'meetings should reject unknown meeting types'
 );
 
@@ -361,4 +360,3 @@ SELECT results_eq(
 
 -- Finish the tests and clean up.
 SELECT * FROM finish();
-ROLLBACK;

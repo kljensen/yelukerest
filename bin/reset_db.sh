@@ -2,9 +2,11 @@
 # Connect to PG
 
 # Source environment variables
-set -a
-. ./.env
-set +a
+if [ -f "${ENV_FILE:-.env}" ]; then
+    set -a
+    . "${ENV_FILE:-.env}"
+    set +a
+fi
 
 RESET_FILE="sample_data/reset.sql"
 DB_TEST_HOST="${DB_TEST_HOST:-localhost}"
@@ -21,6 +23,5 @@ else
     # Connect through psql in the docker container
     PGPASSWORD=$SUPER_USER_PASSWORD \
         docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml exec -T db \
-        psql -U $SUPER_USER  $DB_NAME \
-        -f "/docker-entrypoint-initdb.d/$RESET_FILE"
+        psql -U "$SUPER_USER" "$DB_NAME" < "./db/src/$RESET_FILE"
 fi
