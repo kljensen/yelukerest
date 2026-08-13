@@ -32,6 +32,21 @@ for file in CLAUDE.md tests/db/README.md bin/migrate.sh bin/new-table.sh; do
   assert_not_contains "$file" pg_prove
 done
 
+legacy_paths=$(git ls-files | grep -Ei '(^db/migrations/|sqitch|pgtap|pg_prove)' || true)
+if [ -n "$legacy_paths" ]; then
+  echo "unexpected legacy files:" >&2
+  echo "$legacy_paths" >&2
+  exit 1
+fi
+
+legacy_references=$(git grep -inE 'sqitch|pg_tap|pgtap|pg_prove' -- \
+  ':!tests/scripts/zapadka-workflow.sh' || true)
+if [ -n "$legacy_references" ]; then
+  echo "unexpected legacy references:" >&2
+  echo "$legacy_references" >&2
+  exit 1
+fi
+
 fake_zapadka=$(mktemp)
 trap 'rm -f "$fake_zapadka" "$fake_zapadka.args"' EXIT
 cat >"$fake_zapadka" <<'EOF'

@@ -349,8 +349,8 @@ against this year's.
 
 1. Revoke every grant: `DELETE /admin/oauth2/auth/sessions/consent?subject=<netid>`
    per subject, or drop Hydra's database entirely if the deployment is new each
-   semester (the usual case — see the migrations note in
-   `bin/create-initial-migrations.sh`).
+   semester (the usual case — deploy the immutable Zapadka bootstrap to the
+   new database).
 2. Rotate `JWT_SECRET`. This is the backstop that does not depend on
    enumerating anyone: every previously minted internal credential fails
    signature verification immediately, whatever Hydra thinks.

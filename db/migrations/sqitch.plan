@@ -1,7 +1,0 @@
-%syntax-version=1.0.0
-%project=yelukerest
-%uri=https://github.com/kljensen/yelukerest
-
-roles 2026-07-07T00:30:41Z Kyle Jensen <kljensen@gmail.com> # Add global roles
-ddl [roles] 2026-07-07T00:30:41Z Kyle Jensen <kljensen@gmail.com> # Add initial ddl
-data [ddl] 2026-07-07T00:30:42Z Kyle Jensen <kljensen@gmail.com> # Add initial data
