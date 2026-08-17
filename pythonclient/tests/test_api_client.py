@@ -43,6 +43,124 @@ class FakeSession:
         return FakeResponse(kwargs["json"])
 
 
+class RoutingSession:
+    """Answers GETs from a `rest` path to payload map, recording what was sent."""
+
+    def __init__(self, payloads):
+        self.payloads = payloads
+        self.calls = []
+
+    def request(self, method, url, **kwargs):
+        path = url.rsplit("/rest/", 1)[-1]
+        self.calls.append((path, kwargs.get("params") or {}))
+        return FakeResponse(self.payloads[path])
+
+    def params_for(self, path):
+        return [params for called, params in self.calls if called == path]
+
+
+STUDENT = {
+    "id": 10,
+    "netid": "aaa11",
+    "name": "Ann Aardvark",
+    "email": "ann@example.test",
+    "nickname": "brave-otter",
+    "role": "student",
+}
+TEAMMATE = {
+    "id": 11,
+    "netid": "bbb22",
+    "name": "Bob Bison",
+    "email": "bob@example.test",
+    "nickname": "calm-heron",
+    "role": "student",
+}
+LATE_JOINER = {
+    "id": 12,
+    "netid": "ccc33",
+    "name": "Cy Crane",
+    "email": "cy@example.test",
+    "nickname": "eager-lynx",
+    "role": "student",
+}
+PROFESSOR = {
+    "id": 99,
+    "netid": "ppp99",
+    "name": "Pat Professor",
+    "email": "pat@example.test",
+    "nickname": "wise-elk",
+    "role": "faculty",
+}
+
+
+def submission_payloads():
+    """A course with one individual assignment, one team assignment, one draft."""
+    return {
+        "assignments": [
+            {"slug": "repo", "is_draft": False, "closed_at": "2026-01-01T00:00:00Z"},
+            {
+                "slug": "team-project",
+                "is_draft": False,
+                "closed_at": "2026-02-01T00:00:00Z",
+            },
+        ],
+        "assignment_submissions": [
+            {
+                "id": 1,
+                "assignment_slug": "repo",
+                "is_team": False,
+                "user_id": 10,
+                "team_nickname": None,
+                "submitter_user_id": 10,
+            },
+            {
+                "id": 2,
+                "assignment_slug": "repo",
+                "is_team": False,
+                "user_id": 99,
+                "team_nickname": None,
+                "submitter_user_id": 99,
+            },
+            {
+                "id": 3,
+                "assignment_slug": "team-project",
+                "is_team": True,
+                "user_id": None,
+                "team_nickname": "blue-team",
+                "submitter_user_id": 11,
+            },
+        ],
+        # Both TEAMMATE and LATE_JOINER are on blue-team right now.
+        "users": [STUDENT, TEAMMATE, LATE_JOINER, PROFESSOR],
+        "assignment_field_submissions": [
+            {
+                "assignment_submission_id": 1,
+                "assignment_field_slug": "url",
+                "body": "https://example.test/ann",
+                "updated_at": "2026-01-01T00:00:00Z",
+            },
+            {
+                "assignment_submission_id": 2,
+                "assignment_field_slug": "url",
+                "body": "https://example.test/pat",
+                "updated_at": "2026-01-01T00:00:00Z",
+            },
+            {
+                "assignment_submission_id": 3,
+                "assignment_field_slug": "url",
+                "body": "https://example.test/blue",
+                "updated_at": "2026-02-01T00:00:00Z",
+            },
+            {
+                "assignment_submission_id": 3,
+                "assignment_field_slug": "notes",
+                "body": "Deployed on Friday",
+                "updated_at": "2026-02-01T00:00:00Z",
+            },
+        ],
+    }
+
+
 class ApiClientTest(unittest.TestCase):
     def test_rpc_url_joins_base_url_and_function_name(self):
         self.assertEqual(
@@ -335,6 +453,229 @@ fields:
         self.assertEqual(loaded["fields"][0]["assignment_slug"], "123")
         self.assertIs(loaded["fields"][0]["is_url"], True)
         self.assertEqual(loaded["fields"][0]["display_order"], 0)
+
+
+class ReadOperationTest(unittest.TestCase):
+    def _run(self, command, args, payloads):
+        session = RoutingSession(payloads)
+        result = CliRunner().invoke(
+            command,
+            args,
+            obj={
+                "base_url": "https://example.test",
+                "jwt": "faculty-token",
+                "session": session,
+                "timeout": 30,
+                "verify_tls": True,
+            },
+        )
+        return result, session
+
+    def test_roster_asks_for_students_ordered_by_netid(self):
+        result, session = self._run(
+            api_client.roster, [], {"users": [STUDENT, TEAMMATE]}
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        params = session.params_for("users")[0]
+        self.assertEqual(params["role"], "eq.student")
+        self.assertEqual(params["order"], "netid.asc")
+        self.assertIn("team_nickname", params["select"])
+        self.assertEqual(len(json.loads(result.output)), 2)
+
+    def test_roster_all_roles_sends_no_role_filter(self):
+        _, session = self._run(
+            api_client.roster, ["--role", "all"], {"users": [STUDENT, PROFESSOR]}
+        )
+
+        self.assertNotIn("role", session.params_for("users")[0])
+
+    def test_roster_csv_has_a_header_and_empty_cells_for_nulls(self):
+        result, _ = self._run(
+            api_client.roster,
+            ["--format", "csv"],
+            {"users": [dict(STUDENT, team_nickname=None)]},
+        )
+
+        lines = result.output.strip().splitlines()
+        self.assertEqual(lines[0].split(",")[:2], ["id", "netid"])
+        self.assertIn(",,", lines[1], "a null team must be an empty cell")
+
+    def test_find_user_matches_exactly_one_named_field(self):
+        result, session = self._run(
+            api_client.find_user, ["netid", "aaa11"], {"users": [STUDENT]}
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        params = session.params_for("users")[0]
+        self.assertEqual(params["netid"], "eq.aaa11")
+        self.assertNotIn("or", params, "exact lookup must not fan out across fields")
+        self.assertNotIn("email", params)
+        self.assertEqual(json.loads(result.output)["netid"], "aaa11")
+
+    def test_find_user_lowercases_the_value_because_the_database_does(self):
+        _, session = self._run(
+            api_client.find_user, ["email", "  Ann@Example.Test "], {"users": [STUDENT]}
+        )
+
+        self.assertEqual(
+            session.params_for("users")[0]["email"], "eq.ann@example.test"
+        )
+
+    def test_find_user_errors_when_nothing_matches(self):
+        result, _ = self._run(api_client.find_user, ["netid", "zzz99"], {"users": []})
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("No user has netid 'zzz99'", result.output)
+
+    def test_find_user_errors_when_more_than_one_matches(self):
+        result, _ = self._run(
+            api_client.find_user,
+            ["nickname", "brave-otter"],
+            {"users": [STUDENT, TEAMMATE]},
+        )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("2 users have nickname 'brave-otter'", result.output)
+        self.assertIn("aaa11, bbb22", result.output)
+        self.assertIn("will not guess", result.output)
+
+    def test_find_user_refuses_a_field_that_does_not_identify_one_person(self):
+        result, _ = self._run(api_client.find_user, ["name", "Ann"], {"users": []})
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("'name' is not one of", result.output)
+
+    def test_search_users_matches_a_substring_across_five_columns(self):
+        result, session = self._run(
+            api_client.search_users,
+            ["aard", "--role", "all"],
+            {"users": [STUDENT]},
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        or_filter = session.params_for("users")[0]["or"]
+        for column in ("name", "email", "netid", "nickname", "team_nickname"):
+            self.assertIn(f'{column}.ilike."*aard*"', or_filter)
+        self.assertTrue(or_filter.startswith("(") and or_filter.endswith(")"))
+
+    def test_search_users_quotes_terms_containing_postgrest_syntax(self):
+        _, session = self._run(
+            api_client.search_users, ["a,b)c"], {"users": []}
+        )
+
+        self.assertIn('name.ilike."*a,b)c*"', session.params_for("users")[0]["or"])
+
+    def test_search_users_refuses_an_empty_term(self):
+        result, session = self._run(api_client.search_users, ["  "], {"users": []})
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("TERM is empty", result.output)
+        self.assertEqual(session.calls, [], "must not fetch every user by accident")
+
+    def test_export_counts_a_team_submission_once_not_once_per_member(self):
+        result, _ = self._run(
+            api_client.export_submissions, [], submission_payloads()
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        rows = json.loads(result.output)
+        team_rows = [row for row in rows if row["team_nickname"] == "blue-team"]
+        self.assertEqual(
+            len(team_rows),
+            2,
+            "one row per submitted field, not per field per team member",
+        )
+        self.assertEqual({row["field_slug"] for row in team_rows}, {"url", "notes"})
+        for row in team_rows:
+            self.assertIsNone(row["netid"], "a team submission has no single owner")
+            self.assertEqual(row["submitter_netid"], "bbb22")
+
+    def test_export_omits_non_student_individual_submissions_by_default(self):
+        result, _ = self._run(
+            api_client.export_submissions, [], submission_payloads()
+        )
+
+        netids = {row["netid"] for row in json.loads(result.output)}
+        self.assertIn("aaa11", netids)
+        self.assertNotIn("ppp99", netids)
+
+    def test_export_includes_non_students_on_request(self):
+        result, _ = self._run(
+            api_client.export_submissions,
+            ["--include-non-students"],
+            submission_payloads(),
+        )
+
+        netids = {row["netid"] for row in json.loads(result.output)}
+        self.assertIn("ppp99", netids)
+
+    def test_export_produces_no_row_for_an_assignment_nobody_submitted(self):
+        payloads = submission_payloads()
+        payloads["assignments"].append(
+            {"slug": "unsubmitted", "is_draft": False, "closed_at": "2026-03-01T00:00:00Z"}
+        )
+
+        result, _ = self._run(api_client.export_submissions, [], payloads)
+
+        slugs = {row["assignment_slug"] for row in json.loads(result.output)}
+        self.assertNotIn(
+            "unsubmitted",
+            slugs,
+            "the export answers what was submitted, not who is missing",
+        )
+
+    def test_export_excludes_draft_assignments_unless_asked(self):
+        _, session = self._run(
+            api_client.export_submissions, [], submission_payloads()
+        )
+        self.assertEqual(session.params_for("assignments")[0]["is_draft"], "eq.false")
+
+        _, with_drafts = self._run(
+            api_client.export_submissions, ["--include-drafts"], submission_payloads()
+        )
+        self.assertNotIn("is_draft", with_drafts.params_for("assignments")[0])
+
+    def test_export_limits_to_named_assignments(self):
+        result, session = self._run(
+            api_client.export_submissions,
+            ["--assignment", "repo"],
+            {**submission_payloads(), "assignments": [
+                {"slug": "repo", "is_draft": False, "closed_at": "2026-01-01T00:00:00Z"}
+            ]},
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            session.params_for("assignments")[0]["slug"], 'in.("repo")'
+        )
+        self.assertEqual(
+            {row["assignment_slug"] for row in json.loads(result.output)}, {"repo"}
+        )
+
+    def test_export_errors_on_an_unknown_assignment_slug(self):
+        result, _ = self._run(
+            api_client.export_submissions,
+            ["--assignment", "nope"],
+            {**submission_payloads(), "assignments": []},
+        )
+
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Unknown assignment slug(s): nope", result.output)
+        self.assertIn("--include-drafts", result.output)
+
+    def test_export_orders_rows_by_assignment_close_date(self):
+        result, _ = self._run(
+            api_client.export_submissions, [], submission_payloads()
+        )
+
+        slugs = [row["assignment_slug"] for row in json.loads(result.output)]
+        self.assertEqual(slugs, ["repo", "team-project", "team-project"])
+
+    def test_in_filter_quotes_values_so_slugs_stay_literal(self):
+        self.assertEqual(
+            api_client.in_filter(["a-b", "c,d"]), 'in.("a-b","c,d")'
+        )
 
 
 if __name__ == "__main__":

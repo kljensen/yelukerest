@@ -6,8 +6,10 @@ This client talks to the PostgREST `api` schema. Keep direct database ETL in
 `db_client.py` until each workflow has a supported API replacement.
 """
 
+import csv
 import datetime
 import json
+import sys
 from urllib.parse import urljoin
 
 import click
@@ -52,6 +54,42 @@ ASSIGNMENT_FIELD_KEYS = (
     "display_order",
     "pattern",
     "example",
+)
+
+
+USER_COLUMNS = (
+    "id",
+    "netid",
+    "name",
+    "lastname",
+    "known_as",
+    "nickname",
+    "email",
+    "team_nickname",
+    "role",
+)
+
+# `netid`, `email`, and `nickname` are `UNIQUE NOT NULL` on `data.user`, so each
+# one identifies at most one person. `name` and `team_nickname` do not, which is
+# exactly why they are searchable but not resolvable.
+USER_LOOKUP_FIELDS = ("netid", "email", "nickname")
+USER_SEARCH_FIELDS = ("name", "email", "netid", "nickname", "team_nickname")
+
+USER_ROLES = ("student", "faculty", "ta", "observer")
+
+SUBMISSION_COLUMNS = (
+    "assignment_slug",
+    "is_team",
+    "submission_id",
+    "team_nickname",
+    "netid",
+    "name",
+    "email",
+    "nickname",
+    "submitter_netid",
+    "field_slug",
+    "body",
+    "submitted_at",
 )
 
 
@@ -238,6 +276,67 @@ def write_rest(config, path, rows, prefer=None, params=None):
     return response.json()
 
 
+def quote_filter_value(value):
+    """Double-quote a value for a PostgREST filter list.
+
+    Commas, parentheses, and dots are syntax inside `in.(…)` and `or=(…)`, so
+    every value goes in quotes rather than being pasted in raw.
+    """
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def in_filter(values):
+    """Build a PostgREST `in.(…)` filter over a non-empty collection."""
+    return "in.({})".format(",".join(quote_filter_value(value) for value in values))
+
+
+def substring_match_filter(term, columns):
+    """Build a PostgREST `or=(…)` filter matching `term` anywhere in any column."""
+    clauses = ",".join(
+        f"{column}.ilike.{quote_filter_value(f'*{term}*')}" for column in columns
+    )
+    return f"({clauses})"
+
+
+def csv_value(value):
+    """Render a JSON scalar for a CSV cell."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return value
+
+
+def emit_rows(rows, columns, output_format):
+    """Print result rows as indented JSON or as CSV with a header row."""
+    if output_format == "csv":
+        writer = csv.DictWriter(sys.stdout, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: csv_value(row.get(key)) for key in columns})
+        return
+    click.echo(json.dumps(rows, indent=2, sort_keys=True))
+
+
+format_option = click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "csv"]),
+    default="json",
+    show_default=True,
+    help="Output format.",
+)
+
+role_option = click.option(
+    "--role",
+    type=click.Choice(USER_ROLES + ("all",)),
+    default="student",
+    show_default=True,
+    help="Limit to users with this role.",
+)
+
+
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--base-url",
@@ -342,6 +441,225 @@ def sync_assignments(ctx, class_number, infiles, delete_missing, dry_run):
         },
     )
     click.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
+@api.command("roster")
+@role_option
+@format_option
+@click.pass_context
+def roster(ctx, role, output_format):
+    """List course users, students by default, ordered by netid."""
+    params = {"select": ",".join(USER_COLUMNS), "order": "netid.asc"}
+    if role != "all":
+        params["role"] = f"eq.{role}"
+    emit_rows(get_rest(ctx.obj, "users", params=params), USER_COLUMNS, output_format)
+
+
+@api.command("find-user")
+@click.argument("field", type=click.Choice(USER_LOOKUP_FIELDS))
+@click.argument("value")
+@format_option
+@click.pass_context
+def find_user(ctx, field, value, output_format):
+    """Resolve exactly one user by an exact match on one named field.
+
+    The caller names the field on purpose. The clause this replaces matched
+    `email` OR `netid` OR `nickname` at once, so a value that happened to look
+    like someone else's netid silently resolved to the wrong person.
+    """
+    # `clean_user_fields()` lowercases all three of these columns on write, so a
+    # caller pasting a mixed-case netid must still match.
+    wanted = value.strip().lower()
+    matches = get_rest(
+        ctx.obj,
+        "users",
+        params={"select": ",".join(USER_COLUMNS), field: f"eq.{wanted}"},
+    )
+
+    if not matches:
+        raise click.ClickException(f"No user has {field} '{wanted}'.")
+    if len(matches) > 1:
+        netids = ", ".join(sorted(str(match.get("netid")) for match in matches))
+        raise click.ClickException(
+            f"{len(matches)} users have {field} '{wanted}': {netids}. "
+            "This command resolves exactly one user and will not guess."
+        )
+
+    if output_format == "csv":
+        emit_rows(matches, USER_COLUMNS, output_format)
+        return
+    click.echo(json.dumps(matches[0], indent=2, sort_keys=True))
+
+
+@api.command("search-users")
+@click.argument("term")
+@role_option
+@format_option
+@click.pass_context
+def search_users(ctx, term, role, output_format):
+    """Find users whose name, email, netid, nickname, or team contains TERM."""
+    needle = term.strip()
+    if not needle:
+        raise click.ClickException("TERM is empty; use `roster --role all` to list everyone.")
+    params = {
+        "select": ",".join(USER_COLUMNS),
+        "or": substring_match_filter(needle, USER_SEARCH_FIELDS),
+        "order": "netid.asc",
+    }
+    if role != "all":
+        params["role"] = f"eq.{role}"
+    emit_rows(get_rest(ctx.obj, "users", params=params), USER_COLUMNS, output_format)
+
+
+def fetch_exported_assignments(config, assignment_slugs, include_drafts):
+    """Read the assignments an export covers, refusing slugs that do not exist."""
+    params = {"select": "slug,is_draft,closed_at", "order": "closed_at.asc,slug.asc"}
+    if not include_drafts:
+        params["is_draft"] = "eq.false"
+    if assignment_slugs:
+        params["slug"] = in_filter(assignment_slugs)
+
+    assignments = get_rest(config, "assignments", params=params)
+
+    missing = sorted(set(assignment_slugs) - {row["slug"] for row in assignments})
+    if missing:
+        hint = "" if include_drafts else " Draft assignments need --include-drafts."
+        raise click.ClickException(
+            f"Unknown assignment slug(s): {', '.join(missing)}.{hint}"
+        )
+    return assignments
+
+
+def submission_export_row(submission, field_submission, users_by_id):
+    """Flatten one submitted field into an export row."""
+    owner = users_by_id.get(submission.get("user_id")) or {}
+    submitter = users_by_id.get(submission.get("submitter_user_id")) or {}
+    return {
+        "assignment_slug": submission["assignment_slug"],
+        "is_team": submission["is_team"],
+        "submission_id": submission["id"],
+        "team_nickname": submission.get("team_nickname"),
+        "netid": owner.get("netid"),
+        "name": owner.get("name"),
+        "email": owner.get("email"),
+        "nickname": owner.get("nickname"),
+        "submitter_netid": submitter.get("netid"),
+        "field_slug": field_submission["assignment_field_slug"],
+        "body": field_submission["body"],
+        "submitted_at": field_submission["updated_at"],
+    }
+
+
+def collect_submission_rows(config, assignment_slugs, include_drafts, include_non_students):
+    """Join assignments, submissions, submitted fields, and users into export rows."""
+    assignments = fetch_exported_assignments(config, assignment_slugs, include_drafts)
+    if not assignments:
+        return []
+    assignment_order = {row["slug"]: index for index, row in enumerate(assignments)}
+
+    submissions = get_rest(
+        config,
+        "assignment_submissions",
+        params={
+            "select": "id,assignment_slug,is_team,user_id,team_nickname,submitter_user_id",
+            "assignment_slug": in_filter(list(assignment_order)),
+        },
+    )
+    if not submissions:
+        return []
+
+    users_by_id = {
+        user["id"]: user
+        for user in get_rest(
+            config,
+            "users",
+            params={"select": "id,netid,name,email,nickname,role"},
+        )
+    }
+
+    def is_exported(submission):
+        if submission["assignment_slug"] not in assignment_order:
+            return False
+        if submission["is_team"] or include_non_students:
+            return True
+        owner = users_by_id.get(submission.get("user_id")) or {}
+        return owner.get("role") == "student"
+
+    exported = {
+        submission["id"]: submission
+        for submission in submissions
+        if is_exported(submission)
+    }
+    if not exported:
+        return []
+
+    field_submissions = get_rest(
+        config,
+        "assignment_field_submissions",
+        params={
+            "select": "assignment_submission_id,assignment_field_slug,body,updated_at",
+            "assignment_submission_id": in_filter(list(exported)),
+        },
+    )
+
+    rows = [
+        submission_export_row(
+            exported[field_submission["assignment_submission_id"]],
+            field_submission,
+            users_by_id,
+        )
+        for field_submission in field_submissions
+        if field_submission["assignment_submission_id"] in exported
+    ]
+    rows.sort(
+        key=lambda row: (
+            assignment_order[row["assignment_slug"]],
+            row["team_nickname"] or row["netid"] or "",
+            row["submission_id"],
+            row["field_slug"],
+        )
+    )
+    return rows
+
+
+@api.command("export-submissions")
+@click.option(
+    "--assignment",
+    "assignment_slugs",
+    multiple=True,
+    help="Limit to this assignment slug. Repeatable.",
+)
+@click.option(
+    "--include-drafts",
+    is_flag=True,
+    help="Also export submissions to draft assignments.",
+)
+@click.option(
+    "--include-non-students",
+    is_flag=True,
+    help="Also export individual submissions owned by non-students.",
+)
+@format_option
+@click.pass_context
+def export_submissions(
+    ctx, assignment_slugs, include_drafts, include_non_students, output_format
+):
+    """Export submitted assignment answers, one row per submitted field.
+
+    The export is submission-centric: a team submission is one act by one team
+    and appears once, carrying its `team_nickname` and the netid of whoever
+    submitted it. It is deliberately not fanned out to team members, because the
+    only membership this API can see is each user's *current* `team_nickname`,
+    which is wrong for anyone who changed teams after submitting.
+
+    Assignments with no submission produce no rows. "Who has not submitted" is a
+    different question; answer it against `roster`, so that a blank cell here
+    always means an unanswered field rather than a missing person.
+    """
+    rows = collect_submission_rows(
+        ctx.obj, assignment_slugs, include_drafts, include_non_students
+    )
+    emit_rows(rows, SUBMISSION_COLUMNS, output_format)
 
 
 if __name__ == "__main__":
