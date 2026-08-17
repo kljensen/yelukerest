@@ -353,8 +353,10 @@ BEGIN
     END IF;
 
     -- Planned counts. These are what a dry run reports, and on a real run
-    -- unchanged_count is taken from here -- the write returns no row for a
-    -- secret it decided not to restamp, so there is nothing to count there.
+    -- unchanged_count is *predicted* here and recomputed after the write, never
+    -- carried across it. The write returns no row for a secret it declined to
+    -- restamp, so a retained prediction would be a claim about a moment that has
+    -- already passed by the time it is reported -- see the derivation below.
     SELECT
         count(*) FILTER (WHERE prior_secret.id IS NULL)::integer,
         count(*) FILTER (
@@ -472,11 +474,27 @@ BEGIN
                       HINT = 'This is a gap in the payload pre-checks; the offending row is identified by its netid and slug in the payload you sent.';
     END;
 
-    IF inserted_count + updated_count + unchanged_count <> input_count THEN
-        RAISE EXCEPTION 'upsert_user_secrets wrote % of % secrets',
-            inserted_count + updated_count + unchanged_count, input_count
+    -- Every payload row has to end up somewhere, and a row the write did not
+    -- return is a row it left alone. Deriving unchanged_count here rather than
+    -- keeping the prediction made before the write is what makes two callers
+    -- issuing the same new secret at once both succeed: both plan it as an
+    -- insert, the first commits, and the second's DO UPDATE takes its WHERE
+    -- false branch and returns nothing. Its real answer is "unchanged", which
+    -- only the write knows; a retained prediction of zero would have made the
+    -- sum come to nothing and aborted an idempotent request.
+    --
+    -- The invariant that survives is an upper bound, and it is the one worth
+    -- keeping: the write must not have touched more rows than the payload
+    -- named. That is what a mis-inferred arbiter or a resolution join fanning
+    -- out would break, and neither is caught by an equality that derives one of
+    -- its own terms.
+    IF inserted_count + updated_count > input_count THEN
+        RAISE EXCEPTION 'upsert_user_secrets wrote % rows for % secrets',
+            inserted_count + updated_count, input_count
             USING ERRCODE = 'XX000';
     END IF;
+
+    unchanged_count := input_count - inserted_count - updated_count;
 
     RETURN NEXT;
 END;
@@ -673,11 +691,15 @@ BEGIN
                       HINT = 'This is a gap in the payload pre-checks; the offending row is identified by its team_nickname and slug in the payload you sent.';
     END;
 
-    IF inserted_count + updated_count + unchanged_count <> input_count THEN
-        RAISE EXCEPTION 'upsert_team_secrets wrote % of % secrets',
-            inserted_count + updated_count + unchanged_count, input_count
+    -- Derived after the write, and an upper bound rather than an equality, for
+    -- the reasons set out in api.upsert_user_secrets.
+    IF inserted_count + updated_count > input_count THEN
+        RAISE EXCEPTION 'upsert_team_secrets wrote % rows for % secrets',
+            inserted_count + updated_count, input_count
             USING ERRCODE = 'XX000';
     END IF;
+
+    unchanged_count := input_count - inserted_count - updated_count;
 
     RETURN NEXT;
 END;
@@ -722,3 +744,26 @@ COMMENT ON COLUMN platform_version.schema_compatibility_version IS
     'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
 COMMENT ON COLUMN platform_version.admin_api_version IS
     'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';
+
+-- ---------------------------------------------------------------------------
+-- Tell PostgREST the API changed
+-- ---------------------------------------------------------------------------
+-- PostgREST answers from a schema cache built at startup. Deployed under a
+-- running PostgREST, everything above is live in the database and invisible
+-- through the API: api.platform_version starts reporting admin_api_version 9
+-- the instant this commits, while POST /rest/rpc/upsert_user_secrets returns
+-- 404. A course client preflighting on `>= 9` would pass its own check and then
+-- fail on its first call -- which is the exact failure the version field exists
+-- to prevent, and the same argument docs/platform-compatibility.md makes about
+-- reading schema_compatibility_version with the wrong operator.
+--
+-- NOTIFY is transactional: PostgreSQL queues the payload and delivers it at
+-- commit, so this fires when and only when the migration lands. A rollback
+-- sends nothing, and there is no window in which the cache is refreshed against
+-- a schema that was never committed.
+--
+-- The channel is `pgrst` because db-channel-enabled defaults to true on that
+-- channel and this deployment does not override it -- docker-compose.base.yaml
+-- sets no PGRST_DB_CHANNEL_ENABLED. A deployment that turns the listener off,
+-- or has no PostgREST at all, is unaffected: an unheard NOTIFY costs nothing.
+NOTIFY pgrst, 'reload schema';

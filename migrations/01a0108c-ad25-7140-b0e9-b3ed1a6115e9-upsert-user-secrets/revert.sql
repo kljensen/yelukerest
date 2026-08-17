@@ -44,3 +44,9 @@ COMMENT ON COLUMN platform_version.schema_compatibility_version IS
     'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
 COMMENT ON COLUMN platform_version.admin_api_version IS
     'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';
+
+-- The reverse of the deploy's notification, and needed for the same reason in
+-- the other direction: without it PostgREST keeps two functions in its schema
+-- cache that no longer exist, and answers calls to them with a 500 from the
+-- database rather than the 404 that is now true.
+NOTIFY pgrst, 'reload schema';
