@@ -80,6 +80,24 @@ DROP INDEX IF EXISTS idx_assignment_submission_participant_user_fk;
 CREATE INDEX idx_assignment_submission_participant_user_fk
     ON assignment_submission_participant (user_id);
 
+-- Which team submission a student actually worked on. The participant rows are
+-- an insert-time snapshot, so this answers the question the student's current
+-- team_nickname cannot: a student who changed teams mid-term still belongs to
+-- the submission they took part in.
+--
+-- Deliberately not owned by api and deliberately in the data schema: it is read
+-- by grade tooling that runs as faculty, who can already see every submission,
+-- and PostgREST exposes only the api schema so this is not an endpoint.
+CREATE OR REPLACE VIEW team_submission_participation AS
+    SELECT
+        submission.assignment_slug,
+        participant.user_id,
+        participant.assignment_submission_id
+    FROM assignment_submission_participant AS participant
+    JOIN assignment_submission AS submission
+        ON submission.id = participant.assignment_submission_id
+    WHERE submission.is_team;
+
 CREATE OR REPLACE FUNCTION fill_assignment_submission_defaults()
 RETURNS TRIGGER AS $$
 BEGIN

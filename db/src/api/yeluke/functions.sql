@@ -947,6 +947,66 @@ $$;
 
 REVOKE ALL ON FUNCTION sync_assignments(jsonb, boolean, boolean) FROM PUBLIC;
 
+-- Resolve import rows to the submission each grade belongs on.
+--
+-- This lives in the data schema because PostgREST exposes only the api schema
+-- and this is not an endpoint, but it is defined here because it reads the api
+-- views. It is SECURITY INVOKER on purpose: the caller's own row visibility
+-- applies, and a caller who cannot see a submission cannot grade it.
+CREATE OR REPLACE FUNCTION data.resolve_assignment_grade_import(p_grades jsonb)
+RETURNS TABLE (
+    assignment_slug text,
+    netid text,
+    user_id integer,
+    is_team boolean,
+    team_nickname text,
+    points_possible smallint,
+    points real,
+    has_description boolean,
+    description text,
+    assignment_submission_id integer
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT
+        assignment.slug,
+        student.netid,
+        student.id,
+        assignment.is_team,
+        student.team_nickname,
+        assignment.points_possible,
+        (element.value->>'points')::real,
+        element.value ? 'description',
+        element.value->>'description',
+        CASE
+            WHEN assignment.is_team THEN team_submission.assignment_submission_id
+            ELSE individual_submission.id
+        END
+    FROM jsonb_array_elements(p_grades) AS element(value)
+    JOIN api.assignments assignment
+        ON assignment.slug = btrim(element.value->>'assignment_slug')
+    JOIN api.users student
+        ON student.netid = lower(btrim(element.value->>'netid'))
+    -- An individual submission belongs to exactly one student, so the student
+    -- identifies it.
+    LEFT JOIN api.assignment_submissions individual_submission
+        ON NOT assignment.is_team
+        AND individual_submission.assignment_slug = assignment.slug
+        AND individual_submission.user_id = student.id
+    -- A team submission is found through the insert-time participant snapshot,
+    -- never through the student's current team. Rosters change mid-term, and a
+    -- student who moved teams must still be graded on the work they did rather
+    -- than on their new team's work. data.assignment_submission_participant is
+    -- the only record of which is which.
+    LEFT JOIN data.team_submission_participation team_submission
+        ON assignment.is_team
+        AND team_submission.assignment_slug = assignment.slug
+        AND team_submission.user_id = student.id;
+$$;
+
+REVOKE ALL ON FUNCTION data.resolve_assignment_grade_import(jsonb) FROM PUBLIC;
+
 -- Import final assignment grades keyed on assignment_slug + netid.
 --
 -- The payload carries final, absolute points. This function never derives a
@@ -1109,98 +1169,104 @@ BEGIN
             USING ERRCODE = '23503';
     END IF;
 
-    SELECT string_agg(assignment.slug || '/' || student.netid, ', '
-        ORDER BY assignment.slug || '/' || student.netid) INTO offenders
+    -- A student who moved teams mid-term can hold a participant row in two team
+    -- submissions for one assignment. Which one the grade belongs to is a
+    -- judgement no import can make, so say so rather than pick.
+    SELECT string_agg(grade_key, ', ' ORDER BY grade_key) INTO offenders
     FROM (
-        SELECT
-            btrim(element.value->>'assignment_slug') AS assignment_slug,
-            lower(btrim(element.value->>'netid')) AS netid
+        SELECT assignment.slug || '/' || student.netid AS grade_key
         FROM jsonb_array_elements(p_grades) AS element(value)
-    ) AS input_grade
-    JOIN api.assignments assignment
-        ON assignment.slug = input_grade.assignment_slug
-    JOIN api.users student
-        ON student.netid = input_grade.netid
-    WHERE assignment.is_team
-        AND student.team_nickname IS NULL;
-
-    IF offenders IS NOT NULL THEN
-        RAISE EXCEPTION 'import_assignment_grades cannot reach a team submission for a student with no team: %', offenders
-            USING ERRCODE = '22023';
-    END IF;
-
-    -- A team assignment has one submission per team, so two teammates in one
-    -- payload are two keys pointing at one row. Rejecting that is the same rule
-    -- as the duplicate key above, applied after the netid resolves to a team.
-    SELECT string_agg(team_key || ' (' || netids || ')', ', ' ORDER BY team_key)
-        INTO offenders
-    FROM (
-        SELECT
-            assignment.slug || '/' || student.team_nickname AS team_key,
-            string_agg(student.netid, ' + ' ORDER BY student.netid) AS netids
-        FROM (
-            SELECT
-                btrim(element.value->>'assignment_slug') AS assignment_slug,
-                lower(btrim(element.value->>'netid')) AS netid
-            FROM jsonb_array_elements(p_grades) AS element(value)
-        ) AS input_grade
         JOIN api.assignments assignment
-            ON assignment.slug = input_grade.assignment_slug
+            ON assignment.slug = btrim(element.value->>'assignment_slug')
         JOIN api.users student
-            ON student.netid = input_grade.netid
+            ON student.netid = lower(btrim(element.value->>'netid'))
+        JOIN data.team_submission_participation participation
+            ON participation.assignment_slug = assignment.slug
+            AND participation.user_id = student.id
         WHERE assignment.is_team
         GROUP BY 1
         HAVING count(*) > 1
-    ) AS collapsed_teams;
+    ) AS ambiguous_rows;
 
     IF offenders IS NOT NULL THEN
-        RAISE EXCEPTION 'import_assignment_grades received more than one netid for the same team submission, send one row per team: %', offenders
+        RAISE EXCEPTION 'import_assignment_grades cannot tell which team submission belongs to these students, they took part in more than one: %', offenders
             USING ERRCODE = '23505';
     END IF;
 
-    SELECT string_agg(assignment.slug || '/' || student.netid, ', '
-        ORDER BY assignment.slug || '/' || student.netid) INTO offenders
-    FROM (
-        SELECT
-            btrim(element.value->>'assignment_slug') AS assignment_slug,
-            lower(btrim(element.value->>'netid')) AS netid,
-            (element.value->>'points')::real AS points
-        FROM jsonb_array_elements(p_grades) AS element(value)
-    ) AS input_grade
-    JOIN api.assignments assignment
-        ON assignment.slug = input_grade.assignment_slug
-    JOIN api.users student
-        ON student.netid = input_grade.netid
-    WHERE input_grade.points < 0
-        OR input_grade.points > assignment.points_possible;
+    SELECT string_agg(resolved_grade.assignment_slug || '/' || resolved_grade.netid, ', '
+        ORDER BY resolved_grade.assignment_slug || '/' || resolved_grade.netid) INTO offenders
+    FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+    WHERE resolved_grade.points < 0
+        OR resolved_grade.points > resolved_grade.points_possible;
 
     IF offenders IS NOT NULL THEN
         RAISE EXCEPTION 'import_assignment_grades requires points between 0 and the assignment points_possible, out of range for: %', offenders
             USING ERRCODE = '22023';
     END IF;
 
-    IF NOT p_create_missing_submissions THEN
-        SELECT string_agg(assignment.slug || '/' || student.netid, ', '
-            ORDER BY assignment.slug || '/' || student.netid) INTO offenders
-        FROM (
-            SELECT
-                btrim(element.value->>'assignment_slug') AS assignment_slug,
-                lower(btrim(element.value->>'netid')) AS netid
-            FROM jsonb_array_elements(p_grades) AS element(value)
-        ) AS input_grade
-        JOIN api.assignments assignment
-            ON assignment.slug = input_grade.assignment_slug
-        JOIN api.users student
-            ON student.netid = input_grade.netid
-        WHERE NOT EXISTS (
+    -- A team assignment has one submission per team, so two teammates in one
+    -- payload are two keys pointing at one row. Rejecting that is the same rule
+    -- as the duplicate key above, applied after the netids resolve.
+    SELECT string_agg(submission_key || ' (' || netids || ')', ', ' ORDER BY submission_key)
+        INTO offenders
+    FROM (
+        SELECT
+            resolved_grade.assignment_slug || '#' || resolved_grade.assignment_submission_id AS submission_key,
+            string_agg(resolved_grade.netid, ' + ' ORDER BY resolved_grade.netid) AS netids
+        FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+        WHERE resolved_grade.assignment_submission_id IS NOT NULL
+        GROUP BY 1
+        HAVING count(*) > 1
+    ) AS collapsed_submissions;
+
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'import_assignment_grades received more than one netid for the same submission, send one row per team: %', offenders
+            USING ERRCODE = '23505';
+    END IF;
+
+    -- Everything below concerns rows with no submission yet, where the current
+    -- team_nickname is the only signal there is. That is right for a genuinely
+    -- new submission and wrong for anything else, so the cases where it would
+    -- be wrong are refused here rather than guessed at.
+    SELECT string_agg(resolved_grade.assignment_slug || '/' || resolved_grade.netid, ', '
+        ORDER BY resolved_grade.assignment_slug || '/' || resolved_grade.netid) INTO offenders
+    FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+    WHERE resolved_grade.is_team
+        AND resolved_grade.assignment_submission_id IS NULL
+        AND resolved_grade.team_nickname IS NULL;
+
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'import_assignment_grades cannot create a team submission for a student with no team: %', offenders
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- The student joined their current team after it submitted, so they are not
+    -- in its participant snapshot and a second submission for that team cannot
+    -- exist. Grading them on work they are not recorded as having done is a
+    -- decision for a person.
+    SELECT string_agg(resolved_grade.assignment_slug || '/' || resolved_grade.netid, ', '
+        ORDER BY resolved_grade.assignment_slug || '/' || resolved_grade.netid) INTO offenders
+    FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+    WHERE resolved_grade.is_team
+        AND resolved_grade.assignment_submission_id IS NULL
+        AND resolved_grade.team_nickname IS NOT NULL
+        AND EXISTS (
             SELECT 1
             FROM api.assignment_submissions submission
-            WHERE submission.assignment_slug = assignment.slug
-                AND CASE
-                    WHEN assignment.is_team THEN submission.team_nickname = student.team_nickname
-                    ELSE submission.user_id = student.id
-                END
+            WHERE submission.assignment_slug = resolved_grade.assignment_slug
+                AND submission.team_nickname = resolved_grade.team_nickname
         );
+
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'import_assignment_grades will not grade these students on their current team submission, they did not take part in it: %', offenders
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT p_create_missing_submissions THEN
+        SELECT string_agg(resolved_grade.assignment_slug || '/' || resolved_grade.netid, ', '
+            ORDER BY resolved_grade.assignment_slug || '/' || resolved_grade.netid) INTO offenders
+        FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+        WHERE resolved_grade.assignment_submission_id IS NULL;
 
         IF offenders IS NOT NULL THEN
             RAISE EXCEPTION 'import_assignment_grades found no assignment submission for: %', offenders
@@ -1208,33 +1274,6 @@ BEGIN
         END IF;
     END IF;
 
-    WITH input_grades AS (
-        SELECT
-            btrim(element.value->>'assignment_slug') AS assignment_slug,
-            lower(btrim(element.value->>'netid')) AS netid,
-            (element.value->>'points')::real AS points,
-            element.value ? 'description' AS has_description,
-            element.value->>'description' AS description
-        FROM jsonb_array_elements(p_grades) AS element(value)
-    ),
-    resolved_grades AS (
-        SELECT
-            input_grade.points,
-            input_grade.has_description,
-            input_grade.description,
-            submission.id AS assignment_submission_id
-        FROM input_grades input_grade
-        JOIN api.assignments assignment
-            ON assignment.slug = input_grade.assignment_slug
-        JOIN api.users student
-            ON student.netid = input_grade.netid
-        LEFT JOIN api.assignment_submissions submission
-            ON submission.assignment_slug = assignment.slug
-            AND CASE
-                WHEN assignment.is_team THEN submission.team_nickname = student.team_nickname
-                ELSE submission.user_id = student.id
-            END
-    )
     SELECT
         count(*) FILTER (
             WHERE existing_grade.assignment_submission_id IS NULL
@@ -1263,7 +1302,7 @@ BEGIN
             WHERE resolved_grade.assignment_submission_id IS NULL
         )::integer
     INTO inserted_count, updated_count, unchanged_count, submission_created_count
-    FROM resolved_grades resolved_grade
+    FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
     LEFT JOIN api.assignment_grades existing_grade
         ON existing_grade.assignment_submission_id = resolved_grade.assignment_submission_id;
 
@@ -1289,32 +1328,17 @@ BEGIN
     --
     -- This runs unconditionally: when p_create_missing_submissions is false the
     -- check above has already failed the import, so there is nothing to create.
-    WITH input_grades AS (
+    WITH missing_submissions AS (
         SELECT
-            btrim(element.value->>'assignment_slug') AS assignment_slug,
-            lower(btrim(element.value->>'netid')) AS netid
-        FROM jsonb_array_elements(p_grades) AS element(value)
-    ),
-    missing_submissions AS (
-        SELECT
-            assignment.slug AS assignment_slug,
-            assignment.is_team,
-            student.id AS user_id,
-            student.team_nickname
-        FROM input_grades input_grade
-        JOIN api.assignments assignment
-            ON assignment.slug = input_grade.assignment_slug
-        JOIN api.users student
-            ON student.netid = input_grade.netid
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM api.assignment_submissions submission
-            WHERE submission.assignment_slug = assignment.slug
-                AND CASE
-                    WHEN assignment.is_team THEN submission.team_nickname = student.team_nickname
-                    ELSE submission.user_id = student.id
-                END
-        )
+            resolved_grade.assignment_slug,
+            resolved_grade.is_team,
+            resolved_grade.user_id,
+            -- The only case where the current team is the right team: there is
+            -- no earlier submission to belong to, so this student's team now is
+            -- the team doing the work now.
+            resolved_grade.team_nickname
+        FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+        WHERE resolved_grade.assignment_submission_id IS NULL
     ),
     created_submissions AS (
         INSERT INTO api.assignment_submissions (
@@ -1338,34 +1362,11 @@ BEGIN
     SELECT count(*)::integer INTO submission_created_count
     FROM created_submissions;
 
-    WITH input_grades AS (
-        SELECT
-            btrim(element.value->>'assignment_slug') AS assignment_slug,
-            lower(btrim(element.value->>'netid')) AS netid,
-            (element.value->>'points')::real AS points,
-            element.value ? 'description' AS has_description,
-            element.value->>'description' AS description
-        FROM jsonb_array_elements(p_grades) AS element(value)
-    ),
-    resolved_grades AS (
-        SELECT
-            assignment.slug AS assignment_slug,
-            assignment.points_possible,
-            input_grade.points,
-            input_grade.has_description,
-            input_grade.description,
-            submission.id AS assignment_submission_id
-        FROM input_grades input_grade
-        JOIN api.assignments assignment
-            ON assignment.slug = input_grade.assignment_slug
-        JOIN api.users student
-            ON student.netid = input_grade.netid
-        JOIN api.assignment_submissions submission
-            ON submission.assignment_slug = assignment.slug
-            AND CASE
-                WHEN assignment.is_team THEN submission.team_nickname = student.team_nickname
-                ELSE submission.user_id = student.id
-            END
+    -- Re-resolving after the inserts above is what makes the newly created
+    -- submissions visible, including their freshly snapshotted participants.
+    WITH resolved_grades AS (
+        SELECT *
+        FROM data.resolve_assignment_grade_import(p_grades)
     ),
     updated_grades AS (
         UPDATE api.assignment_grades existing_grade

@@ -1,5 +1,5 @@
 begin;
-select plan(46);
+select plan(55);
 
 SELECT function_privs_are(
     'api', 'import_assignment_grades',
@@ -223,7 +223,7 @@ SELECT throws_like(
             '[{"assignment_slug":"project-update-1","netid":"jlb325","points":1}]'::jsonb
         )
     $$,
-    '%cannot reach a team submission for a student with no team: project-update-1/jlb325%',
+    '%cannot create a team submission for a student with no team: project-update-1/jlb325%',
     'import_assignment_grades should reject a team grade for a student with no team'
 );
 
@@ -234,7 +234,7 @@ SELECT throws_like(
               {"assignment_slug":"project-update-1","netid":"klj39","points":70}]'::jsonb
         )
     $$,
-    '%more than one netid for the same team submission%',
+    '%more than one netid for the same submission%',
     'import_assignment_grades should reject two teammates resolving to one team submission'
 );
 
@@ -254,6 +254,141 @@ SELECT is(
     70::real,
     'a team import should write the grade on the team submission'
 );
+
+--
+-- Roster changes. data.assignment_submission_participant is an insert-time
+-- snapshot precisely so that later team moves do not rewrite history, and the
+-- import has to read it rather than data.user.team_nickname.
+--
+
+SELECT table_privs_are(
+    'data', 'team_submission_participation', 'faculty', ARRAY['SELECT'],
+    'faculty should be able to read the team submission participant snapshot'
+);
+
+SELECT table_privs_are(
+    'data', 'team_submission_participation', 'student', ARRAY[]::text[],
+    'students should not be able to read the team submission participant snapshot'
+);
+
+SELECT function_privs_are(
+    'data', 'resolve_assignment_grade_import', ARRAY['jsonb'],
+    'student', ARRAY[]::text[],
+    'students should not be able to resolve grade import rows'
+);
+
+RESET ROLE;
+UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
+
+SELECT results_eq(
+    $$
+        SELECT inserted_count, updated_count, unchanged_count, submission_created_count
+        FROM api.import_assignment_grades(
+            '[{"assignment_slug":"project-update-1","netid":"abc123","points":66}]'::jsonb
+        )
+    $$,
+    $$ VALUES (0, 1, 0, 0) $$,
+    'a student who changed teams should be graded on the submission they took part in'
+);
+
+SELECT is(
+    (SELECT points FROM api.assignment_grades WHERE assignment_submission_id = 4),
+    66::real,
+    'a roster change should not move the grade off the original team submission'
+);
+
+SELECT is(
+    (SELECT count(*)::int FROM api.assignment_submissions WHERE assignment_slug = 'project-update-1'),
+    1,
+    'a roster change should not conjure a submission for the student new team'
+);
+
+-- The other direction: the student is on a team that submitted without them.
+RESET ROLE;
+INSERT INTO data.assignment_submission (assignment_slug, is_team, team_nickname, submitter_user_id)
+VALUES ('project-update-1', true, 'damp-pond', 2);
+DELETE FROM data.assignment_submission_participant
+WHERE user_id = 1
+AND assignment_submission_id = (
+    SELECT id FROM data.assignment_submission
+    WHERE assignment_slug = 'project-update-1' AND team_nickname = 'damp-pond'
+);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
+
+SELECT results_eq(
+    $$
+        SELECT inserted_count, updated_count, unchanged_count
+        FROM api.import_assignment_grades(
+            '[{"assignment_slug":"project-update-1","netid":"abc123","points":66}]'::jsonb
+        )
+    $$,
+    $$ VALUES (0, 0, 1) $$,
+    'a submission by the student new team should not capture a grade they earned elsewhere'
+);
+
+-- Now the student is a participant in both submissions, which no import can
+-- resolve on its own.
+RESET ROLE;
+INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
+SELECT id, 1
+FROM data.assignment_submission
+WHERE assignment_slug = 'project-update-1' AND team_nickname = 'damp-pond';
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.import_assignment_grades(
+            '[{"assignment_slug":"project-update-1","netid":"abc123","points":66}]'::jsonb
+        )
+    $$,
+    '%took part in more than one: project-update-1/abc123%',
+    'a student who took part in two team submissions should fail the import rather than be guessed at'
+);
+
+-- A student who joined their current team after it submitted has no snapshot
+-- row to grade and no room to create one.
+RESET ROLE;
+DELETE FROM data.assignment_submission_participant WHERE user_id = 1;
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.import_assignment_grades(
+            '[{"assignment_slug":"project-update-1","netid":"abc123","points":66}]'::jsonb
+        )
+    $$,
+    '%they did not take part in it: project-update-1/abc123%',
+    'a student who joined their team after it submitted should fail rather than inherit its grade'
+);
+
+RESET ROLE;
+DELETE FROM data.assignment_grade
+WHERE assignment_submission_id IN (
+    SELECT id FROM data.assignment_submission
+    WHERE assignment_slug = 'project-update-1' AND team_nickname = 'damp-pond'
+);
+DELETE FROM data.assignment_submission
+WHERE assignment_slug = 'project-update-1' AND team_nickname = 'damp-pond';
+UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 1;
+INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
+VALUES (4, 1);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
 
 --
 -- Missing submissions. data.assignment_grade cannot exist without one, so a

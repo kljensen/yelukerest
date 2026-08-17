@@ -119,6 +119,12 @@ using (
 -- and reads to a grader as a blank submission.
 grant select, insert, delete on api.assignment_submissions to student, ta;
 
+-- Faculty read the participant snapshot to find which team submission a student
+-- actually worked on. They can already see every submission, so this adds no
+-- visibility; it only makes the historical roster reachable without the api
+-- role's RLS context.
+grant select on data.team_submission_participation to faculty;
+
 -- faculty have CRUD privileges
 grant select, insert, update, delete on data.assignment_submission_participant to api;
 grant select, insert, update, delete on api.assignment_submissions to faculty;
