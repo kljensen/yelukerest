@@ -24,7 +24,6 @@ type alias Quiz =
     , meeting_slug : String
     , points_possible : Int
     , is_draft : Bool
-    , duration : String
     , open_at : Posix
     , closed_at : Posix
     , is_open : Bool
@@ -45,7 +44,6 @@ quizDecoder =
         |> required "meeting_slug" Decode.string
         |> required "points_possible" Decode.int
         |> required "is_draft" Decode.bool
-        |> required "duration" Decode.string
         |> required "open_at" Json.Decode.Extra.datetime
         |> required "closed_at" Json.Decode.Extra.datetime
         |> required "is_open" Decode.bool

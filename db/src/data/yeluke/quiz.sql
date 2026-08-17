@@ -11,11 +11,6 @@ CREATE TABLE IF NOT EXISTS quiz (
         CHECK (points_possible >= 0),
     -- If this quiz is still being worked on by the faculty
     is_draft BOOLEAN NOT NULL DEFAULT true NOT NULL,
-    -- The duration of time students have to finish
-    -- a quiz once it is begun
-    duration INTERVAL NOT NULL DEFAULT '15 minutes'::INTERVAL
-        CONSTRAINT quiz_duration_positive CHECK (duration > INTERVAL '0 seconds')
-        CONSTRAINT quiz_duration_max CHECK (duration <= INTERVAL '24 hours'),
     -- The time after which students may take
     -- the quiz.
     open_at TIMESTAMP WITH TIME ZONE NOT NULL,

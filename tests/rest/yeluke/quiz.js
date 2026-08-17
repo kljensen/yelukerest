@@ -91,7 +91,6 @@ describe('quizzes API endpoint', () => {
         meeting_slug: 'server-side-apps',
         points_possible: 13,
         is_draft: false,
-        duration: '00:10:00',
     };
 
     const insertTestCases = [{

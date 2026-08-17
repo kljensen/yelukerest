@@ -167,26 +167,6 @@ SELECT throws_like(
 );
 
 -- ---------------------------------------------------------------
--- quiz.duration: positive and at most 24h
--- ---------------------------------------------------------------
-SELECT lives_ok(
-    $$ UPDATE data.quiz SET duration = interval '24 hours' WHERE id = 1 $$,
-    'quiz should accept durations of exactly 24 hours'
-);
-
-SELECT throws_like(
-    $$ UPDATE data.quiz SET duration = interval '24 hours 1 second' WHERE id = 1 $$,
-    '%quiz_duration_max%',
-    'quiz should reject durations longer than 24 hours'
-);
-
-SELECT throws_like(
-    $$ UPDATE data.quiz SET duration = interval '0 seconds' WHERE id = 1 $$,
-    '%quiz_duration_positive%',
-    'quiz should reject non-positive durations'
-);
-
--- ---------------------------------------------------------------
 -- ui_element.body: 64 KiB cap
 -- ---------------------------------------------------------------
 SELECT lives_ok(

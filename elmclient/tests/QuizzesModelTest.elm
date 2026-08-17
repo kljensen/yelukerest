@@ -19,7 +19,6 @@ tests =
                               , meeting_slug = "week-1"
                               , points_possible = 5
                               , is_draft = False
-                              , duration = "00:05:00"
                               , open_at = millis 1000
                               , closed_at = millis 2000
                               , is_open = False
@@ -92,7 +91,6 @@ paperQuizJson =
         "meeting_slug": "week-1",
         "points_possible": 5,
         "is_draft": false,
-        "duration": "00:05:00",
         "open_at": "1970-01-01T00:00:01Z",
         "closed_at": "1970-01-01T00:00:02Z",
         "is_open": false,

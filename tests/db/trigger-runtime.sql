@@ -182,8 +182,8 @@ SELECT results_eq(
 
 SELECT results_eq(
     $$
-        INSERT INTO data.quiz (meeting_slug, points_possible, is_draft, duration)
-        VALUES ('server-side-apps', 7, false, '10 minutes'::interval)
+        INSERT INTO data.quiz (meeting_slug, points_possible, is_draft)
+        VALUES ('server-side-apps', 7, false)
         RETURNING
             open_at = (
                 SELECT begins_at - '5 days'::interval

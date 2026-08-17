@@ -49,7 +49,7 @@ SELECT set_eq(
     'TAs should only see non-draft quizzes'
 );
 
-PREPARE doinsert AS INSERT INTO api.quizzes (meeting_slug, points_possible, is_draft, duration, open_at, closed_at, created_at, updated_at) VALUES ('server-side-apps', 2, false, '00:10:00', '2017-01-04 07:55:50+00', '2017-01-06 07:55:50+00', '2018-01-06 07:55:50+00', '2018-01-06 13:10:23.24505+00');
+PREPARE doinsert AS INSERT INTO api.quizzes (meeting_slug, points_possible, is_draft, open_at, closed_at, created_at, updated_at) VALUES ('server-side-apps', 2, false, '2017-01-04 07:55:50+00', '2017-01-06 07:55:50+00', '2018-01-06 07:55:50+00', '2018-01-06 13:10:23.24505+00');
 
 SELECT throws_ok(
     'doinsert',
@@ -78,7 +78,7 @@ SELECT lives_ok(
 );
 
 SELECT lives_ok(
-    'INSERT INTO api.quizzes (meeting_slug, points_possible, duration) VALUES (''server-side-apps'', 13, ''10 minutes'')',
+    'INSERT INTO api.quizzes (meeting_slug, points_possible) VALUES (''server-side-apps'', 13)',
     'triggers fill in default values for quizzes'
 );
 
