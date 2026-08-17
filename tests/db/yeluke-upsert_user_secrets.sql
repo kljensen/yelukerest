@@ -6,7 +6,7 @@
 -- is in service of that -- the pre-checks only keep the body out of PostgreSQL's
 -- own error text if every constraint that would print it is caught first.
 
-select plan(47);
+select plan(50);
 
 --
 -- Who may call them
@@ -413,6 +413,64 @@ SELECT results_eq(
     $$ SELECT updated_at FROM api.user_secrets WHERE slug = 'rds-password' $$,
     $$ SELECT updated_at FROM stamp_before_rerun $$,
     'an unchanged secret should keep the updated_at it already had'
+);
+
+--
+-- Counts are derived after the write, never carried across it.
+--
+-- The bug this pins: two callers issuing the same new secret both plan it as an
+-- insert; the first commits; the second's DO UPDATE takes its WHERE false
+-- branch and returns no row. Its honest answer is "unchanged", which only the
+-- write knows. Retaining the pre-write prediction of zero made the counts sum
+-- to nothing and aborted a request that was idempotent and should have
+-- succeeded.
+--
+-- The interleaving itself is not asserted here, and deliberately so. It needs
+-- another transaction to commit *between* the planning read and the write, both
+-- of which are inside one function call -- there is no seam to reach into from
+-- a single session, and the test harness runs one session inside one
+-- transaction that is rolled back. Reproducing it would take a second
+-- connection and timing, and a flaky test is worse than a documented gap. So
+-- what is pinned is the arithmetic that makes the race harmless: the derivation
+-- is present in both functions, and the counts a caller sees always account for
+-- every row they sent.
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname IN ('upsert_user_secrets', 'upsert_team_secrets')
+        AND p.prosrc ~ 'unchanged_count := input_count - inserted_count - updated_count'
+    ),
+    2,
+    'both upserts should derive unchanged_count after the write rather than retain the prediction'
+);
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname IN ('upsert_user_secrets', 'upsert_team_secrets')
+        AND p.prosrc ~ 'inserted_count \+ updated_count > input_count'
+    ),
+    2,
+    'both upserts should keep the upper bound on how many rows the write may touch'
+);
+
+SELECT results_eq(
+    $$
+        SELECT inserted_count + updated_count + unchanged_count
+        FROM api.upsert_user_secrets('[
+            {"netid":"abc123","slug":"foo","body":"bar1"},
+            {"netid":"bde456","slug":"foo","body":"moved"},
+            {"netid":"crt43","slug":"sum-check","body":"new"}]'::jsonb)
+    $$,
+    $$ VALUES (3) $$,
+    'the counts should account for every row sent, whichever way each one lands'
 );
 
 --
