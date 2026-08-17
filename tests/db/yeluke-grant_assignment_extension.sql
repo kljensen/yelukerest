@@ -1,4 +1,3 @@
-begin;
 select plan(32);
 
 SELECT function_privs_are(
@@ -360,4 +359,3 @@ SELECT throws_like(
 );
 
 select * from finish();
-rollback;

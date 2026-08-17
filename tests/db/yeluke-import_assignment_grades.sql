@@ -1,4 +1,3 @@
-begin;
 select plan(61);
 
 SELECT function_privs_are(
@@ -740,4 +739,3 @@ SELECT results_eq(
 );
 
 select * from finish();
-rollback;

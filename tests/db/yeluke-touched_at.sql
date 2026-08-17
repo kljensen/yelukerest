@@ -1,4 +1,3 @@
-BEGIN;
 
 -- Regression tests for issue #308.
 --
@@ -176,4 +175,3 @@ SELECT is(
 );
 
 SELECT * FROM finish();
-ROLLBACK;
