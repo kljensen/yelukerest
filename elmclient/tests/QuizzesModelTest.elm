@@ -25,7 +25,6 @@ tests =
                               , is_open = False
                               , created_at = millis 0
                               , updated_at = millis 0
-                              , is_offline = True
                               }
                             ]
                         )
@@ -98,8 +97,7 @@ paperQuizJson =
         "closed_at": "1970-01-01T00:00:02Z",
         "is_open": false,
         "created_at": "1970-01-01T00:00:00Z",
-        "updated_at": "1970-01-01T00:00:00Z",
-        "is_offline": true
+        "updated_at": "1970-01-01T00:00:00Z"
       }
     ]
     """

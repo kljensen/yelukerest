@@ -30,7 +30,6 @@ type alias Quiz =
     , is_open : Bool
     , created_at : Posix
     , updated_at : Posix
-    , is_offline : Bool
     }
 
 
@@ -52,7 +51,6 @@ quizDecoder =
         |> required "is_open" Decode.bool
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
-        |> required "is_offline" Decode.bool
 
 
 paperQuizStatusText : String

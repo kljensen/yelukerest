@@ -1,4 +1,4 @@
-select plan(13);
+select plan(12);
 
 SELECT view_owner_is(
     'api', 'quizzes', 'api',
@@ -80,12 +80,6 @@ SELECT lives_ok(
 SELECT lives_ok(
     'INSERT INTO api.quizzes (meeting_slug, points_possible, duration) VALUES (''server-side-apps'', 13, ''10 minutes'')',
     'triggers fill in default values for quizzes'
-);
-
-SELECT results_eq(
-    'SELECT is_offline FROM api.quizzes WHERE meeting_slug = ''server-side-apps''',
-    ARRAY[true],
-    'quizzes default to paper/offline workflow'
 );
 
 -- set request.jwt.claim.user_id = '1';

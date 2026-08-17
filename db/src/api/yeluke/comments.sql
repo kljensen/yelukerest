@@ -162,7 +162,6 @@ COMMENT ON VIEW quizzes IS
 COMMENT ON COLUMN quizzes.id IS 'Unique quiz id';
 COMMENT ON COLUMN quizzes.meeting_slug IS 'Meeting associated with the quiz';
 COMMENT ON COLUMN quizzes.points_possible IS 'Maximum score for the quiz';
-COMMENT ON COLUMN quizzes.is_offline IS 'Whether the quiz is administered outside the online app';
 COMMENT ON COLUMN quizzes.is_draft IS 'Whether the quiz is still hidden from students and TAs';
 COMMENT ON COLUMN quizzes.duration IS 'Nominal time available to complete the quiz';
 COMMENT ON COLUMN quizzes.open_at IS 'When the quiz becomes available';
