@@ -1037,6 +1037,7 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     input_count integer;
+    description_limit integer;
     offenders text;
 BEGIN
     p_create_missing_submissions := COALESCE(p_create_missing_submissions, true);
@@ -1204,17 +1205,59 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- Read the bound from the constraint rather than repeating the number here,
+    -- so the two cannot drift. If the constraint is ever reshaped past this
+    -- pattern the limit reads NULL, the comparison matches nothing, and the real
+    -- write becomes the only check again; the test suite pins the shape.
+    SELECT (regexp_match(
+                pg_get_constraintdef(grade_constraint.oid),
+                'octet_length\(description\) <= (\d+)'
+            ))[1]::integer
+    INTO description_limit
+    FROM pg_constraint grade_constraint
+    JOIN pg_class grade_table
+        ON grade_table.oid = grade_constraint.conrelid
+    JOIN pg_namespace grade_schema
+        ON grade_schema.oid = grade_table.relnamespace
+    WHERE grade_schema.nspname = 'data'
+        AND grade_table.relname = 'assignment_grade'
+        AND grade_constraint.contype = 'c'
+        AND pg_get_constraintdef(grade_constraint.oid) LIKE '%octet_length(description)%';
+
+    SELECT string_agg(resolved_grade.assignment_slug || '/' || resolved_grade.netid, ', '
+        ORDER BY resolved_grade.assignment_slug || '/' || resolved_grade.netid) INTO offenders
+    FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
+    WHERE resolved_grade.has_description
+        AND octet_length(resolved_grade.description) > description_limit;
+
+    IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'import_assignment_grades requires a description of at most % bytes, too long for: %', description_limit, offenders
+            USING ERRCODE = '22023';
+    END IF;
+
     -- A team assignment has one submission per team, so two teammates in one
     -- payload are two keys pointing at one row. Rejecting that is the same rule
     -- as the duplicate key above, applied after the netids resolve.
-    SELECT string_agg(submission_key || ' (' || netids || ')', ', ' ORDER BY submission_key)
+    --
+    -- The row does not have to exist yet. Two teammates whose team has never
+    -- submitted both resolve to nothing, and would become two inserts against
+    -- one unique (team_nickname, assignment_slug) index -- which is the ordinary
+    -- shape of a team assignment graded from a per-student file. Keying on the
+    -- submission when there is one and on the team it would be created for when
+    -- there is not covers both with one rule, so a dry run cannot pass where the
+    -- real write would fail.
+    SELECT string_agg(target_key || ' (' || netids || ')', ', ' ORDER BY target_key)
         INTO offenders
     FROM (
         SELECT
-            resolved_grade.assignment_slug || '#' || resolved_grade.assignment_submission_id AS submission_key,
+            resolved_grade.assignment_slug || COALESCE(
+                '#' || resolved_grade.assignment_submission_id::text,
+                '@' || resolved_grade.team_nickname
+            ) AS target_key,
             string_agg(resolved_grade.netid, ' + ' ORDER BY resolved_grade.netid) AS netids
         FROM data.resolve_assignment_grade_import(p_grades) AS resolved_grade
         WHERE resolved_grade.assignment_submission_id IS NOT NULL
+            OR (resolved_grade.is_team AND resolved_grade.team_nickname IS NOT NULL)
         GROUP BY 1
         HAVING count(*) > 1
     ) AS collapsed_submissions;

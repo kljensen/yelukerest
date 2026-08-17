@@ -1,5 +1,5 @@
 begin;
-select plan(55);
+select plan(61);
 
 SELECT function_privs_are(
     'api', 'import_assignment_grades',
@@ -385,6 +385,118 @@ WHERE assignment_slug = 'project-update-1' AND team_nickname = 'damp-pond';
 UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 1;
 INSERT INTO data.assignment_submission_participant (assignment_submission_id, user_id)
 VALUES (4, 1);
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
+
+--
+-- A dry run exists so that the real import is known to be safe, so anything
+-- that would fail the write has to fail the dry run identically.
+--
+
+-- The shape api.import_assignment_grades parses to learn the description bound.
+-- If this constraint is ever reshaped, the import silently stops pre-checking
+-- description length and this test is the alarm.
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_constraint grade_constraint
+        JOIN pg_class grade_table ON grade_table.oid = grade_constraint.conrelid
+        JOIN pg_namespace grade_schema ON grade_schema.oid = grade_table.relnamespace
+        WHERE grade_schema.nspname = 'data'
+        AND grade_table.relname = 'assignment_grade'
+        AND grade_constraint.contype = 'c'
+        AND pg_get_constraintdef(grade_constraint.oid) ~ 'octet_length\(description\) <= \d+'
+    ),
+    1,
+    'data.assignment_grade should bound description length in the shape the import reads'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.import_assignment_grades(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'assignment_slug', 'team-selection',
+                    'netid', 'abc123',
+                    'points', 10,
+                    'description', repeat('x', 8193)
+                )
+            ),
+            p_dry_run => true
+        )
+    $$,
+    '%description of at most 8192 bytes, too long for: team-selection/abc123%',
+    'a dry run should reject an oversized description rather than let the real write fail'
+);
+
+SELECT results_eq(
+    $$
+        SELECT updated_count
+        FROM api.import_assignment_grades(
+            jsonb_build_array(
+                jsonb_build_object(
+                    'assignment_slug', 'team-selection',
+                    'netid', 'abc123',
+                    'points', 10,
+                    'description', repeat('x', 8192)
+                )
+            ),
+            p_dry_run => true
+        )
+    $$,
+    $$ VALUES (1) $$,
+    'a description exactly at the limit should still be accepted'
+);
+
+-- Two teammates whose team has never submitted both resolve to nothing, so the
+-- collision is invisible until two inserts hit one unique index.
+RESET ROLE;
+UPDATE data.assignment SET is_team = true WHERE slug = 'js-koans';
+
+set local role faculty;
+set request.jwt.claim.role = 'faculty';
+set request.jwt.claim.user_id = '3';
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.import_assignment_grades(
+            '[{"assignment_slug":"js-koans","netid":"abc123","points":10},
+              {"assignment_slug":"js-koans","netid":"klj39","points":10}]'::jsonb,
+            p_dry_run => true
+        )
+    $$,
+    '%more than one netid for the same submission%js-koans@bright-fog (abc123 + klj39)%',
+    'a dry run should reject two teammates whose team has no submission yet'
+);
+
+SELECT throws_like(
+    $$
+        SELECT * FROM api.import_assignment_grades(
+            '[{"assignment_slug":"js-koans","netid":"abc123","points":10},
+              {"assignment_slug":"js-koans","netid":"klj39","points":10}]'::jsonb
+        )
+    $$,
+    '%more than one netid for the same submission%',
+    'the real import should reject the same payload rather than violate a unique index'
+);
+
+SELECT results_eq(
+    $$
+        SELECT inserted_count, submission_created_count
+        FROM api.import_assignment_grades(
+            '[{"assignment_slug":"js-koans","netid":"abc123","points":10}]'::jsonb
+        )
+    $$,
+    $$ VALUES (1, 1) $$,
+    'one row per team should still create the team submission and grade it'
+);
+
+RESET ROLE;
+DELETE FROM data.assignment_grade WHERE assignment_slug = 'js-koans';
+DELETE FROM data.assignment_submission WHERE assignment_slug = 'js-koans';
+UPDATE data.assignment SET is_team = false WHERE slug = 'js-koans';
 
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
