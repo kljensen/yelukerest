@@ -3,6 +3,7 @@ import io
 import json
 import unittest
 
+import click
 from click.testing import CliRunner
 
 import api_client
@@ -11,6 +12,7 @@ import api_client
 class FakeResponse:
     status_code = 200
     text = "ok"
+    content = b"[]"
 
     def __init__(self, payload):
         self.payload = payload
@@ -23,16 +25,22 @@ class FakeResponse:
 
 
 class FakeSession:
+    """Stands in for a requests.Session.
+
+    Everything the client sends goes through `request`, so that is the only seam
+    the fake needs.
+    """
+
     def __init__(self):
         self.calls = []
 
-    def post(self, url, **kwargs):
+    def request(self, method, url, **kwargs):
         self.calls.append((url, kwargs))
+        self.methods = getattr(self, "methods", [])
+        self.methods.append(method)
+        if method == "GET":
+            return FakeResponse([{"admin_api_version": 5}])
         return FakeResponse(kwargs["json"])
-
-    def get(self, url, **kwargs):
-        self.calls.append((url, kwargs))
-        return FakeResponse([{"admin_api_version": 5}])
 
 
 class ApiClientTest(unittest.TestCase):
@@ -188,6 +196,115 @@ child:assignment_fields:
             "https://example.test/rest/platform_version",
         )
         self.assertEqual(json.loads(result.output), [{"admin_api_version": 5}])
+
+    def _config(self, jwt, session=None):
+        return {
+            "base_url": "https://example.test",
+            "jwt": jwt,
+            "session": session or FakeSession(),
+            "timeout": 30,
+            "verify_tls": True,
+        }
+
+    def test_rest_url_joins_base_url_and_path(self):
+        self.assertEqual(
+            api_client.rest_url("https://example.test/course/", "/users"),
+            "https://example.test/course/rest/users",
+        )
+
+    def test_reads_send_the_bearer_token(self):
+        # The bug this replaces: get_rest sent only Accept, so every read ran as
+        # `anonymous` and faculty-only reads came back empty or 401'd.
+        config = self._config("faculty-token")
+
+        api_client.get_rest(config, "users")
+
+        headers = config["session"].calls[0][1]["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer faculty-token")
+
+    def test_reads_without_a_token_fail_with_a_clear_message(self):
+        config = self._config(None)
+
+        with self.assertRaises(click.ClickException) as caught:
+            api_client.get_rest(config, "users")
+
+        self.assertIn("YELUKEREST_CLIENT_JWT", caught.exception.message)
+        self.assertEqual(config["session"].calls, [], "must not hit the network")
+
+    def test_anonymous_reads_never_send_a_token_even_when_one_is_configured(self):
+        # The preflight must survive a stale or wrong-deployment token, because
+        # diagnosing exactly that is what it is for. PostgREST validates any token
+        # it is handed, so attaching one turns an anonymous-readable view into a 401.
+        config = self._config("expired-token")
+
+        api_client.get_rest(config, "platform_version", auth=api_client.AUTH_NONE)
+
+        headers = config["session"].calls[0][1]["headers"]
+        self.assertNotIn("Authorization", headers)
+
+    def test_anonymous_reads_omit_the_header_when_no_token_is_set(self):
+        config = self._config(None)
+
+        api_client.get_rest(config, "platform_version", auth=api_client.AUTH_NONE)
+
+        headers = config["session"].calls[0][1]["headers"]
+        self.assertNotIn("Authorization", headers)
+
+    def test_platform_version_preflight_ignores_a_configured_token(self):
+        runner = CliRunner()
+        fake_session = FakeSession()
+
+        result = runner.invoke(
+            api_client.platform_version,
+            [],
+            obj=self._config("expired-token", session=fake_session),
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertNotIn("Authorization", fake_session.calls[0][1]["headers"])
+
+    def test_http_errors_become_click_exceptions_naming_the_target(self):
+        class Failing(FakeSession):
+            def request(self, method, url, **kwargs):
+                response = FakeResponse(None)
+                response.status_code = 401
+                response.text = "permission denied"
+                response.raise_for_status = self._raise
+                return response
+
+            @staticmethod
+            def _raise():
+                raise api_client.requests.HTTPError("401")
+
+        config = self._config("token", session=Failing())
+
+        with self.assertRaises(click.ClickException) as caught:
+            api_client.get_rest(config, "users")
+
+        self.assertIn("users", caught.exception.message)
+        self.assertIn("401", caught.exception.message)
+        self.assertIn("permission denied", caught.exception.message)
+
+    def test_writes_go_through_a_named_path_with_auth_and_prefer(self):
+        config = self._config("faculty-token")
+
+        api_client.write_rest(
+            config, "users", [{"netid": "abc12"}], prefer="resolution=merge-duplicates"
+        )
+
+        url, kwargs = config["session"].calls[0]
+        self.assertEqual(url, "https://example.test/rest/users")
+        self.assertEqual(config["session"].methods[0], "POST")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer faculty-token")
+        self.assertEqual(kwargs["headers"]["Prefer"], "resolution=merge-duplicates")
+        self.assertEqual(kwargs["json"], [{"netid": "abc12"}])
+
+    def test_no_user_facing_command_writes_arbitrary_tables(self):
+        # Guards the boundary decision in #297: writes must reach the network
+        # only through named subcommands, never a generic table writer.
+        command_names = set(api_client.api.commands)
+        for forbidden in ("write", "insert", "post", "upsert", "write-rows"):
+            self.assertNotIn(forbidden, command_names)
 
     def test_read_yaml_loads_lists_from_file_handles(self):
         loaded = api_client.read_yaml(io.StringIO("- slug: one\n"))

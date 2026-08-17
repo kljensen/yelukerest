@@ -72,6 +72,11 @@ def rpc_url(base_url, function_name):
     return urljoin(base_url.rstrip("/") + "/", f"rest/rpc/{function_name}")
 
 
+def rest_url(base_url, path):
+    """Build a PostgREST table/view URL from a deployment base URL."""
+    return urljoin(base_url.rstrip("/") + "/", f"rest/{path.lstrip('/')}")
+
+
 def render_template(value, class_number):
     if value is None or class_number is None:
         return value
@@ -136,44 +141,100 @@ def ensure_list(value, label):
     return value
 
 
-def post_rpc(config, function_name, payload):
-    if not config.get("jwt"):
+AUTH_REQUIRED = "required"
+AUTH_NONE = "none"
+
+
+def request(config, method, url, label, auth=AUTH_REQUIRED, headers=None, **kwargs):
+    """Issue a request to PostgREST, with auth, transport settings, and error mapping.
+
+    Every call into the deployment goes through here so that the bearer token,
+    timeout, TLS verification, and HTTP-error-to-ClickException translation are
+    defined exactly once.
+
+    ``auth`` is deliberately not a boolean, because "does this need a token" and
+    "should this send a token" are different questions. ``AUTH_NONE`` sends no
+    credentials at all, even when one is configured: PostgREST validates any token
+    it is given, so an expired or wrong-deployment token would turn an endpoint
+    that anonymous users can read into a 401. The compatibility preflight has to
+    keep answering precisely when credentials are broken, since diagnosing that is
+    what it is for.
+    """
+    jwt = config.get("jwt")
+    if auth == AUTH_REQUIRED and not jwt:
         raise click.ClickException("YELUKEREST_CLIENT_JWT or --jwt is required")
-    url = rpc_url(config["base_url"], function_name)
-    response = config["session"].post(
+
+    request_headers = {"Accept": "application/json"}
+    if auth == AUTH_REQUIRED:
+        request_headers["Authorization"] = f"Bearer {jwt}"
+    if headers:
+        request_headers.update(headers)
+
+    response = config["session"].request(
+        method,
         url,
-        headers={
-            "Accept": "application/json",
-            "Authorization": f"Bearer {config['jwt']}",
-            "Content-Type": "application/json",
-        },
-        json=json_ready(payload),
+        headers=request_headers,
         timeout=config["timeout"],
         verify=config["verify_tls"],
+        **kwargs,
     )
     try:
         response.raise_for_status()
     except requests.HTTPError as exc:
         raise click.ClickException(
-            f"{function_name} failed with HTTP {response.status_code}: {response.text}"
+            f"{label} failed with HTTP {response.status_code}: {response.text}"
         ) from exc
+    return response
+
+
+def post_rpc(config, function_name, payload):
+    response = request(
+        config,
+        "POST",
+        rpc_url(config["base_url"], function_name),
+        label=function_name,
+        headers={"Content-Type": "application/json"},
+        json=json_ready(payload),
+    )
     return response.json()
 
 
-def get_rest(config, path):
-    url = urljoin(config["base_url"].rstrip("/") + "/", f"rest/{path.lstrip('/')}")
-    response = config["session"].get(
-        url,
-        headers={"Accept": "application/json"},
-        timeout=config["timeout"],
-        verify=config["verify_tls"],
+def get_rest(config, path, params=None, auth=AUTH_REQUIRED):
+    """Read a table or view. Authenticated by default; `AUTH_NONE` reads as `anonymous`."""
+    response = request(
+        config,
+        "GET",
+        rest_url(config["base_url"], path),
+        label=path,
+        auth=auth,
+        params=params,
     )
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as exc:
-        raise click.ClickException(
-            f"{path} failed with HTTP {response.status_code}: {response.text}"
-        ) from exc
+    return response.json()
+
+
+def write_rest(config, path, rows, prefer=None, params=None):
+    """Write rows to a table or view.
+
+    Internal helper for named subcommands only. There is deliberately no
+    user-facing "write arbitrary rows to an arbitrary table" command: that would
+    recreate the unconstrained psql access this client exists to retire, just over
+    HTTP. Every write must reach the network through a named operation whose
+    payload has already been checked.
+    """
+    headers = {"Content-Type": "application/json"}
+    if prefer:
+        headers["Prefer"] = prefer
+    response = request(
+        config,
+        "POST",
+        rest_url(config["base_url"], path),
+        label=path,
+        headers=headers,
+        json=json_ready(rows),
+        params=params,
+    )
+    if not response.content:
+        return []
     return response.json()
 
 
@@ -218,7 +279,10 @@ def api(ctx, base_url, jwt, timeout, verify_tls):
 @click.pass_context
 def platform_version(ctx):
     """Print Yelukerest platform compatibility metadata."""
-    result = get_rest(ctx.obj, "platform_version")
+    # Granted to `anonymous`, and it is the preflight every other command depends
+    # on, so it must answer before credentials are sorted out -- and must not be
+    # taken down by a stale token that is itself the thing being diagnosed.
+    result = get_rest(ctx.obj, "platform_version", auth=AUTH_NONE)
     click.echo(json.dumps(result, indent=2, sort_keys=True))
 
 
