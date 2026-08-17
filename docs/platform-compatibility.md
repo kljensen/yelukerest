@@ -16,7 +16,7 @@ The response is a one-row JSON array:
     "platform": "yelukerest",
     "platform_compatibility_version": 1,
     "schema_compatibility_version": 4,
-    "admin_api_version": 8
+    "admin_api_version": 9
   }
 ]
 ```
@@ -35,7 +35,7 @@ required = {
     "platform": "yelukerest",
     # A set, not a floor -- see below.
     "schema_compatibility_versions": {4},
-    "admin_api_version": 8,
+    "admin_api_version": 9,
 }
 
 with urllib.request.urlopen("https://example.edu/rest/platform_version") as res:
@@ -49,8 +49,8 @@ assert actual["admin_api_version"] >= required["admin_api_version"]
 ## The two versions are checked differently, on purpose
 
 `admin_api_version` only ever grows. Each bump adds an RPC without removing
-one, so "at least N" is exactly right: a deployment at 9 can serve every client
-written against 8.
+one, so "at least N" is exactly right: a deployment at 10 can serve every client
+written against 9.
 
 `schema_compatibility_version` names a schema **shape**, and a shape can lose
 things. Version 4 removed `api.quiz_grade_exceptions`, `api.quizzes.duration`,
@@ -84,3 +84,8 @@ introduces the new contract -- and if the change **removes** anything from the
   [Admin API](admin-api.md#there-is-no-quiz-extension).
 - `admin_api_version` **8** added `api.grant_assignment_extension`. Assignments
   are the only thing with an extendable deadline.
+- `admin_api_version` **9** added `api.upsert_user_secrets` and
+  `api.upsert_team_secrets`. Two RPCs rather than one with a nullable target,
+  because the two uniqueness rules are two different partial indexes and a
+  single entry point would pick one of them from which field happened to be
+  null. See [Admin API](admin-api.md#secret-distribution).

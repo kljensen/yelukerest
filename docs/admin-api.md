@@ -418,6 +418,118 @@ offered under an honest name either, because nothing needs it:
 `api.platform_version.admin_api_version` is `8` or later for deployments that
 support the assignment extension RPC.
 
+## Secret Distribution
+
+Two RPCs hand out per-student and per-team secrets in one call each. They
+replace the per-student `psql` loops in `add-final-exam-link.sh`,
+`add-students-to-rds.sh`, `add-students-to-mongodb.sh` and
+`add-students-to-meilisearch.sh`, every one of which spawned one `psql` per
+student.
+
+### Nothing here ever returns a secret
+
+`data.user_secret` rows are generated database passwords. Both functions return
+**counts only**, and no error message, `DETAIL`, or `HINT` they raise contains a
+body — an offending row is always named by its `netid` or `team_nickname` plus
+its `slug`.
+
+That is why they validate the whole payload before writing anything. Left to the
+write, a `CHECK` or `NOT NULL` violation on `data.user_secret` comes back from
+PostgreSQL as:
+
+```
+ERROR:  new row for relation "user_secret" violates check constraint "user_secret_slug_check"
+DETAIL: Failing row contains (1, foo, <the password>, t, 900, null, ...)
+```
+
+and PostgREST forwards `DETAIL` to the client. So every constraint on the table
+that a payload could break is pre-checked, and none of them ever fires. Unique
+and foreign key violations are left alone by contrast: those name only the key,
+so their own messages are safe and more useful.
+
+The bounds the pre-checks use are read off the table's own `CHECK` constraints
+rather than repeated, and unlike the other RPCs these **fail closed**: if a
+constraint is ever reshaped past the pattern `data.user_secret_input_bounds`
+reads, the functions refuse to run at all. The alternative — letting the write
+become the only check, which is what the grade importers do — is exactly the
+leak they exist to prevent.
+
+### Why these are RPCs
+
+The uniqueness rules are *partial* indexes: `(user_id, slug) WHERE
+team_nickname IS NULL` and `(team_nickname, slug) WHERE user_id IS NULL`.
+PostgREST's `on_conflict` carries column names but no index predicate, so it
+cannot name either arbiter, and re-issuing a student's password through a plain
+POST raises a duplicate key error instead of replacing it.
+
+### Why two functions rather than one
+
+A single `upsert_user_secrets` taking both a `netid` and a `team_nickname` would
+choose one partial index or the other from whichever field happened to be null.
+That is a silent change of meaning at the moment a caller makes a mistake: a row
+whose `netid` came back null from the caller's own lookup would quietly become a
+secret the whole team can read. Splitting it puts the target in the function
+name, so each `ON CONFLICT` names one arbiter with no branch at all, and every
+error message can name a `netid` without first saying what kind of target the
+row turned out to be.
+
+### `api.upsert_user_secrets`
+
+`POST /rest/rpc/upsert_user_secrets`
+
+```json
+{
+  "p_secrets": [
+    {"netid": "abc123", "slug": "rds-password", "body": "…", "is_user_visible": true},
+    {"netid": "bde456", "slug": "rds-password", "body": "…"}
+  ],
+  "p_dry_run": false
+}
+```
+
+Response:
+
+```json
+[
+  {"inserted_count": 1, "updated_count": 1, "unchanged_count": 0, "dry_run": false}
+]
+```
+
+`is_user_visible` is optional. Absent on a new secret it takes the column
+default (visible); absent on an existing one it leaves the current setting
+alone, so re-issuing a password does not un-hide a secret faculty had hidden.
+
+Re-runnable. A second run of the same payload writes nothing and reports every
+row as unchanged — the `DO UPDATE` carries a `WHERE`, so an unchanged secret is
+not even restamped.
+
+`p_dry_run` reports the same counts without writing, and fails on everything the
+real write would fail on: payload shape, an unknown `netid`, two rows resolving
+to one secret, a malformed `slug`, a missing or oversized `body`, and a
+non-boolean `is_user_visible`.
+
+At most 2000 secrets and 4 MB per call.
+
+### `api.upsert_team_secrets`
+
+`POST /rest/rpc/upsert_team_secrets`
+
+Identical, with `team_nickname` in place of `netid`:
+
+```json
+{
+  "p_secrets": [
+    {"team_nickname": "bright-fog", "slug": "project-db-url", "body": "…"}
+  ]
+}
+```
+
+A team secret is visible to every current member of the team, subject to
+`is_user_visible`.
+
+`api.platform_version.admin_api_version` is `9` or later for deployments that
+support secret distribution.
+
 ## Read Operations
 
 These are plain authenticated reads of existing `api` views, not RPCs. They add no
@@ -579,4 +691,5 @@ nothing is an error naming it, rather than a silently empty export.
 | Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
 | Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and an audited `import_id`. |
 | Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
+| Secret distribution | Supported by `api.upsert_user_secrets` / `api.upsert_team_secrets` | Partial-index upsert keyed on `netid`/`team_nickname` + `slug`, with dry-run. Returns counts only; no response or error ever carries a secret body. |
 | Grade exception audit trail | Planned | `data.assignment_grade_exception` carries no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |
