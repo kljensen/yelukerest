@@ -14,8 +14,9 @@ class FakeResponse:
     text = "ok"
     content = b"[]"
 
-    def __init__(self, payload):
+    def __init__(self, payload, headers=None):
         self.payload = payload
+        self.headers = headers or {}
 
     def raise_for_status(self):
         return None
@@ -44,19 +45,63 @@ class FakeSession:
 
 
 class RoutingSession:
-    """Answers GETs from a `rest` path to payload map, recording what was sent."""
+    """Answers GETs from a `rest` path to payload map, recording what was sent.
 
-    def __init__(self, payloads):
+    Behaves like PostgREST under `db-max-rows`: it honours the `Range` header but
+    never returns more than `max_rows` at a time, and always reports the true
+    total in `Content-Range`. `max_rows` is what makes truncation reproducible.
+    """
+
+    def __init__(self, payloads, max_rows=1000):
         self.payloads = payloads
+        self.max_rows = max_rows
         self.calls = []
 
     def request(self, method, url, **kwargs):
         path = url.rsplit("/rest/", 1)[-1]
-        self.calls.append((path, kwargs.get("params") or {}))
-        return FakeResponse(self.payloads[path])
+        headers = kwargs.get("headers") or {}
+        self.calls.append((path, kwargs.get("params") or {}, headers))
+
+        rows = self.payloads[path]
+        start, end = self._requested_range(headers, len(rows))
+        page = rows[start : start + min(end - start + 1, self.max_rows)]
+        last = start + len(page) - 1 if page else start
+        return FakeResponse(
+            page, headers={"Content-Range": f"{start}-{last}/{len(rows)}"}
+        )
+
+    @staticmethod
+    def _requested_range(headers, row_count):
+        wanted = headers.get("Range")
+        if not wanted:
+            return 0, max(row_count - 1, 0)
+        first, _, last = wanted.partition("-")
+        return int(first), int(last)
 
     def params_for(self, path):
-        return [params for called, params in self.calls if called == path]
+        return [params for called, params, _ in self.calls if called == path]
+
+    def headers_for(self, path):
+        return [headers for called, _, headers in self.calls if called == path]
+
+
+class NoContentRangeSession(RoutingSession):
+    """A deployment whose `Content-Range` never arrives, e.g. stripped by a proxy."""
+
+    def request(self, method, url, **kwargs):
+        response = super().request(method, url, **kwargs)
+        response.headers = {}
+        return response
+
+
+class StallingSession(RoutingSession):
+    """Claims a total it then refuses to deliver, to prove the loop terminates."""
+
+    def request(self, method, url, **kwargs):
+        response = super().request(method, url, **kwargs)
+        path = url.rsplit("/rest/", 1)[-1]
+        response.headers = {"Content-Range": f"0-0/{len(self.payloads[path]) + 5}"}
+        return response
 
 
 STUDENT = {
@@ -456,8 +501,8 @@ fields:
 
 
 class ReadOperationTest(unittest.TestCase):
-    def _run(self, command, args, payloads):
-        session = RoutingSession(payloads)
+    def _run(self, command, args, payloads, session=None, max_rows=1000):
+        session = session or RoutingSession(payloads, max_rows=max_rows)
         result = CliRunner().invoke(
             command,
             args,
@@ -676,6 +721,205 @@ class ReadOperationTest(unittest.TestCase):
         self.assertEqual(
             api_client.in_filter(["a-b", "c,d"]), 'in.("a-b","c,d")'
         )
+
+
+def big_roster(count):
+    return [
+        {
+            "id": index,
+            "netid": f"aaa{index:03d}",
+            "name": f"Student {index}",
+            "email": f"s{index}@example.test",
+            "nickname": f"nick-{index}",
+            "role": "student",
+            "team_nickname": None,
+        }
+        for index in range(1, count + 1)
+    ]
+
+
+class PagingTest(unittest.TestCase):
+    """PostgREST caps a response at `db-max-rows` and says so only in a header.
+
+    A short grade export looks exactly like a complete one, so nothing here may
+    settle for the first page.
+    """
+
+    def _config(self, session):
+        return {
+            "base_url": "https://example.test",
+            "jwt": "faculty-token",
+            "session": session,
+            "timeout": 30,
+            "verify_tls": True,
+        }
+
+    def _invoke(self, command, args, session):
+        return CliRunner().invoke(command, args, obj=self._config(session))
+
+    def test_get_all_rest_follows_a_full_page_with_the_remainder(self):
+        session = RoutingSession({"users": big_roster(7)}, max_rows=3)
+
+        rows = api_client.get_all_rest(
+            self._config(session), "users", "id.asc", page_size=3
+        )
+
+        self.assertEqual([row["id"] for row in rows], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(
+            [headers["Range"] for headers in session.headers_for("users")],
+            ["0-2", "3-5", "6-8"],
+        )
+
+    def test_get_all_rest_asks_for_an_exact_count_once_and_then_stops_asking(self):
+        session = RoutingSession({"users": big_roster(7)}, max_rows=3)
+
+        api_client.get_all_rest(self._config(session), "users", "id.asc", page_size=3)
+
+        prefers = [headers.get("Prefer") for headers in session.headers_for("users")]
+        self.assertEqual(prefers, ["count=exact", None, None])
+
+    def test_get_all_rest_pages_on_a_deterministic_order(self):
+        session = RoutingSession({"users": big_roster(7)}, max_rows=3)
+
+        api_client.get_all_rest(self._config(session), "users", "id.asc", page_size=3)
+
+        for params in session.params_for("users"):
+            self.assertEqual(params["order"], "id.asc")
+
+    def test_get_all_rest_needs_no_second_request_when_one_page_is_everything(self):
+        session = RoutingSession({"users": big_roster(2)})
+
+        rows = api_client.get_all_rest(self._config(session), "users", "id.asc")
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(session.calls), 1)
+
+    def test_get_all_rest_handles_an_empty_collection(self):
+        session = RoutingSession({"users": []})
+
+        rows = api_client.get_all_rest(self._config(session), "users", "id.asc")
+
+        self.assertEqual(rows, [])
+        self.assertEqual(len(session.calls), 1)
+
+    def test_a_response_with_no_content_range_is_refused_not_accepted_short(self):
+        session = NoContentRangeSession({"users": big_roster(7)}, max_rows=3)
+
+        with self.assertRaises(click.ClickException) as caught:
+            api_client.get_all_rest(
+                self._config(session), "users", "id.asc", page_size=3
+            )
+
+        self.assertIn("may be incomplete", caught.exception.message)
+        self.assertIn("Content-Range", caught.exception.message)
+
+    def test_an_unknown_total_is_refused_rather_than_guessed(self):
+        class StarTotal(RoutingSession):
+            def request(self, method, url, **kwargs):
+                response = super().request(method, url, **kwargs)
+                response.headers = {"Content-Range": "0-2/*"}
+                return response
+
+        session = StarTotal({"users": big_roster(7)}, max_rows=3)
+
+        with self.assertRaises(click.ClickException) as caught:
+            api_client.get_all_rest(
+                self._config(session), "users", "id.asc", page_size=3
+            )
+
+        self.assertIn("no usable row total", caught.exception.message)
+
+    def test_a_server_that_stops_short_of_its_own_total_is_an_error(self):
+        session = StallingSession({"users": big_roster(4)}, max_rows=4)
+
+        with self.assertRaises(click.ClickException) as caught:
+            api_client.get_all_rest(
+                self._config(session), "users", "id.asc", page_size=4
+            )
+
+        self.assertIn("stopped returning", caught.exception.message)
+        self.assertIn("incomplete", caught.exception.message)
+
+    def test_roster_returns_every_student_past_the_row_cap(self):
+        session = RoutingSession({"users": big_roster(250)}, max_rows=100)
+
+        result = self._invoke(api_client.roster, [], session)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(len(json.loads(result.output)), 250)
+
+    def test_search_users_returns_every_match_past_the_row_cap(self):
+        session = RoutingSession({"users": big_roster(250)}, max_rows=100)
+
+        result = self._invoke(api_client.search_users, ["aaa", "--role", "all"], session)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(len(json.loads(result.output)), 250)
+
+    def test_export_joins_across_collections_that_each_needed_paging(self):
+        # The join is the dangerous case: truncating any one collection drops
+        # rows for students whose own rows arrived intact.
+        students = big_roster(30)
+        submissions = [
+            {
+                "id": student["id"],
+                "assignment_slug": "repo",
+                "is_team": False,
+                "user_id": student["id"],
+                "team_nickname": None,
+                "submitter_user_id": student["id"],
+            }
+            for student in students
+        ]
+        payloads = {
+            "assignments": [
+                {"slug": "repo", "is_draft": False, "closed_at": "2026-01-01T00:00:00Z"}
+            ],
+            "assignment_submissions": submissions,
+            "users": students,
+            "assignment_field_submissions": [
+                {
+                    "assignment_submission_id": submission["id"],
+                    "assignment_field_slug": "url",
+                    "body": f"https://example.test/{submission['id']}",
+                    "updated_at": "2026-01-01T00:00:00Z",
+                }
+                for submission in submissions
+            ],
+        }
+        session = RoutingSession(payloads, max_rows=7)
+
+        result = self._invoke(api_client.export_submissions, [], session)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        rows = json.loads(result.output)
+        self.assertEqual(len(rows), 30, "every submitted field must survive the join")
+        self.assertEqual(
+            {row["netid"] for row in rows},
+            {student["netid"] for student in students},
+        )
+
+    def test_every_collection_read_in_the_export_is_paged(self):
+        session = RoutingSession(submission_payloads(), max_rows=1)
+
+        result = self._invoke(api_client.export_submissions, [], session)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        for path in (
+            "assignments",
+            "assignment_submissions",
+            "users",
+            "assignment_field_submissions",
+        ):
+            self.assertGreater(
+                len(session.headers_for(path)),
+                1,
+                f"{path} must page rather than trust one capped response",
+            )
+            self.assertTrue(
+                all("order" in params for params in session.params_for(path)),
+                f"{path} must page on a deterministic order",
+            )
 
 
 if __name__ == "__main__":

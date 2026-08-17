@@ -21,6 +21,7 @@ from yaml_text import normalize_text_values
 
 DEFAULT_BASE_URL = "https://localhost"
 DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_PAGE_SIZE = 1000
 
 MEETING_KEYS = (
     "slug",
@@ -238,7 +239,13 @@ def post_rpc(config, function_name, payload):
 
 
 def get_rest(config, path, params=None, auth=AUTH_REQUIRED):
-    """Read a table or view. Authenticated by default; `AUTH_NONE` reads as `anonymous`."""
+    """Read one page of a table or view, unpaged.
+
+    Authenticated by default; `AUTH_NONE` reads as `anonymous`. Use this only
+    for reads that cannot exceed one page -- `api.platform_version` is a
+    single-row metadata view -- because PostgREST caps a larger result silently.
+    Anything that returns a collection must use `get_all_rest`.
+    """
     response = request(
         config,
         "GET",
@@ -248,6 +255,72 @@ def get_rest(config, path, params=None, auth=AUTH_REQUIRED):
         params=params,
     )
     return response.json()
+
+
+def content_range_total(response, label):
+    """Read the row total PostgREST reports in its `Content-Range` header.
+
+    Raises rather than guessing. Without a total there is no way to tell a
+    complete response from a capped one, and guessing wrong here means quietly
+    returning a short file.
+    """
+    header = response.headers.get("Content-Range", "")
+    total = header.rsplit("/", 1)[-1].strip() if "/" in header else ""
+    if not total.isdigit():
+        raise click.ClickException(
+            f"{label}: PostgREST reported no usable row total "
+            f"(Content-Range: {header or 'missing'}), so a truncated response "
+            "cannot be told apart from a complete one. Refusing to return a "
+            "result that may be incomplete."
+        )
+    return int(total)
+
+
+def get_all_rest(config, path, order, params=None, page_size=DEFAULT_PAGE_SIZE):
+    """Read every row of a table or view, paging past PostgREST's row limit.
+
+    PostgREST caps a response at `db-max-rows` (`PGRST_DB_MAX_ROWS` in
+    `docker-compose.base.yaml`) and reports the cap only in `Content-Range`. A
+    single GET therefore returns a short result with a 200 status and no
+    warning, which for a grade export is the worst possible failure: a truncated
+    export looks exactly like a complete one, and someone grades from it.
+
+    So every collection read pages to the server's reported total, and refuses
+    to return a partial result it cannot prove is whole.
+
+    ``order`` is required, not optional. `limit`/`offset` paging over an
+    unordered result may skip or repeat rows, so the caller must name an
+    ordering that ends in a unique column.
+    """
+    query = dict(params or {})
+    query["order"] = order
+    url = rest_url(config["base_url"], path)
+    rows = []
+    total = None
+
+    while True:
+        headers = {
+            "Range-Unit": "items",
+            "Range": f"{len(rows)}-{len(rows) + page_size - 1}",
+        }
+        if total is None:
+            headers["Prefer"] = "count=exact"
+
+        response = request(
+            config, "GET", url, label=path, headers=headers, params=query
+        )
+        page = response.json()
+        if total is None:
+            total = content_range_total(response, path)
+        rows.extend(page)
+
+        if len(rows) >= total:
+            return rows
+        if not page:
+            raise click.ClickException(
+                f"{path}: PostgREST reported {total} rows but stopped returning "
+                f"them after {len(rows)}. Refusing to return an incomplete result."
+            )
 
 
 def write_rest(config, path, rows, prefer=None, params=None):
@@ -449,10 +522,12 @@ def sync_assignments(ctx, class_number, infiles, delete_missing, dry_run):
 @click.pass_context
 def roster(ctx, role, output_format):
     """List course users, students by default, ordered by netid."""
-    params = {"select": ",".join(USER_COLUMNS), "order": "netid.asc"}
+    params = {"select": ",".join(USER_COLUMNS)}
     if role != "all":
         params["role"] = f"eq.{role}"
-    emit_rows(get_rest(ctx.obj, "users", params=params), USER_COLUMNS, output_format)
+    # `netid` is UNIQUE NOT NULL, so it is a stable paging order on its own.
+    users = get_all_rest(ctx.obj, "users", "netid.asc", params=params)
+    emit_rows(users, USER_COLUMNS, output_format)
 
 
 @api.command("find-user")
@@ -470,9 +545,14 @@ def find_user(ctx, field, value, output_format):
     # `clean_user_fields()` lowercases all three of these columns on write, so a
     # caller pasting a mixed-case netid must still match.
     wanted = value.strip().lower()
-    matches = get_rest(
+    # Paged even though all three lookup columns are UNIQUE and cannot return a
+    # second row today. The multiple-match check below is only as trustworthy as
+    # the read under it, and "the schema makes truncation impossible here" is
+    # exactly the kind of assumption that stops being true quietly.
+    matches = get_all_rest(
         ctx.obj,
         "users",
+        "id.asc",
         params={"select": ",".join(USER_COLUMNS), field: f"eq.{wanted}"},
     )
 
@@ -504,22 +584,26 @@ def search_users(ctx, term, role, output_format):
     params = {
         "select": ",".join(USER_COLUMNS),
         "or": substring_match_filter(needle, USER_SEARCH_FIELDS),
-        "order": "netid.asc",
     }
     if role != "all":
         params["role"] = f"eq.{role}"
-    emit_rows(get_rest(ctx.obj, "users", params=params), USER_COLUMNS, output_format)
+    users = get_all_rest(ctx.obj, "users", "netid.asc", params=params)
+    emit_rows(users, USER_COLUMNS, output_format)
 
 
 def fetch_exported_assignments(config, assignment_slugs, include_drafts):
     """Read the assignments an export covers, refusing slugs that do not exist."""
-    params = {"select": "slug,is_draft,closed_at", "order": "closed_at.asc,slug.asc"}
+    params = {"select": "slug,is_draft,closed_at"}
     if not include_drafts:
         params["is_draft"] = "eq.false"
     if assignment_slugs:
         params["slug"] = in_filter(assignment_slugs)
 
-    assignments = get_rest(config, "assignments", params=params)
+    # `closed_at` repeats across assignments, so the order ends in `slug`, the
+    # primary key, to make the paging walk deterministic.
+    assignments = get_all_rest(
+        config, "assignments", "closed_at.asc,slug.asc", params=params
+    )
 
     missing = sorted(set(assignment_slugs) - {row["slug"] for row in assignments})
     if missing:
@@ -557,9 +641,10 @@ def collect_submission_rows(config, assignment_slugs, include_drafts, include_no
         return []
     assignment_order = {row["slug"]: index for index, row in enumerate(assignments)}
 
-    submissions = get_rest(
+    submissions = get_all_rest(
         config,
         "assignment_submissions",
+        "id.asc",
         params={
             "select": "id,assignment_slug,is_team,user_id,team_nickname,submitter_user_id",
             "assignment_slug": in_filter(list(assignment_order)),
@@ -570,9 +655,10 @@ def collect_submission_rows(config, assignment_slugs, include_drafts, include_no
 
     users_by_id = {
         user["id"]: user
-        for user in get_rest(
+        for user in get_all_rest(
             config,
             "users",
+            "id.asc",
             params={"select": "id,netid,name,email,nickname,role"},
         )
     }
@@ -593,9 +679,12 @@ def collect_submission_rows(config, assignment_slugs, include_drafts, include_no
     if not exported:
         return []
 
-    field_submissions = get_rest(
+    # The primary key is (assignment_submission_id, assignment_field_slug), so
+    # ordering on both makes the paging walk deterministic.
+    field_submissions = get_all_rest(
         config,
         "assignment_field_submissions",
+        "assignment_submission_id.asc,assignment_field_slug.asc",
         params={
             "select": "assignment_submission_id,assignment_field_slug,body,updated_at",
             "assignment_submission_id": in_filter(list(exported)),

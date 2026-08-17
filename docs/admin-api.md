@@ -205,6 +205,33 @@ under test instead of being pasted into a `psql -c` in every course repo.
 Every one takes `--format json|csv`. CSV carries a header row and renders SQL nulls
 as empty cells.
 
+### Paging is mandatory, not an optimisation
+
+PostgREST caps every response at `db-max-rows` (`PGRST_DB_MAX_ROWS`, set per
+deployment in `docker-compose.base.yaml`) and reports the cap only in the
+`Content-Range` header. A single GET past the cap returns HTTP 200 with a *short*
+body and no error. For a grade export that is the worst available failure mode: a
+truncated export is indistinguishable from a complete one, and someone grades from
+it. `export-submissions` is the sharpest case, because it reads four collections and
+joins them, so truncation in any one drops rows for students whose own rows arrived
+intact.
+
+Every collection read therefore goes through `get_all_rest`, which:
+
+- sends `Prefer: count=exact` on its first request, so `Content-Range` carries a
+  real total (`0-999/4500`) rather than `0-999/*`, and pages with `Range` until it
+  holds that many rows;
+- **requires** an `order` ending in a unique column, because an unordered
+  `limit`/`offset` walk may skip or repeat rows. `users` pages on `netid` or `id`,
+  `assignments` on `closed_at,slug`, `assignment_submissions` on `id`, and
+  `assignment_field_submissions` on its full primary key;
+- refuses, rather than returning a possibly short result, when the total is missing
+  or `*`, or when the server stops delivering rows before reaching the total it
+  reported.
+
+`api.platform_version` is the one read left unpaged: it is a single-row metadata
+view, and it must answer under `AUTH_NONE` before credentials are established.
+
 ### `roster`
 
 `GET /rest/users?role=eq.student&order=netid.asc`
