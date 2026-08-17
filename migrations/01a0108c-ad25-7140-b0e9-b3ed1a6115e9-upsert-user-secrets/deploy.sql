@@ -408,6 +408,49 @@ BEGIN
     -- that print the failing row are caught -- a unique or foreign key
     -- violation names its key alone, and its own message is better than
     -- anything restated here.
+    -- Take every conflict-row lock up front, in one statement, in one order.
+    --
+    -- Splitting the write into two statements introduced a lock-order
+    -- inversion. Two overlapping batches that supply is_user_visible for
+    -- different keys partition those keys differently, so one call reaches row
+    -- A through its supplied half and row B through its omitted half while the
+    -- other does the reverse -- and each ends up holding what the other is
+    -- waiting for. Both payloads can list their keys in the same order and
+    -- still deadlock, because it is the partitioning that reorders them, which
+    -- is also why an ORDER BY inside either statement cannot help: the cycle is
+    -- across the two, not within either.
+    --
+    -- One ordering for every caller means the cycle cannot form however a
+    -- payload happens to partition. `LockRows` sits above `Sort` in the plan,
+    -- so the rows really are locked in the ordered sequence rather than merely
+    -- returned in it.
+    --
+    -- Read through api.user_secrets rather than data.user_secret: faculty hold
+    -- nothing at all on the base table -- pinned by table_privs_are in
+    -- tests/db/yeluke-user_secrets.sql -- so locking it directly raises
+    -- "permission denied for table user_secret". The view is auto-updatable and
+    -- propagates the lock to the base row.
+    --
+    -- api.upsert_team_secrets orders by (team_nickname, slug) instead. The two
+    -- can never contend: a user secret has team_nickname NULL and a team secret
+    -- has user_id NULL, so their row sets are disjoint and there is no
+    -- cross-function cycle to order against.
+    --
+    -- Rows that do not exist yet cannot be locked here, and those keys still
+    -- race on the unique index. See the report accompanying this change: that
+    -- residual is real and is not closed by this statement.
+    PERFORM 1
+    FROM api.user_secrets locked_secret
+    WHERE locked_secret.team_nickname IS NULL
+        AND (locked_secret.user_id, locked_secret.slug) IN (
+            SELECT student.id, btrim(element.value->>'slug')
+            FROM jsonb_array_elements(p_secrets) AS element(value)
+            JOIN api.users student
+                ON student.netid = lower(btrim(element.value->>'netid'))
+        )
+    ORDER BY locked_secret.user_id, locked_secret.slug
+    FOR UPDATE;
+
     -- Two writes over disjoint halves of the payload, split on whether the
     -- caller said anything about visibility.
     --
@@ -678,6 +721,20 @@ BEGIN
         RETURN NEXT;
         RETURN;
     END IF;
+
+    -- The ordered pre-lock, on the other key. See api.upsert_user_secrets for
+    -- why it is here and why it reads the view rather than the base table.
+    PERFORM 1
+    FROM api.user_secrets locked_secret
+    WHERE locked_secret.user_id IS NULL
+        AND (locked_secret.team_nickname, locked_secret.slug) IN (
+            SELECT course_team.nickname, btrim(element.value->>'slug')
+            FROM jsonb_array_elements(p_secrets) AS element(value)
+            JOIN api.teams course_team
+                ON course_team.nickname = btrim(element.value->>'team_nickname')
+        )
+    ORDER BY locked_secret.team_nickname, locked_secret.slug
+    FOR UPDATE;
 
     -- Split on whether the caller said anything about visibility, for the
     -- reasons set out at length in api.upsert_user_secrets. A team secret is
