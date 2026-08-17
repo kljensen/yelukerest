@@ -56,7 +56,7 @@ BEGIN
         FROM data.assignment
         WHERE slug = NEW.assignment_slug;
     END IF;
-    NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
+    NEW.updated_at = current_timestamp;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql

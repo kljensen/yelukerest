@@ -9,8 +9,15 @@ CREATE TABLE IF NOT EXISTS quiz (
     -- Number of points possible on this quiz.
     points_possible smallint NOT NULL
         CHECK (points_possible >= 0),
+    -- Quizzes are paper-only; this flag remains for API compatibility.
+    is_offline BOOLEAN NOT NULL DEFAULT true,
     -- If this quiz is still being worked on by the faculty
     is_draft BOOLEAN NOT NULL DEFAULT true NOT NULL,
+    -- The duration of time students have to finish
+    -- a quiz once it is begun
+    duration INTERVAL NOT NULL DEFAULT '15 minutes'::INTERVAL
+        CONSTRAINT quiz_duration_positive CHECK (duration > INTERVAL '0 seconds')
+        CONSTRAINT quiz_duration_max CHECK (duration <= INTERVAL '24 hours'),
     -- The time after which students may take
     -- the quiz.
     open_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -40,7 +47,7 @@ BEGIN
     FROM data.meeting
     WHERE slug = NEW.meeting_slug;
   END IF;
-  NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
+  NEW.updated_at = current_timestamp;
   RETURN NEW;
 END; $$ LANGUAGE plpgsql
 SECURITY DEFINER

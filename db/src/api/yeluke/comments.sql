@@ -162,7 +162,9 @@ COMMENT ON VIEW quizzes IS
 COMMENT ON COLUMN quizzes.id IS 'Unique quiz id';
 COMMENT ON COLUMN quizzes.meeting_slug IS 'Meeting associated with the quiz';
 COMMENT ON COLUMN quizzes.points_possible IS 'Maximum score for the quiz';
+COMMENT ON COLUMN quizzes.is_offline IS 'Whether the quiz is administered outside the online app';
 COMMENT ON COLUMN quizzes.is_draft IS 'Whether the quiz is still hidden from students and TAs';
+COMMENT ON COLUMN quizzes.duration IS 'Nominal time available to complete the quiz';
 COMMENT ON COLUMN quizzes.open_at IS 'When the quiz becomes available';
 COMMENT ON COLUMN quizzes.closed_at IS 'When the quiz closes';
 COMMENT ON COLUMN quizzes.created_at IS 'When this quiz row was created';
@@ -203,6 +205,16 @@ COMMENT ON COLUMN quiz_grade_events.created_by_user_id IS 'Request user that cau
 COMMENT ON COLUMN quiz_grade_events.source IS 'Source table or import path that produced this event';
 COMMENT ON COLUMN quiz_grade_events.reason IS 'Optional reason for the grade event';
 COMMENT ON COLUMN quiz_grade_events.import_id IS 'Optional import batch identifier for the grade event';
+
+COMMENT ON VIEW quiz_grade_exceptions IS
+    'Per-user quiz deadline and credit exceptions';
+COMMENT ON COLUMN quiz_grade_exceptions.id IS 'Unique quiz grade exception id';
+COMMENT ON COLUMN quiz_grade_exceptions.quiz_id IS 'Quiz this exception applies to';
+COMMENT ON COLUMN quiz_grade_exceptions.user_id IS 'Student this exception applies to';
+COMMENT ON COLUMN quiz_grade_exceptions.fractional_credit IS 'Fraction of normal credit available under this exception';
+COMMENT ON COLUMN quiz_grade_exceptions.closed_at IS 'Exception-specific quiz deadline';
+COMMENT ON COLUMN quiz_grade_exceptions.created_at IS 'When this quiz grade exception row was created';
+COMMENT ON COLUMN quiz_grade_exceptions.updated_at IS 'When this quiz grade exception row was last updated';
 
 COMMENT ON VIEW teams IS
     'Student teams used for team assignments';

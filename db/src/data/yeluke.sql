@@ -1,5 +1,4 @@
--- ./yeluke/functions.sql is loaded by ../schema.sql, before the auth lib's
--- user table, whose trigger calls data.touched_at.
+\ir ./yeluke/functions.sql
 \ir ./yeluke/meeting.sql
 \ir ./yeluke/engagement.sql
 \ir ./yeluke/team.sql
@@ -13,6 +12,7 @@
 \ir ./yeluke/quiz_grade.sql
 \ir ./yeluke/artifact.sql
 \ir ./yeluke/assignment_grade.sql
+\ir ./yeluke/quiz_grade_exception.sql
 \ir ./yeluke/assignment_grade_exception.sql
 \ir ./yeluke/user_secret.sql
 \ir ./yeluke/grade_snapshot.sql
