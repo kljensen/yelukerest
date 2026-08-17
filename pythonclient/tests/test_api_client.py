@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import io
 import json
@@ -44,12 +45,52 @@ class FakeSession:
         return FakeResponse(kwargs["json"])
 
 
+def split_top_level(text):
+    """Split on commas that are not inside parentheses."""
+    parts, depth, current = [], 0, []
+    for char in text:
+        if char == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        depth += (char == "(") - (char == ")")
+        current.append(char)
+    if current:
+        parts.append("".join(current))
+    return parts
+
+
+def row_matches(row, condition):
+    """Evaluate a PostgREST logical condition against a row.
+
+    Only the `and(…)` / `or(…)` / `<column>.<op>."<value>"` subset the client
+    actually generates. Evaluating the filter rather than pattern-matching it is
+    the point: a wrong keyset filter produces wrong rows and fails the test.
+    """
+    condition = condition.strip()
+    if condition.startswith("or(") and condition.endswith(")"):
+        return any(row_matches(row, part) for part in split_top_level(condition[3:-1]))
+    if condition.startswith("and(") and condition.endswith(")"):
+        return all(row_matches(row, part) for part in split_top_level(condition[4:-1]))
+
+    column, operator, value = condition.split(".", 2)
+    value = value.strip('"')
+    actual = row[column]
+    if isinstance(actual, int) and not isinstance(actual, bool):
+        value = int(value)
+    if operator == "gt":
+        return actual > value
+    if operator == "eq":
+        return actual == value
+    raise AssertionError(f"unsupported operator in fake: {operator}")
+
+
 class RoutingSession:
     """Answers GETs from a `rest` path to payload map, recording what was sent.
 
-    Behaves like PostgREST under `db-max-rows`: it honours the `Range` header but
-    never returns more than `max_rows` at a time, and always reports the true
-    total in `Content-Range`. `max_rows` is what makes truncation reproducible.
+    Behaves like PostgREST under `db-max-rows`: it sorts by `order`, applies the
+    `and=` keyset condition, and never returns more than `max_rows` rows however
+    many were asked for. `max_rows` is what makes truncation reproducible.
     """
 
     def __init__(self, payloads, max_rows=1000):
@@ -59,24 +100,32 @@ class RoutingSession:
 
     def request(self, method, url, **kwargs):
         path = url.rsplit("/rest/", 1)[-1]
+        params = kwargs.get("params") or {}
         headers = kwargs.get("headers") or {}
-        self.calls.append((path, kwargs.get("params") or {}, headers))
+        self.calls.append((path, params, headers))
 
-        rows = self.payloads[path]
-        start, end = self._requested_range(headers, len(rows))
-        page = rows[start : start + min(end - start + 1, self.max_rows)]
-        last = start + len(page) - 1 if page else start
-        return FakeResponse(
-            page, headers={"Content-Range": f"{start}-{last}/{len(rows)}"}
-        )
+        rows = sorted(self.payloads[path], key=self._sort_key(params.get("order")))
+        total = len(rows)
+        if "and" in params:
+            condition = params["and"].strip()[1:-1]
+            rows = [row for row in rows if row_matches(row, condition)]
+
+        page = rows[: min(self._requested_limit(headers, total), self.max_rows)]
+        last = len(page) - 1 if page else 0
+        return FakeResponse(page, headers={"Content-Range": f"0-{last}/{total}"})
 
     @staticmethod
-    def _requested_range(headers, row_count):
+    def _sort_key(order):
+        columns = [part.split(".")[0] for part in (order or "id.asc").split(",")]
+        return lambda row: tuple(row.get(column, "") for column in columns)
+
+    @staticmethod
+    def _requested_limit(headers, row_count):
         wanted = headers.get("Range")
         if not wanted:
-            return 0, max(row_count - 1, 0)
+            return row_count
         first, _, last = wanted.partition("-")
-        return int(first), int(last)
+        return int(last) - int(first) + 1
 
     def params_for(self, path):
         return [params for called, params, _ in self.calls if called == path]
@@ -94,13 +143,25 @@ class NoContentRangeSession(RoutingSession):
         return response
 
 
-class StallingSession(RoutingSession):
-    """Claims a total it then refuses to deliver, to prove the loop terminates."""
+class MutatingSession(RoutingSession):
+    """A live course: the collection changes between page requests.
+
+    `mutations` is applied one entry per request, so a test can insert a row that
+    sorts into a page already fetched -- the case that silently breaks offset
+    paging.
+    """
+
+    def __init__(self, payloads, mutations, **kwargs):
+        super().__init__(payloads, **kwargs)
+        self.mutations = list(mutations)
 
     def request(self, method, url, **kwargs):
         response = super().request(method, url, **kwargs)
         path = url.rsplit("/rest/", 1)[-1]
-        response.headers = {"Content-Range": f"0-0/{len(self.payloads[path]) + 5}"}
+        if self.mutations:
+            mutation = self.mutations.pop(0)
+            if mutation:
+                mutation(self.payloads[path])
         return response
 
 
@@ -717,6 +778,25 @@ class ReadOperationTest(unittest.TestCase):
         slugs = [row["assignment_slug"] for row in json.loads(result.output)]
         self.assertEqual(slugs, ["repo", "team-project", "team-project"])
 
+    def test_export_orders_by_close_date_not_by_the_paging_key(self):
+        # Assignments page on `slug`, their primary key, because `closed_at` is
+        # nullable and repeats and so makes a poor cursor. The close-date order
+        # the export wants is applied afterwards, here running against slug order.
+        payloads = submission_payloads()
+        payloads["assignments"] = [
+            {"slug": "repo", "is_draft": False, "closed_at": "2026-05-01T00:00:00Z"},
+            {
+                "slug": "team-project",
+                "is_draft": False,
+                "closed_at": "2026-02-01T00:00:00Z",
+            },
+        ]
+
+        result, _ = self._run(api_client.export_submissions, [], payloads)
+
+        slugs = [row["assignment_slug"] for row in json.loads(result.output)]
+        self.assertEqual(slugs, ["team-project", "team-project", "repo"])
+
     def test_in_filter_quotes_values_so_slugs_stay_literal(self):
         self.assertEqual(
             api_client.in_filter(["a-b", "c,d"]), 'in.("a-b","c,d")'
@@ -757,63 +837,194 @@ class PagingTest(unittest.TestCase):
     def _invoke(self, command, args, session):
         return CliRunner().invoke(command, args, obj=self._config(session))
 
-    def test_get_all_rest_follows_a_full_page_with_the_remainder(self):
+    def _read_all(self, session, path="users", key=("id",), page_size=3):
+        return api_client.get_all_rest(
+            self._config(session), path, key, page_size=page_size
+        )
+
+    def test_get_all_rest_returns_every_row_past_the_row_cap(self):
         session = RoutingSession({"users": big_roster(7)}, max_rows=3)
 
-        rows = api_client.get_all_rest(
-            self._config(session), "users", "id.asc", page_size=3
-        )
+        rows = self._read_all(session)
 
         self.assertEqual([row["id"] for row in rows], [1, 2, 3, 4, 5, 6, 7])
+
+    def test_get_all_rest_pages_by_key_not_by_offset(self):
+        session = RoutingSession({"users": big_roster(7)}, max_rows=3)
+
+        self._read_all(session)
+
+        # Every request asks from the start of a *filtered* set; the cursor moves
+        # in the filter, never in the Range. An offset would name a position, and
+        # positions move when rows are inserted or deleted.
         self.assertEqual(
-            [headers["Range"] for headers in session.headers_for("users")],
-            ["0-2", "3-5", "6-8"],
+            {headers["Range"] for headers in session.headers_for("users")}, {"0-2"}
+        )
+        self.assertEqual(
+            [params.get("and") for params in session.params_for("users")],
+            [None, '(id.gt."3")', '(id.gt."6")', '(id.gt."7")'],
         )
 
-    def test_get_all_rest_asks_for_an_exact_count_once_and_then_stops_asking(self):
+    def test_get_all_rest_pages_on_the_key_order(self):
         session = RoutingSession({"users": big_roster(7)}, max_rows=3)
 
-        api_client.get_all_rest(self._config(session), "users", "id.asc", page_size=3)
-
-        prefers = [headers.get("Prefer") for headers in session.headers_for("users")]
-        self.assertEqual(prefers, ["count=exact", None, None])
-
-    def test_get_all_rest_pages_on_a_deterministic_order(self):
-        session = RoutingSession({"users": big_roster(7)}, max_rows=3)
-
-        api_client.get_all_rest(self._config(session), "users", "id.asc", page_size=3)
+        self._read_all(session)
 
         for params in session.params_for("users"):
             self.assertEqual(params["order"], "id.asc")
 
-    def test_get_all_rest_needs_no_second_request_when_one_page_is_everything(self):
-        session = RoutingSession({"users": big_roster(2)})
+    def test_get_all_rest_asks_for_an_exact_count_once_as_a_cross_check(self):
+        session = RoutingSession({"users": big_roster(7)}, max_rows=3)
 
-        rows = api_client.get_all_rest(self._config(session), "users", "id.asc")
+        self._read_all(session)
+
+        prefers = [headers.get("Prefer") for headers in session.headers_for("users")]
+        self.assertEqual(prefers, ["count=exact", None, None, None])
+
+    def test_get_all_rest_stops_on_an_empty_page_never_on_a_short_one(self):
+        # `db-max-rows` makes every page short, so shortness cannot mean the end.
+        session = RoutingSession({"users": big_roster(2)}, max_rows=1)
+
+        rows = self._read_all(session, page_size=100)
 
         self.assertEqual(len(rows), 2)
-        self.assertEqual(len(session.calls), 1)
+        self.assertEqual(len(session.calls), 3, "two pages plus the empty one")
 
     def test_get_all_rest_handles_an_empty_collection(self):
         session = RoutingSession({"users": []})
 
-        rows = api_client.get_all_rest(self._config(session), "users", "id.asc")
-
-        self.assertEqual(rows, [])
+        self.assertEqual(self._read_all(session), [])
         self.assertEqual(len(session.calls), 1)
 
-    def test_a_response_with_no_content_range_is_refused_not_accepted_short(self):
-        session = NoContentRangeSession({"users": big_roster(7)}, max_rows=3)
+    def test_get_all_rest_refuses_a_key_that_is_not_selected(self):
+        session = RoutingSession({"users": [{"netid": "aaa11"}]}, max_rows=1)
 
         with self.assertRaises(click.ClickException) as caught:
             api_client.get_all_rest(
-                self._config(session), "users", "id.asc", page_size=3
+                self._config(session), "users", ("netid", "id"), page_size=1
             )
 
-        self.assertIn("may be incomplete", caught.exception.message)
-        self.assertIn("Content-Range", caught.exception.message)
+        self.assertIn("paging key column(s) id", caught.exception.message)
 
-    def test_an_unknown_total_is_refused_rather_than_guessed(self):
+    def test_composite_key_paging_expresses_strictly_after(self):
+        rows = [
+            {"assignment_submission_id": 1, "assignment_field_slug": "notes"},
+            {"assignment_submission_id": 1, "assignment_field_slug": "url"},
+            {"assignment_submission_id": 2, "assignment_field_slug": "notes"},
+        ]
+        session = RoutingSession({"assignment_field_submissions": rows}, max_rows=1)
+        key = ("assignment_submission_id", "assignment_field_slug")
+
+        fetched = api_client.get_all_rest(
+            self._config(session), "assignment_field_submissions", key, page_size=1
+        )
+
+        self.assertEqual(fetched, rows, "the whole composite-key walk, in order")
+        self.assertEqual(
+            session.params_for("assignment_field_submissions")[1]["and"],
+            '(or(assignment_submission_id.gt."1",'
+            'and(assignment_submission_id.eq."1",assignment_field_slug.gt."notes")))',
+        )
+
+    def test_keyset_filter_quotes_values_containing_filter_syntax(self):
+        self.assertEqual(
+            api_client.keyset_filter(("slug",), {"slug": "a,b)c"}),
+            '(slug.gt."a,b)c")',
+        )
+
+    # --- The reason keyset paging is here at all -------------------------------
+
+    def test_an_insert_into_an_already_read_page_skips_no_row(self):
+        # A student submits mid-export and the new row sorts into a page already
+        # fetched. Under offset paging everything after it shifts down one, so
+        # the next offset re-reads one row and steps over one never seen.
+        users = big_roster(7)
+        session = MutatingSession(
+            {"users": users},
+            mutations=[None, lambda rows: rows.append(dict(big_roster(1)[0], id=0))],
+            max_rows=3,
+        )
+
+        fetched = [row["id"] for row in self._read_all(session)]
+
+        self.assertEqual(fetched, [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(len(fetched), len(set(fetched)), "no row read twice")
+
+    def test_a_delete_from_an_already_read_page_skips_no_row(self):
+        users = big_roster(7)
+        session = MutatingSession(
+            {"users": users},
+            mutations=[None, lambda rows: rows.remove(rows[0])],
+            max_rows=3,
+        )
+
+        fetched = [row["id"] for row in self._read_all(session)]
+
+        self.assertEqual(fetched, [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(len(fetched), len(set(fetched)), "no row read twice")
+
+    def test_a_row_inserted_after_the_cursor_is_picked_up(self):
+        session = MutatingSession(
+            {"users": big_roster(4)},
+            mutations=[None, lambda rows: rows.append(dict(big_roster(1)[0], id=99))],
+            max_rows=3,
+        )
+
+        with contextlib.redirect_stderr(io.StringIO()):
+            fetched = [row["id"] for row in self._read_all(session)]
+
+        self.assertEqual(fetched, [1, 2, 3, 4, 99])
+
+    # --- The count is a cross-check, not a gate --------------------------------
+
+    def test_a_moved_total_warns_on_stderr_and_still_returns_every_row(self):
+        # A row arriving after the cursor is genuinely picked up, so the walk
+        # ends holding more rows than the count taken at the start.
+        session = MutatingSession(
+            {"users": big_roster(4)},
+            mutations=[None, lambda rows: rows.append(dict(big_roster(1)[0], id=99))],
+            max_rows=3,
+        )
+
+        warning = io.StringIO()
+        with contextlib.redirect_stderr(warning):
+            rows = self._read_all(session)
+        warning = warning.getvalue()
+
+        self.assertEqual(len(rows), 5, "a moved count must not cost rows")
+        self.assertIn("reported 4 rows and returned 5", warning)
+        self.assertIn("changed while it was being read", warning)
+
+    def test_a_row_inserted_behind_the_cursor_is_missed_without_a_false_alarm(self):
+        # It was not there when that part of the collection was read. Nothing is
+        # skipped or duplicated, the count still agrees, and no warning fires --
+        # this is the case offset paging turns into a silently short export.
+        session = MutatingSession(
+            {"users": big_roster(7)},
+            mutations=[None, lambda rows: rows.append(dict(big_roster(1)[0], id=0))],
+            max_rows=3,
+        )
+
+        warning = io.StringIO()
+        with contextlib.redirect_stderr(warning):
+            rows = self._read_all(session)
+
+        self.assertEqual([row["id"] for row in rows], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(warning.getvalue(), "")
+
+    def test_a_missing_content_range_warns_but_still_returns_every_row(self):
+        # The total is only a cross-check now: completeness comes from the empty
+        # page, so losing the header costs the check and nothing else.
+        session = NoContentRangeSession({"users": big_roster(7)}, max_rows=3)
+
+        warning = io.StringIO()
+        with contextlib.redirect_stderr(warning):
+            rows = self._read_all(session)
+
+        self.assertEqual([row["id"] for row in rows], [1, 2, 3, 4, 5, 6, 7])
+        self.assertIn("reported no row total", warning.getvalue())
+
+    def test_an_unknown_total_warns_but_still_returns_every_row(self):
         class StarTotal(RoutingSession):
             def request(self, method, url, **kwargs):
                 response = super().request(method, url, **kwargs)
@@ -822,23 +1033,12 @@ class PagingTest(unittest.TestCase):
 
         session = StarTotal({"users": big_roster(7)}, max_rows=3)
 
-        with self.assertRaises(click.ClickException) as caught:
-            api_client.get_all_rest(
-                self._config(session), "users", "id.asc", page_size=3
-            )
+        warning = io.StringIO()
+        with contextlib.redirect_stderr(warning):
+            rows = self._read_all(session)
 
-        self.assertIn("no usable row total", caught.exception.message)
-
-    def test_a_server_that_stops_short_of_its_own_total_is_an_error(self):
-        session = StallingSession({"users": big_roster(4)}, max_rows=4)
-
-        with self.assertRaises(click.ClickException) as caught:
-            api_client.get_all_rest(
-                self._config(session), "users", "id.asc", page_size=4
-            )
-
-        self.assertIn("stopped returning", caught.exception.message)
-        self.assertIn("incomplete", caught.exception.message)
+        self.assertEqual(len(rows), 7)
+        self.assertIn("reported no row total", warning.getvalue())
 
     def test_roster_returns_every_student_past_the_row_cap(self):
         session = RoutingSession({"users": big_roster(250)}, max_rows=100)
@@ -916,9 +1116,22 @@ class PagingTest(unittest.TestCase):
                 1,
                 f"{path} must page rather than trust one capped response",
             )
+            page_params = session.params_for(path)
             self.assertTrue(
-                all("order" in params for params in session.params_for(path)),
-                f"{path} must page on a deterministic order",
+                all("order" in params for params in page_params),
+                f"{path} must page on its key order",
+            )
+            self.assertIsNone(
+                page_params[0].get("and"), f"{path} starts without a cursor"
+            )
+            self.assertTrue(
+                all("and" in params for params in page_params[1:]),
+                f"{path} must page by key, never by offset",
+            )
+            self.assertEqual(
+                {headers["Range"] for headers in session.headers_for(path)},
+                {f"0-{api_client.DEFAULT_PAGE_SIZE - 1}"},
+                f"{path} must not move a Range offset between pages",
             )
 
 

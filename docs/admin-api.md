@@ -205,7 +205,7 @@ under test instead of being pasted into a `psql -c` in every course repo.
 Every one takes `--format json|csv`. CSV carries a header row and renders SQL nulls
 as empty cells.
 
-### Paging is mandatory, not an optimisation
+### Paging is mandatory, and it is keyset paging
 
 PostgREST caps every response at `db-max-rows` (`PGRST_DB_MAX_ROWS`, set per
 deployment in `docker-compose.base.yaml`) and reports the cap only in the
@@ -216,18 +216,54 @@ it. `export-submissions` is the sharpest case, because it reads four collections
 joins them, so truncation in any one drops rows for students whose own rows arrived
 intact.
 
-Every collection read therefore goes through `get_all_rest`, which:
+Paging by `offset` does not fix it. A unique `order` makes the *ordering*
+deterministic, but an offset names a position, and positions move. If a student
+submits between two requests and the new row sorts into a page already fetched,
+everything after it shifts down one: the next offset re-reads a row already held and
+steps over one never seen. These commands run against a live course, and the
+notorious moment to run an export is the minutes around a deadline — exactly when
+rows are arriving.
 
-- sends `Prefer: count=exact` on its first request, so `Content-Range` carries a
-  real total (`0-999/4500`) rather than `0-999/*`, and pages with `Range` until it
-  holds that many rows;
-- **requires** an `order` ending in a unique column, because an unordered
-  `limit`/`offset` walk may skip or repeat rows. `users` pages on `netid` or `id`,
-  `assignments` on `closed_at,slug`, `assignment_submissions` on `id`, and
-  `assignment_field_submissions` on its full primary key;
-- refuses, rather than returning a possibly short result, when the total is missing
-  or `*`, or when the server stops delivering rows before reaching the total it
-  reported.
+Every collection read therefore goes through `get_all_rest`, which pages by **key**,
+not by position:
+
+- each page after the first is fetched by naming the last row seen, so the request
+  is `?id=gt.<last>` rather than `?offset=<n>`. Rows arriving or vanishing on either
+  side of the cursor cannot shift it. An insert behind the cursor is simply missed —
+  it was not there when that part of the collection was read — and an insert ahead
+  of it is picked up; nothing is skipped or duplicated either way.
+- `key` is a set of NOT NULL columns unique together, and it fixes both the sort
+  order and the cursor: `users` on `netid` or `id`, `assignments` on `slug`,
+  `assignment_submissions` on `id`, and `assignment_field_submissions` on its full
+  composite primary key. PostgREST has no row-value `(a, b) > (x, y)` syntax, so the
+  composite comparison is spelled out:
+
+  ```
+  and=(or(assignment_submission_id.gt."4",
+          and(assignment_submission_id.eq."4",assignment_field_slug.gt."repo-url")))
+  ```
+
+  It goes in `and=` rather than `or=` so it cannot collide with a command's own
+  filters, which are separate top-level parameters and are ANDed with it.
+- the walk ends on an **empty** page, never on a short one. `db-max-rows` makes every
+  page short, so treating shortness as the end reintroduces the truncation this
+  exists to prevent. That costs one extra request per read, which is the correct
+  price.
+- `assignments` pages on `slug` and is sorted into `closed_at` order afterwards.
+  `closed_at` is nullable and repeats, which makes a poor cursor, and a course's
+  worth of assignments sorts for free.
+
+#### The row count is a cross-check, not a gate
+
+The first request of each read sends `Prefer: count=exact`, so `Content-Range`
+carries a real total (`0-999/4500`) rather than `0-999/*`. That total is compared
+against the rows actually collected, and **a mismatch prints a warning to stderr and
+nothing else**. Neither alternative is defensible: failing would make exports
+unusable in the minutes around a deadline, and staying silent would hide a real
+"the collection moved under you" signal from someone about to grade from the output.
+Under keyset paging a moved count means the collection changed during the walk, not
+that the walk lost anything. A missing or `*` total is likewise a warning — the read
+is still complete, only the cross-check is gone.
 
 `api.platform_version` is the one read left unpaged: it is a single-row metadata
 view, and it must answer under `AUTH_NONE` before credentials are established.

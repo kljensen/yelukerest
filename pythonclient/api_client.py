@@ -257,70 +257,134 @@ def get_rest(config, path, params=None, auth=AUTH_REQUIRED):
     return response.json()
 
 
-def content_range_total(response, label):
-    """Read the row total PostgREST reports in its `Content-Range` header.
-
-    Raises rather than guessing. Without a total there is no way to tell a
-    complete response from a capped one, and guessing wrong here means quietly
-    returning a short file.
-    """
+def content_range_total(response):
+    """Total row count from `Content-Range`, or None when the server does not say."""
     header = response.headers.get("Content-Range", "")
     total = header.rsplit("/", 1)[-1].strip() if "/" in header else ""
-    if not total.isdigit():
-        raise click.ClickException(
-            f"{label}: PostgREST reported no usable row total "
-            f"(Content-Range: {header or 'missing'}), so a truncated response "
-            "cannot be told apart from a complete one. Refusing to return a "
-            "result that may be incomplete."
+    return int(total) if total.isdigit() else None
+
+
+def keyset_filter(key_columns, last_row):
+    """PostgREST condition for rows sorting strictly after `last_row`.
+
+    For a single column this is `(id.gt."7")`. For a composite key it is the
+    lexicographic comparison spelled out, because PostgREST has no row-value
+    `(a, b) > (x, y)` syntax:
+
+        (or(a.gt."1",and(a.eq."1",b.gt."url")))
+
+    Every key column must be NOT NULL. A NULL key would make both `gt` and `eq`
+    unknown for that row and the walk would stall on it.
+    """
+    branches = []
+    for index, column in enumerate(key_columns):
+        preceding_equal = [
+            f"{prior}.eq.{quote_filter_value(last_row[prior])}"
+            for prior in key_columns[:index]
+        ]
+        strictly_after = f"{column}.gt.{quote_filter_value(last_row[column])}"
+        if preceding_equal:
+            branches.append("and({})".format(",".join(preceding_equal + [strictly_after])))
+        else:
+            branches.append(strictly_after)
+
+    if len(branches) == 1:
+        return f"({branches[0]})"
+    return "(or({}))".format(",".join(branches))
+
+
+def warn_if_total_moved(path, fetched_count, reported_total):
+    """Report, without failing, that a collection changed while it was read.
+
+    Keyset paging stays consistent across concurrent writes -- no row is skipped
+    or repeated -- but the result is a snapshot taken across a moving window
+    rather than at one instant. A count that moved is worth saying out loud to
+    someone about to grade from the output, and is not worth failing over:
+    exports get run in the minutes around a deadline, which is exactly when
+    submissions are still arriving.
+    """
+    if reported_total is None:
+        click.echo(
+            f"Warning: {path} reported no row total, so the read could not be "
+            "cross-checked against one.",
+            err=True,
         )
-    return int(total)
+        return
+    if fetched_count != reported_total:
+        click.echo(
+            f"Warning: {path} reported {reported_total} rows and returned "
+            f"{fetched_count}; the collection changed while it was being read.",
+            err=True,
+        )
 
 
-def get_all_rest(config, path, order, params=None, page_size=DEFAULT_PAGE_SIZE):
-    """Read every row of a table or view, paging past PostgREST's row limit.
+def get_all_rest(config, path, key, params=None, page_size=DEFAULT_PAGE_SIZE):
+    """Read every row of a table or view using keyset pagination.
 
     PostgREST caps a response at `db-max-rows` (`PGRST_DB_MAX_ROWS` in
-    `docker-compose.base.yaml`) and reports the cap only in `Content-Range`. A
-    single GET therefore returns a short result with a 200 status and no
-    warning, which for a grade export is the worst possible failure: a truncated
-    export looks exactly like a complete one, and someone grades from it.
+    `docker-compose.base.yaml`) and reports the cap only in `Content-Range`, so a
+    single GET returns a short body with a 200 status and no error. For a grade
+    export that is the worst available failure: a truncated export looks exactly
+    like a complete one, and someone grades from it.
 
-    So every collection read pages to the server's reported total, and refuses
-    to return a partial result it cannot prove is whole.
+    Paging by `offset` does not fix it. A unique `order` makes the *ordering*
+    deterministic, but an offset names a position, and positions move. If a
+    student submits between two requests and the new row sorts into a page
+    already fetched, everything after it shifts down one: the next offset re-reads
+    a row already held and steps over one never seen. These commands run against a
+    live course, and the notorious time to run an export is the minutes around a
+    deadline, which is precisely when rows are arriving.
 
-    ``order`` is required, not optional. `limit`/`offset` paging over an
-    unordered result may skip or repeat rows, so the caller must name an
-    ordering that ends in a unique column.
+    So each page is fetched by naming the last row seen -- `id=gt.<last>` rather
+    than `offset=<n>` -- which is stable no matter what happens either side of it.
+    Inserts before the cursor are simply missed (they were not there when that
+    part was read) and inserts after it are picked up; nothing is skipped or
+    duplicated either way.
+
+    ``key`` is a sequence of NOT NULL columns that is unique together; it fixes
+    both the sort order and the cursor. The walk ends on an empty page, never on
+    a short one: `db-max-rows` makes every page short, so treating shortness as
+    the end reintroduces the truncation this exists to prevent.
     """
+    key_columns = tuple(key)
     query = dict(params or {})
-    query["order"] = order
+    query["order"] = ",".join(f"{column}.asc" for column in key_columns)
     url = rest_url(config["base_url"], path)
+
     rows = []
-    total = None
+    reported_total = None
+    is_first_request = True
 
     while True:
-        headers = {
-            "Range-Unit": "items",
-            "Range": f"{len(rows)}-{len(rows) + page_size - 1}",
-        }
-        if total is None:
+        headers = {"Range-Unit": "items", "Range": f"0-{page_size - 1}"}
+        page_query = dict(query)
+        if is_first_request:
+            # A cross-check only. Completeness comes from the empty page below,
+            # so this never decides when to stop.
             headers["Prefer"] = "count=exact"
+        else:
+            page_query["and"] = keyset_filter(key_columns, rows[-1])
 
         response = request(
-            config, "GET", url, label=path, headers=headers, params=query
+            config, "GET", url, label=path, headers=headers, params=page_query
         )
         page = response.json()
-        if total is None:
-            total = content_range_total(response, path)
+        if is_first_request:
+            reported_total = content_range_total(response)
+            is_first_request = False
+        if not page:
+            break
+
+        missing = [column for column in key_columns if column not in page[-1]]
+        if missing:
+            raise click.ClickException(
+                f"{path}: paging key column(s) {', '.join(missing)} are not in the "
+                "selected columns, so the next page cannot be requested."
+            )
         rows.extend(page)
 
-        if len(rows) >= total:
-            return rows
-        if not page:
-            raise click.ClickException(
-                f"{path}: PostgREST reported {total} rows but stopped returning "
-                f"them after {len(rows)}. Refusing to return an incomplete result."
-            )
+    warn_if_total_moved(path, len(rows), reported_total)
+    return rows
 
 
 def write_rest(config, path, rows, prefer=None, params=None):
@@ -525,8 +589,8 @@ def roster(ctx, role, output_format):
     params = {"select": ",".join(USER_COLUMNS)}
     if role != "all":
         params["role"] = f"eq.{role}"
-    # `netid` is UNIQUE NOT NULL, so it is a stable paging order on its own.
-    users = get_all_rest(ctx.obj, "users", "netid.asc", params=params)
+    # `netid` is UNIQUE NOT NULL, so it is a paging key on its own.
+    users = get_all_rest(ctx.obj, "users", ("netid",), params=params)
     emit_rows(users, USER_COLUMNS, output_format)
 
 
@@ -552,7 +616,7 @@ def find_user(ctx, field, value, output_format):
     matches = get_all_rest(
         ctx.obj,
         "users",
-        "id.asc",
+        ("id",),
         params={"select": ",".join(USER_COLUMNS), field: f"eq.{wanted}"},
     )
 
@@ -587,7 +651,7 @@ def search_users(ctx, term, role, output_format):
     }
     if role != "all":
         params["role"] = f"eq.{role}"
-    users = get_all_rest(ctx.obj, "users", "netid.asc", params=params)
+    users = get_all_rest(ctx.obj, "users", ("netid",), params=params)
     emit_rows(users, USER_COLUMNS, output_format)
 
 
@@ -599,11 +663,10 @@ def fetch_exported_assignments(config, assignment_slugs, include_drafts):
     if assignment_slugs:
         params["slug"] = in_filter(assignment_slugs)
 
-    # `closed_at` repeats across assignments, so the order ends in `slug`, the
-    # primary key, to make the paging walk deterministic.
-    assignments = get_all_rest(
-        config, "assignments", "closed_at.asc,slug.asc", params=params
-    )
+    # Paged on `slug`, the primary key. The export wants them in `closed_at`
+    # order, but `closed_at` is nullable and repeats, which makes a poor cursor;
+    # sorting a course's worth of assignments here costs nothing.
+    assignments = get_all_rest(config, "assignments", ("slug",), params=params)
 
     missing = sorted(set(assignment_slugs) - {row["slug"] for row in assignments})
     if missing:
@@ -611,7 +674,7 @@ def fetch_exported_assignments(config, assignment_slugs, include_drafts):
         raise click.ClickException(
             f"Unknown assignment slug(s): {', '.join(missing)}.{hint}"
         )
-    return assignments
+    return sorted(assignments, key=lambda row: (row.get("closed_at") or "", row["slug"]))
 
 
 def submission_export_row(submission, field_submission, users_by_id):
@@ -644,7 +707,7 @@ def collect_submission_rows(config, assignment_slugs, include_drafts, include_no
     submissions = get_all_rest(
         config,
         "assignment_submissions",
-        "id.asc",
+        ("id",),
         params={
             "select": "id,assignment_slug,is_team,user_id,team_nickname,submitter_user_id",
             "assignment_slug": in_filter(list(assignment_order)),
@@ -658,7 +721,7 @@ def collect_submission_rows(config, assignment_slugs, include_drafts, include_no
         for user in get_all_rest(
             config,
             "users",
-            "id.asc",
+            ("id",),
             params={"select": "id,netid,name,email,nickname,role"},
         )
     }
@@ -679,12 +742,12 @@ def collect_submission_rows(config, assignment_slugs, include_drafts, include_no
     if not exported:
         return []
 
-    # The primary key is (assignment_submission_id, assignment_field_slug), so
-    # ordering on both makes the paging walk deterministic.
+    # The composite primary key is the paging key; `keyset_filter` spells the
+    # lexicographic "strictly after" comparison out for PostgREST.
     field_submissions = get_all_rest(
         config,
         "assignment_field_submissions",
-        "assignment_submission_id.asc,assignment_field_slug.asc",
+        ("assignment_submission_id", "assignment_field_slug"),
         params={
             "select": "assignment_submission_id,assignment_field_slug,body,updated_at",
             "assignment_submission_id": in_filter(list(exported)),
