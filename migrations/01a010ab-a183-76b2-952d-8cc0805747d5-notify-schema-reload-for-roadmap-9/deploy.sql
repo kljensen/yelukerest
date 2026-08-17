@@ -1,0 +1,25 @@
+-- Tell PostgREST that roadmap-9-admin-api changed the API.
+--
+-- That migration added three RPCs, dropped api.quiz_grade_exceptions, and
+-- recreated api.quizzes without `duration` and `is_offline` -- and emitted no
+-- NOTIFY. PostgREST does not rediscover a schema on its own, so against a
+-- running instance all of it stayed invisible: the RPCs answered 404 while
+-- api.platform_version already reported admin_api_version 8, and the cached
+-- api.quizzes went on advertising two columns the database no longer had, which
+-- moves the failure from the cache (a clean 404) to the database (a 500 on
+-- select).
+--
+-- The bootstrap has the same omission but self-heals: it creates the api schema
+-- from nothing, so a PostgREST running at that moment has no cache at all and is
+-- already in its reconnect loop. roadmap-9 does not self-heal, because its cache
+-- loads fine and is merely wrong.
+--
+-- roadmap-9's deploy.sql is applied and immutable, so the correction is a new
+-- migration rather than an edit -- which is the property that makes this
+-- visible as history instead of a silent amendment.
+--
+-- NOTIFY is transactional: it is delivered on commit and discarded on rollback,
+-- so this cannot announce a change that did not happen. `db-channel-enabled`
+-- defaults to true on channel `pgrst`, and this deployment does not override it
+-- (docker-compose.base.yaml sets no PGRST_DB_CHANNEL_ENABLED).
+NOTIFY pgrst, 'reload schema';
