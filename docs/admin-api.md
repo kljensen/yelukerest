@@ -193,6 +193,102 @@ Set `p_dry_run` to `true` to get the same summary shape without writing data.
 `api.platform_version.admin_api_version` is `6` or later for deployments that
 support assignment grade import.
 
+## Quiz Result Import
+
+`POST /rest/rpc/import_quiz_results`
+
+Quizzes are paper-only and are keyed on the meeting they were sat in, so results
+arrive keyed on `meeting_slug` and `netid`:
+
+```json
+{
+  "p_mark_attended": true,
+  "p_dry_run": false,
+  "p_import_id": "quiz-3-2026-09-22",
+  "p_reason": "Quiz 3",
+  "p_results": [
+    {
+      "meeting_slug": "structuredquerylang",
+      "netid": "abc123",
+      "points": 11,
+      "description": "Missed question 4"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "inserted_count": 1,
+    "updated_count": 0,
+    "unchanged_count": 0,
+    "submission_created_count": 1,
+    "attendance_inserted": 0,
+    "attendance_updated": 1,
+    "attendance_unchanged": 0,
+    "import_id": "quiz-3-2026-09-22",
+    "dry_run": false
+  }
+]
+```
+
+`points` is final, absolute points, exactly as for assignment grades. An OMR
+sheet's `correct / total * points_possible` is computed client-side, over the
+full intended cohort; the function never derives a denominator from the payload.
+
+The function fails the whole import, rather than skipping rows, when it finds a
+`meeting_slug` with no quiz, an unknown `netid`, a duplicate
+`meeting_slug`/`netid` pair, a missing or null `points` value, a non-numeric
+`points` value, or points outside `[0, points_possible]`. Every message names
+the offending rows.
+
+`data.quiz_grade` has a foreign key onto `data.quiz_submission`, and a paper
+quiz never produces a submission through the app, so the import creates the
+missing ones and reports them under `submission_created_count`. There is no flag
+to turn that off: the only setting it could take is the one under which no paper
+quiz grade could ever be recorded.
+
+### `p_mark_attended`
+
+Sitting a quiz is evidence of being in the room, so the import can record it.
+This is off by default because it writes to a second table, and a side effect
+that size should be visible at the call site.
+
+When it is on, each person in the batch is reconciled against
+`api.engagements` for the quiz's meeting:
+
+| existing participation | result |
+| --- | --- |
+| no row at all | a row saying `attended` — counted in `attendance_inserted` |
+| `absent` | promoted to `attended` — counted in `attendance_updated` |
+| `attended` | left alone — counted in `attendance_unchanged` |
+| `contributed`, `led` | left alone — counted in `attendance_unchanged` |
+
+`contributed` and `led` are faculty judgements that outrank presence, and an
+import must never downgrade them. Only the people and the meeting in the payload
+are touched.
+
+This replaces an `INSERT ... ON CONFLICT DO NOTHING` in the loaders that came
+before, which never marked anybody attended: `ensure_student_engagement_rows()`
+writes an `absent` row for every (student, meeting) pair at enrolment, so the
+row always existed and the insert always did nothing.
+
+Repeating the same payload writes nothing and reports every row under
+`unchanged_count`, so no redundant `corrected` rows land in
+`api.quiz_grade_events`. Rows the import does write carry
+`source = 'api.import_quiz_results'` plus the `reason` and `import_id` from the
+call. `import_id` is generated when the caller does not supply one and is
+returned so the client can log it.
+
+Set `p_dry_run` to `true` to get the same summary shape, including the
+attendance counts, without writing data.
+
+`api.platform_version.admin_api_version` is `7` or later for deployments that
+support quiz result import.
+
 ## Read Operations
 
 These are plain authenticated reads of existing `api` views, not RPCs. They add no
