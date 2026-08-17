@@ -6,7 +6,7 @@
 -- is in service of that -- the pre-checks only keep the body out of PostgreSQL's
 -- own error text if every constraint that would print it is caught first.
 
-select plan(58);
+select * from no_plan();
 
 --
 -- Who may call them
@@ -648,6 +648,48 @@ SELECT results_eq(
     $$,
     $$ VALUES ('second'::text, false) $$,
     'an absent is_user_visible should leave a hidden team secret hidden'
+);
+
+--
+-- The split write takes row locks through two statements, so two overlapping
+-- batches that partition their keys differently could take them in opposite
+-- orders and deadlock. Reproduced 5/5 before the fix and 0/3 after, but only
+-- with two sessions and a stagger, so what is pinned here is the ordered
+-- pre-lock that removes the inversion.
+--
+-- It reads api.user_secrets rather than data.user_secret because faculty hold
+-- nothing on the base table; locking it directly raises permission denied. That
+-- privilege is pinned in tests/db/yeluke-user_secrets.sql, which is what makes
+-- the view spelling load-bearing rather than incidental.
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname IN ('upsert_user_secrets', 'upsert_team_secrets')
+        AND p.prosrc ~ 'FROM api\.user_secrets locked_secret'
+        AND p.prosrc ~ 'FOR UPDATE'
+    ),
+    2,
+    'both upserts should take their conflict-row locks up front, through the api view'
+);
+
+SELECT is(
+    (
+        SELECT coalesce(string_agg(
+            p.proname::text || ' orders by ' ||
+            (regexp_match(p.prosrc,
+                'ORDER BY locked_secret\.(\w+), locked_secret\.slug'))[1],
+            ', ' ORDER BY p.proname::text), '')
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname IN ('upsert_user_secrets', 'upsert_team_secrets')
+    ),
+    'upsert_team_secrets orders by team_nickname, upsert_user_secrets orders by user_id',
+    'each upsert should lock in one stable order keyed on its own target'
 );
 
 --
