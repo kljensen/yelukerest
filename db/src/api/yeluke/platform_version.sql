@@ -14,6 +14,6 @@ COMMENT ON COLUMN platform_version.platform IS
 COMMENT ON COLUMN platform_version.platform_compatibility_version IS
     'Integer compatibility version for Yelukerest platform behavior';
 COMMENT ON COLUMN platform_version.schema_compatibility_version IS
-    'Integer compatibility version for database schema/API shape';
+    'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
 COMMENT ON COLUMN platform_version.admin_api_version IS
-    'Integer compatibility version for generic admin API operations';
+    'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';

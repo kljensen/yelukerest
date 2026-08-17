@@ -4668,14 +4668,14 @@ COMMENT ON COLUMN api.platform_version.platform_compatibility_version IS 'Intege
 -- Name: COLUMN platform_version.schema_compatibility_version; Type: COMMENT; Schema: api; Owner: api
 --
 
-COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer compatibility version for database schema/API shape';
+COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
 
 
 --
 -- Name: COLUMN platform_version.admin_api_version; Type: COMMENT; Schema: api; Owner: api
 --
 
-COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations';
+COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';
 
 
 --
