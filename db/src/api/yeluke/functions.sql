@@ -1949,3 +1949,403 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION import_quiz_results(jsonb, boolean, boolean, text, text) FROM PUBLIC;
+
+-- Read the fractional_credit bounds off a grade exception table's own CHECK
+-- constraint, so the extension functions cannot drift from the schema they
+-- write to.
+--
+-- If the constraint is ever reshaped past this pattern both bounds read NULL,
+-- every comparison against them is NULL rather than true, and the real write
+-- becomes the only check again; the test suite pins the shape so that a reshape
+-- is noticed rather than silently tolerated.
+CREATE OR REPLACE FUNCTION data.grade_exception_credit_bounds(p_table_name text)
+RETURNS TABLE (
+    credit_minimum numeric,
+    credit_maximum numeric
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT
+        (regexp_match(
+            pg_get_constraintdef(credit_constraint.oid),
+            'fractional_credit >= \(([0-9.]+)\)::numeric'
+        ))[1]::numeric,
+        (regexp_match(
+            pg_get_constraintdef(credit_constraint.oid),
+            'fractional_credit <= \(([0-9.]+)\)::numeric'
+        ))[1]::numeric
+    FROM pg_constraint credit_constraint
+    JOIN pg_class exception_table
+        ON exception_table.oid = credit_constraint.conrelid
+    JOIN pg_namespace exception_schema
+        ON exception_schema.oid = exception_table.relnamespace
+    WHERE exception_schema.nspname = 'data'
+        AND exception_table.relname = p_table_name
+        AND credit_constraint.contype = 'c'
+        AND pg_get_constraintdef(credit_constraint.oid) LIKE '%fractional_credit%';
+$$;
+
+REVOKE ALL ON FUNCTION data.grade_exception_credit_bounds(text) FROM PUBLIC;
+
+-- Write one assignment grade exception, creating it or moving the one already
+-- there.
+--
+-- This exists as its own function only so that the ON CONFLICT clauses can name
+-- assignment_slug, user_id, team_nickname and is_team as bare columns. Inside
+-- api.grant_assignment_extension those are OUT parameter names, and plpgsql
+-- substitutes a variable for any unqualified identifier that matches one --
+-- which an index inference clause cannot be written around, because it accepts
+-- no table qualification.
+--
+-- It is SECURITY INVOKER and writes through the api view, so the caller's own
+-- RLS applies: the WITH CHECK on data.assignment_grade_exception still requires
+-- the writer to be faculty.
+CREATE OR REPLACE FUNCTION data.upsert_assignment_grade_exception(
+    p_assignment_slug text,
+    p_is_team boolean,
+    p_user_id integer,
+    p_team_nickname text,
+    p_closed_at timestamptz,
+    p_fractional_credit numeric
+)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    written_id integer;
+BEGIN
+    -- The uniqueness rules are partial indexes, so each branch has to state the
+    -- predicate its arbiter carries. This is exactly what PostgREST's
+    -- on_conflict cannot say, and why extending a deadline is an RPC rather
+    -- than a POST to a view faculty already hold CRUD on.
+    --
+    -- fractional_credit is in both DO UPDATE lists. The scripts this replaces
+    -- left it out, so re-granting an extension at reduced credit silently kept
+    -- whatever credit the first grant had.
+    IF p_is_team THEN
+        INSERT INTO api.assignment_grade_exceptions (
+            assignment_slug, is_team, team_nickname, closed_at, fractional_credit
+        )
+        VALUES (
+            p_assignment_slug, true, p_team_nickname, p_closed_at, p_fractional_credit
+        )
+        ON CONFLICT (assignment_slug, team_nickname) WHERE is_team
+        DO UPDATE SET
+            closed_at = EXCLUDED.closed_at,
+            fractional_credit = EXCLUDED.fractional_credit
+        RETURNING id INTO written_id;
+    ELSE
+        INSERT INTO api.assignment_grade_exceptions (
+            assignment_slug, is_team, user_id, closed_at, fractional_credit
+        )
+        VALUES (
+            p_assignment_slug, false, p_user_id, p_closed_at, p_fractional_credit
+        )
+        ON CONFLICT (assignment_slug, user_id) WHERE NOT is_team
+        DO UPDATE SET
+            closed_at = EXCLUDED.closed_at,
+            fractional_credit = EXCLUDED.fractional_credit
+        RETURNING id INTO written_id;
+    END IF;
+
+    RETURN written_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, integer, text, timestamptz, numeric) FROM PUBLIC;
+
+-- Grant one student, or one student's team, a later deadline on an assignment.
+--
+-- p_closed_at is absolute. The script this replaces accepted '+7 days' and
+-- interpolated it into SQL, which put a client-side convenience inside the
+-- database; relative arithmetic belongs to whoever knows what "a week" means
+-- for this course.
+--
+-- On a team assignment the student's CURRENT team is the right team, which is
+-- the opposite of the rule api.import_assignment_grades follows. A grade is a
+-- record of work already done, so it is attached through the insert-time
+-- participant snapshot in data.assignment_submission_participant. An extension
+-- authorises work not yet done, and
+-- data.assignment_field_submission_is_writable_by_current_user() reads it by
+-- joining the exception's team_nickname to the submitting student's current
+-- team_nickname. An older team snapshotted here would write a row that the
+-- check consuming it could never match.
+CREATE OR REPLACE FUNCTION grant_assignment_extension(
+    p_user_id integer,
+    p_assignment_slug text,
+    p_closed_at timestamptz,
+    p_fractional_credit numeric DEFAULT 1
+)
+RETURNS TABLE (
+    exception_id integer,
+    assignment_slug text,
+    is_team boolean,
+    user_id integer,
+    team_nickname text,
+    closed_at timestamptz,
+    fractional_credit numeric,
+    created boolean
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    -- Everything the queries below read is held in a local whose name matches
+    -- no column of any table touched here. The OUT parameters are named for the
+    -- JSON the client wants back, and plpgsql refuses an unqualified identifier
+    -- that could be either a variable or a column.
+    target_slug text;
+    target_is_team boolean;
+    target_team_nickname text;
+    credit_floor numeric;
+    credit_ceiling numeric;
+    existing_id integer;
+BEGIN
+    p_fractional_credit := COALESCE(p_fractional_credit, 1);
+    target_slug := btrim(p_assignment_slug);
+
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'grant_assignment_extension requires a user id'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF COALESCE(target_slug, '') = '' THEN
+        RAISE EXCEPTION 'grant_assignment_extension requires an assignment slug'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- A NULL deadline would be refused by the NOT NULL column anyway; saying so
+    -- here names the argument that was left out.
+    IF p_closed_at IS NULL THEN
+        RAISE EXCEPTION 'grant_assignment_extension requires a closed_at, an extension with no deadline is not an extension'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT bounds.credit_minimum, bounds.credit_maximum
+    INTO credit_floor, credit_ceiling
+    FROM data.grade_exception_credit_bounds('assignment_grade_exception') AS bounds;
+
+    IF p_fractional_credit < credit_floor OR p_fractional_credit > credit_ceiling THEN
+        RAISE EXCEPTION 'grant_assignment_extension requires fractional_credit between % and %, received %',
+            credit_floor, credit_ceiling, p_fractional_credit
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- Read through api.assignments rather than data.assignment so the caller's
+    -- own row visibility applies: a caller who cannot see an assignment cannot
+    -- extend it.
+    SELECT assignment.is_team INTO target_is_team
+    FROM api.assignments assignment
+    WHERE assignment.slug = target_slug;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'grant_assignment_extension does not know assignment slug: %', target_slug
+            USING ERRCODE = '23503';
+    END IF;
+
+    SELECT student.team_nickname INTO target_team_nickname
+    FROM api.users student
+    WHERE student.id = p_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'grant_assignment_extension does not know user id: %', p_user_id
+            USING ERRCODE = '23503';
+    END IF;
+
+    IF target_is_team AND target_team_nickname IS NULL THEN
+        RAISE EXCEPTION 'grant_assignment_extension cannot extend team assignment % for user %, who is on no team', target_slug, p_user_id
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- A team exception names the team and no user, an individual exception the
+    -- other way round; the matches_assignment_is_team constraint refuses
+    -- anything else.
+    IF target_is_team THEN
+        SELECT existing.id INTO existing_id
+        FROM api.assignment_grade_exceptions existing
+        WHERE existing.assignment_slug = target_slug
+            AND existing.is_team
+            AND existing.team_nickname = target_team_nickname;
+    ELSE
+        target_team_nickname := NULL;
+
+        SELECT existing.id INTO existing_id
+        FROM api.assignment_grade_exceptions existing
+        WHERE existing.assignment_slug = target_slug
+            AND NOT existing.is_team
+            AND existing.user_id = p_user_id;
+    END IF;
+
+    -- Read before writing, so the caller is told whether this created an
+    -- extension or moved one that was already there.
+    exception_id := data.upsert_assignment_grade_exception(
+        target_slug, target_is_team, p_user_id, target_team_nickname,
+        p_closed_at, p_fractional_credit
+    );
+
+    assignment_slug := target_slug;
+    is_team := target_is_team;
+    user_id := CASE WHEN target_is_team THEN NULL ELSE p_user_id END;
+    team_nickname := target_team_nickname;
+    closed_at := p_closed_at;
+    fractional_credit := p_fractional_credit;
+    created := existing_id IS NULL;
+
+    RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION grant_assignment_extension(integer, text, timestamptz, numeric) FROM PUBLIC;
+
+-- Write one quiz grade exception, creating it or moving the one already there.
+--
+-- Split out for the same reason as its assignment twin: quiz_id and user_id are
+-- OUT parameter names in api.grant_quiz_extension, and an ON CONFLICT target
+-- takes no table qualification to disambiguate them from.
+CREATE OR REPLACE FUNCTION data.upsert_quiz_grade_exception(
+    p_quiz_id integer,
+    p_user_id integer,
+    p_closed_at timestamptz,
+    p_fractional_credit numeric
+)
+RETURNS integer
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    written_id integer;
+BEGIN
+    -- Unlike the assignment exceptions this arbiter is a plain UNIQUE
+    -- constraint, so PostgREST could express the conflict target. What it
+    -- cannot do is resolve a meeting slug to a quiz id and upsert on the result
+    -- in one transaction, which is what api.grant_quiz_extension is for.
+    INSERT INTO api.quiz_grade_exceptions (
+        quiz_id, user_id, closed_at, fractional_credit
+    )
+    VALUES (
+        p_quiz_id, p_user_id, p_closed_at, p_fractional_credit
+    )
+    ON CONFLICT (quiz_id, user_id)
+    DO UPDATE SET
+        closed_at = EXCLUDED.closed_at,
+        fractional_credit = EXCLUDED.fractional_credit
+    RETURNING id INTO written_id;
+
+    RETURN written_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION data.upsert_quiz_grade_exception(integer, integer, timestamptz, numeric) FROM PUBLIC;
+
+-- Grant one student a later deadline on a quiz, keyed on the meeting the quiz
+-- was sat in.
+--
+-- Non-destructive by construction. The script this replaces was named
+-- add-quiz-grade-exception but opened by deleting the student's quiz_grade,
+-- quiz_answer and quiz_submission rows -- and data.quiz_answer has not existed
+-- since quizzes went paper-only, so the script raises before it writes
+-- anything. Nothing here removes a grade. A retake is a re-import through
+-- api.import_quiz_results, which updates the grade in place and leaves both the
+-- original 'recorded' event and the later 'corrected' event in
+-- api.quiz_grade_events.
+--
+-- Quizzes are paper-only, so no student-facing write path currently reads this
+-- row: data.quiz_submission's RLS admits faculty only, and nothing in the
+-- schema consults data.quiz_grade_exception. The row is the durable record of a
+-- faculty decision, and the place any future make-up window would be read from.
+CREATE OR REPLACE FUNCTION grant_quiz_extension(
+    p_user_id integer,
+    p_meeting_slug text,
+    p_closed_at timestamptz,
+    p_fractional_credit numeric DEFAULT 1
+)
+RETURNS TABLE (
+    exception_id integer,
+    meeting_slug text,
+    quiz_id integer,
+    user_id integer,
+    closed_at timestamptz,
+    fractional_credit numeric,
+    created boolean
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    -- Locals named away from every column these queries read, for the same
+    -- reason as in api.grant_assignment_extension.
+    target_slug text;
+    target_quiz_id integer;
+    credit_floor numeric;
+    credit_ceiling numeric;
+    existing_id integer;
+BEGIN
+    p_fractional_credit := COALESCE(p_fractional_credit, 1);
+    target_slug := btrim(p_meeting_slug);
+
+    IF p_user_id IS NULL THEN
+        RAISE EXCEPTION 'grant_quiz_extension requires a user id'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF COALESCE(target_slug, '') = '' THEN
+        RAISE EXCEPTION 'grant_quiz_extension requires a meeting slug'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF p_closed_at IS NULL THEN
+        RAISE EXCEPTION 'grant_quiz_extension requires a closed_at, an extension with no deadline is not an extension'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT bounds.credit_minimum, bounds.credit_maximum
+    INTO credit_floor, credit_ceiling
+    FROM data.grade_exception_credit_bounds('quiz_grade_exception') AS bounds;
+
+    IF p_fractional_credit < credit_floor OR p_fractional_credit > credit_ceiling THEN
+        RAISE EXCEPTION 'grant_quiz_extension requires fractional_credit between % and %, received %',
+            credit_floor, credit_ceiling, p_fractional_credit
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- Quizzes are keyed on the meeting they were sat in, so a meeting that
+    -- exists but holds no quiz is just as unextendable as a meeting that does
+    -- not exist. Both are named the same way. Reading through api.quizzes keeps
+    -- the caller's own row visibility in force.
+    SELECT quiz.id INTO target_quiz_id
+    FROM api.quizzes quiz
+    WHERE quiz.meeting_slug = target_slug;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'grant_quiz_extension does not know a quiz for meeting slug: %', target_slug
+            USING ERRCODE = '23503';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM api.users student
+        WHERE student.id = p_user_id
+    ) THEN
+        RAISE EXCEPTION 'grant_quiz_extension does not know user id: %', p_user_id
+            USING ERRCODE = '23503';
+    END IF;
+
+    SELECT existing.id INTO existing_id
+    FROM api.quiz_grade_exceptions existing
+    WHERE existing.quiz_id = target_quiz_id
+        AND existing.user_id = p_user_id;
+
+    exception_id := data.upsert_quiz_grade_exception(
+        target_quiz_id, p_user_id, p_closed_at, p_fractional_credit
+    );
+
+    meeting_slug := target_slug;
+    quiz_id := target_quiz_id;
+    user_id := p_user_id;
+    closed_at := p_closed_at;
+    fractional_credit := p_fractional_credit;
+    created := existing_id IS NULL;
+
+    RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION grant_quiz_extension(integer, text, timestamptz, numeric) FROM PUBLIC;

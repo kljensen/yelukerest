@@ -4,3 +4,8 @@ GRANT EXECUTE ON FUNCTION data.resolve_assignment_grade_import(jsonb) TO faculty
 GRANT EXECUTE ON FUNCTION api.import_assignment_grades(jsonb, boolean, boolean, text, text) TO faculty;
 GRANT EXECUTE ON FUNCTION data.resolve_quiz_result_import(jsonb) TO faculty;
 GRANT EXECUTE ON FUNCTION api.import_quiz_results(jsonb, boolean, boolean, text, text) TO faculty;
+GRANT EXECUTE ON FUNCTION data.grade_exception_credit_bounds(text) TO faculty;
+GRANT EXECUTE ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, integer, text, timestamptz, numeric) TO faculty;
+GRANT EXECUTE ON FUNCTION api.grant_assignment_extension(integer, text, timestamptz, numeric) TO faculty;
+GRANT EXECUTE ON FUNCTION data.upsert_quiz_grade_exception(integer, integer, timestamptz, numeric) TO faculty;
+GRANT EXECUTE ON FUNCTION api.grant_quiz_extension(integer, text, timestamptz, numeric) TO faculty;
