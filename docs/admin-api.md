@@ -499,6 +499,12 @@ Response:
 default (visible); absent on an existing one it leaves the current setting
 alone, so re-issuing a password does not un-hide a secret faculty had hidden.
 
+That holds under concurrency, not just in the common case. Rows whose payload
+omits the field are written by a statement that does not mention the column at
+all — not in its `INSERT` list, not in its `ON CONFLICT DO UPDATE` — so there is
+no read of the stored visibility that a competing writer could invalidate. An
+omitted `is_user_visible` cannot change the stored value under any interleaving.
+
 Re-runnable. A second run of the same payload writes nothing and reports every
 row as unchanged — the `DO UPDATE` carries a `WHERE`, so an unchanged secret is
 not even restamped.

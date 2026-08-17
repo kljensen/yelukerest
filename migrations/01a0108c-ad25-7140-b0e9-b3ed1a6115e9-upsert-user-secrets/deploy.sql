@@ -408,29 +408,46 @@ BEGIN
     -- that print the failing row are caught -- a unique or foreign key
     -- violation names its key alone, and its own message is better than
     -- anything restated here.
+    -- Two writes over disjoint halves of the payload, split on whether the
+    -- caller said anything about visibility.
+    --
+    -- The single write this replaces resolved `is_user_visible` from a read of
+    -- the existing row taken before it, and then applied the result
+    -- unconditionally in DO UPDATE. That turned "absent means leave it alone"
+    -- into "absent means whatever it was a moment ago", and the difference is a
+    -- race that fails in the exposing direction: one caller issues a secret
+    -- hidden, a second caller whose payload omits the field read no row and so
+    -- proposes `true`, the hidden insert lands first, and the second's
+    -- ON CONFLICT flips a deliberately hidden password student-visible.
+    --
+    -- The fix is not a narrower window. The omitted half never mentions the
+    -- column at all -- not in the INSERT list, not in the DO UPDATE -- so there
+    -- is no read to go stale and nothing to lose a race with. A genuinely new
+    -- row takes the column default straight from the schema, which is also one
+    -- fewer copy of `true` to keep in step with data.user_secret.
+    --
+    -- Carrying a "was it supplied" flag through EXCLUDED is not available:
+    -- EXCLUDED exposes only the columns being inserted, and is_user_visible is
+    -- NOT NULL, so there is no sentinel to smuggle the distinction in.
+    --
+    -- The halves are disjoint by construction -- a payload row supplies the
+    -- field or does not -- and duplicate netid/slug keys were refused above, so
+    -- no row is a conflict target twice and the two statements cannot collide.
     BEGIN
         WITH resolved_secrets AS (
             SELECT
                 student.id AS user_id,
                 btrim(element.value->>'slug') AS slug,
                 element.value->>'body' AS body,
-                CASE
-                    WHEN element.value ? 'is_user_visible'
-                    THEN (element.value->>'is_user_visible')::boolean
-                    -- Absent means "leave it as it is", and on a new row means
-                    -- the column default. `true` is pinned by col_default_is in
-                    -- tests/db/yeluke-user_secrets.sql.
-                    ELSE COALESCE(prior_secret.is_user_visible, true)
-                END AS is_user_visible
+                element.value ? 'is_user_visible' AS has_visibility,
+                (element.value->>'is_user_visible')::boolean AS is_user_visible
             FROM jsonb_array_elements(p_secrets) AS element(value)
             JOIN api.users student
                 ON student.netid = lower(btrim(element.value->>'netid'))
-            LEFT JOIN api.user_secrets prior_secret
-                ON prior_secret.user_id = student.id
-                AND prior_secret.slug = btrim(element.value->>'slug')
-                AND prior_secret.team_nickname IS NULL
         ),
-        written_secrets AS (
+        -- Visibility supplied: it is written on both paths, and a change to it
+        -- alone is enough to count as an update.
+        written_with_visibility AS (
             INSERT INTO api.user_secrets AS existing_secret (
                 user_id, slug, body, is_user_visible
             )
@@ -440,6 +457,7 @@ BEGIN
                 resolved_secret.body,
                 resolved_secret.is_user_visible
             FROM resolved_secrets resolved_secret
+            WHERE resolved_secret.has_visibility
             -- The partial index predicate, which is the whole reason this is an
             -- RPC: PostgREST's on_conflict cannot say `WHERE team_nickname IS
             -- NULL`, so it cannot infer this arbiter.
@@ -457,6 +475,29 @@ BEGIN
             -- new secret at once would both pass a prior existence check and
             -- both be told they created it.
             RETURNING old.id IS NULL AS was_inserted
+        ),
+        -- Visibility omitted: the column appears nowhere, so an existing row
+        -- keeps whatever it holds and a new one takes the schema default.
+        written_without_visibility AS (
+            INSERT INTO api.user_secrets AS existing_secret (
+                user_id, slug, body
+            )
+            SELECT
+                resolved_secret.user_id,
+                resolved_secret.slug,
+                resolved_secret.body
+            FROM resolved_secrets resolved_secret
+            WHERE NOT resolved_secret.has_visibility
+            ON CONFLICT (user_id, slug) WHERE team_nickname IS NULL
+            DO UPDATE SET
+                body = EXCLUDED.body
+            WHERE existing_secret.body IS DISTINCT FROM EXCLUDED.body
+            RETURNING old.id IS NULL AS was_inserted
+        ),
+        written_secrets AS (
+            SELECT was_inserted FROM written_with_visibility
+            UNION ALL
+            SELECT was_inserted FROM written_without_visibility
         )
         SELECT
             count(*) FILTER (WHERE written_secret.was_inserted)::integer,
@@ -638,26 +679,23 @@ BEGIN
         RETURN;
     END IF;
 
+    -- Split on whether the caller said anything about visibility, for the
+    -- reasons set out at length in api.upsert_user_secrets. A team secret is
+    -- readable by every current member of the team, so the race this closes
+    -- exposed a password to more people here than it did there.
     BEGIN
         WITH resolved_secrets AS (
             SELECT
                 course_team.nickname AS team_nickname,
                 btrim(element.value->>'slug') AS slug,
                 element.value->>'body' AS body,
-                CASE
-                    WHEN element.value ? 'is_user_visible'
-                    THEN (element.value->>'is_user_visible')::boolean
-                    ELSE COALESCE(prior_secret.is_user_visible, true)
-                END AS is_user_visible
+                element.value ? 'is_user_visible' AS has_visibility,
+                (element.value->>'is_user_visible')::boolean AS is_user_visible
             FROM jsonb_array_elements(p_secrets) AS element(value)
             JOIN api.teams course_team
                 ON course_team.nickname = btrim(element.value->>'team_nickname')
-            LEFT JOIN api.user_secrets prior_secret
-                ON prior_secret.team_nickname = course_team.nickname
-                AND prior_secret.slug = btrim(element.value->>'slug')
-                AND prior_secret.user_id IS NULL
         ),
-        written_secrets AS (
+        written_with_visibility AS (
             INSERT INTO api.user_secrets AS existing_secret (
                 team_nickname, slug, body, is_user_visible
             )
@@ -667,6 +705,7 @@ BEGIN
                 resolved_secret.body,
                 resolved_secret.is_user_visible
             FROM resolved_secrets resolved_secret
+            WHERE resolved_secret.has_visibility
             ON CONFLICT (team_nickname, slug) WHERE user_id IS NULL
             DO UPDATE SET
                 body = EXCLUDED.body,
@@ -674,6 +713,27 @@ BEGIN
             WHERE existing_secret.body IS DISTINCT FROM EXCLUDED.body
                 OR existing_secret.is_user_visible IS DISTINCT FROM EXCLUDED.is_user_visible
             RETURNING old.id IS NULL AS was_inserted
+        ),
+        written_without_visibility AS (
+            INSERT INTO api.user_secrets AS existing_secret (
+                team_nickname, slug, body
+            )
+            SELECT
+                resolved_secret.team_nickname,
+                resolved_secret.slug,
+                resolved_secret.body
+            FROM resolved_secrets resolved_secret
+            WHERE NOT resolved_secret.has_visibility
+            ON CONFLICT (team_nickname, slug) WHERE user_id IS NULL
+            DO UPDATE SET
+                body = EXCLUDED.body
+            WHERE existing_secret.body IS DISTINCT FROM EXCLUDED.body
+            RETURNING old.id IS NULL AS was_inserted
+        ),
+        written_secrets AS (
+            SELECT was_inserted FROM written_with_visibility
+            UNION ALL
+            SELECT was_inserted FROM written_without_visibility
         )
         SELECT
             count(*) FILTER (WHERE written_secret.was_inserted)::integer,

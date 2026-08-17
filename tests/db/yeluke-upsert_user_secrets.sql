@@ -6,7 +6,7 @@
 -- is in service of that -- the pre-checks only keep the body out of PostgreSQL's
 -- own error text if every constraint that would print it is caught first.
 
-select plan(50);
+select plan(58);
 
 --
 -- Who may call them
@@ -560,6 +560,133 @@ SELECT is(
     3,
     'the team and user secrets sharing a slug should all survive'
 );
+
+--
+-- An omitted is_user_visible must not be able to change the stored value under
+-- any interleaving.
+--
+-- The bug: the write resolved is_user_visible from a read of the existing row
+-- taken before it, then applied the result unconditionally in DO UPDATE. One
+-- caller issues a secret hidden; a second caller whose payload omits the field
+-- reads no row and so proposes `true`; the hidden insert lands first; the
+-- second's ON CONFLICT flips a deliberately hidden password student-visible.
+--
+-- Every behavioural assertion in this file passed while that bug was present,
+-- and would still pass if it came back, because inside one transaction the
+-- stale read returns the right answer. Only a second session can observe it,
+-- and a test needing two connections and timing would be flaky. So the fix is
+-- pinned structurally, at the property that makes the race impossible rather
+-- than unlikely: the omitted half of the write never mentions the column at
+-- all, so there is no read to go stale.
+
+SELECT is(
+    (
+        SELECT count(*)::int
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname IN ('upsert_user_secrets', 'upsert_team_secrets')
+        AND p.prosrc ~ 'written_without_visibility'
+    ),
+    2,
+    'both upserts should write the omitted-visibility rows through their own statement'
+);
+
+SELECT is(
+    (
+        SELECT coalesce(string_agg(
+            p.proname::text || '=' ||
+            regexp_count(p.prosrc, 'is_user_visible = EXCLUDED\.is_user_visible')::text,
+            ', ' ORDER BY p.proname::text), '')
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'api'
+        AND p.proname IN ('upsert_user_secrets', 'upsert_team_secrets')
+    ),
+    'upsert_team_secrets=1, upsert_user_secrets=1',
+    'only the supplied-visibility half of each write should assign is_user_visible'
+);
+
+-- The user variant's behaviour, spelled out: the body moves and the visibility
+-- does not. Deterministic, and it is the semantics the structural assertions
+-- above exist to protect.
+SELECT is(
+    (SELECT body FROM api.user_secrets WHERE slug = 'exam-link'),
+    'second',
+    'rotating a hidden secret should move the body'
+);
+
+-- The team variant carries the same rule, and a team secret is readable by
+-- every current member, so the race exposed a password to more people here.
+SELECT is(
+    (
+        SELECT inserted_count
+        FROM api.upsert_team_secrets(
+            '[{"team_nickname":"hazy-mountain","slug":"team-hidden","body":"first","is_user_visible":false}]'::jsonb
+        )
+    ),
+    1,
+    'a team secret may be created hidden'
+);
+
+SELECT is(
+    (
+        SELECT updated_count
+        FROM api.upsert_team_secrets(
+            '[{"team_nickname":"hazy-mountain","slug":"team-hidden","body":"second"}]'::jsonb
+        )
+    ),
+    1,
+    'rotating the body of a hidden team secret should be one update'
+);
+
+SELECT results_eq(
+    $$
+        SELECT body, is_user_visible
+        FROM api.user_secrets
+        WHERE slug = 'team-hidden'
+    $$,
+    $$ VALUES ('second'::text, false) $$,
+    'an absent is_user_visible should leave a hidden team secret hidden'
+);
+
+--
+-- The write path's last line of defence. Every constraint on data.user_secret
+-- is pre-checked, so the handler around the write is unreachable in normal
+-- operation -- which also means nothing else here exercises it. A constraint
+-- added for the duration of this transaction stands in for the one somebody
+-- adds later, and proves the handler keeps the body out of an error that
+-- PostgreSQL would otherwise render with the whole failing row attached.
+--
+-- Run as the test superuser, which holds SELECT on data.user_secret, so the
+-- row description is not being suppressed by a permission check.
+--
+
+reset role;
+
+ALTER TABLE data.user_secret
+    ADD CONSTRAINT test_only_reject_sentinel
+    CHECK (body <> 'SENTINEL-PASSWORD-8f3a1c');
+
+SELECT ok(
+    pg_temp.error_text($$
+        SELECT * FROM api.upsert_user_secrets(
+            '[{"netid":"crt43","slug":"handler-probe","body":"SENTINEL-PASSWORD-8f3a1c"}]'::jsonb
+        )
+    $$) LIKE '%test_only_reject_sentinel%',
+    'a constraint no pre-check knows about should still be named in the error'
+);
+
+SELECT ok(
+    pg_temp.error_text($$
+        SELECT * FROM api.upsert_team_secrets(
+            '[{"team_nickname":"bright-fog","slug":"handler-probe","body":"SENTINEL-PASSWORD-8f3a1c"}]'::jsonb
+        )
+    $$) NOT LIKE '%SENTINEL-PASSWORD-8f3a1c%',
+    'a constraint no pre-check knows about must not let the body reach the client'
+);
+
+ALTER TABLE data.user_secret DROP CONSTRAINT test_only_reject_sentinel;
 
 --
 -- End to end: a student reads the secret the RPC wrote for them, and only that
