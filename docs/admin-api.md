@@ -193,12 +193,100 @@ Set `p_dry_run` to `true` to get the same summary shape without writing data.
 `api.platform_version.admin_api_version` is `6` or later for deployments that
 support assignment grade import.
 
+## Read Operations
+
+These are plain authenticated reads of existing `api` views, not RPCs. They add no
+database objects: `faculty` already holds `select` on `api.users`,
+`api.assignments`, `api.assignment_submissions`, and
+`api.assignment_field_submissions`, and PostgREST already supports the filtering
+each one needs. They exist in `api_client.py` so that the query lives in one place
+under test instead of being pasted into a `psql -c` in every course repo.
+
+Every one takes `--format json|csv`. CSV carries a header row and renders SQL nulls
+as empty cells.
+
+### `roster`
+
+`GET /rest/users?role=eq.student&order=netid.asc`
+
+Students by default; `--role ta|faculty|observer|all` selects another set. This is
+the "who is in this course" read that quiz grading and CSV report scripts need.
+
+### `find-user FIELD VALUE`
+
+`GET /rest/users?<field>=eq.<value>`
+
+`FIELD` is `netid`, `email`, or `nickname`, and the caller must say which. It is
+deliberately not a polymorphic resolver. The clause it replaces matched
+`email = X OR netid = X OR nickname = X` at once, so a value that happened to
+resemble another person's netid resolved to the wrong person without saying so.
+
+The command errors on zero matches and, separately, on more than one. All three
+lookup columns are `UNIQUE NOT NULL` on `data.user`, so a second match cannot
+happen through the schema; the check is an invariant assertion, and if it ever
+fires it means the filter, not the data, is wrong. The value is lowercased first,
+because `clean_user_fields()` lowercases all three columns on write.
+
+`name` and `team_nickname` are not offered here. They do not identify one person,
+which is what `search-users` is for.
+
+### `search-users TERM`
+
+`GET /rest/users?or=(name.ilike."*TERM*",…)`
+
+Substring search over `name`, `email`, `netid`, `nickname`, and `team_nickname`.
+Kept as a separate command from `find-user` so that "show me candidates" and
+"resolve this person" cannot drift back into one operation. `--role` narrows it the
+same way as `roster`. An empty term is refused rather than silently listing
+everyone.
+
+### `export-submissions`
+
+One row per **submitted field**, joining `api.assignments`,
+`api.assignment_submissions`, `api.assignment_field_submissions`, and `api.users`.
+
+Columns: `assignment_slug`, `is_team`, `submission_id`, `team_nickname`, `netid`,
+`name`, `email`, `nickname`, `submitter_netid`, `field_slug`, `body`,
+`submitted_at`. Rows are ordered by the assignment's `closed_at`, then by team or
+student, then by submission and field.
+
+The export is submission-centric, which is a deliberate departure from the
+`dump-submissions.sql` query it replaces:
+
+- **A team submission appears once**, carrying its `team_nickname` and the netid of
+  whoever submitted it. The old query repeated it once per current team member.
+  Attributing a team submission to people requires the roster *as it stood when the
+  work was submitted*; the database keeps exactly that in
+  `data.assignment_submission_participant`, precisely because "later team roster
+  changes must not rewrite historical submitted work". That table is not in the
+  `api` schema and so is not reachable over PostgREST, and the only membership this
+  API can see — each user's current `team_nickname` — is wrong for anyone who
+  changed teams after submitting. Emitting one row per submission is the honest
+  shape for the data available.
+- **An assignment nobody submitted produces no rows.** The old query cross-joined
+  every user with every assignment, so a blank body meant "no submission", "a
+  submission missing this field", or "an empty answer", indistinguishably. Who has
+  *not* submitted is a different question; answer it by subtracting this export
+  from `roster`.
+- **Draft assignments are excluded** unless `--include-drafts`. A draft assignment
+  is not yet real work.
+- **Individual submissions owned by non-students are excluded** unless
+  `--include-non-students`, so faculty test submissions stay out of a grading
+  export. Team submissions are always included; a team has no single owner to
+  filter on.
+
+`--assignment SLUG` is repeatable and limits the export. A slug that matches
+nothing is an error naming it, rather than a silently empty export.
+
 ## Operation Roadmap
 
 | Operation | Status | Notes |
 | --- | --- | --- |
 | Meeting sync | Supported by `api.sync_meetings` | Desired-state import with delete-missing behavior. |
 | Assignment sync | Supported by `api.sync_assignments` | Desired-state parent/field import with dry-run and optional delete-missing behavior. |
+| Roster read | Supported by `api_client.py roster` | `GET api.users` filtered by role. No new database objects. |
+| User lookup | Supported by `api_client.py find-user` / `search-users` | Exact resolution on one named field, kept separate from substring search. |
+| Submission export | Supported by `api_client.py export-submissions` | One row per submitted field; a team submission appears once. |
 | Roster import | Planned | Needs a boundary between Yelukerest user rows and course-specific registration, LDAP, and nickname enrichment. |
 | Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
 | Quiz grade import | Planned | Should follow the same contract as assignment grade import. |
