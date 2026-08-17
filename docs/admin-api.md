@@ -291,26 +291,24 @@ support quiz result import.
 
 ## Deadline Extensions
 
-Two RPCs move one deadline for one student. Both are non-destructive: they write
-an exception row and touch no grade, no submission, and no grade history.
+One RPC moves one deadline for one student. It is non-destructive: it writes an
+exception row and touches no grade, no submission, and no grade history.
 
-### Why these are RPCs
+Assignments are the only thing with a deadline a student can still act on.
+Quizzes are paper-only, so there is nothing to extend; see
+[There is no quiz extension](#there-is-no-quiz-extension).
 
-`faculty` already holds full CRUD on `api.assignment_grade_exceptions` and
-`api.quiz_grade_exceptions`, so an extension looks like a plain POST. Each is an
-RPC for its own reason:
+### Why this is an RPC
 
-- **Assignments.** The uniqueness rules are *partial* indexes —
-  `(assignment_slug, user_id) WHERE is_team = false` and
-  `(assignment_slug, team_nickname) WHERE is_team = true`. PostgREST's
-  `on_conflict` carries column names but no index predicate, so it cannot name
-  either arbiter, and a second grant to the same student raises a duplicate key
-  error instead of moving their deadline.
-- **Quizzes.** The arbiter here is a plain `UNIQUE (quiz_id, user_id)`, which
-  `on_conflict` *can* express. What a POST cannot do is resolve a meeting slug
-  to a quiz id and upsert on the result in one transaction.
+`faculty` already holds full CRUD on `api.assignment_grade_exceptions`, so an
+extension looks like a plain POST. It is an RPC because the uniqueness rules are
+*partial* indexes — `(assignment_slug, user_id) WHERE is_team = false` and
+`(assignment_slug, team_nickname) WHERE is_team = true`. PostgREST's
+`on_conflict` carries column names but no index predicate, so it cannot name
+either arbiter, and a second grant to the same student raises a duplicate key
+error instead of moving their deadline.
 
-`is_team` branching is not the reason for either: a trigger on
+`is_team` branching is not the reason: a trigger on
 `data.assignment_grade_exception` already fills `is_team` from the assignment.
 
 ### `api.grant_assignment_extension`
@@ -374,64 +372,34 @@ assignment slug, a missing `closed_at`, an unknown assignment slug, an unknown
 user id, a `fractional_credit` outside the constraint's bounds, or a team
 assignment for a student who is on no team.
 
-### `api.grant_quiz_extension`
+### There is no quiz extension
 
-> **A quiz extension currently has no effect on what a student can do.** It
-> records the decision and nothing else. Nothing in the database reads
-> `data.quiz_grade_exception` — no view, no row-level security policy, no grade
-> calculation. Confirmed against the catalog rather than by searching text: the
-> only functions whose bodies mention the table are the two that *write* it
-> (`api.grant_quiz_extension` and `data.upsert_quiz_grade_exception`), and no
-> policy or view references it at all. Contrast
-> `data.assignment_grade_exception`, which
-> `data.assignment_field_submission_is_writable_by_current_user()` and
-> `data.assignment_submission`'s row-level security policy both read — which is
-> what makes an *assignment* extension actually let a student submit late.
->
-> This is a consequence of quizzes being paper-only: there is no online quiz for
-> a deadline to hold open. Granting one is a durable, auditable record that
-> faculty allowed a make-up, and it is the row any future make-up window would
-> be read from. It is not a mechanism that lets the student do anything today.
-> Tell the student what the make-up arrangement is; the row will not tell them.
+Quizzes are paper-only, so a quiz deadline is not something a student can act
+against. `data.quiz.open_at` and `closed_at` record when the paper quiz was
+administered; no student write path is gated on them, because there is no
+student quiz write path at all — `data.quiz_submission`'s row-level security
+admits `faculty` alone.
 
-`POST /rest/rpc/grant_quiz_extension`
+An earlier revision of this document offered `api.grant_quiz_extension`, backed
+by a `data.quiz_grade_exception` table. Both are gone. Nothing in the database
+ever read that table — no view, no row-level security policy, no grade
+calculation; the only functions whose bodies mentioned it were the two that
+*wrote* it. A quiz extension recorded a faculty decision and changed nothing a
+student could do, which made it a schema object pretending to be a mechanism.
 
-```json
-{
-  "p_user_id": 42,
-  "p_meeting_slug": "structuredquerylang",
-  "p_closed_at": "2026-10-03T23:59:00-04:00",
-  "p_fractional_credit": 1
-}
-```
+Contrast `data.assignment_grade_exception`, which
+`data.assignment_field_submission_is_writable_by_current_user()` and
+`data.assignment_submission`'s row-level security policy both read — which is
+what makes an *assignment* extension actually let a student submit late.
 
-Response:
-
-```json
-[
-  {
-    "exception_id": 9,
-    "meeting_slug": "structuredquerylang",
-    "quiz_id": 2,
-    "user_id": 42,
-    "closed_at": "2026-10-03T23:59:00-04:00",
-    "fractional_credit": 1,
-    "created": true
-  }
-]
-```
-
-Quizzes are keyed on the meeting they were sat in, so a meeting that holds no
-quiz is as unextendable as a meeting that does not exist, and both are named the
-same way. Everything else — the absolute timestamp, the credit bounds read from
-the constraint, `created`, and re-grant behaviour — matches the assignment
-version.
+Tell the student what the make-up arrangement is, and record the outcome by
+re-importing through `api.import_quiz_results`.
 
 ### There is no `reset_quiz_attempt`
 
 `add-quiz-grade-exception.sh` opened by deleting the student's `quiz_grade`,
-`quiz_answer` and `quiz_submission` rows before writing the new deadline, under
-a name that said nothing about it. That behaviour is not ported, and it is not
+`quiz_answer` and `quiz_submission` rows before writing a new deadline, under a
+name that said nothing about it. That behaviour is not ported, and it is not
 offered under an honest name either, because nothing needs it:
 
 - Quizzes are paper-only. `data.quiz_submission`'s RLS admits `faculty` alone,
@@ -448,7 +416,7 @@ offered under an honest name either, because nothing needs it:
   already available under a name that says what it does.
 
 `api.platform_version.admin_api_version` is `8` or later for deployments that
-support either extension RPC.
+support the assignment extension RPC.
 
 ## Read Operations
 
@@ -610,5 +578,5 @@ nothing is an error naming it, rather than a silently empty export.
 | Roster import | Planned | Needs a boundary between Yelukerest user rows and course-specific registration, LDAP, and nickname enrichment. |
 | Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
 | Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and an audited `import_id`. |
-| Deadline extensions | Supported by `api.grant_assignment_extension` / `api.grant_quiz_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. |
-| Grade exception audit trail | Planned | The exception tables carry no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |
+| Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
+| Grade exception audit trail | Planned | `data.assignment_grade_exception` carries no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |

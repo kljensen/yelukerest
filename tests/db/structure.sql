@@ -16,7 +16,7 @@ SELECT set_eq(
         'assignment_field_submissions', 'assignment_field_submission_events',
         'quiz_grades', 'assignment_grades',
         'quiz_grade_events', 'assignment_grade_events', 'grade_events',
-        'quiz_grade_exceptions', 'assignment_grade_exceptions',
+        'assignment_grade_exceptions',
         'quiz_grade_distributions', 'assignment_grade_distributions',
         'grade_snapshot_distributions',
         'mcp_jwt_mint_events', 'mcp_jwt_mint_anomalies', 'mcp_grant_revocations',

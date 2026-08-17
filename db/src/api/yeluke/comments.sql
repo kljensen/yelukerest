@@ -206,16 +206,6 @@ COMMENT ON COLUMN quiz_grade_events.source IS 'Source table or import path that 
 COMMENT ON COLUMN quiz_grade_events.reason IS 'Optional reason for the grade event';
 COMMENT ON COLUMN quiz_grade_events.import_id IS 'Optional import batch identifier for the grade event';
 
-COMMENT ON VIEW quiz_grade_exceptions IS
-    'Per-user quiz deadline and credit exceptions';
-COMMENT ON COLUMN quiz_grade_exceptions.id IS 'Unique quiz grade exception id';
-COMMENT ON COLUMN quiz_grade_exceptions.quiz_id IS 'Quiz this exception applies to';
-COMMENT ON COLUMN quiz_grade_exceptions.user_id IS 'Student this exception applies to';
-COMMENT ON COLUMN quiz_grade_exceptions.fractional_credit IS 'Fraction of normal credit available under this exception';
-COMMENT ON COLUMN quiz_grade_exceptions.closed_at IS 'Exception-specific quiz deadline';
-COMMENT ON COLUMN quiz_grade_exceptions.created_at IS 'When this quiz grade exception row was created';
-COMMENT ON COLUMN quiz_grade_exceptions.updated_at IS 'When this quiz grade exception row was last updated';
-
 COMMENT ON VIEW teams IS
     'Student teams used for team assignments';
 COMMENT ON COLUMN teams.nickname IS 'Unique team nickname';

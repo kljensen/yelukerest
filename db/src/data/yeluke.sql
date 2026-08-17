@@ -13,7 +13,6 @@
 \ir ./yeluke/quiz_grade.sql
 \ir ./yeluke/artifact.sql
 \ir ./yeluke/assignment_grade.sql
-\ir ./yeluke/quiz_grade_exception.sql
 \ir ./yeluke/assignment_grade_exception.sql
 \ir ./yeluke/user_secret.sql
 \ir ./yeluke/grade_snapshot.sql

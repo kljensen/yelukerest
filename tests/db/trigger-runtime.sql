@@ -1,4 +1,4 @@
-select plan(25);
+select plan(24);
 
 SELECT set_eq(
     $$
@@ -34,7 +34,6 @@ SELECT set_eq(
         'quiz_grade.tg_quiz_grade_default',
         'quiz_grade.tg_quiz_grade_event_history',
         'quiz_grade_event.tg_quiz_grade_event_append_only',
-        'quiz_grade_exception.tg_quiz_grade_exception_default',
         'quiz_submission.tg_quiz_submission_default',
         'team.tg_team_update_timestamps',
         'ui_element.tg_ui_element_update_timestamps',
@@ -169,12 +168,6 @@ SELECT results_eq(
     $$ UPDATE data.grade SET description = description WHERE snapshot_slug = 'after-first-exam' AND user_id = 1 RETURNING updated_at > '2020-01-01'::timestamptz $$,
     ARRAY[true],
     'tg_grade_default refreshes updated_at'
-);
-
-SELECT results_eq(
-    $$ UPDATE data.quiz_grade_exception SET fractional_credit = fractional_credit WHERE quiz_id = 1 AND user_id = 5 RETURNING updated_at > '2020-01-01'::timestamptz $$,
-    ARRAY[true],
-    'tg_quiz_grade_exception_default refreshes updated_at'
 );
 
 SELECT results_eq(
