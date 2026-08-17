@@ -367,7 +367,7 @@ func registerReadTools(server *mcp.Server, deps *toolDeps) {
 	}, deps.listMeetings)
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_quizzes",
-		Description: "List quizzes visible to the caller: id, associated meeting slug, points possible, open/close times, duration, and whether each is currently open. " +
+		Description: "List quizzes visible to the caller: id, associated meeting slug, points possible, open/close times, and whether each is currently open. " +
 			"Quiz grades are never included here; use get_my_quiz_grades.",
 		Annotations: readOnlyAnnotations("List quizzes"),
 	}, deps.listQuizzes)
@@ -707,7 +707,6 @@ type quizSummary struct {
 	PointsPossible int    `json:"points_possible"`
 	IsDraft        bool   `json:"is_draft"`
 	IsOpen         bool   `json:"is_open" jsonschema:"whether the quiz is published and currently open"`
-	Duration       string `json:"duration" jsonschema:"how long students have once the quiz begins"`
 	OpenAt         string `json:"open_at"`
 	ClosedAt       string `json:"closed_at"`
 	CreatedAt      string `json:"created_at"`
@@ -726,7 +725,7 @@ func (d *toolDeps) listQuizzes(ctx context.Context, req *mcp.CallToolRequest, _ 
 		return nil, listQuizzesOutput{}, err
 	}
 	query := url.Values{}
-	query.Set("select", "id,meeting_slug,points_possible,is_draft,is_open,duration,open_at,closed_at,created_at,updated_at")
+	query.Set("select", "id,meeting_slug,points_possible,is_draft,is_open,open_at,closed_at,created_at,updated_at")
 	query.Set("order", "open_at.asc,id.asc")
 	rows, err := fetchRows[quizSummary](ctx, d.postgrest, token, "/quizzes", query)
 	if err != nil {

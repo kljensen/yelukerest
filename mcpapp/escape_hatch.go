@@ -222,7 +222,7 @@ grade_snapshot_distributions, assignment_grade_distributions,
   quiz_grade_distributions (read): anonymized class stats
   (count, average, min, max, stddev).
 quizzes (read): id, meeting_slug, points_possible, is_draft, is_open,
-  duration, open_at, closed_at.
+  open_at, closed_at.
 quiz_submissions (read): quiz_id, user_id, created_at, updated_at.
 quiz_grades (read): quiz_id, user_id, points, points_possible, description.
 meetings (read): slug, title, summary, description, begins_at, duration,

@@ -160,7 +160,7 @@ const (
 
 	fixtureSubmissions = `[{"id":7,"assignment_slug":"proj1","is_team":true,"user_id":null,"team_nickname":"team-one","submitter_user_id":43,"created_at":"2026-08-02T00:00:00+00:00","updated_at":"2026-08-02T00:00:00+00:00","fields":[{"assignment_field_slug":"repo-url","body":"https://example.com/x","submitter_user_id":43,"created_at":"2026-08-02T00:00:00+00:00","updated_at":"2026-08-02T00:00:00+00:00"}]}]`
 
-	fixtureQuizzes = `[{"id":1,"meeting_slug":"intro","points_possible":5,"is_draft":false,"is_open":false,"duration":"00:15:00","open_at":"2026-08-20T00:00:00+00:00","closed_at":"2026-08-25T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00"}]`
+	fixtureQuizzes = `[{"id":1,"meeting_slug":"intro","points_possible":5,"is_draft":false,"is_open":false,"open_at":"2026-08-20T00:00:00+00:00","closed_at":"2026-08-25T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00"}]`
 
 	fixtureQuizGrades = `[{"quiz_id":1,"points":4,"points_possible":5,"description":"good work","created_at":"2026-08-26T00:00:00+00:00","updated_at":"2026-08-26T00:00:00+00:00"}]`
 
@@ -359,7 +359,7 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 			want: []wantRequest{{
 				path: "/quizzes",
 				query: map[string]string{
-					"select": "id,meeting_slug,points_possible,is_draft,is_open,duration,open_at,closed_at,created_at,updated_at",
+					"select": "id,meeting_slug,points_possible,is_draft,is_open,open_at,closed_at,created_at,updated_at",
 					"order":  "open_at.asc,id.asc",
 				},
 			}},
