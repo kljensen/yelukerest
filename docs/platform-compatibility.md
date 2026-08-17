@@ -15,7 +15,7 @@ The response is a one-row JSON array:
   {
     "platform": "yelukerest",
     "platform_compatibility_version": 1,
-    "schema_compatibility_version": 3,
+    "schema_compatibility_version": 4,
     "admin_api_version": 8
   }
 ]
@@ -30,7 +30,7 @@ import urllib.request
 
 required = {
     "platform": "yelukerest",
-    "schema_compatibility_version": 3,
+    "schema_compatibility_version": 4,
     "admin_api_version": 8,
 }
 
@@ -47,3 +47,14 @@ requires course admin tools to know about a new platform behavior, schema
 shape, or admin API contract. Breaking schema or admin API changes should raise
 the relevant compatibility version in the same change that introduces the new
 contract.
+
+## What the current versions mean
+
+- `schema_compatibility_version` **4** removed the online-quiz remnants:
+  `api.quiz_grade_exceptions` and its `data.quiz_grade_exception` table are
+  gone, and `api.quizzes` no longer carries `duration` or `is_offline`. A
+  client that selects any of those against a version 4 deployment gets an
+  error, so pin `>= 4` only once you have stopped reading them. Quizzes are
+  paper-only; see [Admin API](admin-api.md#there-is-no-quiz-extension).
+- `admin_api_version` **8** added `api.grant_assignment_extension`. Assignments
+  are the only thing with an extendable deadline.

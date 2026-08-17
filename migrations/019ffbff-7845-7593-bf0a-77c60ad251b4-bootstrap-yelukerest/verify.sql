@@ -383,7 +383,7 @@ BEGIN
         FROM api.platform_version
         WHERE platform = 'yelukerest'
         AND platform_compatibility_version >= 1
-        AND schema_compatibility_version >= 3
+        AND schema_compatibility_version >= 4
         AND admin_api_version >= 5
     ) THEN
         RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';

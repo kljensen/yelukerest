@@ -55,7 +55,7 @@ SELECT is(
 
 SELECT is(
     (SELECT schema_compatibility_version FROM api.platform_version),
-    3,
+    4,
     'api.platform_version should expose the expected schema compatibility version'
 );
 
