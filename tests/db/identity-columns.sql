@@ -10,6 +10,7 @@ SELECT set_eq(
         AND (n.nspname, c.relname, a.attname) IN (
             ('data', 'artifact', 'id'),
             ('data', 'assignment_grade_exception', 'id'),
+            ('data', 'assignment_repository', 'id'),
             ('data', 'assignment_submission', 'id'),
             ('data', 'quiz', 'id'),
             ('data', 'user', 'id'),
@@ -19,6 +20,7 @@ SELECT set_eq(
     ARRAY[
         'data.artifact.id',
         'data.assignment_grade_exception.id',
+        'data.assignment_repository.id',
         'data.assignment_submission.id',
         'data.quiz.id',
         'data.user.id',
