@@ -5,7 +5,7 @@ BEGIN
     NEW.email := lower(NEW.email);
     NEW.netid := lower(NEW.netid);
     NEW.nickname := lower(NEW.nickname);
-    NEW.updated_at = current_timestamp;
+    NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     return NEW;
 END;
 $$ language plpgsql;

@@ -1,4 +1,5 @@
-\ir ./yeluke/functions.sql
+-- ./yeluke/functions.sql is loaded by ../schema.sql, before the auth lib's
+-- user table, whose trigger calls data.touched_at.
 \ir ./yeluke/meeting.sql
 \ir ./yeluke/engagement.sql
 \ir ./yeluke/team.sql

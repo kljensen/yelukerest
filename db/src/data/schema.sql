@@ -2,6 +2,10 @@ drop schema if exists data cascade;
 create schema data;
 set search_path = data, public;
 
+-- shared row-timestamp helpers. loaded first because the auth lib's own
+-- user table trigger calls data.touched_at, and it is imported below.
+\ir yeluke/functions.sql
+
 -- import the type specifying the types of users we have (this is an enum).
 -- you most certainly will have to redefine this type for your application
 \ir ../libs/auth/data/user_role_type.sql

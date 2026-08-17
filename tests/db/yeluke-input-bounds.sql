@@ -52,14 +52,31 @@ SELECT lives_ok(
 -- assignment_field_submission updated_after_created
 -- (direct load with a future created_at leaves updated_at behind it)
 -- ---------------------------------------------------------------
-SELECT throws_like(
+-- This used to assert the CHECK fired. It no longer can, and that is the fix
+-- for #308: the trigger now stamps `updated_at` with
+-- `data.touched_at(NEW.created_at)`, which clamps up to `created_at` rather
+-- than writing a `current_timestamp` that may precede it.
+--
+-- The old behaviour looks like a guard but was the bug. `current_timestamp` is
+-- transaction start, so a concurrent writer updating a row created by a
+-- later-starting transaction hit this same violation on ordinary, correct
+-- input. The CHECK remains as defence in depth; the trigger now guarantees it.
+SELECT lives_ok(
     $$
         INSERT INTO data.assignment_field_submission
             (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, created_at)
         VALUES (6100, 'profound', 'exam-1', 'profound words', 1, current_timestamp + interval '1 day')
     $$,
-    '%updated_after_created%',
-    'assignment_field_submission should reject created_at after updated_at'
+    'assignment_field_submission should accept a created_at ahead of the transaction clock'
+);
+
+SELECT ok(
+    (
+        SELECT updated_at >= created_at
+        FROM data.assignment_field_submission
+        WHERE assignment_submission_id = 6100 AND assignment_field_slug = 'profound'
+    ),
+    'assignment_field_submission should still satisfy updated_after_created'
 );
 
 -- ---------------------------------------------------------------

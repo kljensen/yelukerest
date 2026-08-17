@@ -26,7 +26,7 @@ BEGIN
     IF (NEW.user_id IS NULL) THEN
         NEW.user_id = request.user_id();
     END IF;
-    NEW.updated_at = current_timestamp;
+    NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
