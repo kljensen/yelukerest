@@ -53,11 +53,12 @@ SELECT is(
 -- Every trigger that maintains updated_at must route through it. This is the
 -- assertion that fails if someone reintroduces the raw current_timestamp.
 
--- `fill_user_secret_defaults` is the one holdout. Its source file matches the
+-- `fill_user_secret_defaults` was the one holdout: its source file matched the
 -- `Read(**/*secret*)` deny rule in this machine's Claude settings, so it could
--- not be edited when the rest were. Asserting the exact set rather than a count
--- means fixing it makes this test fail loudly and get updated, and a *different*
--- trigger regressing also fails -- which a bare `count = 1` would not catch.
+-- not be edited when the rest were. #303 converted it, and the set is now
+-- empty. Asserting the exact set rather than a count is what made the fix show
+-- up here and get recorded, and it is still what catches a *different* trigger
+-- regressing -- which a bare count never would.
 SELECT is(
     (
         SELECT coalesce(string_agg(p.proname::text, ', ' ORDER BY p.proname::text), '')
@@ -66,8 +67,8 @@ SELECT is(
         WHERE n.nspname = 'data'
         AND p.prosrc ~ 'NEW\.updated_at\s*:?=\s*current_timestamp'
     ),
-    'fill_user_secret_defaults',
-    'only the user_secret trigger should still assign current_timestamp directly'
+    '',
+    'no trigger should still assign current_timestamp directly'
 );
 
 SELECT is(
@@ -78,8 +79,8 @@ SELECT is(
         WHERE n.nspname = 'data'
         AND p.prosrc ~ 'NEW\.updated_at\s*:?=\s*data\.touched_at'
     ),
-    11,
-    'the eleven updated_at triggers should all route through data.touched_at'
+    12,
+    'the twelve updated_at triggers should all route through data.touched_at'
 );
 
 -- `updated_at` is the optimistic concurrency token on
