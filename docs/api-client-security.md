@@ -77,6 +77,20 @@ For student scripts and notebooks:
   an expired-token result.
 - Do not check generated tokens into notebooks, repos, Canvas, Slack, or Piazza.
 
+For faculty admin commands (`pythonclient/api_client.py`), see
+[ADR 0002](adr/0002-admin-api-authentication.md). In short: for attended runs,
+export a fresh ~1h faculty token as `YELUKEREST_CLIENT_JWT` for the current
+shell, and never persist it in a synced `.env`. A standing faculty bearer token
+is rejected — it cannot be revoked without rotating `JWT_SECRET` and
+invalidating every student session. Unattended runs need the minting path
+described there, which does not exist yet.
+
+Prefer the environment variable over the `--jwt` flag. A token passed as a
+command-line argument lands in shell history and is visible in the process list
+to every other process on the machine, which is exactly what this document warns
+against above. `--jwt` remains for tests and for callers that construct the
+argument list programmatically.
+
 ## MCP Clients
 
 The MCP endpoint is `<site>/mcp`. Two credential paths reach it, and both end at
