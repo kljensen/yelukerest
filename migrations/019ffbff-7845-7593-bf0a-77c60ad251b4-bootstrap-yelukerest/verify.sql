@@ -357,6 +357,21 @@ BEGIN
         RAISE EXCEPTION 'data.assignment.is_team is not NOT NULL';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE n.nspname = 'data'
+        AND c.relname = 'quiz'
+        AND a.attname = 'is_offline'
+        AND a.attnotnull
+        AND pg_get_expr(d.adbin, d.adrelid) = 'true'
+    ) THEN
+        RAISE EXCEPTION 'data.quiz.is_offline must be NOT NULL DEFAULT true';
+    END IF;
+
     IF EXISTS (
         SELECT 1
         FROM pg_class c
@@ -383,7 +398,7 @@ BEGIN
         FROM api.platform_version
         WHERE platform = 'yelukerest'
         AND platform_compatibility_version >= 1
-        AND schema_compatibility_version >= 4
+        AND schema_compatibility_version >= 3
         AND admin_api_version >= 5
     ) THEN
         RAISE EXCEPTION 'invalid api.platform_version compatibility metadata';

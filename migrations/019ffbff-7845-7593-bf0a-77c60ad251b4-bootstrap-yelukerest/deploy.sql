@@ -4668,14 +4668,14 @@ COMMENT ON COLUMN api.platform_version.platform_compatibility_version IS 'Intege
 -- Name: COLUMN platform_version.schema_compatibility_version; Type: COMMENT; Schema: api; Owner: api
 --
 
-COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
+COMMENT ON COLUMN api.platform_version.schema_compatibility_version IS 'Integer compatibility version for database schema/API shape';
 
 
 --
 -- Name: COLUMN platform_version.admin_api_version; Type: COMMENT; Schema: api; Owner: api
 --
 
-COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';
+COMMENT ON COLUMN api.platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations';
 
 
 --
@@ -5186,12 +5186,16 @@ CREATE TABLE data.quiz (
     id integer NOT NULL,
     meeting_slug text NOT NULL,
     points_possible smallint NOT NULL,
+    is_offline boolean DEFAULT true NOT NULL,
     is_draft boolean DEFAULT true NOT NULL,
+    duration interval DEFAULT '00:15:00'::interval NOT NULL,
     open_at timestamp with time zone NOT NULL,
     closed_at timestamp with time zone NOT NULL,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT closed_after_open CHECK ((closed_at > open_at)),
+    CONSTRAINT quiz_duration_max CHECK ((duration <= '24:00:00'::interval)),
+    CONSTRAINT quiz_duration_positive CHECK ((duration > '00:00:00'::interval)),
     CONSTRAINT quiz_meeting_slug_check CHECK ((char_length(meeting_slug) < 100)),
     CONSTRAINT quiz_points_possible_check CHECK ((points_possible >= 0)),
     CONSTRAINT updated_after_created CHECK ((updated_at >= created_at))
@@ -5208,7 +5212,9 @@ CREATE VIEW api.quizzes WITH (security_barrier='true') AS
  SELECT id,
     meeting_slug,
     points_possible,
+    is_offline,
     is_draft,
+    duration,
     open_at,
     closed_at,
     created_at,
