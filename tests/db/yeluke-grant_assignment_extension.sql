@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(32);
 
 SELECT function_privs_are(
     'api', 'grant_assignment_extension',
@@ -136,6 +136,48 @@ SELECT throws_like(
     $$ SELECT * FROM api.grant_assignment_extension(1, 'js-koans', '3020-01-01 00:00+00'::timestamptz, -0.25) $$,
     '%requires fractional_credit between 0 and 1%',
     'grant_assignment_extension should reject credit below the constraint floor'
+);
+
+--
+-- The primitive `created` is derived from. It has to come out of the write
+-- itself: a prior existence check would let two concurrent grants of the same
+-- new extension both report `created`, because both would complete the check
+-- before either inserted.
+--
+-- `old` is NULL on the insert path and the pre-update row on the conflict path.
+-- The older idiom, RETURNING (xmax = 0), cannot be used here: xmax is a system
+-- column, an auto-updatable view has none in its rowtype, and these writes go
+-- through api views so that RLS applies. Confirmed on PostgreSQL 18.4.
+--
+
+SELECT results_eq(
+    $$
+        INSERT INTO api.assignment_grade_exceptions
+            (assignment_slug, is_team, user_id, closed_at, fractional_credit)
+        VALUES ('exam-1', false, 2, '3020-01-01 00:00+00', 1)
+        ON CONFLICT (assignment_slug, user_id) WHERE NOT is_team
+        DO UPDATE SET
+            closed_at = EXCLUDED.closed_at,
+            fractional_credit = EXCLUDED.fractional_credit
+        RETURNING old.id IS NULL
+    $$,
+    $$ VALUES (true) $$,
+    'old should be null on the insert path, through the api view'
+);
+
+SELECT results_eq(
+    $$
+        INSERT INTO api.assignment_grade_exceptions
+            (assignment_slug, is_team, user_id, closed_at, fractional_credit)
+        VALUES ('exam-1', false, 2, '3020-02-01 00:00+00', 1)
+        ON CONFLICT (assignment_slug, user_id) WHERE NOT is_team
+        DO UPDATE SET
+            closed_at = EXCLUDED.closed_at,
+            fractional_credit = EXCLUDED.fractional_credit
+        RETURNING old.id IS NULL
+    $$,
+    $$ VALUES (false) $$,
+    'old should be the pre-update row on the conflict path, through the api view'
 );
 
 --

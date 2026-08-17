@@ -376,6 +376,24 @@ assignment for a student who is on no team.
 
 ### `api.grant_quiz_extension`
 
+> **A quiz extension currently has no effect on what a student can do.** It
+> records the decision and nothing else. Nothing in the database reads
+> `data.quiz_grade_exception` — no view, no row-level security policy, no grade
+> calculation. Confirmed against the catalog rather than by searching text: the
+> only functions whose bodies mention the table are the two that *write* it
+> (`api.grant_quiz_extension` and `data.upsert_quiz_grade_exception`), and no
+> policy or view references it at all. Contrast
+> `data.assignment_grade_exception`, which
+> `data.assignment_field_submission_is_writable_by_current_user()` and
+> `data.assignment_submission`'s row-level security policy both read — which is
+> what makes an *assignment* extension actually let a student submit late.
+>
+> This is a consequence of quizzes being paper-only: there is no online quiz for
+> a deadline to hold open. Granting one is a durable, auditable record that
+> faculty allowed a make-up, and it is the row any future make-up window would
+> be read from. It is not a mechanism that lets the student do anything today.
+> Tell the student what the make-up arrangement is; the row will not tell them.
+
 `POST /rest/rpc/grant_quiz_extension`
 
 ```json

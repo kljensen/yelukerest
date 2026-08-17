@@ -2009,11 +2009,12 @@ CREATE OR REPLACE FUNCTION data.upsert_assignment_grade_exception(
     p_closed_at timestamptz,
     p_fractional_credit numeric
 )
-RETURNS integer
+RETURNS TABLE (
+    written_id integer,
+    was_inserted boolean
+)
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    written_id integer;
 BEGIN
     -- The uniqueness rules are partial indexes, so each branch has to state the
     -- predicate its arbiter carries. This is exactly what PostgREST's
@@ -2023,6 +2024,19 @@ BEGIN
     -- fractional_credit is in both DO UPDATE lists. The scripts this replaces
     -- left it out, so re-granting an extension at reduced credit silently kept
     -- whatever credit the first grant had.
+    --
+    -- was_inserted comes out of the write itself rather than a read taken
+    -- before it. Two faculty granting the same new extension at once would both
+    -- pass a prior existence check and both be told they created the row, even
+    -- though one of them conflict-updated the other's.
+    --
+    -- old is NULL on the insert path and the pre-update row on the conflict
+    -- path. The older idiom for this is RETURNING (xmax = 0), which does not
+    -- work here: xmax is a system column, an auto-updatable view has no system
+    -- columns in its rowtype, and these writes go through api views on purpose
+    -- so that RLS applies. old.id is an ordinary column reference and resolves
+    -- through the view. It needs PostgreSQL 18, which is what this schema
+    -- already requires.
     IF p_is_team THEN
         INSERT INTO api.assignment_grade_exceptions (
             assignment_slug, is_team, team_nickname, closed_at, fractional_credit
@@ -2034,7 +2048,7 @@ BEGIN
         DO UPDATE SET
             closed_at = EXCLUDED.closed_at,
             fractional_credit = EXCLUDED.fractional_credit
-        RETURNING id INTO written_id;
+        RETURNING new.id, old.id IS NULL INTO written_id, was_inserted;
     ELSE
         INSERT INTO api.assignment_grade_exceptions (
             assignment_slug, is_team, user_id, closed_at, fractional_credit
@@ -2046,10 +2060,10 @@ BEGIN
         DO UPDATE SET
             closed_at = EXCLUDED.closed_at,
             fractional_credit = EXCLUDED.fractional_credit
-        RETURNING id INTO written_id;
+        RETURNING new.id, old.id IS NULL INTO written_id, was_inserted;
     END IF;
 
-    RETURN written_id;
+    RETURN NEXT;
 END;
 $$;
 
@@ -2099,7 +2113,6 @@ DECLARE
     target_team_nickname text;
     credit_floor numeric;
     credit_ceiling numeric;
-    existing_id integer;
 BEGIN
     p_fractional_credit := COALESCE(p_fractional_credit, 1);
     target_slug := btrim(p_assignment_slug);
@@ -2160,28 +2173,19 @@ BEGIN
     -- A team exception names the team and no user, an individual exception the
     -- other way round; the matches_assignment_is_team constraint refuses
     -- anything else.
-    IF target_is_team THEN
-        SELECT existing.id INTO existing_id
-        FROM api.assignment_grade_exceptions existing
-        WHERE existing.assignment_slug = target_slug
-            AND existing.is_team
-            AND existing.team_nickname = target_team_nickname;
-    ELSE
+    IF NOT target_is_team THEN
         target_team_nickname := NULL;
-
-        SELECT existing.id INTO existing_id
-        FROM api.assignment_grade_exceptions existing
-        WHERE existing.assignment_slug = target_slug
-            AND NOT existing.is_team
-            AND existing.user_id = p_user_id;
     END IF;
 
-    -- Read before writing, so the caller is told whether this created an
-    -- extension or moved one that was already there.
-    exception_id := data.upsert_assignment_grade_exception(
+    -- created comes back out of the write, not out of a read taken before it,
+    -- so two faculty granting the same new extension at once cannot both be
+    -- told they created the row.
+    SELECT written.written_id, written.was_inserted
+    INTO exception_id, created
+    FROM data.upsert_assignment_grade_exception(
         target_slug, target_is_team, p_user_id, target_team_nickname,
         p_closed_at, p_fractional_credit
-    );
+    ) AS written;
 
     assignment_slug := target_slug;
     is_team := target_is_team;
@@ -2189,7 +2193,6 @@ BEGIN
     team_nickname := target_team_nickname;
     closed_at := p_closed_at;
     fractional_credit := p_fractional_credit;
-    created := existing_id IS NULL;
 
     RETURN NEXT;
 END;
@@ -2208,16 +2211,20 @@ CREATE OR REPLACE FUNCTION data.upsert_quiz_grade_exception(
     p_closed_at timestamptz,
     p_fractional_credit numeric
 )
-RETURNS integer
+RETURNS TABLE (
+    written_id integer,
+    was_inserted boolean
+)
 LANGUAGE plpgsql
 AS $$
-DECLARE
-    written_id integer;
 BEGIN
     -- Unlike the assignment exceptions this arbiter is a plain UNIQUE
     -- constraint, so PostgREST could express the conflict target. What it
     -- cannot do is resolve a meeting slug to a quiz id and upsert on the result
     -- in one transaction, which is what api.grant_quiz_extension is for.
+    --
+    -- old.id IS NULL says which branch this took, for the reasons set out on
+    -- data.upsert_assignment_grade_exception.
     INSERT INTO api.quiz_grade_exceptions (
         quiz_id, user_id, closed_at, fractional_credit
     )
@@ -2228,9 +2235,9 @@ BEGIN
     DO UPDATE SET
         closed_at = EXCLUDED.closed_at,
         fractional_credit = EXCLUDED.fractional_credit
-    RETURNING id INTO written_id;
+    RETURNING new.id, old.id IS NULL INTO written_id, was_inserted;
 
-    RETURN written_id;
+    RETURN NEXT;
 END;
 $$;
 
@@ -2276,7 +2283,6 @@ DECLARE
     target_quiz_id integer;
     credit_floor numeric;
     credit_ceiling numeric;
-    existing_id integer;
 BEGIN
     p_fractional_credit := COALESCE(p_fractional_credit, 1);
     target_slug := btrim(p_meeting_slug);
@@ -2328,21 +2334,20 @@ BEGIN
             USING ERRCODE = '23503';
     END IF;
 
-    SELECT existing.id INTO existing_id
-    FROM api.quiz_grade_exceptions existing
-    WHERE existing.quiz_id = target_quiz_id
-        AND existing.user_id = p_user_id;
-
-    exception_id := data.upsert_quiz_grade_exception(
+    -- created comes back out of the write, not out of a read taken before it,
+    -- so two faculty granting the same new extension at once cannot both be
+    -- told they created the row.
+    SELECT written.written_id, written.was_inserted
+    INTO exception_id, created
+    FROM data.upsert_quiz_grade_exception(
         target_quiz_id, p_user_id, p_closed_at, p_fractional_credit
-    );
+    ) AS written;
 
     meeting_slug := target_slug;
     quiz_id := target_quiz_id;
     user_id := p_user_id;
     closed_at := p_closed_at;
     fractional_credit := p_fractional_credit;
-    created := existing_id IS NULL;
 
     RETURN NEXT;
 END;

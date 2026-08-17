@@ -1,5 +1,5 @@
 begin;
-select plan(26);
+select plan(28);
 
 SELECT function_privs_are(
     'api', 'grant_quiz_extension',
@@ -125,6 +125,41 @@ SELECT throws_like(
     $$ SELECT * FROM api.grant_quiz_extension(1, 'intro', '3020-01-01 00:00+00'::timestamptz, -0.25) $$,
     '%requires fractional_credit between 0 and 1%',
     'grant_quiz_extension should reject credit below the constraint floor'
+);
+
+--
+-- The primitive `created` is derived from, pinned here as it is for the
+-- assignment RPC: it comes out of the write rather than a read taken before it,
+-- so two concurrent grants of the same new extension cannot both report
+-- `created`. RETURNING (xmax = 0) is unavailable through an api view.
+--
+
+SELECT results_eq(
+    $$
+        INSERT INTO api.quiz_grade_exceptions (quiz_id, user_id, closed_at, fractional_credit)
+        VALUES (2, 2, '3020-01-01 00:00+00', 1)
+        ON CONFLICT (quiz_id, user_id)
+        DO UPDATE SET
+            closed_at = EXCLUDED.closed_at,
+            fractional_credit = EXCLUDED.fractional_credit
+        RETURNING old.id IS NULL
+    $$,
+    $$ VALUES (true) $$,
+    'old should be null on the insert path, through the api view'
+);
+
+SELECT results_eq(
+    $$
+        INSERT INTO api.quiz_grade_exceptions (quiz_id, user_id, closed_at, fractional_credit)
+        VALUES (2, 2, '3020-02-01 00:00+00', 1)
+        ON CONFLICT (quiz_id, user_id)
+        DO UPDATE SET
+            closed_at = EXCLUDED.closed_at,
+            fractional_credit = EXCLUDED.fractional_credit
+        RETURNING old.id IS NULL
+    $$,
+    $$ VALUES (false) $$,
+    'old should be the pre-update row on the conflict path, through the api view'
 );
 
 --
