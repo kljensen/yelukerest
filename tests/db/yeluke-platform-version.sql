@@ -61,7 +61,7 @@ SELECT is(
 
 SELECT is(
     (SELECT admin_api_version FROM api.platform_version),
-    5,
+    6,
     'api.platform_version should expose the expected admin API version'
 );
 

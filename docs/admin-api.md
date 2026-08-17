@@ -119,6 +119,80 @@ Set `p_dry_run` to `true` to get the same summary shape without writing data.
 
 `api.platform_version.admin_api_version` is `3` for deployments that support assignment sync.
 
+## Assignment Grade Import
+
+`POST /rest/rpc/import_assignment_grades`
+
+Grades arrive as final, absolute points keyed on `assignment_slug` and `netid`:
+
+```json
+{
+  "p_dry_run": false,
+  "p_create_missing_submissions": true,
+  "p_import_id": "exam-1-2026-03-30",
+  "p_reason": "Exam 1, first sitting",
+  "p_grades": [
+    {
+      "assignment_slug": "exam-1",
+      "netid": "abc123",
+      "points": 45.5,
+      "description": "Missed question 7"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "inserted_count": 1,
+    "updated_count": 0,
+    "unchanged_count": 0,
+    "submission_created_count": 1,
+    "import_id": "exam-1-2026-03-30",
+    "dry_run": false
+  }
+]
+```
+
+Curving is the client's job. The function never derives a denominator from the
+payload, because a batch-relative maximum makes the same raw score mean
+different things depending on which rows are in the file, and a makeup exam sat
+by one student would score 100% by construction. Compute final points over the
+full intended cohort before sending.
+
+The function fails the whole import, rather than skipping rows, when it finds an
+unknown `assignment_slug` or `netid`, a duplicate `assignment_slug`/`netid` pair,
+a missing or null `points` value, a non-numeric `points` value, points outside
+`[0, points_possible]`, or a student with no team on a team assignment. Every
+message names the offending rows.
+
+A team assignment has one submission per team, so two teammates in one payload
+are two keys pointing at one row. That is rejected too: send one row per team.
+
+`points` is required on every row; a missing score is an error rather than a
+zero. `description` is optional and only written when the key is present, so an
+import that carries no `description` column leaves hand-written comments alone.
+
+Assignment grades cannot exist without an assignment submission, and a paper
+exam never produces one, so `p_create_missing_submissions` defaults to `true`
+and reports what it created under `submission_created_count`. Set it to `false`
+to require an existing submission and fail naming the rows that lack one.
+
+Repeating the same payload writes nothing and reports every row under
+`unchanged_count`, so no redundant `corrected` rows land in
+`api.assignment_grade_events`. Rows the import does write carry
+`source = 'api.import_assignment_grades'` plus the `reason` and `import_id` from
+the call. `import_id` is generated when the caller does not supply one and is
+returned so the client can log it.
+
+Set `p_dry_run` to `true` to get the same summary shape without writing data.
+
+`api.platform_version.admin_api_version` is `6` or later for deployments that
+support assignment grade import.
+
 ## Operation Roadmap
 
 | Operation | Status | Notes |
@@ -126,5 +200,6 @@ Set `p_dry_run` to `true` to get the same summary shape without writing data.
 | Meeting sync | Supported by `api.sync_meetings` | Desired-state import with delete-missing behavior. |
 | Assignment sync | Supported by `api.sync_assignments` | Desired-state parent/field import with dry-run and optional delete-missing behavior. |
 | Roster import | Planned | Needs a boundary between Yelukerest user rows and course-specific registration, LDAP, and nickname enrichment. |
-| Quiz and assignment grade import | Planned | Should land after append-only grade history so imports record facts rather than overwrite current rows. |
+| Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
+| Quiz grade import | Planned | Should follow the same contract as assignment grade import. |
 | Grade exceptions | Planned | Should share the grade-history/audit design and preserve actor, reason, and source metadata. |
