@@ -107,12 +107,20 @@ BEGIN
     -- assertion this migration wants: everything it introduced is still there
     -- at 9 or 10. It was written as `= 8` and became false the moment
     -- upsert-user-secrets shipped 9, which is a wrong operator rather than a
-    -- broken schema. `schema_compatibility_version` names a *shape* and a shape
-    -- can lose things, so it stays an equality -- see docs/platform-compatibility.md.
+    -- broken schema.
+    --
+    -- `schema_compatibility_version` was pinned here as `= 4` for the same
+    -- reason, and it was the same mistake one step later. Set membership is the
+    -- operator a *client* uses to declare the shapes it supports; it is not an
+    -- assertion a migration can make about the database in front of it, because
+    -- every later shape change makes it false. add-assignment-repository (#312)
+    -- reaches shape 5, and this migration's shape claims -- the dropped view and
+    -- the two dropped quiz columns -- are already checked above by name, where
+    -- they mean something. See docs/platform-compatibility.md.
     IF NOT EXISTS (
         SELECT 1 FROM api.platform_version
-        WHERE schema_compatibility_version = 4 AND admin_api_version >= 8
+        WHERE admin_api_version >= 8
     ) THEN
-        RAISE EXCEPTION 'api.platform_version should report schema 4 and admin_api 8 or later';
+        RAISE EXCEPTION 'api.platform_version should report admin_api 8 or later';
     END IF;
 END $$;

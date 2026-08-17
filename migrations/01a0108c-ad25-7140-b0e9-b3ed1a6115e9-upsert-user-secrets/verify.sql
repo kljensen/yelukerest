@@ -121,17 +121,24 @@ BEGIN
     END IF;
 
     -- Compatibility versions. Two RPCs added and nothing removed, so
-    -- admin_api_version reaches 9 and the schema shape stays 4.
+    -- admin_api_version reaches 9. A floor, not an equality: verification runs
+    -- against the database as it is now, and `zapadka verify` re-runs every
+    -- applied migration's script, so an equality would report a broken
+    -- deployment every time a later migration added an RPC.
     --
-    -- A floor on admin_api_version, an equality on the shape, which are the
-    -- operators docs/platform-compatibility.md says each one takes. It also
-    -- keeps this assertion true when a later migration reaches 10: verification
-    -- runs against the database as it is now, so an equality here would report
-    -- a broken deployment every time somebody added an RPC.
+    -- This deliberately says nothing about schema_compatibility_version. It
+    -- once asserted `= 4`, which was the shape at the time and looked like the
+    -- set-membership operator docs/platform-compatibility.md prescribes -- but
+    -- the operator belongs to a *client* declaring the shapes it supports, not
+    -- to a migration checking the database in front of it. Pinned here it made
+    -- this script a veto on every future shape change, and add-assignment-
+    -- repository (#312), which adds api.assignment_repositories and reaches
+    -- shape 5, is the first one it vetoed. This migration changed no shape, so
+    -- it has nothing to assert about one.
     IF NOT EXISTS (
         SELECT 1 FROM api.platform_version
-        WHERE schema_compatibility_version = 4 AND admin_api_version >= 9
+        WHERE admin_api_version >= 9
     ) THEN
-        RAISE EXCEPTION 'api.platform_version should report schema 4 and admin_api 9 or later';
+        RAISE EXCEPTION 'api.platform_version should report admin_api 9 or later';
     END IF;
 END $$;
