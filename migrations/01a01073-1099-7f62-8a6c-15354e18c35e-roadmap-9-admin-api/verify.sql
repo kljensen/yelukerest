@@ -48,12 +48,40 @@ BEGIN
     -- #308: every updated_at trigger clamps through data.touched_at rather than
     -- writing a bare current_timestamp, which is transaction start and can
     -- precede a row's created_at.
-    IF (
-        SELECT count(*) FROM pg_proc p
+    --
+    -- Named rather than counted. This was written as `count(*) = 11`, which was
+    -- true at the moment this migration shipped and false as soon as
+    -- upsert-user-secrets converted data.fill_user_secret_defaults, the one
+    -- holdout -- and a count cannot be repaired by moving it to 12 either,
+    -- because verification runs twice in two different worlds: once during
+    -- `deploy`, immediately after this migration applies and before any later
+    -- one has, and again during `verify` against head. Only 11 exist in the
+    -- first world and 12 in the second, so no number is right in both. The set
+    -- this migration is actually responsible for does not move.
+    SELECT string_agg(expected.proname, ', ' ORDER BY expected.proname) INTO missing
+    FROM (VALUES
+        ('update_updated_at_column'),
+        ('fill_assignment_field_submission_defaults'),
+        ('fill_assignment_grade_defaults'),
+        ('fill_assignment_grade_exception_defaults'),
+        ('fill_assignment_submission_defaults'),
+        ('fill_grade_defaults'),
+        ('fill_grade_snapshot_defaults'),
+        ('fill_quiz_grade_defaults'),
+        ('fill_quiz_submission_defaults'),
+        ('quiz_set_defaults'),
+        ('clean_user_fields')
+    ) AS expected(proname)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'data' AND p.prosrc ~ 'data\.touched_at'
-    ) <> 11 THEN
-        RAISE EXCEPTION 'expected 11 updated_at triggers routed through data.touched_at';
+        WHERE n.nspname = 'data'
+        AND p.proname = expected.proname
+        AND p.prosrc ~ 'NEW\.updated_at\s*:?=\s*data\.touched_at'
+    );
+
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'these updated_at triggers are not routed through data.touched_at: %', missing;
     END IF;
 
     -- The online-quiz remnants are gone.
@@ -71,10 +99,20 @@ BEGIN
 
     -- Compatibility versions. A deployment that answers below these would let a
     -- client preflight successfully and then fail on its first request.
+    --
+    -- Checked with the operators the two versions actually take, because
+    -- verification always runs against the database as it is now rather than as
+    -- it was at this point in the graph. `admin_api_version` only ever grows,
+    -- each bump adding an RPC without removing one, so a floor is exactly the
+    -- assertion this migration wants: everything it introduced is still there
+    -- at 9 or 10. It was written as `= 8` and became false the moment
+    -- upsert-user-secrets shipped 9, which is a wrong operator rather than a
+    -- broken schema. `schema_compatibility_version` names a *shape* and a shape
+    -- can lose things, so it stays an equality -- see docs/platform-compatibility.md.
     IF NOT EXISTS (
         SELECT 1 FROM api.platform_version
-        WHERE schema_compatibility_version = 4 AND admin_api_version = 8
+        WHERE schema_compatibility_version = 4 AND admin_api_version >= 8
     ) THEN
-        RAISE EXCEPTION 'api.platform_version should report schema 4 and admin_api 8';
+        RAISE EXCEPTION 'api.platform_version should report schema 4 and admin_api 8 or later';
     END IF;
 END $$;
