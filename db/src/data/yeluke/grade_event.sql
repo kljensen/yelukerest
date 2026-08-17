@@ -124,9 +124,10 @@ EXECUTE FUNCTION prevent_grade_event_mutation();
 -- into the event row. Nothing else has to change: an unset setting keeps the
 -- historical defaults.
 --
--- Only the assignment history reads these settings today, because
--- api.import_assignment_grades is the only writer that sets them. The quiz and
--- snapshot histories adopt the same three settings when their imports land.
+-- The assignment and quiz histories read these settings, because
+-- api.import_assignment_grades and api.import_quiz_results are the writers that
+-- set them. The snapshot history adopts the same three settings when its import
+-- lands.
 CREATE OR REPLACE FUNCTION record_assignment_grade_event()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -220,7 +221,10 @@ BEGIN
         description,
         grade_created_at,
         grade_updated_at,
-        created_by_user_id
+        created_by_user_id,
+        source,
+        reason,
+        import_id
     )
     VALUES (
         event_kind,
@@ -232,7 +236,13 @@ BEGIN
         grade_row.description,
         grade_row.created_at,
         grade_row.updated_at,
-        request.user_id()
+        request.user_id(),
+        COALESCE(
+            nullif(current_setting('yeluke.grade_event_source', true), ''),
+            'data.quiz_grade'
+        ),
+        nullif(current_setting('yeluke.grade_event_reason', true), ''),
+        nullif(current_setting('yeluke.grade_event_import_id', true), '')
     );
 
     RETURN COALESCE(NEW, OLD);
