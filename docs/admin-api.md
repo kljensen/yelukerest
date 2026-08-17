@@ -536,6 +536,57 @@ A team secret is visible to every current member of the team, subject to
 `api.platform_version.admin_api_version` is `9` or later for deployments that
 support secret distribution.
 
+## Assignment Repositories
+
+`api.assignment_repositories` records which forge repository belongs to which
+student or team for which assignment. GitHub Classroom shuts down on
+2026-08-28, so course repos provision student repositories themselves and need
+an authoritative record of what they provisioned.
+
+It is a plain CRUD view, not an RPC: faculty hold `select, insert, update,
+delete` on it and PostgREST's ordinary filtering is enough. That is why
+`admin_api_version` stayed at `9` while `schema_compatibility_version` moved to
+`5` -- a new view is a change of *shape*. See
+[Platform Compatibility](platform-compatibility.md).
+
+| Column | Kind | Notes |
+| --- | --- | --- |
+| `assignment_slug` | key | The assignment. |
+| `is_team` | key | Must agree with `api.assignments.is_team`; a foreign key enforces it. |
+| `user_id` / `team_nickname` | key | Exactly one, as on `api.assignment_submissions`. |
+| `provider` | key | The forge. Defaults to `github`; a second forge is a new value, not a new table. |
+| `provider_repo_id` | identity | The forge's numeric repository id. |
+| `provider_full_name` | display | `org/repo`. Mutable, and expected to go stale. |
+| `provider_user_id` | identity | The forge account id, or null until it is known. |
+
+**Key on the ids, never on the name.** `provider_repo_id` and
+`provider_user_id` survive every rename and transfer a repository or an account
+can undergo; `provider_full_name` does not. Deriving a student's identity from a
+repository name is the pattern this view exists to end, and the failure is
+silent -- a name-based key reattaches to whatever holds the name next.
+
+Uniqueness is enforced two ways, and both matter to a provisioning run that has
+to be safe to retry:
+
+- one repository per student per assignment, and per team per assignment
+- one row per repository per forge, on `(provider, provider_repo_id)`
+
+A retry that re-creates a repository therefore fails loudly rather than
+attaching one student's work to another. Record a rename as an `UPDATE` of
+`provider_full_name` on the existing row; a new row would be a second identity
+for one repository and the second rule refuses it.
+
+Students hold `select` and nothing else. A student sees their own repositories
+and their current team's, so reconciliation can ask "is this the repository you
+provisioned for me" without a faculty member in the loop, but a student cannot
+repoint an assignment at a repository of their choosing after the deadline.
+Team membership is evaluated live rather than snapshotted, unlike a submission:
+a repository is a grant on the forge, and a student moved off a team loses it
+there at the same moment.
+
+`api.platform_version.schema_compatibility_version` includes `5` for
+deployments that carry this view.
+
 ## Read Operations
 
 These are plain authenticated reads of existing `api` views, not RPCs. They add no
@@ -698,4 +749,6 @@ nothing is an error naming it, rather than a silently empty export.
 | Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and an audited `import_id`. |
 | Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
 | Secret distribution | Supported by `api.upsert_user_secrets` / `api.upsert_team_secrets` | Partial-index upsert keyed on `netid`/`team_nickname` + `slug`, with dry-run. Returns counts only; no response or error ever carries a secret body. |
+| Repository mapping | Supported by `api.assignment_repositories` | Which forge repository belongs to which student or team for which assignment. Plain faculty CRUD, keyed on ids rather than names. Students read their own row only. |
+| Repository snapshots | Planned | Commit SHA, bundle URI and digest, effective deadline, observed capture time, supersession. Lands with the course-side snapshotter rather than blocking provisioning. |
 | Grade exception audit trail | Planned | `data.assignment_grade_exception` carries no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |

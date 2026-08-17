@@ -15,7 +15,7 @@ The response is a one-row JSON array:
   {
     "platform": "yelukerest",
     "platform_compatibility_version": 1,
-    "schema_compatibility_version": 4,
+    "schema_compatibility_version": 5,
     "admin_api_version": 9
   }
 ]
@@ -34,7 +34,7 @@ import urllib.request
 required = {
     "platform": "yelukerest",
     # A set, not a floor -- see below.
-    "schema_compatibility_versions": {4},
+    "schema_compatibility_versions": {5},
     "admin_api_version": 9,
 }
 
@@ -64,12 +64,25 @@ your client actually supports**. A client that has been updated for the removals
 declares `{4}`; one that works against both declares `{3, 4}`. A floor is only
 safe for a version that never subtracts.
 
-Update the values in `db/src/api/yeluke/platform_version.sql` when a change
-requires course admin tools to know about a new platform behavior, schema
-shape, or admin API contract. Raise the relevant version in the same change that
-introduces the new contract -- and if the change **removes** anything from the
-`api` schema, it is a `schema_compatibility_version` bump, because no
-`admin_api_version` bump can warn a client about something that disappeared.
+An **additive** shape change is still a shape change, and it is still not a
+floor. Version 5 only adds `api.assignment_repositories`, so a client that never
+reads it works against 4 and 5 alike and declares `{4, 5}`. A client that needs
+it declares `{5}` alone -- and specifically not `>= 5`, because the next shape
+that subtracts something would sail through that floor exactly the way `>= 3`
+sailed through version 4.
+
+Raise the relevant version in the same migration that introduces the new
+contract, by replacing `api.platform_version` there -- the values live in the
+migration that last set them, not in `db/src/`, which is the frozen bootstrap
+input. If the change **removes** anything from the `api` schema, it is a
+`schema_compatibility_version` bump, because no `admin_api_version` bump can
+warn a client about something that disappeared.
+
+Do not pin the shape you just minted in that migration's `verify.sql`.
+`zapadka verify` re-runs every applied migration's script against head, so an
+equality there is a veto on every later shape change; set membership is the
+operator a *client* uses to declare what it supports, not an assertion a
+migration can make about the database in front of it.
 
 ## What the current versions mean
 
@@ -82,6 +95,14 @@ introduces the new contract -- and if the change **removes** anything from the
   requires them -- so such a client declares `{3, 4}` and works against both. A
   client that still reads them declares `{3}`. Quizzes are paper-only; see
   [Admin API](admin-api.md#there-is-no-quiz-extension).
+- `schema_compatibility_version` **5** added `api.assignment_repositories`: the
+  record of which forge repository belongs to which student or team for which
+  assignment, needed because GitHub Classroom shuts down on 2026-08-28 and
+  course repos must provision student repositories themselves. It removes
+  nothing, so a client that does not read it declares `{4, 5}`; a client that
+  provisions repositories declares `{5}`. No RPC came with it, which is why
+  `admin_api_version` stayed at 9. See
+  [Admin API](admin-api.md#assignment-repositories).
 - `admin_api_version` **8** added `api.grant_assignment_extension`. Assignments
   are the only thing with an extendable deadline.
 - `admin_api_version` **9** added `api.upsert_user_secrets` and
