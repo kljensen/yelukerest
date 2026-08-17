@@ -20,7 +20,7 @@ describe('platform_version API endpoint', () => {
                 platform: 'yelukerest',
                 platform_compatibility_version: 1,
                 schema_compatibility_version: 3,
-                admin_api_version: 5,
+                admin_api_version: 8,
             });
     });
 });

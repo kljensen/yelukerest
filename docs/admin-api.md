@@ -289,6 +289,149 @@ attendance counts, without writing data.
 `api.platform_version.admin_api_version` is `7` or later for deployments that
 support quiz result import.
 
+## Deadline Extensions
+
+Two RPCs move one deadline for one student. Both are non-destructive: they write
+an exception row and touch no grade, no submission, and no grade history.
+
+### Why these are RPCs
+
+`faculty` already holds full CRUD on `api.assignment_grade_exceptions` and
+`api.quiz_grade_exceptions`, so an extension looks like a plain POST. Each is an
+RPC for its own reason:
+
+- **Assignments.** The uniqueness rules are *partial* indexes —
+  `(assignment_slug, user_id) WHERE is_team = false` and
+  `(assignment_slug, team_nickname) WHERE is_team = true`. PostgREST's
+  `on_conflict` carries column names but no index predicate, so it cannot name
+  either arbiter, and a second grant to the same student raises a duplicate key
+  error instead of moving their deadline.
+- **Quizzes.** The arbiter here is a plain `UNIQUE (quiz_id, user_id)`, which
+  `on_conflict` *can* express. What a POST cannot do is resolve a meeting slug
+  to a quiz id and upsert on the result in one transaction.
+
+`is_team` branching is not the reason for either: a trigger on
+`data.assignment_grade_exception` already fills `is_team` from the assignment.
+
+### `api.grant_assignment_extension`
+
+`POST /rest/rpc/grant_assignment_extension`
+
+```json
+{
+  "p_user_id": 42,
+  "p_assignment_slug": "project-update-1",
+  "p_closed_at": "2026-10-03T23:59:00-04:00",
+  "p_fractional_credit": 0.5
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "exception_id": 17,
+    "assignment_slug": "project-update-1",
+    "is_team": true,
+    "user_id": null,
+    "team_nickname": "bright-fog",
+    "closed_at": "2026-10-03T23:59:00-04:00",
+    "fractional_credit": 0.5,
+    "created": true
+  }
+]
+```
+
+`p_closed_at` is an **absolute** timestamp. The script this replaces accepted
+`+7 days` and interpolated it into SQL; relative-deadline convenience belongs to
+the client, which knows what "a week" means for this course.
+
+`p_fractional_credit` defaults to `1` and is validated against the bounds read
+off the table's own `CHECK` constraint, so the two cannot drift.
+
+On a **team** assignment the student names the team: the function resolves their
+*current* `team_nickname` inside the transaction, writes a team row carrying no
+`user_id`, and returns the team it chose. Granting to a teammate moves the same
+row rather than adding a second — `created` says which happened.
+
+The current team is deliberately the opposite rule from
+`api.import_assignment_grades`, which reaches its team through the insert-time
+snapshot in `data.assignment_submission_participant`. A grade records work
+already done, so it must follow the roster as it was. An extension authorises
+work not yet done, and the check that consumes it
+(`data.assignment_submission`'s `WITH CHECK`) joins the exception's
+`team_nickname` to the submitting student's *current* team. An older team
+snapshotted here would write a row nothing could ever match.
+
+Re-granting is safe and updates both `closed_at` and `fractional_credit`. The
+script this replaces omitted `fractional_credit` from its
+`ON CONFLICT ... DO UPDATE`, so re-running it at reduced credit moved the
+deadline and silently left the credit alone.
+
+The function fails, naming the argument, on a missing user id, a blank
+assignment slug, a missing `closed_at`, an unknown assignment slug, an unknown
+user id, a `fractional_credit` outside the constraint's bounds, or a team
+assignment for a student who is on no team.
+
+### `api.grant_quiz_extension`
+
+`POST /rest/rpc/grant_quiz_extension`
+
+```json
+{
+  "p_user_id": 42,
+  "p_meeting_slug": "structuredquerylang",
+  "p_closed_at": "2026-10-03T23:59:00-04:00",
+  "p_fractional_credit": 1
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "exception_id": 9,
+    "meeting_slug": "structuredquerylang",
+    "quiz_id": 2,
+    "user_id": 42,
+    "closed_at": "2026-10-03T23:59:00-04:00",
+    "fractional_credit": 1,
+    "created": true
+  }
+]
+```
+
+Quizzes are keyed on the meeting they were sat in, so a meeting that holds no
+quiz is as unextendable as a meeting that does not exist, and both are named the
+same way. Everything else — the absolute timestamp, the credit bounds read from
+the constraint, `created`, and re-grant behaviour — matches the assignment
+version.
+
+### There is no `reset_quiz_attempt`
+
+`add-quiz-grade-exception.sh` opened by deleting the student's `quiz_grade`,
+`quiz_answer` and `quiz_submission` rows before writing the new deadline, under
+a name that said nothing about it. That behaviour is not ported, and it is not
+offered under an honest name either, because nothing needs it:
+
+- Quizzes are paper-only. `data.quiz_submission`'s RLS admits `faculty` alone,
+  so there is no student attempt to reset.
+- A retake is a re-import through `api.import_quiz_results`, which updates the
+  grade in place and leaves both the original `recorded` event and the later
+  `corrected` event, with its reason and `import_id`, in
+  `api.quiz_grade_events`. Deleting the submission would destroy exactly the
+  history a retake should be leaving behind.
+- `data.quiz_answer` has not existed since quizzes went paper-only, so the
+  script raises before it writes the deadline at all.
+- If a row genuinely has to go, `faculty` already hold `DELETE` on
+  `api.quiz_grades` and `api.quiz_submissions`. The destructive operation is
+  already available under a name that says what it does.
+
+`api.platform_version.admin_api_version` is `8` or later for deployments that
+support either extension RPC.
+
 ## Read Operations
 
 These are plain authenticated reads of existing `api` views, not RPCs. They add no
@@ -448,5 +591,6 @@ nothing is an error naming it, rather than a silently empty export.
 | Submission export | Supported by `api_client.py export-submissions` | One row per submitted field; a team submission appears once. |
 | Roster import | Planned | Needs a boundary between Yelukerest user rows and course-specific registration, LDAP, and nickname enrichment. |
 | Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
-| Quiz grade import | Planned | Should follow the same contract as assignment grade import. |
-| Grade exceptions | Planned | Should share the grade-history/audit design and preserve actor, reason, and source metadata. |
+| Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and an audited `import_id`. |
+| Deadline extensions | Supported by `api.grant_assignment_extension` / `api.grant_quiz_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. |
+| Grade exception audit trail | Planned | The exception tables carry no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |
