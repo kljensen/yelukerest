@@ -587,6 +587,94 @@ there at the same moment.
 `api.platform_version.schema_compatibility_version` includes `5` for
 deployments that carry this view.
 
+## Repository Snapshots
+
+`api.assignment_repository_snapshots` records what the graded artifact actually
+was: at each student's **effective deadline**, the resolved commit SHA, a
+durable `git bundle`, and the bundle's SHA-256 digest. Graders check out the
+recorded SHA instead of remote `HEAD`, so a push after the deadline cannot
+change what gets graded, and a regrade in December resolves to the same bytes.
+
+The SHA alone would not be enough. A force-push cannot alter a commit, but it
+can make the commit unreachable, and GitHub does not promise to retain
+unreachable objects. The bundle is the artifact; the SHA says which commit
+inside it to check out; the digest says the bundle is the one that was captured.
+
+Like the repository mapping, these are plain CRUD views rather than RPCs, which
+is why `admin_api_version` stayed at `9` while `schema_compatibility_version`
+moved to `6`. See [Platform Compatibility](platform-compatibility.md).
+
+| Column | Kind | Notes |
+| --- | --- | --- |
+| `assignment_repository_id` | key | The repository this captures, from `api.assignment_repositories`. |
+| `effective_closed_at` | key | The deadline this capture was made *for*. Stored, never re-derived. |
+| `captured_at` | fact | When the capture was actually observed, which is later than the deadline. |
+| `commit_sha` | artifact | Lowercase hex, 40 or 64 characters. Null when the capture failed. |
+| `bundle_uri` | artifact | Where the bundle lives. A location, not a credential. |
+| `bundle_sha256` | artifact | Digest of the bundle bytes. Null when the capture failed. |
+| `is_verified` | outcome | True only when the bundle was written, read back, and its digest recomputed. |
+| `error` | outcome | Required when `is_verified` is false, forbidden when it is true. |
+| `superseded_at` | lifecycle | When this stopped being the current snapshot. Null means current. |
+
+**Failures are rows, not absences.** A capture that could not clone, could not
+upload, or produced a mismatched digest must leave a row saying so. A missing
+row is indistinguishable from "not due yet", which is exactly what a silently
+failing runner would be mistaken for, for as long as nobody looked.
+
+**Supersession, not deletion.** A snapshot taken at an earlier deadline is still
+a true statement about what existed then. When an extension moves the deadline
+and a later capture replaces it, set `superseded_at` on the old row rather than
+deleting it. A partial unique index enforces at most one verified,
+non-superseded snapshot per repository, so "what do I grade" has one answer;
+failures are outside that index and accumulate freely.
+
+### The queue: `api.assignment_repository_snapshots_due`
+
+Snapshotting cannot be a job scheduled at the common deadline, because
+extensions move deadlines individually and continuously and every such
+extension would be missed. Instead the runner **polls for work that has become
+due**, every few minutes, idempotently.
+
+`api.assignment_repository_snapshots_due` is that queue. It is faculty-only, and
+it lists every repository where:
+
+1. the assignment is not a draft,
+2. the effective deadline has passed, and
+3. there is no current, verified snapshot **for that same deadline**.
+
+The effective deadline is `assignment_grade_exception.closed_at` when one
+applies to that student or team, else `assignment.closed_at` -- the same
+expression the row-level security on `data.assignment_submission` evaluates. It
+lives in the view so that no client re-derives it and drifts.
+
+Condition 3 matching on the deadline, and not merely on the repository, is what
+makes an extension granted *after* a capture work. While the new deadline is in
+the future the repository is not due and the existing snapshot stays current --
+a window with no current snapshot at all would be strictly worse. Once the new
+deadline passes, the repository becomes due again on its own, because the
+snapshot it holds records the *earlier* `effective_closed_at`. Record the new
+capture with the `effective_closed_at` the queue reported, or the repository
+stays due forever.
+
+Failed attempts do not clear the queue, which is what makes retries work. The
+queue exposes `failed_attempt_count` and `last_failed_at` so that backing off a
+repository which has been deleted on the forge can be an operational decision
+rather than the only available behavior.
+
+**Known gap, stated rather than hidden.** There is a window between the deadline
+and the capture. Git commit timestamps are user-controlled and cannot close it.
+The options, in increasing cost, are to accept it and record the true
+`captured_at`, to poll at finer granularity, or to flip the student to `pull`
+briefly while capturing -- a short-lived mutex, not permanent lockdown.
+
+Students hold `select` on the snapshot view and nothing else, narrowed by
+row-level security to their own repositories and their current team's. That is
+what lets a student ask "which commit of mine was graded" without a faculty
+member in the loop. They hold nothing at all on the queue.
+
+`api.platform_version.schema_compatibility_version` includes `6` for
+deployments that carry these views.
+
 ## Read Operations
 
 These are plain authenticated reads of existing `api` views, not RPCs. They add no
@@ -750,5 +838,5 @@ nothing is an error naming it, rather than a silently empty export.
 | Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
 | Secret distribution | Supported by `api.upsert_user_secrets` / `api.upsert_team_secrets` | Partial-index upsert keyed on `netid`/`team_nickname` + `slug`, with dry-run. Returns counts only; no response or error ever carries a secret body. |
 | Repository mapping | Supported by `api.assignment_repositories` | Which forge repository belongs to which student or team for which assignment. Plain faculty CRUD, keyed on ids rather than names. Students read their own row only. |
-| Repository snapshots | Planned | Commit SHA, bundle URI and digest, effective deadline, observed capture time, supersession. Lands with the course-side snapshotter rather than blocking provisioning. |
+| Repository snapshots | Supported by `api.assignment_repository_snapshots` / `api.assignment_repository_snapshots_due` | Commit SHA, bundle URI and digest, effective deadline, observed capture time, supersession. Failures are rows. The queue polls for work that has become due, so an extension granted after a capture is picked up rather than missed. |
 | Grade exception audit trail | Planned | `data.assignment_grade_exception` carries no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |

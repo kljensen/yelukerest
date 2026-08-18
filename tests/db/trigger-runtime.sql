@@ -21,6 +21,7 @@ SELECT set_eq(
         'assignment_grade_event.tg_assignment_grade_event_append_only',
         'assignment_grade_exception.tg_assignment_grade_exception_default',
         'assignment_repository.tg_assignment_repository_update_timestamps',
+        'assignment_repository_snapshot.tg_assignment_repository_snapshot_update_timestamps',
         'assignment_submission.tg_assignment_submission_default',
         'mcp_grant_revocation.mcp_grant_revocation_no_update',
         'assignment_submission.tg_assignment_submission_participants',

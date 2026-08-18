@@ -15,7 +15,7 @@ The response is a one-row JSON array:
   {
     "platform": "yelukerest",
     "platform_compatibility_version": 1,
-    "schema_compatibility_version": 5,
+    "schema_compatibility_version": 6,
     "admin_api_version": 9
   }
 ]
@@ -34,7 +34,7 @@ import urllib.request
 required = {
     "platform": "yelukerest",
     # A set, not a floor -- see below.
-    "schema_compatibility_versions": {5},
+    "schema_compatibility_versions": {6},
     "admin_api_version": 9,
 }
 
@@ -69,7 +69,8 @@ floor. Version 5 only adds `api.assignment_repositories`, so a client that never
 reads it works against 4 and 5 alike and declares `{4, 5}`. A client that needs
 it declares `{5}` alone -- and specifically not `>= 5`, because the next shape
 that subtracts something would sail through that floor exactly the way `>= 3`
-sailed through version 4.
+sailed through version 4. Version 6 is additive in the same way, so that client
+extends its set to `{5, 6}` once it has confirmed it reads nothing that changed.
 
 Raise the relevant version in the same migration that introduces the new
 contract, by replacing `api.platform_version` there -- the values live in the
@@ -103,6 +104,15 @@ migration can make about the database in front of it.
   provisions repositories declares `{5}`. No RPC came with it, which is why
   `admin_api_version` stayed at 9. See
   [Admin API](admin-api.md#assignment-repositories).
+- `schema_compatibility_version` **6** added `api.assignment_repository_snapshots`
+  and `api.assignment_repository_snapshots_due`: the record of what the graded
+  artifact actually was at each student's effective deadline, and the queue of
+  repositories that have become due for a capture. It removes nothing, so a
+  client that reads neither declares `{4, 5, 6}`; the snapshot runner declares
+  `{6}`. No RPC came with it -- the runner reads one view and writes another,
+  and PostgREST's ordinary filtering is enough -- which is why
+  `admin_api_version` stayed at 9. See
+  [Admin API](admin-api.md#repository-snapshots).
 - `admin_api_version` **8** added `api.grant_assignment_extension`. Assignments
   are the only thing with an extendable deadline.
 - `admin_api_version` **9** added `api.upsert_user_secrets` and
