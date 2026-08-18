@@ -628,6 +628,16 @@ deleting it. A partial unique index enforces at most one verified,
 non-superseded snapshot per repository, so "what do I grade" has one answer;
 failures are outside that index and accumulate freely.
 
+**Supersede and insert in one transaction.** That index refuses a second current
+snapshot, so the two statements cannot be reordered -- the `UPDATE` must come
+first, and between the two the repository has no current snapshot. Split across
+transactions, a crash in between leaves it that way. It is self-healing rather
+than corrupting: the repository becomes due again and the next poll re-captures
+it, and the superseded row keeps its commit SHA and bundle throughout. But a
+grader running inside that window finds nothing to check out. The runner
+connects to PostgreSQL directly and has a transaction available; there is
+deliberately no RPC for this.
+
 ### The queue: `api.assignment_repository_snapshots_due`
 
 Snapshotting cannot be a job scheduled at the common deadline, because
@@ -642,10 +652,18 @@ it lists every repository where:
 2. the effective deadline has passed, and
 3. there is no current, verified snapshot **for that same deadline**.
 
-The effective deadline is `assignment_grade_exception.closed_at` when one
-applies to that student or team, else `assignment.closed_at` -- the same
-expression the row-level security on `data.assignment_submission` evaluates. It
-lives in the view so that no client re-derives it and drifts.
+The effective deadline is the **later** of `assignment.closed_at` and any
+`assignment_grade_exception.closed_at` that applies to that student or team --
+the same thing the row-level security on `data.assignment_submission` permits
+writes until. It lives in the view so that no client re-derives it and drifts.
+
+Later, not simply the exception's, because that RLS joins its two branches with
+an `OR`: a student may write while `a.is_open`, whatever an exception says. So
+an exception closing *earlier* than the assignment shortens nothing, and nothing
+forbids one -- `data.assignment_grade_exception` carries no CHECK requiring
+`closed_at` to be later, and `api.grant_assignment_extension` only refuses a
+NULL. Treating such an exception as the deadline would capture and grade a
+repository whose owner is still legitimately writing to it, silently.
 
 Condition 3 matching on the deadline, and not merely on the repository, is what
 makes an extension granted *after* a capture work. While the new deadline is in

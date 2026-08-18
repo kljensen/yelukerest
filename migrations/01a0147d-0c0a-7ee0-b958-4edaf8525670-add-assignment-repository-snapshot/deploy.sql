@@ -12,10 +12,10 @@
 -- survives a force-push, a December regrade, and an assignment whose server has
 -- to keep running all semester.
 --
--- So at each student's effective deadline -- assignment_grade_exception.closed_at
--- if one applies, else assignment.closed_at, which is exactly the expression the
--- RLS on data.assignment_submission already evaluates -- capture the resolved
--- commit SHA, a durable `git bundle`, and the bundle's SHA-256 digest.
+-- So at each student's effective deadline -- the later of assignment.closed_at
+-- and any applicable assignment_grade_exception.closed_at, which is exactly what
+-- the RLS on data.assignment_submission permits writes until -- capture the
+-- resolved commit SHA, a durable `git bundle`, and the bundle's SHA-256 digest.
 --
 -- The SHA alone is not enough. A force-push cannot alter a commit but it can
 -- make the commit unreachable, and GitHub does not promise to retain unreachable
@@ -179,6 +179,30 @@ CREATE TABLE data.assignment_repository_snapshot (
 -- Partial-unique is the shape data.assignment_repository already uses for its
 -- own per-student and per-team rules, for the same reason: the interesting
 -- uniqueness is always conditional.
+--
+-- WRITERS: SUPERSEDING THE CURRENT ROW AND INSERTING ITS REPLACEMENT MUST HAPPEN
+-- IN ONE TRANSACTION.
+--
+-- This index is what makes that mandatory. It refuses a second current verified
+-- snapshot, so the two statements cannot be reordered: the UPDATE that sets
+-- superseded_at has to come first, and between the two the repository has no
+-- current snapshot at all. A writer that runs them as separate transactions and
+-- dies in between leaves it that way.
+--
+-- The damage is bounded and self-healing rather than corrupting: with the old
+-- row superseded, nothing satisfies condition 3 of
+-- api.assignment_repository_snapshots_due, so the repository simply becomes due
+-- again and the next poll re-captures it. Nothing is lost -- the superseded row
+-- is still there, with its commit SHA and its bundle. But a grader who runs
+-- inside that window finds no current snapshot and has nothing to check out, and
+-- for a repository already past its deadline that reads as "never captured".
+--
+-- The fix belongs to the client, not to a stored procedure: the consumer is the
+-- Go admin runner, which connects to PostgreSQL directly with sqlx and writes
+-- data.* (yale-mgt-656-fall-2026/admin#21). It has a real transaction available,
+-- so it should wrap both statements in one. There is deliberately no RPC for
+-- this -- it would be API surface for a caller that does not exist, and a second
+-- place for the supersession rule to live.
 CREATE UNIQUE INDEX assignment_repository_snapshot_current
     ON data.assignment_repository_snapshot (assignment_repository_id)
     WHERE is_verified AND superseded_at IS NULL;
@@ -273,7 +297,7 @@ COMMENT ON COLUMN api.assignment_repository_snapshots.id IS
 COMMENT ON COLUMN api.assignment_repository_snapshots.assignment_repository_id IS
     'The provisioned repository this is a snapshot of';
 COMMENT ON COLUMN api.assignment_repository_snapshots.effective_closed_at IS
-    'The deadline this capture was made for: the student''s grade exception if one applied, else the assignment deadline. Stored rather than re-derived, so a later extension cannot rewrite what this row claims';
+    'The deadline this capture was made for: the later of the assignment deadline and any grade exception that applied, which is what the student could write until. Stored rather than re-derived, so a later extension cannot rewrite what this row claims';
 COMMENT ON COLUMN api.assignment_repository_snapshots.captured_at IS
     'When the capture was actually observed. Later than the deadline by however long the runner took to get to it; git commit timestamps are user-controlled and cannot narrow that window';
 COMMENT ON COLUMN api.assignment_repository_snapshots.commit_sha IS
@@ -320,8 +344,27 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON api.assignment_repository_snapshots TO f
 -- repository has a NULL user_id and can only match on team.
 --
 -- At most one exception can match: data.assignment_grade_exception's two partial
--- unique indexes make (assignment, user) and (assignment, team) unique, so the
--- LEFT JOIN cannot fan out.
+-- unique indexes make (assignment, user) and (assignment, team) unique, and
+-- matches_assignment_is_team means only one side of that OR can ever be true, so
+-- the LEFT JOIN cannot fan out.
+--
+-- The deadline is the *later* of the assignment's and the exception's, not the
+-- exception's. That is not a softening of the rule, it is the rule: the RLS
+-- permits a write when
+--
+--     a.is_open OR (e.closed_at > current_timestamp AND NOT a.is_draft AND ...)
+--
+-- and that is an OR. An exception closing earlier than the assignment does not
+-- shorten anything -- the student may still write for as long as the assignment
+-- itself is open -- and nothing forbids one: data.assignment_grade_exception has
+-- no CHECK requiring closed_at to be later, and api.grant_assignment_extension
+-- only refuses a NULL. Rearranged, the RLS says a write is permitted while
+-- `NOT is_draft AND current_timestamp < GREATEST(a.closed_at, e.closed_at)`,
+-- which is exactly the expression below.
+--
+-- Taking the exception unconditionally would snapshot a repository whose owner
+-- is still legitimately writing to it, and grade half-finished work. That is a
+-- worse failure than being late, because it is silent.
 --
 -- "Due" is three conditions:
 --
@@ -383,8 +426,15 @@ WITH (security_barrier = true) AS
         AND (e.user_id = r.user_id OR e.team_nickname = r.team_nickname)
     -- Naming the expression once, so the three places that need it cannot drift
     -- apart from each other the way copies of it would.
+    --
+    -- GREATEST, not COALESCE. See the note on the matching rule above: an
+    -- exception raises the deadline and never lowers it, so an exception that
+    -- closed *earlier* than the assignment leaves the assignment's own deadline
+    -- governing. GREATEST ignores NULLs in PostgreSQL -- it returns NULL only
+    -- when every argument is NULL -- so the no-exception case needs no COALESCE
+    -- around it.
     CROSS JOIN LATERAL (
-        SELECT COALESCE(e.closed_at, a.closed_at) AS effective_closed_at
+        SELECT GREATEST(a.closed_at, e.closed_at) AS effective_closed_at
     ) AS d
     CROSS JOIN LATERAL (
         SELECT
@@ -427,9 +477,9 @@ COMMENT ON COLUMN api.assignment_repository_snapshots_due.provider_repo_id IS
 COMMENT ON COLUMN api.assignment_repository_snapshots_due.provider_full_name IS
     'Forge repository name such as org/repo. Display only, and expected to go stale';
 COMMENT ON COLUMN api.assignment_repository_snapshots_due.assignment_closed_at IS
-    'The assignment''s own deadline, before any exception is applied';
+    'The assignment''s own deadline, before any exception is applied. Equal to effective_closed_at unless an exception moved the deadline later';
 COMMENT ON COLUMN api.assignment_repository_snapshots_due.effective_closed_at IS
-    'The deadline that governs this repository: the applicable grade exception''s closed_at, else the assignment''s. Record it on the snapshot exactly as it appears here, or the repository will look due forever';
+    'The deadline that governs this repository: the later of the assignment''s closed_at and any applicable grade exception''s, because an exception raises a deadline and never lowers it. Record it on the snapshot exactly as it appears here, or the repository will look due forever';
 COMMENT ON COLUMN api.assignment_repository_snapshots_due.failed_attempt_count IS
     'How many captures have already failed for this repository at this deadline. Nonzero means retrying, and a large number means something needs a human rather than another attempt';
 COMMENT ON COLUMN api.assignment_repository_snapshots_due.last_failed_at IS

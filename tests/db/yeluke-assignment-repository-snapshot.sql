@@ -16,7 +16,7 @@
 -- known id is what lets the assertions name a repository instead of chasing a
 -- sequence.
 
-SELECT plan(57);
+SELECT plan(60);
 
 -- ---------------------------------------------------------------------------
 -- Shape and privileges
@@ -425,6 +425,19 @@ SELECT set_eq(
     'due is: deadline passed, and no current verified snapshot for that deadline'
 );
 
+-- No exception applies to user 2 on exam-1 yet, so the assignment's own deadline
+-- governs and the two columns agree.
+SELECT results_eq(
+    $$
+        SELECT effective_closed_at = current_timestamp - interval '1 day' AS uses_the_assignment,
+               effective_closed_at = assignment_closed_at AS the_two_agree
+        FROM api.assignment_repository_snapshots_due
+        WHERE assignment_repository_id = 9002
+    $$,
+    $$ VALUES (TRUE, TRUE) $$,
+    'with no exception in play the effective deadline is the assignment''s own'
+);
+
 SELECT results_eq(
     $$
         SELECT failed_attempt_count, last_failed_at = current_timestamp AS failed_just_now
@@ -450,21 +463,74 @@ SELECT is_empty(
 
 RESET ROLE;
 
+-- Bring the team's extension back into the past, but still an hour ago rather
+-- than the assignment's day ago: the exception is the later of the two, so it is
+-- the one that governs.
 UPDATE data.assignment_grade_exception
-SET closed_at = current_timestamp - interval '2 days'
+SET closed_at = current_timestamp - interval '1 hour'
 WHERE assignment_slug = 'project-update-1' AND team_nickname = 'hazy-mountain';
 
 SET LOCAL ROLE faculty;
 
 SELECT results_eq(
     $$
-        SELECT effective_closed_at = current_timestamp - interval '2 days' AS uses_the_exception,
+        SELECT effective_closed_at = current_timestamp - interval '1 hour' AS uses_the_exception,
                assignment_closed_at = current_timestamp - interval '1 day' AS reports_the_assignment_deadline
         FROM api.assignment_repository_snapshots_due
         WHERE assignment_repository_id = 9004
     $$,
     $$ VALUES (TRUE, TRUE) $$,
-    'the effective deadline is the exception''s closed_at, and the assignment''s own is reported beside it'
+    'an exception later than the assignment deadline is the effective one, and the assignment''s own is reported beside it'
+);
+
+-- ---------------------------------------------------------------------------
+-- An exception that closes *earlier* than the assignment
+-- ---------------------------------------------------------------------------
+-- Nothing forbids one -- data.assignment_grade_exception has no CHECK requiring
+-- closed_at to be later, and api.grant_assignment_extension only refuses a NULL
+-- -- and the RLS on data.assignment_submission does not let one shorten
+-- anything, because its two branches are joined by OR: a student may write for
+-- as long as `a.is_open`, whatever the exception says. So the effective deadline
+-- is the later of the two, and these are the tests that say so.
+
+RESET ROLE;
+
+-- exam-1 closed a day ago. Give user 2 an exception that closed five days ago.
+INSERT INTO data.assignment_grade_exception (assignment_slug, is_team, user_id, closed_at)
+VALUES ('exam-1', FALSE, 2, current_timestamp - interval '5 days');
+
+SET LOCAL ROLE faculty;
+
+SELECT results_eq(
+    $$
+        SELECT effective_closed_at = current_timestamp - interval '1 day' AS uses_the_assignment,
+               failed_attempt_count
+        FROM api.assignment_repository_snapshots_due
+        WHERE assignment_repository_id = 9002
+    $$,
+    $$ VALUES (TRUE, 3) $$,
+    'an exception earlier than the assignment deadline does not shorten it, and the failures already recorded still line up with the deadline'
+);
+
+RESET ROLE;
+
+-- The case that decides between GREATEST and COALESCE. team-selection does not
+-- close until 3018, so user 1 is still legitimately writing to 9006. An
+-- exception that closed yesterday must not make the repository due: taking the
+-- exception unconditionally would capture and grade half-finished work, and do
+-- it silently.
+INSERT INTO data.assignment_grade_exception (assignment_slug, is_team, user_id, closed_at)
+VALUES ('team-selection', FALSE, 1, current_timestamp - interval '1 day');
+
+SET LOCAL ROLE faculty;
+
+SELECT is_empty(
+    $$
+        SELECT assignment_repository_id
+        FROM api.assignment_repository_snapshots_due
+        WHERE assignment_repository_id = 9006
+    $$,
+    'an exception that closed in the past does not make a still-open assignment due'
 );
 
 -- A draft assignment is not visible to students through api.assignments and is
@@ -599,7 +665,7 @@ SELECT lives_ok(
     $$
         INSERT INTO api.assignment_repository_snapshots
             (assignment_repository_id, effective_closed_at, captured_at, error)
-        VALUES (9004, current_timestamp - interval '2 days', current_timestamp,
+        VALUES (9004, current_timestamp - interval '1 hour', current_timestamp,
             'bundle upload rejected by the store')
     $$,
     'faculty should be able to record a capture through the view'
