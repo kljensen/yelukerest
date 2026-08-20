@@ -222,9 +222,11 @@ check_hydra_client_count() {
         pages=$((pages + 1))
         # busybox wget prints response headers to stderr with -S; the
         # Link header there carries the opaque next-page token.
+        # `run --rm` rather than `exec`: elmclient builds the frontend and
+        # exits, so it is never running in production and exec always failed.
         # shellcheck disable=SC2086
-        docker compose $compose_files exec -T elmclient \
-            wget -SqO- "http://hydra:4445$next" >"$body_file" 2>"$header_file" || true
+        docker compose $compose_files run --rm --no-deps --entrypoint sh elmclient \
+            -c "wget -SqO- 'http://hydra:4445$next'" >"$body_file" 2>"$header_file" || true
         page_count=$(jq 'if type == "array" then length else empty end' <"$body_file" 2>/dev/null || true)
         case "$page_count" in
             ''|*[!0-9]*)
