@@ -129,21 +129,40 @@ check_hydra() {
     fi
 
     # 1. Readiness, asked on the internal compose network (the health
-    # endpoint is deliberately not routed through Caddy). The elmclient
-    # container is used because the hydra and caddy images have no shell.
+    # endpoint is deliberately not routed through Caddy). The hydra and caddy
+    # images have no shell, so the probe borrows another service's image.
+    #
+    # `exec elmclient` was used here, but elmclient BUILDS the frontend and
+    # exits, so in production it is always in the "exited" state and exec
+    # always failed -- doctor then warned and returned, silently skipping every
+    # remaining Hydra check. `run --rm` starts a fresh throwaway container, so
+    # it works whether or not the service is currently up.
     # shellcheck disable=SC2086
-    health=$(docker compose $compose_files exec -T elmclient \
-        wget -qO- http://hydra:4444/health/ready 2>/dev/null || true)
+    health=$(docker compose $compose_files run --rm --no-deps --entrypoint sh elmclient \
+        -c 'wget -qO- http://hydra:4444/health/ready' 2>/dev/null || true)
+
+    # Is the hydra container actually running? If it is, an unreachable health
+    # endpoint is a real failure, not an "is the stack up?" warning.
+    # shellcheck disable=SC2086
+    hydra_state=$(docker compose $compose_files ps --format '{{.Service}}={{.State}}' 2>/dev/null \
+        | grep '^hydra=' || true)
+
     if [ -z "$health" ]; then
-        warn "hydra /health/ready not reachable (is the stack up?); skipping remaining Hydra checks"
-        return
-    fi
-    if printf '%s' "$health" | jq -e '.status == "ok"' >/dev/null 2>&1; then
+        case "$hydra_state" in
+            hydra=running)
+                fail "hydra container is running but /health/ready is not reachable" ;;
+            *)
+                warn "hydra /health/ready not reachable and the hydra container is not running (is the stack up?)" ;;
+        esac
+    elif printf '%s' "$health" | jq -e '.status == "ok"' >/dev/null 2>&1; then
         ok "hydra /health/ready reports ok"
     else
         fail "hydra /health/ready returned unexpected payload: $health"
-        return
     fi
+
+    # Deliberately no `return` above: the checks below go through Caddy with
+    # curl and are independent of the internal probe, so a failure here must not
+    # hide an issuer mismatch or a missing registration endpoint.
 
     # 2. Both discovery documents are fetchable through Caddy and agree
     # on the issuer, which must match the expected public base URL.
