@@ -381,6 +381,15 @@ One-time bootstrap, in order:
      db bash /opt/hydra/create-hydra-db.sh
    ```
 
+   Note this calls `docker compose` directly rather than `./bin/prod.sh`,
+   on purpose. `bin/prod.sh` used to run `set -o xtrace` unconditionally,
+   so routing this command through it printed `HYDRA_DB_PASS` in cleartext
+   to the terminal and into shell scrollback. Tracing there is now opt-in
+   (`YELUKEREST_TRACE=1`), but keep invoking compose directly here: never
+   pass a secret through a wrapper that may echo its arguments. If a
+   password does get exposed this way, rerun the helper with a new value —
+   it updates the role password in place.
+
    Rerunning the helper is safe: it updates the role password in place,
    so it is also the procedure for rotating `HYDRA_DB_PASS`.
 
