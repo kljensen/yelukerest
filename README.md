@@ -142,8 +142,13 @@ Then...
 1. Create the required external docker volumes 
    ```
    docker volume create --name=yelukerest-pg-data
-   docker volume create --name=yelukerest-letsencrypt
    ```
+
+   Only this one. `yelukerest-pg-data` is the sole external volume; compose
+   will not create it for you. There is no `yelukerest-letsencrypt` volume —
+   Caddy keeps certificates in the `caddy_data` volume, which compose creates
+   automatically. Creating a letsencrypt volume does no harm but invites
+   backing up or deleting the wrong thing.
 2. Start database `./bin/prod.sh up db`
 3. Provision roles, deploy the Zapadka bootstrap, and configure the JWT secret.
 4. Stop database
