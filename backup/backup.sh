@@ -44,6 +44,15 @@ if [ -n "${S3_PREFIX:-}" ]; then
   REPO_PATH="/${S3_PREFIX}"
 fi
 
+# pgBackRest reads PGBACKREST_* environment variables as configuration, and they
+# take precedence over the config file written below. backup/Dockerfile sets
+# PGBACKREST_REPO1_PATH=/pgbackrest, so without this export the env var silently
+# overrode repo1-path and base backups went to /pgbackrest while the db
+# container's archive_command (which has no such env var) wrote WAL to
+# /$S3_PREFIX -- backups and their WAL in two different places, so no restore
+# could work. Keep the env and the config file in agreement.
+export PGBACKREST_REPO1_PATH="$REPO_PATH"
+
 CONFIG=$(mktemp)
 trap 'rm -f "$CONFIG"' EXIT
 
