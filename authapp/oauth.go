@@ -68,13 +68,24 @@ const (
 	oauthStylesheetPath        = "/auth/oauth/consent.css"
 	hydraAdminMaxResponseBytes = 1 << 20
 	oauthConsentMaxBodyBytes   = 64 * 1024
-	// sessionKeyConsentCSRF and sessionKeyConsentChallenge hold the
-	// single outstanding consent form token. One slot, not a map: a
-	// hostile client could otherwise grow the session by reloading the
-	// consent page with fresh challenges. Rendering a new consent page
-	// invalidates the previous form, which is the conservative choice.
-	sessionKeyConsentCSRF      = "oauth_consent_csrf"
-	sessionKeyConsentChallenge = "oauth_consent_challenge"
+	// sessionKeyConsentForms holds the outstanding consent form tokens,
+	// keyed by challenge, as a JSON list bounded to consentFormsKept.
+	//
+	// This was a single slot, so rendering a consent page invalidated the
+	// previous form. That is fine when exactly one page is ever open, and
+	// wrong in practice: Safari opened /oauth2/auth twice in the same second
+	// during a Claude Desktop connect, the second render overwrote the first
+	// token, and clicking Allow produced "this form has expired" on a page the
+	// user had just been shown.
+	//
+	// The bound is what the single slot was protecting: a client cannot grow
+	// the session without limit by reloading with fresh challenges, because
+	// only the newest few are kept. Each entry is still single-use, so a
+	// replayed submission cannot re-grant.
+	sessionKeyConsentForms = "oauth_consent_forms"
+	// Enough for a browser that duplicates a navigation or the user opening a
+	// second tab; small enough that the session cannot be grown meaningfully.
+	consentFormsKept = 4
 )
 
 // oauthChallengePattern bounds what we will forward to Hydra as a
@@ -710,6 +721,75 @@ func redirectOriginsFor(uris []string) []string {
 	return origins
 }
 
+// consentForm is one outstanding consent page: the challenge it was rendered
+// for and the token that page carries.
+type consentForm struct {
+	Challenge string `json:"c"`
+	Token     string `json:"t"`
+}
+
+func loadConsentForms(r *http.Request, sessionManager *scs.SessionManager) []consentForm {
+	raw := sessionManager.GetString(r.Context(), sessionKeyConsentForms)
+	if raw == "" {
+		return nil
+	}
+	var forms []consentForm
+	if err := json.Unmarshal([]byte(raw), &forms); err != nil {
+		// A malformed value is treated as no outstanding forms: the caller
+		// then rejects the submission, which is the safe direction.
+		return nil
+	}
+	return forms
+}
+
+func storeConsentForms(r *http.Request, sessionManager *scs.SessionManager, forms []consentForm) {
+	if len(forms) == 0 {
+		sessionManager.Remove(r.Context(), sessionKeyConsentForms)
+		return
+	}
+	encoded, err := json.Marshal(forms)
+	if err != nil {
+		sessionManager.Remove(r.Context(), sessionKeyConsentForms)
+		return
+	}
+	sessionManager.Put(r.Context(), sessionKeyConsentForms, string(encoded))
+}
+
+// rememberConsentForm records the token for a freshly rendered consent page,
+// replacing any previous entry for the same challenge and evicting the oldest
+// once consentFormsKept is reached.
+func rememberConsentForm(r *http.Request, sessionManager *scs.SessionManager, challenge, token string) {
+	forms := loadConsentForms(r, sessionManager)
+	kept := make([]consentForm, 0, len(forms)+1)
+	for _, form := range forms {
+		if form.Challenge != challenge {
+			kept = append(kept, form)
+		}
+	}
+	kept = append(kept, consentForm{Challenge: challenge, Token: token})
+	if len(kept) > consentFormsKept {
+		kept = kept[len(kept)-consentFormsKept:]
+	}
+	storeConsentForms(r, sessionManager, kept)
+}
+
+// consumeConsentForm returns the token issued for this challenge and removes
+// it, so each rendered form can be submitted exactly once.
+func consumeConsentForm(r *http.Request, sessionManager *scs.SessionManager, challenge string) string {
+	forms := loadConsentForms(r, sessionManager)
+	token := ""
+	kept := make([]consentForm, 0, len(forms))
+	for _, form := range forms {
+		if form.Challenge == challenge {
+			token = form.Token
+			continue
+		}
+		kept = append(kept, form)
+	}
+	storeConsentForms(r, sessionManager, kept)
+	return token
+}
+
 func newCSRFToken() (string, error) {
 	buffer := make([]byte, 32)
 	if _, err := rand.Read(buffer); err != nil {
@@ -781,8 +861,7 @@ func serveConsentForm(w http.ResponseWriter, r *http.Request, config oauthFlowCo
 		oauthError(w, http.StatusInternalServerError, "Internal Server Error")
 		return
 	}
-	sessionManager.Put(r.Context(), sessionKeyConsentCSRF, token)
-	sessionManager.Put(r.Context(), sessionKeyConsentChallenge, challenge)
+	rememberConsentForm(r, sessionManager, challenge, token)
 
 	view := consentPageView{
 		StylesheetPath:  oauthStylesheetPath,
@@ -835,14 +914,15 @@ func serveConsentDecision(w http.ResponseWriter, r *http.Request, config oauthFl
 	// THIS challenge, and it is single-use. Both slots are cleared
 	// before any decision is sent to Hydra, so a replayed submission
 	// (back button, duplicated tab) cannot re-grant.
-	expectedToken := sessionManager.GetString(r.Context(), sessionKeyConsentCSRF)
-	expectedChallenge := sessionManager.GetString(r.Context(), sessionKeyConsentChallenge)
 	submittedToken := r.PostForm.Get("csrf_token")
-	sessionManager.Remove(r.Context(), sessionKeyConsentCSRF)
-	sessionManager.Remove(r.Context(), sessionKeyConsentChallenge)
+	// Consuming removes this challenge's entry whatever the outcome, so a
+	// replayed submission cannot re-grant. Other outstanding forms are left
+	// alone: one duplicated navigation must not invalidate the page the user
+	// is actually looking at.
+	expectedToken := consumeConsentForm(r, sessionManager, challenge)
 	tokenMatches := expectedToken != "" &&
 		subtle.ConstantTimeCompare([]byte(expectedToken), []byte(submittedToken)) == 1
-	if !tokenMatches || expectedChallenge != challenge {
+	if !tokenMatches {
 		log.Println("oauth: rejecting a consent submission with a missing, stale, or mismatched CSRF token")
 		oauthError(w, http.StatusForbidden, "This form has expired or was not submitted from this page. Start the connection again from your application.")
 		return
