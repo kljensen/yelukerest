@@ -112,8 +112,20 @@ func main() {
 	// most a handful per minute even while retrying.
 	mcpTokenRateLimiter := newRateLimiter(30, time.Minute)
 	getMCPToken := getSessionMiddleware(sessionManager, rateLimitMiddleware(mcpTokenRateLimiter, getMCPTokenHandler(mcpTokenConfig)))
+	// Personal access token exchange (issue #317). Deliberately NOT behind
+	// getSessionMiddleware: the caller presents a token precisely because they
+	// have no browser session. The limit is tighter than /auth/jwt because this
+	// is the one endpoint reachable with a stolen long-lived credential, and a
+	// legitimate client needs at most one exchange an hour.
+	apiTokenRateLimiter := newRateLimiter(20, time.Minute)
+	exchangeAPIToken := rateLimitMiddleware(
+		apiTokenRateLimiter,
+		exchangeAPITokenHandler(fetchJWTConfig),
+	)
+
 	mux.Handle("/auth/me", getMe)
 	mux.Handle("/auth/jwt", getJWT)
+	mux.Handle("/auth/token", exchangeAPIToken)
 	mux.Handle("/auth/mcp-token", getMCPToken)
 	mux.Handle("/auth/api.json", getOpenAPI)
 
