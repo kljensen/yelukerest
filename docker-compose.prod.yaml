@@ -18,6 +18,7 @@ services:
   # use a separate database instance, like Amazon RDS, i.e. in production this section will be
   # commented and in the .env file you will specify the ip of your separate database instance
   db:
+    restart: unless-stopped
     build:
       context: db
       target: prod
@@ -97,6 +98,7 @@ services:
       - DSN=postgres://${HYDRA_DB_USER:-hydra}:${HYDRA_DB_PASS}@${DB_HOST}:${DB_PORT}/${HYDRA_DB_NAME:-hydra}?sslmode=disable&max_conns=8&max_idle_conns=2
 
   backup:
+    restart: unless-stopped
     build: backup
     environment:
       - SCHEDULE=${BACKUP_SCHEDULE}

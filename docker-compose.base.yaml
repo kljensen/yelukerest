@@ -44,6 +44,10 @@ services:
     # PostgREST instance, is responsible for communicating with the database
     # and providing a REST api, (almost) every request that is sent to the database goes through it
     postgrest:
+        # unless-stopped, not on-failure: on-failure does not bring a container
+        # back when the docker daemon itself restarts, and postgrest died with
+        # exit 133 mid-life with nothing to restart it, taking the API down.
+        restart: unless-stopped
         image: ${POSTGREST_IMAGE:-ghcr.io/kljensen/docker-postgrest-static:14.14}
         ports:
             - '127.0.0.1:3000:${POSTGREST_PORT}'
@@ -68,7 +72,7 @@ services:
             - '${CADDY_LISTEN_HOST}:80:80'
             - '${CADDY_LISTEN_HOST}:443:443'
             - '${CADDY_LISTEN_HOST}:443:443/udp'
-        restart: on-failure
+        restart: unless-stopped
         environment:
             - FQDN=${FQDN}
             - CADDY_ENV=${CADDY_ENV:-production}
@@ -98,7 +102,7 @@ services:
     hydra:
         image: oryd/hydra:v26.2.0
         command: serve all -c /etc/hydra/hydra.yml --sqa-opt-out
-        restart: on-failure
+        restart: unless-stopped
         # NO ports section on purpose: the public API (4444) is reached only
         # by Caddy over the internal compose network, and the admin API
         # (4445) is never published to the host and never proxied by Caddy.
@@ -118,6 +122,7 @@ services:
             - './hydra/hydra.yml:/etc/hydra/hydra.yml:ro'
 
     authapp:
+        restart: unless-stopped
         build: authapp
         ports:
             - '127.0.0.1:${AUTHAPP_HOST_PORT}:${AUTHAPP_PORT}'
@@ -144,6 +149,7 @@ services:
             - FQDN=${FQDN}
 
     mcpapp:
+        restart: unless-stopped
         build: mcpapp
         ports:
             - '127.0.0.1:${MCPAPP_HOST_PORT:-8090}:${MCPAPP_PORT:-8090}'
