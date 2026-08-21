@@ -128,3 +128,47 @@ func TestMetadataURLForResource(t *testing.T) {
 		})
 	}
 }
+
+// The metadata must advertise the course scopes.
+//
+// Without them the whole discovery chain still completes -- 401, resource
+// metadata, authorization server, DCR, browser consent -- and the connection is
+// then useless: the client never learns to ask for course:read, so the token
+// carries no yelukerest scopes and every tool call is denied. A student who did
+// everything correctly ends up with a connected server that refuses to answer,
+// which is the worst kind of failure because nothing looks broken.
+func TestProtectedResourceMetadataAdvertisesCourseScopes(t *testing.T) {
+	handler := protectedResourceMetadataHandler("https://example.edu/mcp", "https://example.edu")
+	r := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource/mcp", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	var metadata struct {
+		ScopesSupported []string `json:"scopes_supported"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &metadata); err != nil {
+		t.Fatalf("cannot decode metadata: %v", err)
+	}
+
+	has := func(scope string) bool {
+		for _, s := range metadata.ScopesSupported {
+			if s == scope {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, required := range []string{"course:read", "grades:read", "submissions:read"} {
+		if !has(required) {
+			t.Fatalf("scopes_supported must advertise %q, got %v", required, metadata.ScopesSupported)
+		}
+	}
+
+	// Advertised so a client can ask; granting is still the consent page's
+	// decision, and it leaves write scopes unchecked.
+	if !has("submissions:write") {
+		t.Fatalf("scopes_supported should advertise submissions:write so a client can request it, got %v",
+			metadata.ScopesSupported)
+	}
+}

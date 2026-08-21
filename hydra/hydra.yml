@@ -96,9 +96,23 @@ oidc:
     # optional fields that break strict-parser clients; a response-
     # cleaning proxy is tracked in issue #272.
     enabled: true
+    # The course scopes must be here, not just openid/offline_access. A client
+    # registering through DCR is granted exactly this set, and a scope it was
+    # never granted cannot be requested at authorization -- so without these an
+    # MCP client connects successfully and then has every tool call denied with
+    # "the OAuth access token granted no yelukerest scopes".
+    #
+    # Listing a scope here is not granting it to a student: it makes the scope
+    # requestable, and the consent page still decides. Write scopes remain
+    # unchecked by default (ADR 0001), so submissions:write is only ever
+    # granted by a deliberate tick.
     default_scope:
       - openid
       - offline_access
+      - course:read
+      - grades:read
+      - submissions:read
+      - submissions:write
 
 webfinger:
   oidc_discovery:

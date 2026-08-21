@@ -16,6 +16,28 @@ type protectedResourceMetadata struct {
 	Resource               string   `json:"resource"`
 	AuthorizationServers   []string `json:"authorization_servers"`
 	BearerMethodsSupported []string `json:"bearer_methods_supported"`
+	ScopesSupported        []string `json:"scopes_supported"`
+}
+
+// prmScopesSupported tells a client which scopes are worth asking for.
+//
+// Without this the discovery chain completes and the connection still does not
+// work: Hydra's DCR grants only openid and offline_access, so a client that
+// cannot discover the course scopes never requests them, the consent screen
+// never offers them, and every tool call then fails with "the OAuth access
+// token granted no yelukerest scopes". The student did everything right and
+// got a connected server that refuses to answer.
+//
+// submissions:write is advertised because a client must be able to ask for it,
+// but advertising is not granting: the consent page leaves write scopes
+// unchecked (ADR 0001 default-deny), so a student has to tick it deliberately.
+var prmScopesSupported = []string{
+	"openid",
+	"offline_access",
+	"course:read",
+	"grades:read",
+	"submissions:read",
+	"submissions:write",
 }
 
 func protectedResourceMetadataHandler(resourceURL string, authorizationServerURL string) http.Handler {
@@ -27,6 +49,7 @@ func protectedResourceMetadataHandler(resourceURL string, authorizationServerURL
 		Resource:               resourceURL,
 		AuthorizationServers:   servers,
 		BearerMethodsSupported: []string{"header"},
+		ScopesSupported:        prmScopesSupported,
 	})
 	if err != nil {
 		log.Panicf("cannot marshal protected resource metadata: %v", err)
