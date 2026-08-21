@@ -25,11 +25,43 @@ const {
     decodeJWT,
     authorize,
     exchangeCode,
-    registerClient,
+    baseURL,
+    sleep,
     trackClient,
     cleanupClients,
     McpClient,
 } = require('./helpers.js');
+
+/**
+ * Register exactly as a newly-arrived client would: no scope field, nothing
+ * borrowed from the test helpers. Retries the DCR rate limit the way a real
+ * client should.
+ */
+async function registerWithoutAskingForScopes() {
+    const payload = {
+        client_name: 'discovery-driven-e2e',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        redirect_uris: [LOOPBACK_REDIRECT],
+        token_endpoint_auth_method: 'none',
+    };
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const response = await fetch(`${baseURL}/oauth2/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (response.status !== 429) {
+            const body = await response.json();
+            if (response.status >= 400) {
+                throw new Error(`DCR failed with ${response.status}: ${JSON.stringify(body)}`);
+            }
+            return body;
+        }
+        await sleep(8000);
+    }
+    throw new Error('DCR rate limit did not clear');
+}
 
 describe('a client that starts from only the MCP URL', () => {
     // Everything below is filled in by walking the chain, never hardcoded.
@@ -41,6 +73,7 @@ describe('a client that starts from only the MCP URL', () => {
     let client;
     let authFlow;
     let tokenResponse;
+    let walkError;
 
     // The entire walk runs once here rather than test-by-test. Registration
     // goes through authapp's DCR rate limit (10/minute), which the rest of the
@@ -65,27 +98,34 @@ describe('a client that starts from only the MCP URL', () => {
             `${resourceMetadata.body.authorization_servers[0]}/.well-known/oauth-authorization-server`);
         authServerMetadata = { status: as.status, body: await as.json() };
 
-        const registered = await registerClient({
-            client_name: 'discovery-driven-e2e',
-            grant_types: ['authorization_code', 'refresh_token'],
-            response_types: ['code'],
-            redirect_uris: [LOOPBACK_REDIRECT],
-            token_endpoint_auth_method: 'none',
-        });
-        client = registered.body;
+        // Raw fetch, NOT registerClient: that helper injects
+        // `scope: READ_SCOPES` into every payload, which would ask for the
+        // course scopes by name and quietly restore the very assumption this
+        // file exists to remove. A client that has just discovered this server
+        // sends no scope at all and takes whatever registration grants it.
+        client = await registerWithoutAskingForScopes();
         trackClient(client.client_id);
 
         const requested = discoveredScopes.filter(s => s !== 'submissions:write').join(' ');
         requestedScopes = requested;
-        const flow = await authorize({
-            clientId: client.client_id, netid: NETIDS.student, scope: requested,
-        });
-        authFlow = flow;
-        if (flow.code) {
-            const exchanged = await exchangeCode({
-                clientId: client.client_id, code: flow.code, verifier: flow.verifier,
+
+        // Errors are captured rather than thrown so a break shows up against
+        // the assertion that describes it. Letting beforeAll throw reports one
+        // unnamed failure and says nothing about which step gave way -- which
+        // matters here, because the whole point is telling apart "the server
+        // never advertised it" from "the client was never granted it".
+        try {
+            authFlow = await authorize({
+                clientId: client.client_id, netid: NETIDS.student, scope: requested,
             });
-            tokenResponse = exchanged;
+        } catch (error) {
+            walkError = error;
+            return;
+        }
+        if (authFlow.code) {
+            tokenResponse = await exchangeCode({
+                clientId: client.client_id, code: authFlow.code, verifier: authFlow.verifier,
+            });
         }
     });
 
@@ -148,15 +188,21 @@ describe('a client that starts from only the MCP URL', () => {
 
     describe('step 5: the browser dance, then real tool calls', () => {
         it('completes CAS login and consent, and returns a code', () => {
+            // A client asking only for scopes the server advertised must not be
+            // refused for asking. invalid_scope here means the advertised list
+            // and the granted list disagree.
+            expect(walkError && walkError.message).toBeUndefined();
             expect(authFlow.code).toBeTruthy();
         });
 
         it('exchanges that code for an access token', () => {
+            expect(tokenResponse).toBeTruthy();
             expect(tokenResponse.status).toBe(200);
             expect(tokenResponse.body.access_token).toBeTruthy();
         });
 
         it('mints an access token carrying exactly the requested scopes', () => {
+            expect(tokenResponse).toBeTruthy();
             const claims = decodeJWT(tokenResponse.body.access_token);
             const scopes = (claims.scopes || claims.scp || claims.scope || '').toString();
             for (const required of ['course:read', 'grades:read', 'submissions:read']) {
@@ -172,6 +218,7 @@ describe('a client that starts from only the MCP URL', () => {
         // The end of the story, and the only part a student actually notices:
         // after connecting, do the tools work?
         it('answers a real tool call with real data', async () => {
+            expect(tokenResponse).toBeTruthy();
             const mcp = new McpClient(tokenResponse.body.access_token);
             await mcp.initialize();
             const tools = await mcp.listTools();
