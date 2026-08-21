@@ -14,3 +14,6 @@ elm-stuff
 
 # Compiled Go binaries
 mcpapp/mcpapp
+
+# Browser automation scratch output (snapshots, console logs, traces)
+.playwright-cli/
