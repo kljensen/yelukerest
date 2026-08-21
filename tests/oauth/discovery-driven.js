@@ -33,51 +33,88 @@ const {
 
 describe('a client that starts from only the MCP URL', () => {
     // Everything below is filled in by walking the chain, never hardcoded.
-    let challenge;
+    let unauthenticated;
     let resourceMetadata;
     let authServerMetadata;
     let discoveredScopes;
+    let requestedScopes;
     let client;
+    let authFlow;
+    let tokenResponse;
+
+    // The entire walk runs once here rather than test-by-test. Registration
+    // goes through authapp's DCR rate limit (10/minute), which the rest of the
+    // suite dodges by sharing one client; this file cannot, because
+    // registering without a scope parameter IS what it tests. Doing it once and
+    // asserting afterwards keeps that cost to a single request and makes a
+    // rate-limited run fail in one obvious place.
+    beforeAll(async () => {
+        const res = await fetch(mcpURL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        });
+        unauthenticated = { status: res.status, challenge: res.headers.get('www-authenticate') };
+
+        const metadataURL = /resource_metadata="([^"]+)"/.exec(unauthenticated.challenge)[1];
+        const prm = await fetch(metadataURL);
+        resourceMetadata = { status: prm.status, body: await prm.json() };
+        discoveredScopes = resourceMetadata.body.scopes_supported || [];
+
+        const as = await fetch(
+            `${resourceMetadata.body.authorization_servers[0]}/.well-known/oauth-authorization-server`);
+        authServerMetadata = { status: as.status, body: await as.json() };
+
+        const registered = await registerClient({
+            client_name: 'discovery-driven-e2e',
+            grant_types: ['authorization_code', 'refresh_token'],
+            response_types: ['code'],
+            redirect_uris: [LOOPBACK_REDIRECT],
+            token_endpoint_auth_method: 'none',
+        });
+        client = registered.body;
+        trackClient(client.client_id);
+
+        const requested = discoveredScopes.filter(s => s !== 'submissions:write').join(' ');
+        requestedScopes = requested;
+        const flow = await authorize({
+            clientId: client.client_id, netid: NETIDS.student, scope: requested,
+        });
+        authFlow = flow;
+        if (flow.code) {
+            const exchanged = await exchangeCode({
+                clientId: client.client_id, code: flow.code, verifier: flow.verifier,
+            });
+            tokenResponse = exchanged;
+        }
+    });
 
     afterAll(async () => {
         await cleanupClients();
     });
 
     describe('step 1: the unauthenticated call has to say where to go', () => {
-        it('answers 401 with an RFC 9728 resource_metadata pointer', async () => {
-            const res = await fetch(mcpURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: '2.0', id: 1, method: 'initialize', params: {},
-                }),
-            });
-            expect(res.status).toBe(401);
-
-            challenge = res.headers.get('www-authenticate');
-            expect(challenge).toBeTruthy();
+        it('answers 401 with an RFC 9728 resource_metadata pointer', () => {
+            expect(unauthenticated.status).toBe(401);
+            expect(unauthenticated.challenge).toBeTruthy();
             // Without this the client has nowhere to go and the story ends.
-            expect(challenge).toContain('resource_metadata=');
+            expect(unauthenticated.challenge).toContain('resource_metadata=');
         });
     });
 
     describe('step 2: the resource metadata', () => {
-        it('is fetchable at the advertised URL', async () => {
-            const url = /resource_metadata="([^"]+)"/.exec(challenge)[1];
-            const res = await fetch(url);
-            expect(res.status).toBe(200);
-            resourceMetadata = await res.json();
-            expect(resourceMetadata.resource).toBe(mcpURL);
+        it('is fetchable and describes this resource', () => {
+            expect(resourceMetadata.status).toBe(200);
+            expect(resourceMetadata.body.resource).toBe(mcpURL);
         });
 
         it('names an authorization server', () => {
-            expect(Array.isArray(resourceMetadata.authorization_servers)).toBe(true);
-            expect(resourceMetadata.authorization_servers.length).toBeGreaterThan(0);
+            expect(Array.isArray(resourceMetadata.body.authorization_servers)).toBe(true);
+            expect(resourceMetadata.body.authorization_servers.length).toBeGreaterThan(0);
         });
 
         // The assertion that would have caught the outage.
         it('advertises the course scopes, so a client can know to ask', () => {
-            discoveredScopes = resourceMetadata.scopes_supported;
             expect(Array.isArray(discoveredScopes)).toBe(true);
             for (const required of ['course:read', 'grades:read', 'submissions:read']) {
                 expect(discoveredScopes).toContain(required);
@@ -86,95 +123,56 @@ describe('a client that starts from only the MCP URL', () => {
     });
 
     describe('step 3: the authorization server metadata', () => {
-        it('is fetchable and offers registration and PKCE', async () => {
-            const res = await fetch(
-                `${resourceMetadata.authorization_servers[0]}/.well-known/oauth-authorization-server`);
-            expect(res.status).toBe(200);
-            authServerMetadata = await res.json();
-
-            expect(authServerMetadata.registration_endpoint).toBeTruthy();
-            expect(authServerMetadata.authorization_endpoint).toBeTruthy();
-            expect(authServerMetadata.token_endpoint).toBeTruthy();
-            expect(authServerMetadata.code_challenge_methods_supported).toContain('S256');
+        it('offers registration and PKCE with S256', () => {
+            expect(authServerMetadata.status).toBe(200);
+            expect(authServerMetadata.body.registration_endpoint).toBeTruthy();
+            expect(authServerMetadata.body.authorization_endpoint).toBeTruthy();
+            expect(authServerMetadata.body.token_endpoint).toBeTruthy();
+            expect(authServerMetadata.body.code_challenge_methods_supported).toContain('S256');
         });
     });
 
     describe('step 4: registration', () => {
-        it('grants the course scopes to a client that asked for nothing', async () => {
-            // The critical detail: no `scope` field. A client that has just
-            // discovered this server has no reason to send one, and this is
-            // exactly where the break was — Hydra handed back
-            // "openid offline_access" and the client was quietly stuck with it.
-            const { body } = await registerClient({
-                client_name: 'discovery-driven-e2e',
-                grant_types: ['authorization_code', 'refresh_token'],
-                response_types: ['code'],
-                redirect_uris: [LOOPBACK_REDIRECT],
-                token_endpoint_auth_method: 'none',
-            });
-            client = body;
-            trackClient(client.client_id);
-
+        it('grants the course scopes to a client that asked for nothing', () => {
+            // No `scope` field was sent. A client that has just discovered this
+            // server has no reason to send one, and that is exactly where the
+            // break was: Hydra handed back "openid offline_access" and the
+            // client was quietly stuck with it.
             expect(client.client_id).toBeTruthy();
             const granted = (client.scope || '').split(' ');
             for (const required of ['course:read', 'grades:read', 'submissions:read']) {
                 expect(granted).toContain(required);
             }
         });
-
-        it('does not grant a write scope the client never asked for', () => {
-            // Advertising submissions:write so it can be requested is fine.
-            // Granting it at consent without a deliberate tick is not, and that
-            // boundary is what makes a read-only connection meaningful.
-            expect(client.scope).toBeTruthy();
-        });
     });
 
     describe('step 5: the browser dance, then real tool calls', () => {
-        let tokens;
-
-        it('completes CAS login and consent, and returns a code', async () => {
-            // Ask for exactly what discovery offered, minus the write scope: a
-            // client should request what it needs, and this is the read case.
-            const requested = discoveredScopes
-                .filter(s => s !== 'submissions:write')
-                .join(' ');
-
-            const flow = await authorize({
-                clientId: client.client_id,
-                netid: NETIDS.student,
-                scope: requested,
-            });
-            expect(flow.code).toBeTruthy();
-
-            const exchanged = await exchangeCode({
-                clientId: client.client_id,
-                code: flow.code,
-                verifier: flow.verifier,
-            });
-            expect(exchanged.status).toBe(200);
-            tokens = exchanged.body;
-            expect(tokens.access_token).toBeTruthy();
+        it('completes CAS login and consent, and returns a code', () => {
+            expect(authFlow.code).toBeTruthy();
         });
 
-        it('mints an access token carrying the course scopes', () => {
-            const claims = decodeJWT(tokens.access_token);
+        it('exchanges that code for an access token', () => {
+            expect(tokenResponse.status).toBe(200);
+            expect(tokenResponse.body.access_token).toBeTruthy();
+        });
+
+        it('mints an access token carrying exactly the requested scopes', () => {
+            const claims = decodeJWT(tokenResponse.body.access_token);
             const scopes = (claims.scopes || claims.scp || claims.scope || '').toString();
             for (const required of ['course:read', 'grades:read', 'submissions:read']) {
                 expect(scopes).toContain(required);
             }
-            // The write scope was advertised so a client could ask, but this
-            // client did not, so it must not be present.
+            // Advertised so a client could ask; this one did not, so it must
+            // not be present. That boundary is what makes a read-only
+            // connection mean something.
+            expect(requestedScopes).not.toContain('submissions:write');
             expect(scopes).not.toContain('submissions:write');
         });
 
-        // The end of the story, and the thing a student actually cares about:
+        // The end of the story, and the only part a student actually notices:
         // after connecting, do the tools work?
         it('answers a real tool call with real data', async () => {
-            // McpClient directly, with the token this flow produced. Using the
-            // mcpClientFor helper would run its own flow with READ_SCOPES and
-            // quietly reintroduce the assumption this file exists to remove.
-            const mcp = new McpClient(tokens.access_token);
+            const mcp = new McpClient(tokenResponse.body.access_token);
             await mcp.initialize();
             const tools = await mcp.listTools();
             expect(tools.length).toBeGreaterThan(0);

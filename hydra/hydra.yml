@@ -83,6 +83,23 @@ oauth2:
   pkce:
     # MCP clients are public clients; OAuth 2.1 requires PKCE.
     enforced_for_public_clients: true
+    # And for confidential clients too. Nothing here registers one today, but
+    # the cost of requiring PKCE universally is zero and it removes a way for a
+    # future client to be weaker than the ones we have.
+    enforced: true
+    #
+    # On the `plain` challenge method: Hydra advertises both plain and S256 in
+    # code_challenge_methods_supported and offers no setting to narrow that
+    # list -- the only PKCE keys it exposes are these two, both about whether
+    # PKCE is required rather than which methods are accepted. It does not
+    # matter, because Hydra REFUSES a plain challenge regardless; that is
+    # hardcoded, not configured. tests/oauth/security-negatives.js asserts it
+    # ("should refuse the plain code challenge method" -> invalid_request).
+    #
+    # So the advertised list is inaccurate but harmless. Correcting it would
+    # mean proxying and rewriting Hydra's discovery documents, which is a lot of
+    # moving parts for a cosmetic fix to a document whose promise the server
+    # already declines to keep.
   grant:
     refresh_token:
       # Tolerate one retried refresh (network flakiness in agent clients)
