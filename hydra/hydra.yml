@@ -83,10 +83,18 @@ oauth2:
   pkce:
     # MCP clients are public clients; OAuth 2.1 requires PKCE.
     enforced_for_public_clients: true
-    # And for confidential clients too. Nothing here registers one today, but
-    # the cost of requiring PKCE universally is zero and it removes a way for a
-    # future client to be weaker than the ones we have.
-    enforced: true
+    # NOT oauth2.pkce.enforced. That would require PKCE from confidential
+    # clients too, and Claude's GUI registers as one -- DCR gives it
+    # token_endpoint_auth_method=client_secret_post. Turning it on broke the
+    # connect flow on 2026-08-21: Hydra aborted the authorization request with
+    # invalid_request before the browser ever reached consent, the client
+    # retried, and the retry's stale CSRF token produced a confusing "this form
+    # has expired" page that hid the real cause.
+    #
+    # A confidential client authenticates with a secret, which is the
+    # protection PKCE substitutes for when there is no secret to use, so
+    # requiring both adds little. enforced_for_public_clients above is the one
+    # that matters and stays on.
     #
     # On the `plain` challenge method: Hydra advertises both plain and S256 in
     # code_challenge_methods_supported and offers no setting to narrow that
