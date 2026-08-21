@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,4 +106,55 @@ func TestUnknownChallengeYieldsNoToken(t *testing.T) {
 			t.Fatalf("a forged challenge must not return a token, got %q", got)
 		}
 	})
+}
+
+// The fingerprints in the trace must not be reversible to the value, and must
+// be stable enough that two lines about the same session can be matched.
+func TestFingerprintHidesTheValueButStaysStable(t *testing.T) {
+	const secret = "a-session-token-that-must-not-be-logged"
+	got := fingerprint(secret)
+
+	if got == secret || len(got) != 8 {
+		t.Fatalf("fingerprint should be a short digest, got %q", got)
+	}
+	if strings.Contains(secret, got) {
+		t.Fatalf("fingerprint %q appears inside the value it summarises", got)
+	}
+	if got != fingerprint(secret) {
+		t.Fatal("fingerprint must be stable so two log lines can be correlated")
+	}
+	if fingerprint("another value") == got {
+		t.Fatal("different values must not share a fingerprint")
+	}
+	// Empty is rendered as a placeholder rather than a digest of "", so a
+	// missing cookie is visibly missing rather than looking like a real value.
+	if fingerprint("") != "-" {
+		t.Fatalf("empty should render as a placeholder, got %q", fingerprint(""))
+	}
+}
+
+// browserHint records the shape of the request without the user agent, and
+// must say plainly whether a cookie arrived -- the single most useful fact
+// when a consent submission is rejected.
+func TestBrowserHintReportsCookiePresence(t *testing.T) {
+	withCookie := httptest.NewRequest(http.MethodPost, "/auth/oauth/consent", nil)
+	withCookie.Header.Set("Cookie", "session=abc")
+	withCookie.Header.Set("Sec-Fetch-Site", "same-origin")
+	hint := browserHint(withCookie)
+	if !strings.Contains(hint, "cookie_present=yes") {
+		t.Fatalf("expected cookie_present=yes, got %q", hint)
+	}
+	if !strings.Contains(hint, "fetch_site=same-origin") {
+		t.Fatalf("expected the fetch site, got %q", hint)
+	}
+	// The user agent must not be copied into the log wholesale.
+	withCookie.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh) Safari/605.1.15")
+	if strings.Contains(browserHint(withCookie), "Mozilla") {
+		t.Fatal("browserHint must not record the user agent")
+	}
+
+	bare := httptest.NewRequest(http.MethodPost, "/auth/oauth/consent", nil)
+	if !strings.Contains(browserHint(bare), "cookie_present=no") {
+		t.Fatalf("a request with no cookie must say so, got %q", browserHint(bare))
+	}
 }

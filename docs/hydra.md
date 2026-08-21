@@ -542,6 +542,77 @@ is the reminder that it has not been run.
 5. `./bin/doctor.sh`, then a real-client smoke test: DCR registration
    plus an authorization-code redirect to `/auth/oauth/login`.
 
+## Debugging A Failed Connect
+
+When a client reaches consent and then fails, the visible symptom is almost
+always the same page -- "This form has expired or was not submitted from this
+page" -- and it is a poor guide to the cause. That message covers a browser
+that sent no session cookie, a form that was genuinely submitted twice, and a
+challenge that never belonged to this session. They need different fixes.
+
+Start with the trace in authapp:
+
+```sh
+./bin/prod.sh logs authapp --since 30m | grep oauth-trace
+```
+
+Each consent page render and each rejection emits one line:
+
+```
+oauth-trace step=consent_form_rendered session=8f2a1c04 challenge=b71e9d55 csrf=3c8ad0f1 outstanding=1 netid=klj39 fetch_site=none fetch_mode=navigate cookie_present=yes
+oauth-trace step=consent_rejected reason=no_outstanding_forms_for_this_session session=1d0b77ae challenge=b71e9d55 submitted_csrf=3c8ad0f1 outstanding_before=0 fetch_site=same-origin fetch_mode=navigate cookie_present=no
+```
+
+Read it like this:
+
+- **`session` differs between the render and the rejection** — the browser did
+  not send the session cookie back, so the server built a fresh session with no
+  outstanding forms. Suspect cookie policy (SameSite, Secure over plain HTTP in
+  a dev deployment) or a client that strips cookies.
+- **`cookie_present=no` on the rejection** — the same thing, stated directly.
+- **`reason=challenge_not_among_outstanding_forms`** — the session is right and
+  has forms, but not this challenge. The form is older than the last few
+  renders, or belongs to a different flow.
+- **`reason=token_mismatch`** — the challenge matched but the token did not.
+  A genuine replay, or a tampered form.
+- **`outstanding` climbing on repeated renders** — the client is loading the
+  consent page more than once. Two renders of DIFFERENT challenges are normal
+  for some browsers; the bounded per-challenge store tolerates that.
+
+Nothing secret is logged. Sessions, tokens and challenges appear only as
+eight-character fingerprints, enough to tell whether two lines refer to the
+same thing and useless for anything else.
+
+For the request sequence itself -- duplicate navigations, which hop returned
+what -- Caddy already logs every request at debug level, because the Caddyfile
+enables `debug` globally:
+
+```sh
+./bin/prod.sh logs caddy --since 30m | grep -o '"uri":"/oauth2[^"]*"'
+```
+
+That verbosity is worth knowing about for two reasons beyond debugging: it is a
+lot of log volume, and it records `/rest` query strings, which carry row filters
+naming who looked at what. Turning `debug` off in production would be
+reasonable; it has been left on because it is currently the only record of the
+request sequence.
+
+Hydra's own errors are logged with the query string redacted:
+
+```sh
+./bin/prod.sh logs hydra --since 30m | grep 'level=error'
+```
+
+To see why Hydra rejected an authorization request, it has to be told to
+include sensitive values, which puts cookies and tokens in the container log.
+Do it only briefly, and only when the trace above has not answered the
+question:
+
+```sh
+# temporary: logs cookies and tokens
+./bin/prod.sh run --rm -e LOG_LEAK_SENSITIVE_VALUES=true hydra serve all -c /etc/hydra/hydra.yml
+```
+
 ## Doctor Checks
 
 `./bin/doctor.sh` (function `check_hydra`) verifies, when the stack is

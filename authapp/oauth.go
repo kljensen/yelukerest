@@ -862,6 +862,13 @@ func serveConsentForm(w http.ResponseWriter, r *http.Request, config oauthFlowCo
 		return
 	}
 	rememberConsentForm(r, sessionManager, challenge, token)
+	traceOAuth("consent_form_rendered",
+		kv("session", fingerprint(sessionManager.Token(r.Context()))),
+		kv("challenge", fingerprint(challenge)),
+		kv("csrf", fingerprint(token)),
+		kv("outstanding", itoa(len(loadConsentForms(r, sessionManager)))),
+		kv("netid", netID),
+		browserHint(r))
 
 	view := consentPageView{
 		StylesheetPath:  oauthStylesheetPath,
@@ -919,10 +926,31 @@ func serveConsentDecision(w http.ResponseWriter, r *http.Request, config oauthFl
 	// replayed submission cannot re-grant. Other outstanding forms are left
 	// alone: one duplicated navigation must not invalidate the page the user
 	// is actually looking at.
+	outstandingBefore := len(loadConsentForms(r, sessionManager))
 	expectedToken := consumeConsentForm(r, sessionManager, challenge)
 	tokenMatches := expectedToken != "" &&
 		subtle.ConstantTimeCompare([]byte(expectedToken), []byte(submittedToken)) == 1
 	if !tokenMatches {
+		// Name the actual cause. These are different failures with different
+		// fixes, and the old single message covered all of them.
+		reason := "token_mismatch"
+		switch {
+		case outstandingBefore == 0 && submittedToken == "":
+			reason = "no_session_and_no_token"
+		case outstandingBefore == 0:
+			// The commonest real cause: the browser sent no session cookie, so
+			// scs handed us a fresh empty session.
+			reason = "no_outstanding_forms_for_this_session"
+		case expectedToken == "":
+			reason = "challenge_not_among_outstanding_forms"
+		}
+		traceOAuth("consent_rejected",
+			kv("reason", reason),
+			kv("session", fingerprint(sessionManager.Token(r.Context()))),
+			kv("challenge", fingerprint(challenge)),
+			kv("submitted_csrf", fingerprint(submittedToken)),
+			kv("outstanding_before", itoa(outstandingBefore)),
+			browserHint(r))
 		log.Println("oauth: rejecting a consent submission with a missing, stale, or mismatched CSRF token")
 		oauthError(w, http.StatusForbidden, "This form has expired or was not submitted from this page. Start the connection again from your application.")
 		return
