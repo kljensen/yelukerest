@@ -73,8 +73,15 @@ func (l *rateLimiter) evictExpired(cutoff time.Time) {
 }
 
 func rateLimitMiddleware(limiter *rateLimiter, next http.Handler) http.Handler {
+	return rateLimitMiddlewareKeyed(limiter, requestClientKey, next)
+}
+
+// rateLimitMiddlewareKeyed is rateLimitMiddleware with the bucket key chosen by
+// the caller. The client IP is the right key for endpoints reached from a
+// browser, but not for ones a whole class calls from behind the same NAT.
+func rateLimitMiddlewareKeyed(limiter *rateLimiter, key func(*http.Request) string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !limiter.Allow(requestClientKey(r), time.Now()) {
+		if !limiter.Allow(key(r), time.Now()) {
 			setNoStoreHeaders(w)
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return

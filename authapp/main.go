@@ -118,8 +118,9 @@ func main() {
 	// is the one endpoint reachable with a stolen long-lived credential, and a
 	// legitimate client needs at most one exchange an hour.
 	apiTokenRateLimiter := newRateLimiter(20, time.Minute)
-	exchangeAPIToken := rateLimitMiddleware(
+	exchangeAPIToken := rateLimitMiddlewareKeyed(
 		apiTokenRateLimiter,
+		apiTokenRateLimitKey,
 		exchangeAPITokenHandler(fetchJWTConfig),
 	)
 

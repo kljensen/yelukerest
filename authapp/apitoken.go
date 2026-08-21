@@ -157,6 +157,32 @@ func expiresInFromJWT(token string, now time.Time) int {
 	return int(remaining)
 }
 
+// apiTokenRateLimitKey buckets the exchange limit per TOKEN rather than per IP.
+//
+// requestClientKey uses the client IP, which is wrong for this endpoint: a
+// class sitting behind campus NAT shares one address, so one student's retry
+// loop would lock out everyone else. Keying on the token prefix gives each
+// credential its own bucket -- a legitimate client needs about one exchange an
+// hour, so a tight limit is still generous -- and confines the effect of a
+// misbehaving script to its owner.
+//
+// The prefix is the public half of the token, so using it as a map key does not
+// put the secret in memory beyond the request. Callers with no well-formed
+// token fall back to the IP bucket, which is what stops someone cycling made-up
+// prefixes to get a fresh bucket each time.
+func apiTokenRateLimitKey(r *http.Request) string {
+	token := bearerToken(r)
+	if prefix, _, found := strings.Cut(token, "_"); found {
+		// "yk" plus the identifier half: yk_2be8b799
+		if rest := token[len(prefix)+1:]; len(rest) > 8 {
+			if id, _, ok := strings.Cut(rest, "_"); ok && len(id) == 8 {
+				return "tok:" + prefix + "_" + id
+			}
+		}
+	}
+	return "ip:" + requestClientKey(r)
+}
+
 // exchangeAPITokenHandler serves POST /auth/token.
 func exchangeAPITokenHandler(config FetchJWTConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

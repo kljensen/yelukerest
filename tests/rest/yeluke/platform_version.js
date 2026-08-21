@@ -19,8 +19,8 @@ describe('platform_version API endpoint', () => {
             .to.include({
                 platform: 'yelukerest',
                 platform_compatibility_version: 1,
-                schema_compatibility_version: 5,
-                admin_api_version: 9,
+                schema_compatibility_version: 7,
+                admin_api_version: 10,
             });
     });
 });

@@ -66,22 +66,25 @@ directly.
 
 ## CLI And Notebook Clients
 
-For student scripts and notebooks:
+Use a **personal access token**. Full instructions, with runnable examples, are
+in [personal access tokens](personal-access-tokens.md).
 
-- Obtain a fresh token from `/auth/jwt` after signing in.
-- Store it in an environment variable for the current shell or process.
-- Re-run the sign-in/token step when a request returns `401 Unauthorized`.
-- Slow down token refresh loops when `/auth/jwt` returns `429 Too Many
-  Requests`.
-- Treat `403 Forbidden` as an authorization or row-level-security result, not
-  an expired-token result.
-- Do not check generated tokens into notebooks, repos, Canvas, Slack, or Piazza.
+In short: create one on the site, put it in an environment variable, exchange it
+for a short-lived JWT at `POST /auth/token`, and re-exchange when a request
+returns `401`. The token itself lasts four months and can be revoked at any time
+from the same page that created it.
+
+The older advice here was to fetch a token from `/auth/jwt` after signing in and
+repeat that every hour. That still works for a browser session, but it is a poor
+fit for a script: there is no refresh, so a program that runs longer than an hour
+-- or an assistant writing code alongside a student -- cannot recover from an
+expiry without a human returning to a browser.
 
 For faculty admin commands (`pythonclient/api_client.py`), see
 [ADR 0002](adr/0002-admin-api-authentication.md). In short: for attended runs,
 export a fresh ~1h faculty token as `YELUKEREST_CLIENT_JWT` for the current
 shell, and never persist it in a synced `.env`. A standing faculty bearer token
-is rejected — it cannot be revoked without rotating `JWT_SECRET` and
+is rejected -- it cannot be revoked without rotating `JWT_SECRET` and
 invalidating every student session. Unattended runs need the minting path
 described there, which does not exist yet.
 
@@ -221,7 +224,14 @@ point — either can be revoked without disturbing the other.
 
 ## Deliberate Limitations
 
-Yelukerest does not currently maintain a token denylist. That is acceptable for
-short-lived course deployments and one-hour user JWTs, but it means a leaked
-token remains usable until `exp`. If we later need immediate token revocation,
-key it by signed `jti` plus `iss`, not by raw token bytes.
+Yelukerest does not maintain a JWT denylist. A leaked **JWT** remains usable
+until `exp`, which is acceptable because those live an hour. If we ever need to
+revoke an individual JWT, key it by signed `jti` plus `iss`, not by raw token
+bytes.
+
+This does not apply to **personal access tokens**. Those are server-side rows,
+not self-proving credentials, so revoking one takes effect on the next exchange
+attempt. The exposure after revoking a leaked token is bounded by whatever JWT
+it had already been exchanged for -- at most an hour -- rather than by the
+token's own four-month expiry. That is the whole reason the exchange step exists
+instead of teaching PostgREST to accept the token directly.

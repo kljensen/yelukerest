@@ -185,3 +185,43 @@ func splitHostPortForTest(t *testing.T, rawURL string) (string, string) {
 	}
 	return trimmed[:idx], trimmed[idx+1:]
 }
+
+// The exchange limit must be per token, not per IP: a whole class behind campus
+// NAT shares one address, so an IP bucket would let one student's retry loop
+// lock out everyone else.
+func TestAPITokenRateLimitKeyIsPerToken(t *testing.T) {
+	withToken := func(tok string) *http.Request {
+		r := httptest.NewRequest(http.MethodPost, "/auth/token", nil)
+		r.RemoteAddr = "203.0.113.7:12345"
+		if tok != "" {
+			r.Header.Set("Authorization", "Bearer "+tok)
+		}
+		return r
+	}
+
+	a := apiTokenRateLimitKey(withToken("yk_2be8b799_" + strings.Repeat("a", 64)))
+	b := apiTokenRateLimitKey(withToken("yk_ffffffff_" + strings.Repeat("b", 64)))
+	if a == b {
+		t.Fatalf("two different tokens from one IP must not share a bucket: %q", a)
+	}
+	if !strings.HasPrefix(a, "tok:") {
+		t.Fatalf("expected a token-keyed bucket, got %q", a)
+	}
+
+	// The same token always lands in the same bucket, whatever the secret half
+	// looks like -- otherwise the limit would be trivially evaded.
+	same := apiTokenRateLimitKey(withToken("yk_2be8b799_" + strings.Repeat("c", 64)))
+	if same != a {
+		t.Fatalf("the same token prefix must share a bucket: %q vs %q", a, same)
+	}
+
+	// Callers with no usable token fall back to the IP bucket, so someone
+	// cycling malformed credentials cannot get a fresh bucket each attempt.
+	none := apiTokenRateLimitKey(withToken(""))
+	if !strings.HasPrefix(none, "ip:") {
+		t.Fatalf("expected an IP-keyed fallback, got %q", none)
+	}
+	if garbage := apiTokenRateLimitKey(withToken("not-a-token")); !strings.HasPrefix(garbage, "ip:") {
+		t.Fatalf("expected malformed credentials to fall back to the IP bucket, got %q", garbage)
+	}
+}
