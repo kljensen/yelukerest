@@ -5,6 +5,7 @@ import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Browser exposing (Document)
 import Common.Views exposing (piazzaLink, slackLink)
+import ApiTokens.Views
 import ConnectedApps.Views
 import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
@@ -56,6 +57,14 @@ page model =
         Models.ConnectedAppsRoute ->
             ConnectedApps.Views.listView model.connectedApps model.pendingDisconnects
 
+        Models.ApiTokensRoute ->
+            ApiTokens.Views.listView
+                model.apiTokens
+                model.justCreatedApiToken
+                model.apiTokenDraftName
+                model.apiTokenDraftScopes
+                model.pendingApiTokenRevokes
+
         Models.NotFoundRoute ->
             notFoundView
 
@@ -68,6 +77,7 @@ indexView currentUser uiElements =
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
         , div [] [ a [ href "#/connected-apps" ] [ text "Connected apps" ] ]
+        , div [] [ a [ href "#/api-tokens" ] [ text "API tokens" ] ]
         , div [] [ Html.a [ href uiElements.canvasURL ] [ Html.text "Canvas" ] ]
         , piazzaLink uiElements.piazzaURL
         , slackLink uiElements.slackURL

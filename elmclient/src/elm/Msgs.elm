@@ -12,6 +12,7 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Browser exposing (UrlRequest(..))
+import ApiTokens.Model exposing (ApiToken, CreatedToken)
 import ConnectedApps.Model exposing (ConnectedApps)
 import Http
 import Engagements.Model exposing (Engagement)
@@ -38,6 +39,14 @@ type BrowserLocation
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
     | OnFetchConnectedApps (WebData ConnectedApps)
+    | OnFetchApiTokens (WebData (List ApiToken))
+    | OnCreateApiToken (WebData CreatedToken)
+    | OnRevokeApiToken Int (WebData ())
+    | CreateApiToken
+    | RevokeApiToken Int
+    | SetApiTokenDraftName String
+    | SetApiTokenDraftScope String Bool
+    | DismissCreatedApiToken
     | DisconnectApp String String
     | OnDisconnectApp String (Result Http.Error ())
     | OnFetchAssignments (WebData (List Assignment))

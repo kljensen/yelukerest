@@ -44,6 +44,8 @@ import Quizzes.Updates
         , onFetchQuizSubmissions
         )
 import RemoteData exposing (WebData)
+import ApiTokens.Commands exposing (createApiToken, fetchApiTokens, revokeApiToken)
+import ApiTokens.Model exposing (defaultScopes)
 import ConnectedApps.Commands exposing (disconnectApp, fetchConnectedApps)
 import Routing exposing (parseLocation)
 import Set
@@ -96,9 +98,106 @@ update msg model =
                 ConnectedAppsRoute ->
                     fetchConnectedApps
 
+                ApiTokensRoute ->
+                    -- Fetched on entry rather than cached, for the same reason
+                    -- as the connected-apps listing: last_used_at is the point
+                    -- of looking, and a stale value is worse than none.
+                    case model.currentUser of
+                        RemoteData.Success user ->
+                            fetchApiTokens user
+
+                        _ ->
+                            Cmd.none
+
                 _ ->
                     Cmd.none
             )
+
+        Msgs.OnFetchApiTokens response ->
+            ( { model | apiTokens = response, pendingApiTokenRevokes = Set.empty }, Cmd.none )
+
+        Msgs.SetApiTokenDraftName name ->
+            ( { model | apiTokenDraftName = name }, Cmd.none )
+
+        Msgs.SetApiTokenDraftScope scope isChecked ->
+            ( { model
+                | apiTokenDraftScopes =
+                    if isChecked then
+                        Set.insert scope model.apiTokenDraftScopes
+
+                    else
+                        Set.remove scope model.apiTokenDraftScopes
+              }
+            , Cmd.none
+            )
+
+        Msgs.CreateApiToken ->
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( model
+                    , createApiToken user
+                        (String.trim model.apiTokenDraftName)
+                        (Set.toList model.apiTokenDraftScopes)
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnCreateApiToken response ->
+            case response of
+                RemoteData.Success created ->
+                    -- Reset the draft back to the read-only default so the next
+                    -- token does not silently inherit a write scope the student
+                    -- ticked once.
+                    ( { model
+                        | justCreatedApiToken = Just created
+                        , apiTokenDraftName = ""
+                        , apiTokenDraftScopes = Set.fromList defaultScopes
+                      }
+                    , case model.currentUser of
+                        RemoteData.Success user ->
+                            fetchApiTokens user
+
+                        _ ->
+                            Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.DismissCreatedApiToken ->
+            -- Drop the secret from memory as soon as the student says they
+            -- have it. It cannot be recovered, which is the point.
+            ( { model | justCreatedApiToken = Nothing }, Cmd.none )
+
+        Msgs.RevokeApiToken tokenId ->
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( { model | pendingApiTokenRevokes = Set.insert tokenId model.pendingApiTokenRevokes }
+                    , revokeApiToken user tokenId
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnRevokeApiToken tokenId response ->
+            case response of
+                RemoteData.Success _ ->
+                    -- Refetch: the server decides what is revoked, and
+                    -- revoked_at is shown.
+                    ( model
+                    , case model.currentUser of
+                        RemoteData.Success user ->
+                            fetchApiTokens user
+
+                        _ ->
+                            Cmd.none
+                    )
+
+                _ ->
+                    ( { model | pendingApiTokenRevokes = Set.remove tokenId model.pendingApiTokenRevokes }
+                    , Cmd.none
+                    )
 
         Msgs.OnFetchConnectedApps response ->
             ( { model | connectedApps = response, pendingDisconnects = Set.empty }, Cmd.none )

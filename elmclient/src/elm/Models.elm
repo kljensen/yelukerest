@@ -14,6 +14,7 @@ import Assignments.Model
         )
 import Auth.Model exposing (CurrentUser)
 import Browser.Navigation exposing (Key)
+import ApiTokens.Model exposing (ApiToken, CreatedToken, defaultScopes)
 import ConnectedApps.Model exposing (ConnectedApps)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement)
@@ -83,6 +84,16 @@ type alias Model =
     , connectedApps : WebData ConnectedApps
     , pendingDisconnects : Set String
 
+    -- Personal access tokens (issue #318), the draft form beside them, and the
+    -- one-time secret from the most recent create. `justCreatedApiToken` is
+    -- deliberately transient state: it is the only place the secret exists
+    -- outside the database and it must not survive a navigation.
+    , apiTokens : WebData (List ApiToken)
+    , justCreatedApiToken : Maybe CreatedToken
+    , apiTokenDraftName : String
+    , apiTokenDraftScopes : Set String
+    , pendingApiTokenRevokes : Set Int
+
     -- A dictionary that tracks requests initiated to begin a
     -- particular assignment, that is, to create an assignment submission
     -- for the current user.
@@ -132,6 +143,11 @@ initialModel flags route key =
     , assignmentGradeDistributions = RemoteData.NotAsked
     , connectedApps = RemoteData.NotAsked
     , pendingDisconnects = Set.empty
+    , apiTokens = RemoteData.NotAsked
+    , justCreatedApiToken = Nothing
+    , apiTokenDraftName = ""
+    , apiTokenDraftScopes = Set.fromList defaultScopes
+    , pendingApiTokenRevokes = Set.empty
     , pendingBeginAssignments = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
@@ -152,4 +168,5 @@ type Route
     | AssignmentGradeDetailRoute AssignmentSlug
     | EditEngagementsRoute String
     | ConnectedAppsRoute
+    | ApiTokensRoute
     | NotFoundRoute
