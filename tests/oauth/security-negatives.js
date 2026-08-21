@@ -86,7 +86,7 @@ describe('oauth security negatives', () => {
             // mint an otherwise-identical accepted token as a control: that
             // is what proves the rejections below are caused by audience
             // validation and not by some later step.
-            const client = adminCreateClient({
+            const client = await adminCreateClient({
                 client_name: 'e2e-foreign-audience',
                 grant_types: ['client_credentials'],
                 response_types: [],
@@ -214,7 +214,7 @@ describe('oauth security negatives', () => {
         it('should reject an expired token', async () => {
             // Hydra's global access-token TTL is 1h, so this uses a client
             // with a per-client lifespan short enough to wait out.
-            const shortLived = adminCreateClient({
+            const shortLived = await adminCreateClient({
                 client_name: 'e2e-short-lifespan',
                 grant_types: ['authorization_code', 'refresh_token'],
                 response_types: ['code'],

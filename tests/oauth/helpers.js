@@ -9,7 +9,7 @@
 // then JSON-RPC calls against /mcp.
 //
 // Two escape hatches exist for things a public client cannot do:
-//   * hydraAdmin() speaks raw HTTP to Hydra's admin API (port 4445, never
+//   * hydraAdmin() calls Hydra's admin API (port 4445, never
 //     proxied by Caddy and never published to the host) over `nc` inside the
 //     db container. It is used for setup and teardown only.
 //   * sql() runs psql for "did anything actually get written?" assertions.
@@ -45,6 +45,11 @@ const NETIDS = {
 // the flow stops as soon as Hydra hands us a redirect to this host.
 const LOOPBACK_PORT = 9876;
 const LOOPBACK_REDIRECT = `http://127.0.0.1:${LOOPBACK_PORT}/callback`;
+
+// Hydra's admin API, published on loopback by docker-compose.dev.yaml for the
+// tests only. It is unauthenticated, which is exactly why production never
+// exposes it.
+const hydraAdminURL = process.env.HYDRA_ADMIN_URL || 'http://127.0.0.1:4445';
 
 const READ_SCOPES = 'openid offline_access course:read grades:read submissions:read';
 const WRITE_SCOPES = `${READ_SCOPES} submissions:write`;
@@ -212,9 +217,16 @@ function compose(args, options = {}) {
 
 /**
  * Speaks raw HTTP/1.1 to Hydra's admin API from inside the compose network.
- * The admin port is deliberately unpublished, so this is the only route to it
- * from a host-side test. `nc` lives in the db image; the request is passed
- * through an environment variable so no shell quoting is involved.
+ * The admin port is deliberately unpublished, so this must go through a
+ * container on the compose network.
+ *
+ * This used to hand-roll an HTTP request and pipe it through `nc` in the db
+ * image. postgres:18.4 moved to Debian trixie, which no longer ships netcat, so
+ * every call started failing with "nc: not found" -- and because the three
+ * tests that depend on it were the only callers, three security assertions went
+ * quietly dead while the suite still reported green overall. Use wget from the
+ * elmclient image instead: a real HTTP client, no hand-parsed status lines, and
+ * nothing that depends on a base image keeping a tool it never promised.
  *
  * @param {String} method HTTP method
  * @param {String} path request target, e.g. /admin/clients
@@ -222,30 +234,15 @@ function compose(args, options = {}) {
  * @param {String} contentType optional Content-Type override
  * @returns {Object} {status, headers, body, json}
  */
-function hydraAdmin(method, path, body = undefined, contentType = 'application/json') {
-    const payload = body === undefined ? '' : JSON.stringify(body);
-    let request = `${method} ${path} HTTP/1.1\r\nHost: hydra:4445\r\nAccept: application/json\r\nConnection: close\r\n`;
-    if (payload) {
-        request += `Content-Type: ${contentType}\r\nContent-Length: ${Buffer.byteLength(payload)}\r\n`;
+async function hydraAdmin(method, path, body = undefined, contentType = 'application/json') {
+    const options = { method, headers: { Accept: 'application/json' } };
+    if (body !== undefined) {
+        options.headers['Content-Type'] = contentType;
+        options.body = JSON.stringify(body);
     }
-    request += `\r\n${payload}`;
 
-    const result = compose([
-        'exec', '-T', '-e', `HYDRA_ADMIN_REQ=${request}`,
-        // busybox `nc` tears the socket down the moment stdin hits EOF, which
-        // Hydra records as an aborted request (HTTP 499). Holding stdin open
-        // for a beat lets the response come back intact.
-        'db', 'sh', '-c', '{ printf "%s" "$HYDRA_ADMIN_REQ"; sleep 0.5; } | nc hydra 4445',
-    ]);
-    if (result.status !== 0) {
-        throw new Error(`hydra admin ${method} ${path} failed: ${result.stderr || result.stdout}`);
-    }
-    const raw = result.stdout;
-    const split = raw.indexOf('\r\n\r\n');
-    const head = split < 0 ? raw : raw.slice(0, split);
-    const responseBody = split < 0 ? '' : raw.slice(split + 4);
-    const statusLine = head.split('\r\n')[0] || '';
-    const status = Number.parseInt(statusLine.split(' ')[1], 10);
+    const response = await fetch(`${hydraAdminURL}${path}`, options);
+    const responseBody = await response.text();
     let json = null;
     try {
         json = JSON.parse(responseBody);
@@ -253,7 +250,10 @@ function hydraAdmin(method, path, body = undefined, contentType = 'application/j
         json = null;
     }
     return {
-        status, headers: head, body: responseBody, json,
+        status: response.status,
+        headers: response.headers,
+        body: responseBody,
+        json,
     };
 }
 
@@ -312,7 +312,7 @@ function trackClient(clientId) {
 /**
  * Lists OAuth clients through Hydra's own CLI inside the hydra container.
  * The admin API answers this one with chunked transfer encoding, which the
- * hydraAdmin() raw-socket path does not decode, and the CLI is both simpler
+ * hydraAdmin() path does not decode, and the CLI is both simpler
  * and considerably faster than a socket round trip per client.
  */
 function listClients() {
@@ -454,9 +454,9 @@ async function registerClient(overrides = {}, options = {}) {
  * DCR proxy and its rate limit. Used for fixtures whose registration is not
  * itself under test (short-lifespan clients, wrong-audience clients).
  */
-function adminCreateClient(spec) {
+async function adminCreateClient(spec) {
     sweepStaleClients();
-    const response = hydraAdmin('POST', '/admin/clients', spec);
+    const response = await hydraAdmin('POST', '/admin/clients', spec);
     if (response.status !== 201 && response.status !== 200) {
         throw new Error(`admin client create failed (${response.status}): ${response.body}`);
     }

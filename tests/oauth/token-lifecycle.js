@@ -173,7 +173,7 @@ describe('oauth token lifecycle', () => {
             const query = new URLSearchParams({
                 subject: NETIDS.student, client: clientId, all: 'false',
             });
-            revokeStatus = hydraAdmin('DELETE', `/admin/oauth2/auth/sessions/consent?${query.toString()}`).status;
+            revokeStatus = (await hydraAdmin('DELETE', `/admin/oauth2/auth/sessions/consent?${query.toString()}`)).status;
             refreshAfterRevoke = await refreshToken({
                 refresh_token: tokens.refresh_token, clientId,
             });

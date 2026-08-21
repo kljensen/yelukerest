@@ -50,6 +50,17 @@ services:
       - MCP_RATE_LIMIT_PER_MINUTE=${MCP_RATE_LIMIT_PER_MINUTE:-1000}
 
   hydra:
+    # DEV ONLY. Hydra's admin API is unauthenticated -- anything that reaches
+    # it can mint clients and revoke consent -- so it is never published in
+    # production, where the only route to it is inside the compose network.
+    #
+    # Publishing it on loopback here lets the OAuth tests call it directly with
+    # fetch(). They used to shell into the db container and pipe a hand-rolled
+    # HTTP request through `nc`; postgres:18.4 moved to Debian trixie, which
+    # ships no netcat, so those calls started failing and three security
+    # assertions went quietly dead while the suite still looked green.
+    ports:
+      - '127.0.0.1:4445:4445'
     environment:
       # In-memory storage for the fast interactive dev loop ONLY: all
       # clients/tokens are lost on restart, and SQLite-in-memory masks
