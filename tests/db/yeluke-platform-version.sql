@@ -57,18 +57,18 @@ SELECT is(
 -- api.assignment_repository_snapshots_due (#22), on top of the
 -- api.assignment_repositories that shape 5 added (#312). A course client that
 -- runs the snapshotter declares {6}; one that reads none of those views
--- declares {4, 5, 6}. This is an equality because it pins what the deployment
+-- declares {4, 5, 6, 7}. This is an equality because it pins what the deployment
 -- currently advertises, and it is meant to be revised deliberately by whichever
 -- change next moves the shape.
 SELECT is(
     (SELECT schema_compatibility_version FROM api.platform_version),
-    6,
+    7,
     'api.platform_version should expose the expected schema compatibility version'
 );
 
 SELECT is(
     (SELECT admin_api_version FROM api.platform_version),
-    9,
+    10,
     'api.platform_version should expose the expected admin API version'
 );
 

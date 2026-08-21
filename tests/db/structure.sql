@@ -22,7 +22,8 @@ SELECT set_eq(
         'mcp_jwt_mint_events', 'mcp_jwt_mint_anomalies', 'mcp_grant_revocations',
         'user_secrets', 'user_jwts', 'grade_snapshots', 'grades',
         'assignment_repositories',
-        'assignment_repository_snapshots', 'assignment_repository_snapshots_due'
+        'assignment_repository_snapshots', 'assignment_repository_snapshots_due',
+        'user_api_tokens'
     ]::text[],
     'all views are present in api schema'
 );
