@@ -544,6 +544,36 @@ is the reminder that it has not been run.
 
 ## Debugging A Failed Connect
 
+### The browser stops, the server log says it worked
+
+If the trace shows `consent granted` and an authorization code issued, and the
+client still reports that the connection was never finished, check the browser
+before checking anything else. The giveaway is `POST /oauth2/token` never
+arriving: the code was handed out and never redeemed.
+
+This flow is a form submission that 303s twice -- to `/oauth2/auth`, then to the
+client's `redirect_uri`. **Safari enforces `form-action` against every hop of a
+redirect chain**; Chrome stopped doing that in 2018
+(<https://bugs.webkit.org/show_bug.cgi?id=185565>). Under `form-action 'self'`
+Safari therefore abandons the final hop silently: no error page, no console
+message the page can catch, and a server log that looks completely healthy. The
+user sees the consent page simply not go anywhere.
+
+So the consent page's CSP names the client's registered redirect origin, built
+by `cspFormTargetsFor`. Two things keep that working, and both have bitten:
+
+  - `caddy/Caddyfile` excludes `/auth/oauth/*` from the site-wide CSP. Two CSP
+    headers are enforced as their INTERSECTION, so a second `form-action 'self'`
+    from the proxy re-imposes the block whatever authapp sends.
+  - No HTTP-level test can see any of this. Neither Go's client nor `fetch`
+    implements CSP, so every request-level test passes against a page no browser
+    will submit. The assertion has to be made against the header itself
+    (`assertFormActionReachesClient`), or in a real browser.
+
+Testing the same connect in Chrome takes a minute and splits the question in
+half: if Chrome completes and Safari does not, it is this.
+
+
 When a client reaches consent and then fails, the visible symptom is almost
 always the same page -- "This form has expired or was not submitted from this
 page" -- and it is a poor guide to the cause. That message covers a browser

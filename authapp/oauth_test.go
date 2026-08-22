@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -536,8 +537,42 @@ func TestOAuthConsentFormRendersVerifiedIdentityAndScopes(t *testing.T) {
 	if strings.Contains(strings.ToLower(body), "<script") || strings.Contains(strings.ToLower(body), "onclick=") {
 		t.Fatalf("consent page contains script:\n%s", body)
 	}
-	if csp := response.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "form-action 'self'") {
-		t.Fatalf("Content-Security-Policy = %q", csp)
+	assertFormActionReachesClient(t, response, fake.consentRequest.Client.RedirectURIs)
+}
+
+// assertFormActionReachesClient checks the property that actually matters
+// about form-action here: submitting this form has to be able to END UP at the
+// client's registered redirect URI.
+//
+// The assertion this replaced demanded form-action 'self' exactly, which reads
+// as the safe choice and is the bug. Safari applies form-action to every hop of
+// a redirect chain, and consent 303s through Hydra to the client's origin, so
+// 'self' alone makes Safari abandon the navigation after the authorization code
+// has already been issued. Nothing in an HTTP-level test can see that -- no Go
+// client, and no fetch() in the OAuth suite, implements CSP -- which is exactly
+// why the header itself has to carry the assertion.
+func assertFormActionReachesClient(t *testing.T, response *http.Response, redirectURIs []string) {
+	t.Helper()
+	csp := response.Header.Get("Content-Security-Policy")
+	var formAction string
+	for _, directive := range strings.Split(csp, ";") {
+		directive = strings.TrimSpace(directive)
+		if rest, ok := strings.CutPrefix(directive, "form-action "); ok {
+			formAction = rest
+		}
+	}
+	if formAction == "" {
+		t.Fatalf("no form-action directive in CSP %q", csp)
+	}
+	sources := strings.Fields(formAction)
+	if !slices.Contains(sources, "'self'") {
+		t.Fatalf("form-action %q does not allow 'self'; the form posts here first", formAction)
+	}
+	for _, want := range cspFormTargetsFor(redirectURIs) {
+		if !slices.Contains(sources, want) {
+			t.Fatalf("form-action %q cannot reach the client's redirect origin %q; "+
+				"Safari will silently abandon the consent redirect", formAction, want)
+		}
 	}
 }
 
@@ -1162,5 +1197,83 @@ func TestOAuthConsentRefusesEmptySubject(t *testing.T) {
 	response, _ := stack.get(t, oauthConsentPath+"?consent_challenge="+testConsentChallenge)
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusForbidden)
+	}
+}
+
+// Registration is open, so a redirect_uri is attacker-supplied and lands in a
+// response header. A value that could close the form-action directive and open
+// another would turn an open DCR endpoint into CSP control for the whole page.
+func TestCSPFormTargetsForRejectsHostileRedirectURIs(t *testing.T) {
+	tests := []struct {
+		name string
+		uris []string
+		want []string
+	}{
+		{
+			name: "ordinary https redirect reduces to an origin",
+			uris: []string{"https://claude.ai/api/mcp/auth_callback"},
+			want: []string{"https://claude.ai"},
+		},
+		{
+			name: "port is part of the origin",
+			uris: []string{"http://127.0.0.1:8765/callback"},
+			want: []string{"http://127.0.0.1:8765"},
+		},
+		{
+			name: "native custom scheme keeps only the scheme",
+			uris: []string{"myapp:/callback"},
+			want: []string{"myapp:"},
+		},
+		{
+			name: "duplicate origins collapse",
+			uris: []string{"https://claude.ai/a", "https://claude.ai/b"},
+			want: []string{"https://claude.ai"},
+		},
+		{
+			// A semicolon would end form-action and start a new directive.
+			name: "a semicolon in the host is dropped, not emitted",
+			uris: []string{"https://evil.example;default-src *"},
+			want: []string{},
+		},
+		{
+			name: "whitespace injection is dropped",
+			uris: []string{"https://evil.example unsafe-inline"},
+			want: []string{},
+		},
+		{
+			name: "a relative URI has no scheme and is skipped",
+			uris: []string{"/callback"},
+			want: []string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cspFormTargetsFor(tt.uris)
+			if len(got) != len(tt.want) {
+				t.Fatalf("cspFormTargetsFor(%q) = %q, want %q", tt.uris, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("cspFormTargetsFor(%q) = %q, want %q", tt.uris, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// The header must never contain a newline or a stray directive separator no
+// matter what was registered.
+func TestConsentCSPCannotBeInjectedThrough(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	setOAuthPageHeaders(recorder, cspFormTargetsFor([]string{
+		"https://evil.example;script-src *",
+		"https://good.example/cb",
+	})...)
+	csp := recorder.Header().Get("Content-Security-Policy")
+	if strings.Contains(csp, "script-src") {
+		t.Fatalf("a registered redirect URI injected a directive: %q", csp)
+	}
+	if !strings.Contains(csp, "https://good.example") {
+		t.Fatalf("the legitimate origin was dropped: %q", csp)
 	}
 }

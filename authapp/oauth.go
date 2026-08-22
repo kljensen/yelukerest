@@ -373,15 +373,71 @@ func newOAuthFlowConfig(adminURL string, mcpAudience string, casLoginPath string
 // setOAuthPageHeaders applies the no-store and framing protections to
 // every OAuth handler response. Caddy sets equivalents for /auth/*;
 // authapp repeats them so the protections do not depend on the proxy.
-func setOAuthPageHeaders(w http.ResponseWriter) {
+func setOAuthPageHeaders(w http.ResponseWriter, formTargets ...string) {
 	setNoStoreHeaders(w)
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	// A stricter CSP than the site-wide one: the consent page needs a
-	// same-origin stylesheet and its own form target, nothing else.
+	// A stricter CSP than the site-wide one: these pages need a same-origin
+	// stylesheet and their own form target, nothing else.
+	//
+	// form-action is the exception, and it is not a matter of taste. Safari
+	// enforces form-action against EVERY hop of a redirect chain, not just
+	// the URL the form posts to. Chrome dropped that behaviour in 2018;
+	// WebKit did not (https://bugs.webkit.org/show_bug.cgi?id=185565).
+	// Submitting consent posts to this origin, which 303s to Hydra's
+	// /oauth2/auth, which 303s to the CLIENT'S redirect_uri -- and under
+	// 'self' alone Safari silently refuses that last hop. The user sees the
+	// consent page simply not go anywhere: no error, no console entry the
+	// page can catch, and a server log showing the whole flow succeeding and
+	// an authorization code issued that the client then never redeems.
+	//
+	// So the client's own registered redirect origin has to be allowed. That
+	// is not a widening of trust: Hydra will only ever redirect to a
+	// registered URI, so this names the exact destination the browser was
+	// already about to be sent to.
+	formAction := "'self'"
+	for _, target := range formTargets {
+		formAction += " " + target
+	}
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+		"default-src 'none'; style-src 'self'; form-action "+formAction+
+			"; base-uri 'none'; frame-ancestors 'none'")
+}
+
+// cspFormTargetsFor reduces a client's registered redirect URIs to source
+// expressions safe to interpolate into a CSP header.
+//
+// Registration is open, so a redirect_uri is attacker-supplied: it may not be
+// pasted into a header as-is. Only a scheme and host are emitted (or a bare
+// scheme for native custom-scheme redirects, which carry no host), and anything
+// holding a character that could terminate the directive is dropped entirely.
+// A dropped entry costs the client a working consent page; an interpolated one
+// would cost everyone the CSP.
+func cspFormTargetsFor(uris []string) []string {
+	targets := make([]string, 0, len(uris))
+	seen := make(map[string]bool, len(uris))
+	for _, raw := range uris {
+		parsed, err := url.Parse(strings.TrimSpace(raw))
+		if err != nil || parsed.Scheme == "" {
+			continue
+		}
+		var source string
+		if parsed.Host != "" {
+			source = parsed.Scheme + "://" + parsed.Host
+		} else {
+			source = parsed.Scheme + ":"
+		}
+		if strings.ContainsAny(source, " \t\r\n;,'\"") {
+			continue
+		}
+		if seen[source] {
+			continue
+		}
+		seen[source] = true
+		targets = append(targets, source)
+	}
+	return targets
 }
 
 // challengeFrom pulls and validates a challenge parameter. The value is
@@ -862,12 +918,21 @@ func serveConsentForm(w http.ResponseWriter, r *http.Request, config oauthFlowCo
 		return
 	}
 	rememberConsentForm(r, sessionManager, challenge, token)
+
+	// Re-set the headers now that the client is known, so form-action names
+	// where submitting this form will actually end up. Until this point the
+	// handler had no idea which client it was rendering for. See
+	// setOAuthPageHeaders for why 'self' alone breaks the flow in Safari.
+	formTargets := cspFormTargetsFor(consentRequest.Client.RedirectURIs)
+	setOAuthPageHeaders(w, formTargets...)
+
 	traceOAuth("consent_form_rendered",
 		kv("session", fingerprint(sessionManager.Token(r.Context()))),
 		kv("challenge", fingerprint(challenge)),
 		kv("csrf", fingerprint(token)),
 		kv("outstanding", itoa(len(loadConsentForms(r, sessionManager)))),
 		kv("netid", netID),
+		kv("form_targets", strings.Join(formTargets, ",")),
 		browserHint(r))
 
 	view := consentPageView{
