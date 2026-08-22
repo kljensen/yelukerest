@@ -51,18 +51,25 @@ payload="$(printf "%s" "$1" | jq -c \
 create_openssl_jwt() {
     # From
     # https://stackoverflow.com/questions/59002949/how-to-create-a-json-web-token-jwt-using-openssl-shell-commands
+    #
+    # Every base64 here is piped through `tr -d '\n'`. Implementations differ
+    # on wrapping: BusyBox and GNU base64 break at 76 columns, macOS does not.
+    # A wrapped segment produces a token split across lines, and taking the
+    # last line of it yields a plausible-looking string that is not a JWT --
+    # PostgREST answers "Expected 3 parts in JWT; got 2", which reads like a
+    # problem with the caller rather than with this script.
 
     # Construct the header
-    jwt_header=$(printf "%s" '{"alg":"HS256","typ":"JWT"}' | base64 | sed s/\+/-/g | sed 's/\//_/g' | sed -E s/=+$//)
+    jwt_header=$(printf "%s" '{"alg":"HS256","typ":"JWT"}' | base64 | tr -d '\n' | sed s/\+/-/g | sed 's/\//_/g' | sed -E s/=+$//)
 
     # Construct the payload
-    payload=$(printf "%s" "$payload" | base64 | sed s/\+/-/g |sed 's/\//_/g' |  sed -E s/=+$//)
+    payload=$(printf "%s" "$payload" | base64 | tr -d '\n' | sed s/\+/-/g |sed 's/\//_/g' |  sed -E s/=+$//)
 
     # Convert secret to hex (not base64)
     hexsecret=$(printf "%s" "$JWT_SECRET" | xxd -p | tr -d '\n')
 
     # Calculate hmac signature -- note option to pass in the key as hex bytes
-    hmac_signature=$(printf "%s" "${jwt_header}.${payload}" |  openssl dgst -sha256 -mac HMAC -macopt hexkey:$hexsecret -binary | base64  | sed s/\+/-/g | sed 's/\//_/g' | sed -E s/=+$//)
+    hmac_signature=$(printf "%s" "${jwt_header}.${payload}" |  openssl dgst -sha256 -mac HMAC -macopt hexkey:$hexsecret -binary | base64 | tr -d '\n' | sed s/\+/-/g | sed 's/\//_/g' | sed -E s/=+$//)
 
     # Create the full token
     jwt="${jwt_header}.${payload}.${hmac_signature}"
