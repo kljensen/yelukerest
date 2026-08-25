@@ -389,6 +389,18 @@ Institutional/FERPA requirements must be confirmed before write scopes are
 enabled for students in production (tracked in issue #276). Until then, writes
 stay behind the pilot.
 
+> **RESOLVED 2026-08-25: THERE WILL BE NO SUCH GATE, BY DECISION.** The
+> paragraph above described a policy hold that was never implemented, and the
+> course owner has now decided not to implement one: students are adults, and
+> write access is theirs to grant on the consent screen. Issue #276 is closed on
+> that basis. The consent page's obligations in the first two sentences stand —
+> it names the data categories and the third party receiving them — and the write
+> checkbox stays unticked by default, so granting it remains a deliberate act.
+> What is gone is the idea that some further institutional gate stands behind it.
+>
+> The description of the implementation below was written before that decision
+> and remains accurate as a statement of what the code does.
+>
 > **NO SUCH GATE EXISTS IN THE CODE, AND NONE EVER DID.** "Writes stay behind
 > the pilot" describes a policy hold. In the implementation it is a checkbox
 > default, and nothing more. Hydra's `default_scope` grants `submissions:write`
