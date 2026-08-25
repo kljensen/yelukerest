@@ -43,11 +43,20 @@ jobs:
           echo '3bf73f20b018cd801280c1e0a8c5a108c65d8fe18a78be689060bbc9a9770e1e  /tmp/zapadka' | sha256sum --check
           install -m 0755 /tmp/zapadka /usr/local/bin/zapadka
           zapadka --version
+      # No separate `zapadka verify` step. `zapadka deploy`, which
+      # bootstrap-db.sh runs, verifies each migration immediately after it
+      # commits -- once, against the state that migration created. Running
+      # `zapadka verify` afterwards re-runs EVERY applied migration's
+      # verify.sql against the finished database, asking an old migration to
+      # still be true about a schema it was never written against.
+      #
+      # That is not hypothetical: it broke main for four days. A verify
+      # asserting the platform version equalled 6 passed at deploy time, when
+      # it did, then failed on every commit once a later migration moved it to 7.
       - name: Lint and deploy a fresh PostgreSQL 18 database
         run: |
           zapadka lint
           ./bin/bootstrap-db.sh test-migrator
-          zapadka verify --target test
           zapadka status --target test --output json
       - name: Run database tests
         run: ./bin/test-db.sh
