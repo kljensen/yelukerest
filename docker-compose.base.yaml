@@ -134,10 +134,6 @@ services:
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
-            # Service credential for /auth/mcp-token, which mints MCP
-            # bearer tokens via api.issue_user_jwt_for_mcp. Mint with
-            # ./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'.
-            - MCPAPP_JWT=${MCPAPP_JWT:-}
             - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
             - JWT_AUDIENCE=${JWT_AUDIENCE:-yelukerest-postgrest}
             # For the DCR response-cleaning proxy (issue #272,

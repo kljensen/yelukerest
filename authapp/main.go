@@ -38,18 +38,6 @@ func main() {
 		log.Panicf("AUTHAPP_JWT is invalid: %v", err)
 	}
 
-	// MCPAPP_JWT is the mcpapp-role service credential authapp presents
-	// when minting MCP bearer tokens (issue #264). It is optional: an
-	// existing deployment that has not minted one keeps running and
-	// /auth/mcp-token reports 503. A present-but-invalid credential is
-	// fatal, exactly like AUTHAPP_JWT.
-	var mcpappJWT = strings.TrimSpace(os.Getenv("MCPAPP_JWT"))
-	if mcpappJWT == "" {
-		log.Println(`warning: MCPAPP_JWT is unset; /auth/mcp-token will return 503. Mint one with ./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`)
-	} else if err := validateMCPAppJWT(mcpappJWT, jwtIssuer, jwtAudience, time.Now()); err != nil {
-		log.Panicf("MCPAPP_JWT is invalid: %v", err)
-	}
-
 	var port = os.Getenv("PORT")
 	if port == "" {
 		log.Panicln("PORT environment variable not set")
@@ -81,12 +69,6 @@ func main() {
 		AuthappJWT:    os.Getenv("AUTHAPP_JWT"),
 	}
 
-	mcpTokenConfig := MCPTokenConfig{
-		PostgrestHost: postgrestHost,
-		PostgrestPort: postgrestPort,
-		MCPAppJWT:     mcpappJWT,
-	}
-
 	// Set up the routes
 	mux := http.NewServeMux()
 
@@ -107,11 +89,6 @@ func main() {
 	jwtRateLimiter := newRateLimiter(60, time.Minute)
 	getJWT := getSessionMiddleware(sessionManager, rateLimitMiddleware(jwtRateLimiter, getJWTHandler(fetchJWTConfig)))
 	getOpenAPI := getSessionMiddleware(sessionManager, getOpenAPIHandler(fetchJWTConfig))
-	// MCP bearer tokens live ten minutes, so clients re-mint often; the
-	// limit is tighter than /auth/jwt because one client should need at
-	// most a handful per minute even while retrying.
-	mcpTokenRateLimiter := newRateLimiter(30, time.Minute)
-	getMCPToken := getSessionMiddleware(sessionManager, rateLimitMiddleware(mcpTokenRateLimiter, getMCPTokenHandler(mcpTokenConfig)))
 	// Personal access token exchange (issue #317). Deliberately NOT behind
 	// getSessionMiddleware: the caller presents a token precisely because they
 	// have no browser session. The limit is tighter than /auth/jwt because this
@@ -127,7 +104,6 @@ func main() {
 	mux.Handle("/auth/me", getMe)
 	mux.Handle("/auth/jwt", getJWT)
 	mux.Handle("/auth/token", exchangeAPIToken)
-	mux.Handle("/auth/mcp-token", getMCPToken)
 	mux.Handle("/auth/api.json", getOpenAPI)
 
 	// Proxy Hydra's Dynamic Client Registration endpoints, cleaning

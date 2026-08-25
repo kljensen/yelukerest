@@ -15,16 +15,6 @@ func validateAuthappJWT(token string, expectedIssuer string, expectedAudience st
 	return validateServiceJWT(token, "AUTHAPP_JWT", "authapp", expectedIssuer, expectedAudience, now)
 }
 
-// validateMCPAppJWT checks the MCPAPP_JWT service credential authapp
-// presents to PostgREST when minting MCP user tokens through
-// api.issue_user_jwt_for_mcp, which admits only app_name=mcpapp.
-// Operators mint it with:
-//
-//	./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'
-func validateMCPAppJWT(token string, expectedIssuer string, expectedAudience string, now time.Time) error {
-	return validateServiceJWT(token, "MCPAPP_JWT", "mcpapp", expectedIssuer, expectedAudience, now)
-}
-
 // validateServiceJWT applies the shared service-credential claim checks.
 // The label names the environment variable in error messages so operators
 // can tell which credential is bad; appName is the required app_name (and,
