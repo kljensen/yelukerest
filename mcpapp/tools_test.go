@@ -5,6 +5,7 @@ package main
 // forwarding, output shaping and truncation, scope gating, and error mapping.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -127,22 +128,83 @@ func (f *fakePostgREST) deps(t *testing.T) *toolDeps {
 	}
 }
 
-// readToolRequest builds a CallToolRequest carrying the TokenInfo produced by
-// the real verifier for a freshly signed token, exercising the same plumbing
-// the streamable HTTP transport uses.
+// readToolRequest builds a CallToolRequest carrying the TokenInfo the
+// streamable HTTP transport hands tool handlers. It packs the identity
+// directly rather than verifying a bearer token, because /mcp accepts OAuth
+// tokens only (issue #322) and these tests are about what a tool does once
+// the caller is known; who gets in is jwt_test.go's and hydra_test.go's
+// subject.
+//
+// The claims are those of the internal credential api.issue_user_jwt_for_mcp
+// mints, and the returned token is that credential — what a tool must forward
+// to PostgREST. The scopes are the ones a student's consent grants for reads:
+// since issue #324 a caller carrying no recognised scope is denied every
+// tool, so a fixture caller has to carry them. Tests that need a different
+// grant overwrite the claim.
 func readToolRequest(t *testing.T, mutate func(map[string]any)) (*mcp.CallToolRequest, string) {
 	t.Helper()
 	claims := currentClaims()
+	claims["netid"] = "abc123"
+	claims["scopes"] = []any{"course:read", "grades:read", "submissions:read"}
 	if mutate != nil {
 		mutate(claims)
 	}
 	token := signTestToken(t, hs256Header(), claims, testSecret)
-	verifier := newTokenVerifier(&bearerVerifier{internal: testJWTConfig()})
-	info, err := verifier(context.Background(), token, nil)
-	if err != nil {
-		t.Fatalf("verify token: %v", err)
-	}
+	info := tokenInfoFromIdentity(identityForClaims(t, claims, token))
 	return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{TokenInfo: info}}, token
+}
+
+// identityForClaims builds the identity an OAuth caller presents to tools:
+// the verified claims, plus the deferred exchange that is now the only route
+// to a forwardable credential (identity.forwardableToken). Claims are
+// round-tripped through JSON so the production claim readers see exactly the
+// types a decoded token gives them.
+//
+// The exchange's cache is primed with token, so the fixture mints nothing and
+// needs no upstream; exchange_test.go covers the mint itself. A fixture
+// caller whose exchange would miss that cache — no netid, or no scopes — is
+// refused by tokenFor before it reaches the (nil) PostgREST client, which is
+// the same refusal production gives.
+func identityForClaims(t *testing.T, claims map[string]any, token string) *identity {
+	t.Helper()
+	encoded, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal claims: %v", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	decoded := map[string]any{}
+	if err := decoder.Decode(&decoded); err != nil {
+		t.Fatalf("decode claims: %v", err)
+	}
+	exp, err := numericDateClaim(decoded, "exp")
+	if err != nil {
+		t.Fatalf("exp claim: %v", err)
+	}
+	subject, _ := decoded["sub"].(string)
+	userID, _ := strings.CutPrefix(subject, "user:")
+	netID, _ := decoded["netid"].(string)
+	role, _ := decoded["role"].(string)
+	jti, _ := decoded["jti"].(string)
+	id := &identity{
+		Subject:   subject,
+		UserID:    userID,
+		NetID:     netID,
+		Role:      role,
+		JTI:       jti,
+		ExpiresAt: time.Unix(exp, 0),
+		Scopes:    scopesFromClaims(decoded),
+		External:  true,
+	}
+	request := exchangeRequest{netID: id.NetID, scopes: id.Scopes, outerExp: id.ExpiresAt}
+	exchanger := newTokenExchanger(nil, "service-token")
+	// Only the token is primed: leaving the minted userid, netid and role
+	// empty keeps forwardableToken from overwriting what the claims say, so a
+	// test that mutates a claim still sees its mutation.
+	key := exchangeCacheKey(request.netID, request.external.ClientID, request.external.IssuedAt, request.scopes)
+	exchanger.cache[key] = exchangeCacheEntry{minted: mintedToken{token: token}, notAfter: id.ExpiresAt}
+	id.exchange = &pendingExchange{exchanger: exchanger, request: request}
+	return id
 }
 
 // ---- fixtures ----
@@ -682,9 +744,9 @@ func TestAuthorizeScope(t *testing.T) {
 		required string
 		allowed  bool
 	}{
-		{name: "scopeless legacy token may read", scopes: nil, required: scopeRead, allowed: true},
-		{name: "empty scopes claim may read", scopes: []string{}, required: scopeRead, allowed: true},
-		{name: "scopeless legacy token may not write", scopes: nil, required: "write", allowed: false},
+		{name: "missing scopes claim may not read", scopes: nil, required: scopeRead, allowed: false},
+		{name: "empty scopes claim may not read", scopes: []string{}, required: scopeRead, allowed: false},
+		{name: "missing scopes claim may not write", scopes: nil, required: "write", allowed: false},
 		{name: "read scope allows reads", scopes: []string{"read"}, required: scopeRead, allowed: true},
 		{name: "unrelated scopes deny reads", scopes: []string{"openid", "profile"}, required: scopeRead, allowed: false},
 		{name: "write scope alone denies reads", scopes: []string{"write"}, required: scopeRead, allowed: false},
@@ -700,6 +762,96 @@ func TestAuthorizeScope(t *testing.T) {
 				t.Fatal("expected deny, got allow")
 			}
 		})
+	}
+}
+
+// TestScopelessIdentityIsDeniedEveryTool pins the removal of the phase 0
+// grandfathering (issue #324). An identity carrying no scope this server
+// recognises once got read access, because phase 0 tokens predated the scopes
+// claim; that credential class is gone (issue #322) and the exemption with
+// it. The rule now is uniform, and it has to stay uniform: a scope claim that
+// fails to parse, or a future identity built by code that never heard of this
+// rule, must land on a refusal rather than inherit reads by omission. Note
+// that External is not consulted — an identity without it is refused exactly
+// like an OAuth one.
+func TestScopelessIdentityIsDeniedEveryTool(t *testing.T) {
+	for _, scopes := range [][]string{nil, {}, {"openid", "offline_access"}} {
+		for _, external := range []bool{true, false} {
+			for _, required := range []string{scopeRead, scopeWrite} {
+				id := &identity{Scopes: scopes, External: external}
+				// Errorf, not Fatalf: every violating combination should
+				// show up in one run, not just the first.
+				if err := authorizeScope(id, required); err == nil {
+					t.Errorf("scopes %v (external=%t) were allowed %q", scopes, external, required)
+				}
+			}
+		}
+	}
+
+	// And through the tools themselves, read tools included: every one
+	// refuses, and none of them reaches PostgREST.
+	ctx := context.Background()
+	fake := newFakePostgREST(t)
+	fake.respond("/users", fixtureUserRows)
+	fake.respond("/assignments", fixtureAssignmentDetail)
+	fake.respond("/quizzes", fixtureQuizzes)
+	fake.respond("/meetings", fixtureMeetings)
+	fake.respond("/engagements", fixtureEngagements)
+	deps := fake.deps(t)
+	// Deliberately not marked External: that is the hazard this test exists
+	// for. The grandfathering only ever applied to an identity that was not
+	// an OAuth caller, so a fixture that is one would not notice its return.
+	claims := currentClaims()
+	claims["netid"] = "abc123"
+	id := identityForClaims(t, claims, signTestToken(t, hs256Header(), claims, testSecret))
+	id.External = false
+	req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{TokenInfo: tokenInfoFromIdentity(id)}}
+
+	calls := map[string]func() error{
+		"whoami":             func() error { _, _, err := deps.whoami(ctx, req, nil); return err },
+		"list_assignments":   func() error { _, _, err := deps.listAssignments(ctx, req, nil); return err },
+		"get_assignment":     func() error { _, _, err := deps.getAssignment(ctx, req, getAssignmentInput{Slug: "proj1"}); return err },
+		"get_my_submissions": func() error { _, _, err := deps.getMySubmissions(ctx, req, getMySubmissionsInput{}); return err },
+		"list_quizzes":       func() error { _, _, err := deps.listQuizzes(ctx, req, nil); return err },
+		"get_my_quiz_grades": func() error { _, _, err := deps.getMyQuizGrades(ctx, req, nil); return err },
+		"get_my_grades":      func() error { _, _, err := deps.getMyGrades(ctx, req, nil); return err },
+		"list_meetings":      func() error { _, _, err := deps.listMeetings(ctx, req, nil); return err },
+		"get_my_engagements": func() error { _, _, err := deps.getMyEngagements(ctx, req, nil); return err },
+		"get_api_schema":     func() error { _, _, err := deps.getAPISchema(ctx, req, nil); return err },
+		"postgrest_request GET": func() error {
+			_, _, err := deps.postgrestRequest(ctx, req, postgrestRequestInput{Method: http.MethodGet, Path: "/assignments"})
+			return err
+		},
+		"postgrest_request POST": func() error {
+			_, _, err := deps.postgrestRequest(ctx, req, postgrestRequestInput{Method: http.MethodPost, Path: "/assignment_field_submissions", Body: `{"body":"x"}`})
+			return err
+		},
+		"preview_submission_change": func() error {
+			_, _, err := deps.previewSubmissionChange(ctx, req, submissionChangeInput{AssignmentSlug: "proj1", FieldSlug: "repo-url", Body: "x"})
+			return err
+		},
+		"submit_submission_change": func() error {
+			_, _, err := deps.submitSubmissionChange(ctx, req, submissionChangeInput{AssignmentSlug: "proj1", FieldSlug: "repo-url", Body: "x"})
+			return err
+		},
+	}
+	for name, call := range calls {
+		t.Run(name, func(t *testing.T) {
+			err := call()
+			if err == nil {
+				t.Fatal("a caller with no recognised scopes was allowed")
+			}
+			// The scope gate, not a later failure: only authorizeScope says
+			// "denied". The exchange refuses a scopeless caller too, but that
+			// is the second line of defence, and a tool must never get that
+			// far.
+			if !strings.Contains(err.Error(), "denied") {
+				t.Fatalf("error is not a scope denial: %v", err)
+			}
+		})
+	}
+	if recorded := fake.recorded(); len(recorded) != 0 {
+		t.Fatalf("scope-denied calls reached PostgREST: %+v", recorded)
 	}
 }
 
@@ -720,7 +872,9 @@ func TestReadToolsHonorScopeClaims(t *testing.T) {
 	}
 
 	// An OAuth-style space-delimited scope claim carrying read is allowed.
+	// The fixture's own "scopes" claim goes, since it takes precedence.
 	allowedReq, _ := readToolRequest(t, func(claims map[string]any) {
+		delete(claims, "scopes")
 		claims["scope"] = "read write"
 	})
 	_, out, err := fake.deps(t).listAssignments(context.Background(), allowedReq, nil)

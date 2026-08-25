@@ -418,9 +418,9 @@ func newOAuthTestApp(t *testing.T, jwks *fakeJWKS, serviceJWT string) (*httptest
 		postgrest: fake.client(t),
 		exchanger: newTokenExchanger(fake.client(t), serviceJWT),
 	}
-	config := testAppConfig(100)
-	config.ResourceURL = testMCPResource
-	config.AuthorizationServerURL = testHydraIssuer
+	config := testAppConfig(t, 100)
+	// This test brings its own authorization server so it can control the key
+	// set and the mint backend.
 	config.Hydra = &hydraConfig{
 		Issuer:   testHydraIssuer,
 		JWKSURL:  jwks.server.URL,

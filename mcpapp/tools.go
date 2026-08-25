@@ -17,8 +17,8 @@ package main
 //   - Every tool result is capped at ~50KB; lists are truncated with
 //     truncated=true and a total_count.
 //   - Scope gating lives in authorizeScope so the write tools (issue #267)
-//     extend one helper: scopeless legacy phase 0 tokens are read-allowed and
-//     write-denied (default-deny for writes).
+//     extend one helper: a caller is allowed exactly what the scopes it was
+//     granted cover, and nothing when they cover nothing.
 
 import (
 	"bytes"
@@ -111,24 +111,20 @@ var scopeAliases = map[string][]string{
 
 // authorizeScope is the single scope gate all tools share; the write tools of
 // issue #267 extend this helper rather than adding new checks. Rules:
-//   - A token with no scopes claim (or an empty one) is a scopeless legacy
-//     phase 0 token: reads are allowed, anything else is denied by default
-//     (ADR 0001 default-deny for writes).
-//   - An OAuth token (issue #274) whose granted scopes map to nothing this
-//     server exposes is denied outright — there is no legacy to grandfather.
-//   - A scope-bearing token must carry the required scope.
+//   - An identity whose scopes map to nothing this server exposes (an empty
+//     set: consent granted only openid/offline_access, say) is denied every
+//     tool, reads included.
+//   - A scope-bearing identity must carry the required scope.
+//
+// Until issue #324 an empty scope set meant "read-allowed, write-denied" for
+// any caller not marked External, because early phase 0 tokens predated the
+// scopes claim. That credential class is gone (issue #322), and the rule went
+// with it: a credential whose grant we do not recognise gets no access, not
+// read access. A scope claim that fails to parse, or some future identity
+// built without knowing this rule existed, must land on a refusal.
 func authorizeScope(id *identity, required string) error {
 	if len(id.Scopes) == 0 {
-		// An OAuth caller gets no legacy grandfathering: an empty mapped
-		// scope set means consent granted nothing this server exposes (only
-		// openid/offline_access, say), so nothing is allowed.
-		if id.External {
-			return fmt.Errorf("the OAuth access token granted no yelukerest scopes, so %q is denied; re-authorize requesting course:read, grades:read, or submissions:read", required)
-		}
-		if required == scopeRead {
-			return nil
-		}
-		return fmt.Errorf("the token carries no scopes, so %q is denied by default", required)
+		return fmt.Errorf("the access token granted no yelukerest scopes, so %q is denied; re-authorize requesting course:read, grades:read, or submissions:read", required)
 	}
 	for _, accepted := range scopeAliases[required] {
 		if slices.Contains(id.Scopes, accepted) {
@@ -147,8 +143,8 @@ func readCaller(ctx context.Context, req mcp.Request) (*identity, string, error)
 }
 
 // writeCaller is readCaller's counterpart for write tools (issue #267): the
-// verified identity, the write-scope authorization decision (default-deny for
-// scopeless tokens, see authorizeScope), and the forwardable credential.
+// verified identity, the write-scope authorization decision (which needs a
+// granted write scope, see authorizeScope), and the forwardable credential.
 func writeCaller(ctx context.Context, req mcp.Request) (*identity, string, error) {
 	return callerWithScope(ctx, req, scopeWrite)
 }

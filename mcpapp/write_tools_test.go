@@ -57,7 +57,7 @@ func TestSubmitSubmissionChangeScopeDenials(t *testing.T) {
 		name   string
 		mutate func(map[string]any)
 	}{
-		{name: "no scopes claim (default deny)", mutate: nil},
+		{name: "no recognised scopes (denied outright)", mutate: func(c map[string]any) { delete(c, "scopes") }},
 		{name: "empty scopes claim", mutate: func(c map[string]any) { c["scopes"] = []string{} }},
 		{name: "read-only scopes", mutate: func(c map[string]any) { c["scopes"] = []string{"read"} }},
 	}
@@ -86,7 +86,7 @@ func TestPreviewSubmissionChangeNeedsOnlyReadScopeAndWritesNothing(t *testing.T)
 		name   string
 		mutate func(map[string]any)
 	}{
-		{name: "scopeless legacy token", mutate: nil},
+		{name: "the read scopes consent grants", mutate: nil},
 		{name: "read scope only", mutate: func(c map[string]any) { c["scopes"] = []string{"read"} }},
 		{name: "granular read scopes", mutate: func(c map[string]any) { c["scopes"] = []string{"course:read", "submissions:read"} }},
 	}
@@ -603,16 +603,16 @@ func TestMapWriteError(t *testing.T) {
 // complete a write it was authorized for, and a read-only token must still be
 // refused.
 func TestSubmissionWriteOverStreamableHTTP(t *testing.T) {
-	server, fake, _ := newTestAppWithPostgREST(t, testAppConfig(100))
+	server, fake, _, _ := newTestAppWithPostgREST(t, testAppConfig(t, 100))
 	fake.respond("/assignments", fixturePrepareAssignment)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusOK, fixtureStoredOverwrite)
 
 	connect := func(t *testing.T, scopes []string) *mcp.ClientSession {
 		t.Helper()
-		claims := currentClaims()
-		claims["scopes"] = scopes
-		token := signTestToken(t, hs256Header(), claims, testSecret)
+		token := accessToken(t, func(claims map[string]any) {
+			claims["scopes"] = scopes
+		})
 		client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
 		session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 			Endpoint:   server.URL + mcpPath,

@@ -207,9 +207,6 @@ func TestHydraVerifyValidToken(t *testing.T) {
 	if id.Role != "student" {
 		t.Fatalf("Role = %q", id.Role)
 	}
-	if id.RawToken != "" {
-		t.Fatal("a Hydra token must never be kept as a forwardable credential")
-	}
 	if got, want := strings.Join(id.Scopes, " "), "course:read grades:read submissions:read"; got != want {
 		t.Fatalf("Scopes = %q, want %q", got, want)
 	}
@@ -457,15 +454,12 @@ func TestHydraVerifyRejects(t *testing.T) {
 
 // TestHydraVerifyRejectsHMACForgedWithPublicKey is the classic algorithm
 // confusion attack: the attacker takes the public key everyone can fetch and
-// uses it as an HMAC secret. It must never reach the RSA path, and the
-// internal HS256 path must reject it too (different secret, issuer, audience).
+// uses it as an HMAC secret. No symmetric algorithm has a path here at all, so
+// it is refused on the alg alone.
 func TestHydraVerifyRejectsHMACForgedWithPublicKey(t *testing.T) {
 	keyA, _ := hydraTestKeys(t)
 	jwks := newFakeJWKS(t, map[string]*rsa.PrivateKey{"key-a": keyA})
-	verifier := &bearerVerifier{
-		internal: testJWTConfig(),
-		hydra:    newTestHydraVerifier(t, jwks),
-	}
+	verifier := &bearerVerifier{hydra: newTestHydraVerifier(t, jwks)}
 
 	publicKeyAsSecret := string(keyA.PublicKey.N.Bytes())
 	forged := signTestToken(t, map[string]any{"alg": "HS256", "typ": "JWT", "kid": "key-a"}, hydraClaims(), publicKeyAsSecret)
@@ -473,8 +467,8 @@ func TestHydraVerifyRejectsHMACForgedWithPublicKey(t *testing.T) {
 		t.Fatal("an HS256 token signed with the RSA public key was accepted")
 	}
 
-	// The mirror image: an internal-looking token presented with an RS256
-	// header. It must not be verified with the HMAC secret.
+	// The mirror image: an HMAC-signed token presented with an RS256 header.
+	// It must not be verified with the HMAC secret.
 	claims := validClaims()
 	rsHeaderOnHMACToken := signTestToken(t, map[string]any{"alg": "RS256", "typ": "JWT", "kid": "key-a"}, claims, testSecret)
 	if _, err := verifier.verify(context.Background(), rsHeaderOnHMACToken, testNow); err == nil {
@@ -482,27 +476,15 @@ func TestHydraVerifyRejectsHMACForgedWithPublicKey(t *testing.T) {
 	}
 }
 
-func TestBearerVerifierRoutesByAlg(t *testing.T) {
+// TestBearerVerifierAcceptsOnlyOAuthAlgs: the Hydra path is the only path, and
+// an alg it does not advertise never reaches a key.
+func TestBearerVerifierAcceptsOnlyOAuthAlgs(t *testing.T) {
 	keyA, _ := hydraTestKeys(t)
 	jwks := newFakeJWKS(t, map[string]*rsa.PrivateKey{"key-a": keyA})
-	verifier := &bearerVerifier{internal: testJWTConfig(), hydra: newTestHydraVerifier(t, jwks)}
+	verifier := &bearerVerifier{hydra: newTestHydraVerifier(t, jwks)}
 
-	// Internal HS256 tokens keep working exactly as before.
-	internal := signTestToken(t, hs256Header(), validClaims(), testSecret)
-	id, err := verifier.verify(context.Background(), internal, testNow)
-	if err != nil {
-		t.Fatalf("internal token rejected: %v", err)
-	}
-	if id.External || id.RawToken != internal {
-		t.Fatalf("internal identity = %+v", id)
-	}
-	if jwks.fetchCount() != 0 {
-		t.Fatal("an internal token must not touch the authorization server key set")
-	}
-
-	// And OAuth tokens take the Hydra path.
 	oauth := signRS256(t, keyA, rs256Header("key-a"), hydraClaims())
-	id, err = verifier.verify(context.Background(), oauth, testNow)
+	id, err := verifier.verify(context.Background(), oauth, testNow)
 	if err != nil {
 		t.Fatalf("oauth token rejected: %v", err)
 	}
@@ -519,7 +501,7 @@ func TestBearerVerifierRoutesByAlg(t *testing.T) {
 
 func TestBearerVerifierWithoutHydraRejectsOAuthTokens(t *testing.T) {
 	keyA, _ := hydraTestKeys(t)
-	verifier := &bearerVerifier{internal: testJWTConfig()}
+	verifier := &bearerVerifier{}
 	token := signRS256(t, keyA, rs256Header("key-a"), hydraClaims())
 	_, err := verifier.verify(context.Background(), token, testNow)
 	if err == nil || !strings.Contains(err.Error(), "does not accept OAuth access tokens") {
@@ -591,8 +573,10 @@ func TestHydraScopeMapping(t *testing.T) {
 }
 
 // TestExternalTokenWithoutMappedScopesIsDeniedEverything pins the default-deny
-// rule for OAuth callers: unlike a scopeless phase 0 token, an OAuth token
-// that granted nothing this server exposes gets no read access either.
+// rule for OAuth callers: a token whose grant maps to nothing this server
+// exposes gets no read access either. TestScopelessIdentityIsDeniedEveryTool
+// covers the same rule for an identity not marked External, which since issue
+// #324 is refused identically.
 func TestExternalTokenWithoutMappedScopesIsDeniedEverything(t *testing.T) {
 	external := &identity{External: true}
 	for _, required := range []string{scopeRead, scopeWrite} {
@@ -603,10 +587,6 @@ func TestExternalTokenWithoutMappedScopesIsDeniedEverything(t *testing.T) {
 		if !strings.Contains(err.Error(), "granted no yelukerest scopes") {
 			t.Fatalf("error = %q", err)
 		}
-	}
-	// The phase 0 rule is unchanged: scopeless internal tokens may read.
-	if err := authorizeScope(&identity{}, scopeRead); err != nil {
-		t.Fatalf("scopeless internal token denied a read: %v", err)
 	}
 }
 

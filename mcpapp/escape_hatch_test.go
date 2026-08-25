@@ -18,7 +18,7 @@ import (
 func TestPostgrestRequestGETHappyPath(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", `[{"slug":"proj1","title":"Project 1"}]`)
-	req, token := readToolRequest(t, nil) // scopeless legacy token: read-allowed
+	req, token := readToolRequest(t, nil) // carries the read scopes consent grants
 
 	_, out, err := fake.deps(t).postgrestRequest(context.Background(), req, postgrestRequestInput{
 		Method: "get", // lowercase is normalized
@@ -123,7 +123,8 @@ func TestPostgrestRequestNonGETRequiresWriteScope(t *testing.T) {
 		name   string
 		mutate func(map[string]any)
 	}{
-		{name: "scopeless legacy token (default deny)", mutate: nil},
+		{name: "no recognised scopes", mutate: func(c map[string]any) { delete(c, "scopes") }},
+		{name: "the read scopes consent grants", mutate: nil},
 		{name: "read scope only", mutate: func(c map[string]any) { c["scopes"] = []string{"read"} }},
 	}
 	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {

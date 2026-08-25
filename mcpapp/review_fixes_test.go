@@ -8,26 +8,10 @@ import (
 )
 
 // Regression tests for the code-review findings on the initial scaffold:
-// future-iat rejection, path-specific RFC 9728 metadata, CORS on the
-// metadata document, and pre-auth IP rate limiting.
-
-func TestVerifyMCPTokenRejectsFutureIAT(t *testing.T) {
-	claims := validClaims()
-	claims["iat"] = testNow.Add(10 * time.Minute).Unix()
-	token := signTestToken(t, hs256Header(), claims, testSecret)
-	if _, err := verifyMCPToken(token, testJWTConfig(), testNow); err == nil {
-		t.Fatal("expected future-iat token to be rejected")
-	}
-}
-
-func TestVerifyMCPTokenAllowsSmallIATSkew(t *testing.T) {
-	claims := validClaims()
-	claims["iat"] = testNow.Add(30 * time.Second).Unix()
-	token := signTestToken(t, hs256Header(), claims, testSecret)
-	if _, err := verifyMCPToken(token, testJWTConfig(), testNow); err != nil {
-		t.Fatalf("expected 30s iat skew to be tolerated, got: %v", err)
-	}
-}
+// path-specific RFC 9728 metadata, CORS on the metadata document, and pre-auth
+// IP rate limiting. The future-iat cases that lived here covered the retired
+// internal verifier; hydra_test.go covers iat and clock skew on the OAuth
+// path.
 
 func TestMetadataURLForResourceIsPathSpecific(t *testing.T) {
 	got, err := metadataURLForResource("https://example.com/mcp")

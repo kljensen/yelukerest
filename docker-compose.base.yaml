@@ -152,9 +152,10 @@ services:
         environment:
             - DEVELOPMENT=${DEVELOPMENT}
             - PORT=${MCPAPP_PORT:-8090}
-            - JWT_SECRET=${JWT_SECRET}
-            - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
-            - JWT_MCP_AUDIENCE=${JWT_MCP_AUDIENCE:-yelukerest-mcp}
+            # No JWT_SECRET here on purpose: /mcp accepts OAuth access tokens
+            # only (issue #322), so mcpapp verifies nothing with the shared
+            # secret and has no reason to hold it. The one credential it does
+            # need is MCPAPP_JWT below, which is already signed.
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             # Advertised in the RFC 9728 protected-resource metadata so

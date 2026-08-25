@@ -62,7 +62,8 @@ const (
 )
 
 // hydraConfig is the configuration for the OAuth access-token path. A nil
-// *hydraConfig means the deployment accepts phase 0 internal tokens only.
+// *hydraConfig means the deployment has no authorization server, and since
+// OAuth is the only credential /mcp takes, it then accepts nothing at all.
 type hydraConfig struct {
 	// Issuer is the exact expected `iss` claim (Hydra's URLS_SELF_ISSUER,
 	// e.g. https://example.com).
@@ -253,8 +254,9 @@ func (v *hydraVerifier) verify(ctx context.Context, token string, now time.Time)
 		ExpiresAt: time.Unix(exp, 0),
 		Scopes:    mapExternalScopes(hydraScopes(claims)),
 		External:  true,
-		// RawToken stays empty on purpose: a Hydra token must never be
-		// forwarded to PostgREST. forwardableToken exchanges it instead.
+		// No credential is attached here on purpose: a Hydra token must never
+		// be forwarded to PostgREST. forwardableToken exchanges it instead,
+		// and since issue #324 that is the only way a tool gets one.
 	}
 	return id, ref, nil
 }
@@ -350,8 +352,8 @@ func extClaim(claims map[string]any, key string) any {
 }
 
 // hydraSubjectLabel produces the rate-limiting and audit key. When the token
-// carries a usable user_id it matches the phase 0 "user:<id>" shape so the
-// same person is rate limited identically on both paths.
+// carries a usable user_id it takes the "user:<id>" shape the internal
+// credentials use, so one person keys the same way everywhere.
 func hydraSubjectLabel(claims map[string]any, netID string) string {
 	if userID := hydraUserID(claims); userID != "" {
 		return "user:" + userID

@@ -2,31 +2,22 @@ package main
 
 // JWT verification for MCP bearer tokens.
 //
-// Two token domains reach /mcp, and each is validated strictly against its
-// own rules. The JWT header's `alg` selects the path, before any key material
-// is touched, so neither domain's tokens can be verified with the other's key:
+// One token domain reaches /mcp: an OAuth access token issued by the
+// authorization server. The JWT header's `alg` selects the path before any
+// key material is touched, and only the asymmetric algorithms Hydra can
+// advertise have one — RS256 and its siblings are verified against the
+// authorization server's JWKS (hydra.go) and then exchanged for an internal
+// credential (exchange.go), so the presented token itself never leaves
+// mcpapp.
 //
-//   - HS256: an internal JWT minted with the shared JWT_SECRET and an
-//     MCP-specific audience (JWT_MCP_AUDIENCE). Validation mirrors the
-//     discipline of api.check_request_jwt in the database and authapp's
-//     validateAuthappJWT: exact issuer, audience membership (string or
-//     array), exp/iat/nbf, a non-empty jti, a non-empty role, and a subject
-//     of the form "user:<id>". Tokens minted for the PostgREST audience alone
-//     are rejected. This token IS the internal credential, so it is forwarded
-//     to PostgREST unchanged (phase 0).
-//   - RS256 and the other asymmetric algorithms Hydra can advertise: an OAuth
-//     access token, verified against the authorization server's JWKS
-//     (hydra.go) and then exchanged for an internal credential (exchange.go).
-//     The presented token itself never leaves mcpapp.
-//
-// Anything else — including alg=none and an HS256 token presented where an
-// RS256 one is expected — is refused.
+// Everything else is refused identically: alg=none, an algorithm we do not
+// know, and any symmetric algorithm, including the HS256 the retired phase 0
+// bearer token used (issue #322). A caller cannot tell from the refusal which
+// of those it hit, and JWT_SECRET no longer opens this door at all.
 
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -42,12 +33,6 @@ import (
 // and this service when checking issued-at times.
 const clockSkewAllowance = 60 * time.Second
 
-type mcpJWTConfig struct {
-	Secret   []byte
-	Issuer   string
-	Audience string
-}
-
 // identity is the verified caller identity carried to tool handlers.
 type identity struct {
 	Subject   string // e.g. "user:42"
@@ -56,22 +41,18 @@ type identity struct {
 	Role      string // e.g. "student", "faculty"
 	JTI       string
 	ExpiresAt time.Time
-	// Scopes holds the optional scopes claim. Phase 0 tokens carry no scopes
-	// claim, so an empty slice means "scopeless legacy": read-allowed,
-	// write-denied (ADR 0001 default-deny for writes). See authorizeScope.
+	// Scopes holds the scopes the authorization server granted, mapped to the
+	// names this server gates on. An empty slice means it granted nothing we
+	// recognise, and denies every tool (issue #324). See authorizeScope.
 	Scopes []string
-	// External marks a caller who presented an OAuth access token rather than
-	// an internal one. Such a caller has no legacy grandfathering: an empty
-	// scope set means the authorization server granted nothing here, so
-	// everything is denied (see authorizeScope).
+	// External marks a caller who presented an OAuth access token. Every
+	// caller does since the phase 0 credential class was retired (issue
+	// #322), so this is descriptive — it names what a log line or audit row
+	// is about — and no authorization decision reads it.
 	External bool
-	// RawToken is the bearer token exactly as presented by the caller, and is
-	// set ONLY for internal tokens (which are themselves the credential
-	// PostgREST accepts). It is never logged; tools obtain it only through
-	// forwardableToken.
-	RawToken string
-	// exchange is set for external callers: the recipe for turning the
-	// verified identity into an internal credential.
+	// exchange is the recipe for turning the verified identity into the
+	// internal credential tools forward. An identity without one has no
+	// credential at all; there is no second way to obtain one.
 	exchange *pendingExchange
 }
 
@@ -85,150 +66,38 @@ type pendingExchange struct {
 
 // forwardableToken returns the credential tools must forward to PostgREST as
 // "Authorization: Bearer ..." so every read runs under the caller's own
-// row-level-security context.
+// row-level-security context. There is exactly one way to obtain it: the
+// verified identity is exchanged for a freshly minted internal JWT
+// (api.issue_user_jwt_for_mcp, cached per netid+client+scopes). The presented
+// access token is never forwarded.
 //
-//   - Internal (phase 0) callers: the presented token IS the internal JWT, so
-//     it is forwarded unchanged.
-//   - OAuth callers: the verified identity is exchanged for a freshly minted
-//     internal JWT (api.issue_user_jwt_for_mcp, cached per netid+scopes). The
-//     presented access token is never forwarded.
-//
-// This accessor is the single place either happens; tool handlers must not
-// reach for RawToken directly.
+// Until issue #324 a caller could instead have its own raw token forwarded
+// upstream, which is what a phase 0 bearer token was. That credential class is
+// gone (issue #322), and with it the second path: an identity with no
+// exchange now has no credential, so no request is made.
 func (id *identity) forwardableToken(ctx context.Context) (string, error) {
-	if id.exchange != nil {
-		minted, err := id.exchange.exchanger.tokenFor(ctx, id.exchange.request)
-		if err != nil {
-			return "", err
-		}
-		// The database is authoritative about who the caller is; the claims
-		// in the external token are only a hint. Adopting its answer keeps
-		// PostgREST filters built from id.UserID correct even if the OAuth
-		// token's copy is stale.
-		if minted.userID != "" {
-			id.UserID = minted.userID
-			id.Subject = "user:" + minted.userID
-		}
-		if minted.netID != "" {
-			id.NetID = minted.netID
-		}
-		if minted.role != "" {
-			id.Role = minted.role
-		}
-		return minted.token, nil
-	}
-	if id.External {
+	if id.exchange == nil {
 		return "", errors.New("OAuth token exchange is not configured on this deployment")
 	}
-	if id.RawToken == "" {
-		return "", errors.New("no forwardable credential is attached to this caller")
-	}
-	return id.RawToken, nil
-}
-
-// verifyMCPToken validates an HS256 MCP bearer token. Error messages never
-// include the token or claim values supplied by the caller.
-func verifyMCPToken(token string, config mcpJWTConfig, now time.Time) (*identity, error) {
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return nil, errors.New("token must have three JWT segments")
-	}
-
-	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	minted, err := id.exchange.exchanger.tokenFor(ctx, id.exchange.request)
 	if err != nil {
-		return nil, errors.New("token header is not base64url")
+		return "", err
 	}
-	var header struct {
-		Alg string `json:"alg"`
+	// The database is authoritative about who the caller is; the claims in
+	// the external token are only a hint. Adopting its answer keeps PostgREST
+	// filters built from id.UserID correct even if the OAuth token's copy is
+	// stale.
+	if minted.userID != "" {
+		id.UserID = minted.userID
+		id.Subject = "user:" + minted.userID
 	}
-	if err := json.Unmarshal(headerBytes, &header); err != nil {
-		return nil, errors.New("token header is not JSON")
+	if minted.netID != "" {
+		id.NetID = minted.netID
 	}
-	// Only HS256 is accepted. This rejects alg=none and asymmetric algorithm
-	// confusion (e.g. RS256), regardless of what the signature contains.
-	if header.Alg != "HS256" {
-		return nil, errors.New("token alg must be HS256")
+	if minted.role != "" {
+		id.Role = minted.role
 	}
-
-	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil {
-		return nil, errors.New("token signature is not base64url")
-	}
-	mac := hmac.New(sha256.New, config.Secret)
-	mac.Write([]byte(parts[0] + "." + parts[1]))
-	if !hmac.Equal(signature, mac.Sum(nil)) {
-		return nil, errors.New("token signature is invalid")
-	}
-
-	claims, err := decodeJWTClaims(parts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	if err := requireStringClaim(claims, "iss", config.Issuer); err != nil {
-		return nil, err
-	}
-	if err := requireAudienceClaim(claims, config.Audience); err != nil {
-		return nil, err
-	}
-
-	exp, err := numericDateClaim(claims, "exp")
-	if err != nil {
-		return nil, err
-	}
-	if exp <= now.Unix() {
-		return nil, errors.New("token is expired")
-	}
-	iat, err := numericDateClaim(claims, "iat")
-	if err != nil {
-		return nil, err
-	}
-	if iat > now.Add(clockSkewAllowance).Unix() {
-		return nil, errors.New("token iat is in the future")
-	}
-	nbf, err := numericDateClaim(claims, "nbf")
-	if err != nil {
-		return nil, err
-	}
-	if nbf > now.Unix() {
-		return nil, errors.New("token nbf is in the future")
-	}
-
-	jti, err := nonEmptyStringClaim(claims, "jti")
-	if err != nil {
-		return nil, err
-	}
-	role, err := nonEmptyStringClaim(claims, "role")
-	if err != nil {
-		return nil, err
-	}
-	subject, err := nonEmptyStringClaim(claims, "sub")
-	if err != nil {
-		return nil, err
-	}
-	userID, ok := strings.CutPrefix(subject, "user:")
-	if !ok || !isAllDigits(userID) {
-		return nil, errors.New("token sub claim must have the form user:<id>")
-	}
-
-	// netid is optional in phase 0: user JWTs minted by auth.sign_jwt do not
-	// carry it, but MCP-audience tokens may.
-	netID, _ := claims["netid"].(string)
-
-	return &identity{
-		Subject:   subject,
-		UserID:    userID,
-		NetID:     netID,
-		Role:      role,
-		JTI:       jti,
-		ExpiresAt: time.Unix(exp, 0),
-		// The scopes claim is optional and its absence is meaningful (see
-		// identity.Scopes); extracting it changes no accept/reject decision.
-		Scopes: scopesFromClaims(claims),
-		// An internal token is itself the credential PostgREST accepts, so it
-		// is the caller's forwardable credential.
-		RawToken: token,
-	}, nil
+	return minted.token, nil
 }
 
 // scopesFromClaims extracts the optional scopes claim. Both a "scopes" and an
@@ -256,18 +125,17 @@ func scopesFromClaims(claims map[string]any) []string {
 	return nil
 }
 
-// bearerVerifier routes a bearer token to the verification path its `alg`
-// selects. hydra and exchanger are nil when the deployment has no OAuth
-// authorization server configured, in which case only internal tokens are
-// accepted.
+// bearerVerifier routes a bearer token to the OAuth verification path its
+// `alg` selects; no other path exists. hydra and exchanger are nil when the
+// deployment has no OAuth authorization server configured, in which case no
+// token is accepted at all.
 type bearerVerifier struct {
-	internal  mcpJWTConfig
 	hydra     *hydraVerifier
 	exchanger *tokenExchanger
 }
 
 // tokenAlg reads the `alg` header without validating anything else. Routing on
-// it is safe because each path then pins the algorithms it accepts.
+// it is safe because the path it selects then pins the algorithms it accepts.
 func tokenAlg(token string) (string, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -295,36 +163,31 @@ func (v *bearerVerifier) verify(ctx context.Context, token string, now time.Time
 	if err != nil {
 		return nil, err
 	}
-	switch {
-	case alg == "HS256":
-		// The internal verifier re-reads and re-checks the header itself, so
-		// this dispatch cannot widen what it accepts.
-		return verifyMCPToken(token, v.internal, now)
-	case hydraAllowedAlgs[alg]:
-		if v.hydra == nil {
-			return nil, errors.New("this server does not accept OAuth access tokens")
-		}
-		id, external, err := v.hydra.verify(ctx, token, now)
-		if err != nil {
-			return nil, err
-		}
-		if v.exchanger != nil {
-			id.exchange = &pendingExchange{
-				exchanger: v.exchanger,
-				request: exchangeRequest{
-					netID:    id.NetID,
-					scopes:   id.Scopes,
-					external: external,
-					outerExp: id.ExpiresAt,
-				},
-			}
-		}
-		return id, nil
-	default:
-		// Includes alg=none and every symmetric algorithm other than the one
-		// the internal path pins.
+	if !hydraAllowedAlgs[alg] {
+		// Includes alg=none and every symmetric algorithm, so an HS256 token
+		// — however it was signed — is refused here with the same words an
+		// algorithm nobody has heard of gets.
 		return nil, errors.New("token alg is not accepted")
 	}
+	if v.hydra == nil {
+		return nil, errors.New("this server does not accept OAuth access tokens")
+	}
+	id, external, err := v.hydra.verify(ctx, token, now)
+	if err != nil {
+		return nil, err
+	}
+	if v.exchanger != nil {
+		id.exchange = &pendingExchange{
+			exchanger: v.exchanger,
+			request: exchangeRequest{
+				netID:    id.NetID,
+				scopes:   id.Scopes,
+				external: external,
+				outerExp: id.ExpiresAt,
+			},
+		}
+	}
+	return id, nil
 }
 
 // newTokenVerifier adapts bearerVerifier to the go-sdk auth.TokenVerifier
@@ -336,27 +199,29 @@ func newTokenVerifier(verifier *bearerVerifier) auth.TokenVerifier {
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", auth.ErrInvalidToken, err)
 		}
-		return &auth.TokenInfo{
-			Expiration: id.ExpiresAt,
-			UserID:     id.Subject,
-			Scopes:     id.Scopes,
-			Extra: map[string]any{
-				"user_id":  id.UserID,
-				"netid":    id.NetID,
-				"role":     id.Role,
-				"jti":      id.JTI,
-				"scopes":   id.Scopes,
-				"external": id.External,
-				// The raw bearer token, carried so tools can forward the
-				// caller's own credential to PostgREST (see
-				// identity.forwardableToken). Empty for OAuth callers, whose
-				// token is exchanged instead of forwarded. Never logged.
-				"raw_token": id.RawToken,
-				// The deferred token exchange for OAuth callers (nil
-				// otherwise). In-process only: TokenInfo is never serialized.
-				"exchange": id.exchange,
-			},
-		}, nil
+		return tokenInfoFromIdentity(id), nil
+	}
+}
+
+// tokenInfoFromIdentity packs a verified identity into the auth.TokenInfo the
+// transport carries to tool handlers; identityFromTokenInfo unpacks it again.
+func tokenInfoFromIdentity(id *identity) *auth.TokenInfo {
+	return &auth.TokenInfo{
+		Expiration: id.ExpiresAt,
+		UserID:     id.Subject,
+		Scopes:     id.Scopes,
+		Extra: map[string]any{
+			"user_id":  id.UserID,
+			"netid":    id.NetID,
+			"role":     id.Role,
+			"jti":      id.JTI,
+			"scopes":   id.Scopes,
+			"external": id.External,
+			// The deferred token exchange: the only route to a credential
+			// tools may forward. In-process only, since TokenInfo is never
+			// serialized, and never logged.
+			"exchange": id.exchange,
+		},
 	}
 }
 
@@ -382,9 +247,6 @@ func identityFromTokenInfo(info *auth.TokenInfo) *identity {
 	}
 	if value, ok := info.Extra["external"].(bool); ok {
 		id.External = value
-	}
-	if value, ok := info.Extra["raw_token"].(string); ok {
-		id.RawToken = value
 	}
 	if value, ok := info.Extra["exchange"].(*pendingExchange); ok {
 		id.exchange = value
@@ -424,29 +286,6 @@ func nonEmptyStringClaim(claims map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("token missing %s claim", key)
 	}
 	return got, nil
-}
-
-func requireAudienceClaim(claims map[string]any, want string) error {
-	audience, ok := claims["aud"]
-	if !ok {
-		return errors.New("token missing aud claim")
-	}
-
-	if got, ok := audience.(string); ok {
-		if got == want {
-			return nil
-		}
-		return fmt.Errorf("token aud claim must include %q", want)
-	}
-
-	if got, ok := audience.([]any); ok {
-		for _, item := range got {
-			if item == want {
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("token aud claim must include %q", want)
 }
 
 func numericDateClaim(claims map[string]any, key string) (int64, error) {

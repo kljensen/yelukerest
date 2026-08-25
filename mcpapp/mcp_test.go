@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -45,8 +46,8 @@ func (t authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return http.DefaultTransport.RoundTrip(req)
 }
 
-// currentClaims returns claims that are valid at real wall-clock time, for
-// end-to-end tests that go through newTokenVerifier (which uses time.Now).
+// currentClaims returns internal-credential claims that are valid at real
+// wall-clock time, for fixtures that pack a caller identity directly.
 func currentClaims() map[string]any {
 	claims := validClaims()
 	claims["iat"] = time.Now().Add(-time.Minute).Unix()
@@ -55,38 +56,64 @@ func currentClaims() map[string]any {
 	return claims
 }
 
-func testAppConfig(rateLimit int) appConfig {
+// testAppConfig is the deployment these end-to-end tests serve: OAuth only,
+// with a fake authorization server publishing the key accessToken signs with.
+func testAppConfig(t *testing.T, rateLimit int) appConfig {
+	t.Helper()
+	keyA, _ := hydraTestKeys(t)
+	jwks := newFakeJWKS(t, map[string]*rsa.PrivateKey{"key-a": keyA})
 	return appConfig{
-		JWT:                    testJWTConfig(),
-		ResourceURL:            "https://example.com/mcp",
+		ResourceURL:            testMCPResource,
 		MetadataURL:            "https://example.com/.well-known/oauth-protected-resource",
-		AuthorizationServerURL: "",
-		StatelessEnabled:       false,
-		RateLimit:              rateLimit,
-		RateWindow:             time.Minute,
+		AuthorizationServerURL: testHydraIssuer,
+		Hydra: &hydraConfig{
+			Issuer:   testHydraIssuer,
+			JWKSURL:  jwks.server.URL,
+			Audience: testMCPResource,
+		},
+		StatelessEnabled: false,
+		RateLimit:        rateLimit,
+		RateWindow:       time.Minute,
 	}
+}
+
+// accessToken mints an OAuth access token the stack accepts: signed by the
+// key testAppConfig's fake authorization server publishes, and valid at
+// wall-clock time, which is what the verifier checks against.
+func accessToken(t *testing.T, mutate func(map[string]any)) string {
+	t.Helper()
+	keyA, _ := hydraTestKeys(t)
+	return currentHydraToken(t, keyA, mutate)
 }
 
 func newTestApp(t *testing.T, config appConfig) (*httptest.Server, *safeBuffer) {
 	t.Helper()
-	server, _, logs := newTestAppWithPostgREST(t, config)
+	server, _, _, logs := newTestAppWithPostgREST(t, config)
 	return server, logs
 }
 
 // newTestAppWithPostgREST builds the full HTTP stack backed by a fake
-// PostgREST so tool round trips can assert on forwarded requests.
-func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, *fakePostgREST, *safeBuffer) {
+// PostgREST so tool round trips can assert on forwarded requests. Callers
+// arrive over OAuth, so the stack also needs to exchange a verified token for
+// an internal credential; that mint runs against a second fake, which keeps
+// the mint call out of the request list the tool assertions read. The returned
+// token is the credential tools must forward.
+func newTestAppWithPostgREST(t *testing.T, config appConfig) (*httptest.Server, *fakePostgREST, string, *safeBuffer) {
 	t.Helper()
 
 	logs := &safeBuffer{}
 	fake := newFakePostgREST(t)
+	mint := newFakePostgREST(t)
+	minted := internalTokenFor(t, "mint-e2e", time.Now().Add(10*time.Minute))
+	mint.respondMethod(http.MethodPost, exchangeRPCPath, http.StatusOK, mintResponse(minted))
 	deps := &toolDeps{
 		logger:    slog.New(slog.NewJSONHandler(logs, nil)),
 		postgrest: fake.client(t),
+		exchanger: newTokenExchanger(mint.client(t), "service-token"),
 	}
 	server := httptest.NewServer(newMux(config, deps))
 	t.Cleanup(server.Close)
-	return server, fake, logs
+	return server, fake, minted, logs
 }
 
 // expectedToolNames is the deterministic tools/list order: the server sorts
@@ -117,11 +144,9 @@ var writeCapableTools = map[string]bool{
 }
 
 func TestWhoamiOverStreamableHTTP(t *testing.T) {
-	server, fake, logs := newTestAppWithPostgREST(t, testAppConfig(100))
+	server, fake, minted, logs := newTestAppWithPostgREST(t, testAppConfig(t, 100))
 	fake.respond("/users", fixtureUserRows)
-	claims := currentClaims()
-	claims["netid"] = "abc123"
-	token := signTestToken(t, hs256Header(), claims, testSecret)
+	token := accessToken(t, nil)
 
 	ctx := context.Background()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
@@ -204,13 +229,17 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 		t.Fatalf("db_role = %q", output.DBRole)
 	}
 
-	// The user lookup forwarded the caller's own bearer token to PostgREST.
+	// The user lookup forwarded the credential minted for this caller, never
+	// the access token they presented.
 	recorded := fake.recorded()
 	if len(recorded) != 1 || recorded[0].path != "/users" {
 		t.Fatalf("PostgREST requests = %+v", recorded)
 	}
-	if recorded[0].auth != "Bearer "+token {
-		t.Fatal("whoami did not forward the caller's bearer token to PostgREST")
+	if recorded[0].auth != "Bearer "+minted {
+		t.Fatal("whoami did not forward the exchanged credential to PostgREST")
+	}
+	if strings.Contains(recorded[0].auth, token) {
+		t.Fatal("whoami forwarded the OAuth access token to PostgREST")
 	}
 
 	// Audit log assertions: subject and tool name are present; token
@@ -234,9 +263,9 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 }
 
 func TestListAssignmentsOverStreamableHTTP(t *testing.T) {
-	server, fake, _ := newTestAppWithPostgREST(t, testAppConfig(100))
+	server, fake, minted, _ := newTestAppWithPostgREST(t, testAppConfig(t, 100))
 	fake.respond("/assignments", fixtureAssignments)
-	token := signTestToken(t, hs256Header(), currentClaims(), testSecret)
+	token := accessToken(t, nil)
 
 	ctx := context.Background()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
@@ -276,8 +305,8 @@ func TestListAssignmentsOverStreamableHTTP(t *testing.T) {
 	if len(recorded) != 1 || recorded[0].path != "/assignments" {
 		t.Fatalf("PostgREST requests = %+v", recorded)
 	}
-	if recorded[0].auth != "Bearer "+token {
-		t.Fatal("list_assignments did not forward the caller's bearer token to PostgREST")
+	if recorded[0].auth != "Bearer "+minted {
+		t.Fatal("list_assignments did not forward the exchanged credential to PostgREST")
 	}
 	if recorded[0].query.Get("order") != "closed_at.asc,slug.asc" {
 		t.Fatalf("order = %q", recorded[0].query.Get("order"))
@@ -285,12 +314,7 @@ func TestListAssignmentsOverStreamableHTTP(t *testing.T) {
 }
 
 func TestMCPEndpointUnauthorized(t *testing.T) {
-	server, _ := newTestApp(t, testAppConfig(100))
-
-	expiredClaims := currentClaims()
-	expiredClaims["exp"] = time.Now().Add(-time.Hour).Unix()
-	wrongAudienceClaims := currentClaims()
-	wrongAudienceClaims["aud"] = "yelukerest-postgrest"
+	server, _ := newTestApp(t, testAppConfig(t, 100))
 
 	tests := []struct {
 		name          string
@@ -300,12 +324,24 @@ func TestMCPEndpointUnauthorized(t *testing.T) {
 		{name: "not a bearer token", authorization: "Basic dXNlcjpwYXNz"},
 		{name: "garbage token", authorization: "Bearer not.a.jwt"},
 		{
-			name:          "expired token",
-			authorization: "Bearer " + signTestToken(t, hs256Header(), expiredClaims, testSecret),
+			name: "expired token",
+			authorization: "Bearer " + accessToken(t, func(claims map[string]any) {
+				claims["exp"] = time.Now().Add(-time.Hour).Unix()
+			}),
 		},
 		{
-			name:          "postgrest audience token",
-			authorization: "Bearer " + signTestToken(t, hs256Header(), wrongAudienceClaims, testSecret),
+			name: "token for another resource",
+			authorization: "Bearer " + accessToken(t, func(claims map[string]any) {
+				claims["aud"] = []any{"https://example.com/somewhere-else"}
+			}),
+		},
+		{
+			// The retired phase 0 credential (issue #322): an internally
+			// signed HS256 token with claims that once opened /mcp. It gets a
+			// 401 like anything else unusable, and the body says nothing
+			// about the credential class having existed.
+			name:          "internally signed HS256 token",
+			authorization: "Bearer " + signTestToken(t, hs256Header(), currentClaims(), testSecret),
 		},
 	}
 
@@ -343,12 +379,15 @@ func TestMCPEndpointUnauthorized(t *testing.T) {
 }
 
 func TestMCPEndpointRateLimitsPerSubject(t *testing.T) {
-	server, _ := newTestApp(t, testAppConfig(2))
+	server, _ := newTestApp(t, testAppConfig(t, 2))
 
-	tokenFor := func(sub string) string {
-		claims := currentClaims()
-		claims["sub"] = sub
-		return signTestToken(t, hs256Header(), claims, testSecret)
+	// The limiter keys on the subject the token resolves to, which for these
+	// tokens is "user:<user_id>".
+	tokenFor := func(userID string) string {
+		return accessToken(t, func(claims map[string]any) {
+			claims["user_id"] = json.Number(userID)
+			claims["ext"] = map[string]any{"netid": "abc123", "user_id": json.Number(userID), "role": "student"}
+		})
 	}
 	post := func(token string) int {
 		t.Helper()
@@ -366,8 +405,8 @@ func TestMCPEndpointRateLimitsPerSubject(t *testing.T) {
 		return resp.StatusCode
 	}
 
-	tokenA := tokenFor("user:42")
-	tokenB := tokenFor("user:43")
+	tokenA := tokenFor("42")
+	tokenB := tokenFor("43")
 
 	// Two requests for subject A pass the limiter; the third is rejected.
 	for i := range 2 {
@@ -423,7 +462,7 @@ func TestWhoamiWithoutVerifiedIdentityIsToolError(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	server, _ := newTestApp(t, testAppConfig(100))
+	server, _ := newTestApp(t, testAppConfig(t, 100))
 
 	resp, err := http.Get(server.URL + "/healthz")
 	if err != nil {

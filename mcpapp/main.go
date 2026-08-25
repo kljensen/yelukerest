@@ -1,19 +1,20 @@
 // Command mcpapp is the yelukerest MCP server (issue #265). It serves the MCP
-// streamable HTTP endpoint at /mcp behind Caddy, validating both internal
-// MCP-audience bearer JWTs (phase 0) and Hydra-issued OAuth access tokens
-// (phase 1, issue #274), which it exchanges for internal credentials.
+// streamable HTTP endpoint at /mcp behind Caddy, validating Hydra-issued OAuth
+// access tokens (issue #274) and exchanging them for internal credentials.
+// OAuth is the only way in: the internally-signed phase 0 bearer token was
+// retired in issue #322.
 //
 // Environment:
 //
-//	PORT, JWT_SECRET, POSTGREST_HOST, POSTGREST_PORT   required
+//	PORT, POSTGREST_HOST, POSTGREST_PORT               required
 //	MCP_RESOURCE_URL or FQDN                           required; the canonical
 //	                                                   resource URL, which is
 //	                                                   also the audience every
 //	                                                   OAuth token must carry
-//	JWT_ISSUER, JWT_MCP_AUDIENCE                       internal token rules
 //	HYDRA_PUBLIC_URL                                   authorization server;
-//	                                                   unset disables the OAuth
-//	                                                   path entirely
+//	                                                   unset leaves /mcp with
+//	                                                   no accepted credential
+//	                                                   at all
 //	MCPAPP_JWT                                         role=app app_name=mcpapp
 //	                                                   service credential, used
 //	                                                   ONLY to call
@@ -60,12 +61,12 @@ const (
 // appConfig is everything needed to build the HTTP handler; separated from
 // main so tests can build the same stack without touching the environment.
 type appConfig struct {
-	JWT                    mcpJWTConfig
 	ResourceURL            string // canonical MCP resource URL, e.g. https://example.com/mcp
 	MetadataURL            string // advertised in WWW-Authenticate on 401s
-	AuthorizationServerURL string // Hydra public URL; may be empty in phase 0
+	AuthorizationServerURL string // Hydra public URL; empty leaves /mcp closed
 	// Hydra configures the OAuth access-token path (issue #274). Nil means
-	// the deployment accepts phase 0 internal bearer tokens only.
+	// the deployment accepts nothing, since OAuth is the only credential /mcp
+	// takes.
 	Hydra            *hydraConfig
 	StatelessEnabled bool
 	RateLimit        int
@@ -76,11 +77,6 @@ func main() {
 	var port = os.Getenv("PORT")
 	if port == "" {
 		log.Panicln("PORT environment variable not set")
-	}
-
-	var jwtSecret = os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Panicln("JWT_SECRET environment variable not set")
 	}
 
 	var postgrestHost = os.Getenv("POSTGREST_HOST")
@@ -109,11 +105,6 @@ func main() {
 	authorizationServerURL := strings.TrimSpace(os.Getenv("HYDRA_PUBLIC_URL"))
 
 	config := appConfig{
-		JWT: mcpJWTConfig{
-			Secret:   []byte(jwtSecret),
-			Issuer:   envOrDefault("JWT_ISSUER", "yelukerest"),
-			Audience: envOrDefault("JWT_MCP_AUDIENCE", "yelukerest-mcp"),
-		},
 		ResourceURL:            resourceURL,
 		MetadataURL:            metadataURL,
 		AuthorizationServerURL: authorizationServerURL,
@@ -149,11 +140,11 @@ func main() {
 	// database requires to mint internal user JWTs (api.issue_user_jwt_for_mcp
 	// admits nothing else). Operators mint it with
 	// ./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'. Missing it is not
-	// fatal — phase 0 bearer tokens keep working — but every OAuth caller will
-	// fail at its first tool call, so say so loudly at startup.
+	// fatal — the server still starts and tokens still verify — but every
+	// caller will fail at its first tool call, so say so loudly at startup.
 	mcpappJWT := strings.TrimSpace(os.Getenv("MCPAPP_JWT"))
 	if config.Hydra == nil {
-		log.Println("HYDRA_PUBLIC_URL is not set: OAuth access tokens are not accepted; only internal MCP bearer tokens will work")
+		log.Println("HYDRA_PUBLIC_URL is not set: OAuth access tokens are the only credential /mcp accepts, so no client can reach it")
 	} else {
 		log.Printf("OAuth access tokens accepted: issuer=%s jwks=%s audience=%s",
 			config.Hydra.Issuer, config.Hydra.JWKSURL, config.Hydra.Audience)
@@ -221,7 +212,7 @@ func newMux(config appConfig, deps *toolDeps) *http.ServeMux {
 		},
 	)
 
-	verifier := &bearerVerifier{internal: config.JWT}
+	verifier := &bearerVerifier{}
 	if config.Hydra != nil {
 		verifier.hydra = newHydraVerifier(*config.Hydra, nil, time.Now)
 		verifier.exchanger = deps.exchanger
