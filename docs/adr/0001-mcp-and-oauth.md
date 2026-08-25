@@ -6,6 +6,10 @@ Accepted, 2026-08-05. The architecture and its alternatives were researched and
 adversarially reviewed (multi-model) on 2026-08-05. Implementation is tracked in
 the "Roadmap 6: MCP and OAuth" milestone (issues #261–#278).
 
+Amended 2026-08-22: phase 0 retired. The decision itself stands; only the first
+step of the phased rollout is gone. See the retirement note under *Phased
+rollout*.
+
 ## Context
 
 Students should be able to connect AI agents — Claude Desktop, claude.ai,
@@ -88,6 +92,37 @@ client-compatibility bugs) can never produce a token PostgREST accepts.
   accounts (issue #276).
 - **Phase 2 — 2026-07-28 stateless era by default**, once go-sdk support is a
   stable release and a major client is observed speaking it.
+
+**Phase 0 retired, 2026-08-22** (issue #320). `/auth/mcp-token` is gone and
+`/mcp` accepts OAuth alone. The plan above is left as written because it is what
+was decided and it is why the code was built in that order; this note records
+that its first step has been carried out and then withdrawn.
+
+Two facts made the withdrawal safe rather than risky. It had **never been used**:
+production `data.mcp_jwt_mint_event` held exactly one row, and it was an OAuth
+mint (`external_client_id` populated), so no phase 0 token had ever been issued
+and no student held one. And phase 1 was **proven end to end** — a real client
+completed discovery, DCR, CAS login, consent, token exchange, and tool calls
+against production — so the clients phase 0 existed to serve before OAuth landed
+had a working path.
+
+That left phase 0 strictly worse than both of its neighbours: 10 minutes with no
+refresh against OAuth's sliding 30 days, and no revocation list or visible expiry
+against a personal access token's. It was a second, weaker credential class
+reaching the same authorization model, and it cost a shared-secret verifier on
+the public `/mcp` surface for as long as it existed. Clients that cannot run the
+OAuth flow use [`mcp-remote`](https://www.npmjs.com/package/mcp-remote); code a
+student writes uses a personal access token against `/rest`. The accepted risk is
+a client that can do neither; none is known.
+
+Default-deny changed meaning with it. Phase 0 tokens carried no scopes claim, so
+the rule as written then read *a token whose scope claim is missing or empty is
+read-only at most* — that grandfathering applied to phase 0 bearer tokens and to
+nothing else. With OAuth the only credential `/mcp` accepts, a token that grants
+no recognised scope now gets no access at all.
+
+Mint-audit rows written before that date may still carry
+`client_id = authapp:/auth/mcp-token`; `docs/hydra.md` explains the value.
 
 ## Rejected Alternatives
 
@@ -184,9 +219,9 @@ The dissent is recorded on issue #268; revisit before Phase 1 student rollout.
   work scale accordingly.
 - The DB gains a second service role and an audited minting function; the
   existing authapp path is untouched.
-- Scope enforcement is default-deny: a token whose scope claim is missing or
-  empty is read-only at most (this also defuses the Claude Code scope-omission
-  bug below).
+- Scope enforcement is default-deny: a token whose granted scopes map to nothing
+  this server exposes gets no access at all, reads included (this also defuses
+  the Claude Code scope-omission bug below).
 - Client bugs become our operational surface: the caveats register below must
   be re-checked each semester, and a DCR response-cleaning proxy plus a
   client-pruning job exist solely to work around upstream defects (issue

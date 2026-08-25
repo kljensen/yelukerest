@@ -79,7 +79,6 @@ authapp reads these variables for the OAuth and DCR handlers:
 | `HYDRA_ADMIN_URL` | Hydra's admin API. Default `http://hydra:4445`; override only if the admin listener moves. Never route it through Caddy. |
 | `MCP_RESOURCE_URL` | Canonical MCP resource, granted as the access-token audience and injected into client allowlists. Falls back to `https://$FQDN/mcp`. Must match mcpapp's expected audience exactly. |
 | `HYDRA_PUBLIC_INTERNAL_URL` | Where the DCR proxy forwards `/oauth2/register`. Default `http://hydra:4444`. |
-| `MCPAPP_JWT` | Service credential for `/auth/mcp-token`. See below. |
 
 ### mcpapp Configuration
 
@@ -89,15 +88,14 @@ mcpapp is the OAuth *resource server*; both of the following are already wired i
 
 | Env var | Meaning |
 | --- | --- |
-| `MCPAPP_JWT` | `role=app`, `app_name=mcpapp` service credential, used only to call `api.issue_user_jwt_for_mcp` when exchanging a verified OAuth token for an internal course credential. Mint with `./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`. **Unset is not fatal**: mcpapp starts, OAuth tokens still verify, and then every OAuth caller's first tool call fails. Startup logs `WARNING: MCPAPP_JWT is not set`. The same value belongs in authapp's environment, where its absence makes `/auth/mcp-token` return `503`. |
+| `MCPAPP_JWT` | `role=app`, `app_name=mcpapp` service credential, used only to call `api.issue_user_jwt_for_mcp` when exchanging a verified OAuth token for an internal course credential. Mint with `./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`. **Unset is not fatal**: mcpapp starts, OAuth tokens still verify, and then every OAuth caller's first tool call fails. Startup logs `WARNING: MCPAPP_JWT is not set`. mcpapp is the only service that holds this credential; authapp has its own, and neither is a substitute for the other. |
 | `HYDRA_PUBLIC_INTERNAL_URL` | Base URL for the JWKS fetch, default `http://hydra:4444`. Keeps key retrieval on the internal compose network so it never traverses Caddy's TLS — in dev that is a certificate the mcpapp container does not trust, so pointing this at the public URL breaks every token validation with a TLS error. |
 
 The rest: `MCP_RESOURCE_URL` (or `FQDN`) fixes the audience mcpapp demands;
 `HYDRA_PUBLIC_URL` is the authorization server advertised in the RFC 9728
-protected-resource metadata, and leaving it empty disables the OAuth path
-entirely (phase 0 bearer tokens only); `HYDRA_ISSUER` and `HYDRA_JWKS_URL`
-override the two values derived from it; `JWT_MCP_AUDIENCE` (default
-`yelukerest-mcp`) is the audience of the phase 0 bearer tokens.
+protected-resource metadata, and since OAuth is now the only way into `/mcp`,
+leaving it empty leaves the endpoint with no usable credential path at all;
+`HYDRA_ISSUER` and `HYDRA_JWKS_URL` override the two values derived from it.
 
 ## Delegated Login And Consent (Issue #273)
 
@@ -657,10 +655,10 @@ clients via the admin API and warns above `HYDRA_CLIENT_COUNT_WARN`
 
 ## Audit Trail: MCP Token Mints
 
-Every internal MCP credential — minted by `/auth/mcp-token` for a bearer-token
-client, or by mcpapp's token exchange for an OAuth client — appends a row to
-`data.mcp_jwt_mint_event` **in the same transaction that signs the token**. There
-is no path that mints without recording. Two faculty-only views sit over it
+Every internal MCP credential — minted by mcpapp's token exchange when it
+verifies an OAuth access token — appends a row to `data.mcp_jwt_mint_event` **in
+the same transaction that signs the token**. There is no path that mints without
+recording. Two faculty-only views sit over it
 (`db/src/api/yeluke/mcp_jwt.sql`; row access is enforced by RLS on the underlying
 table, and only `faculty` holds SELECT):
 
@@ -668,8 +666,10 @@ table, and only `faculty` holds SELECT):
   granted `scopes`, the token's `jti`, the `caller_app_name` of the service
   credential that asked (`mcpapp`), the `external_issuer`/`external_sub`/
   `external_jti`/`external_client_id` of the OAuth token exchanged when there was
-  one, and `created_at`. Phase 0 mints record
-  `client_id = authapp:/auth/mcp-token` and no external subject.
+  one, and `created_at`. Rows predating 2026-08-22 may instead record
+  `client_id = authapp:/auth/mcp-token` with no external subject: those are phase
+  0 bearer-token mints, from the session-gated endpoint that has since been
+  removed. No new row can carry that value.
 - `api.mcp_jwt_mint_anomalies` — the alarm from the ADR threat model: one caller
   credential minting for **more than 10 distinct subjects in a sliding 10-minute
   window**, which is the signature of a stolen minting credential rather than
@@ -703,6 +703,7 @@ select caller_app_name, window_start, distinct_subjects, mint_count
 
 Check the anomalies view when rotating `MCPAPP_JWT`, after any suspected
 credential exposure, and as part of the start-of-semester caveats review. A
-non-empty result means revoking `MCPAPP_JWT` (mint a new one, update both authapp
-and mcpapp, restart) — the tokens it already produced expire on their own within
+non-empty result means revoking `MCPAPP_JWT` (mint a new one, update mcpapp's
+environment, restart mcpapp — authapp does not hold this credential and must not
+be given it) — the tokens it already produced expire on their own within
 ten minutes.

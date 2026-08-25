@@ -24,21 +24,34 @@ cannot see a classmate's submission on the site, the assistant cannot see it
 either.
 
 It can list meetings, assignments, and quizzes; read assignment instructions;
-read your own submissions, engagements, grades, and quiz grades; and — only with
-your explicit approval, twice — change one of your assignment submissions. It
-cannot see anyone else's grades, change grades, or hold access indefinitely.
+read your own submissions, engagements, grades, and quiz grades; and — only if
+you tick the **submissions:write** box on the approval page — change one of your
+assignment submissions. That box is unticked by default, and leaving it unticked
+is what makes the connection read-only.
+
+Ticking it is the whole decision. Nothing asks you again at the moment a write
+happens: some assistants show their own confirmation, but that is a feature of
+the app, not a protection the course site enforces. If you would rather approve
+each change yourself, connect without the write box and paste work in by hand.
+
+It cannot see anyone else's grades, change grades, or hold access indefinitely.
 Tokens are short-lived and every issuance is logged.
 
-## Two ways to connect
+## There are two steps
 
-1. **Sign-in (OAuth).** You point the app at `https://<course-site>/mcp`, it
-   sends you to a browser, you log in with CAS, and you approve a permissions
-   page. This is the nicer path and the one to prefer. Access lasts an hour and
-   renews quietly for up to 30 days.
-2. **Bearer token.** You sign in to the course site, fetch a token, and paste it
-   into your client's configuration as an `Authorization` header. Tokens last
-   about **ten minutes**, so this path needs a small refresh script. Use it when
-   your client cannot do the sign-in flow.
+1. **Sign in.** Open the course site in a browser and log in with CAS, the way
+   you always do. That is the only place you type a password.
+2. **Connect your assistant.** Point it at `https://<course-site>/mcp`, and when
+   a permissions page appears, read it and approve it.
+
+There is no token to copy, and nothing to paste into a configuration file. If
+some other set of instructions tells you to fetch a token for `/mcp`, it is out
+of date.
+
+After you approve, your assistant holds access for an hour at a time and quietly
+renews it. The renewal is good for 30 days, and **each use pushes that 30 days
+out again** — so if you use the assistant at least once a month, you will not
+have to sign in again for the rest of the term.
 
 ## Connecting Claude Code
 
@@ -52,47 +65,11 @@ Then, inside Claude Code, run `/mcp`, choose `yelukerest`, and authenticate. A
 browser window opens, you log in with CAS, and you approve the permissions page
 described below. That is it — Claude Code renews access on its own.
 
-If sign-in does not work for you, use a bearer token instead. Claude Code expands
-`${VAR}` references in `.mcp.json`, so keep the token in an environment variable
-rather than in the file:
-
-```json
-{
-  "mcpServers": {
-    "yelukerest": {
-      "type": "http",
-      "url": "https://<course-site>/mcp",
-      "headers": {
-        "Authorization": "Bearer ${YELUKEREST_MCP_TOKEN}"
-      }
-    }
-  }
-}
-```
-
-Tokens expire after ten minutes, so re-mint before you start a session. Save this
-as `~/bin/yelukerest-token` and run `eval "$(yelukerest-token)"`:
-
-```sh
-#!/bin/sh
-# Prints an export line for a fresh token. cookies.txt holds your
-# signed-in course-site session cookie.
-set -eu
-TOKEN=$(curl -sS -b ~/.config/yelukerest/cookies.txt \
-  "https://<course-site>/auth/mcp-token?scopes=course:read+grades:read+submissions:read" \
-  | jq -r .token)
-[ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "no token; sign in again" >&2; exit 1; }
-echo "export YELUKEREST_MCP_TOKEN=$TOKEN"
-```
-
-Add `+submissions:write` to the `scopes` list only when you actually intend to
-edit a submission in that session.
-
 ## Connecting Claude Desktop, claude.ai, or ChatGPT
 
-These apps do the sign-in flow for you. Add a custom connector (the wording
-varies: "Add custom connector", "Add integration", "Developer mode connector")
-and give it the URL `https://<course-site>/mcp`. Do not paste a token.
+Add a custom connector (the wording varies: "Add custom connector", "Add
+integration", "Developer mode connector") and give it the URL
+`https://<course-site>/mcp`.
 
 What you will see:
 
@@ -109,59 +86,61 @@ What you will see:
 5. Press **Allow access**. If you did not start this connection yourself, press
    **Deny**.
 
-Access tokens last an hour; the app refreshes them behind the scenes for up to 30
-days, after which you sign in again.
+## If your app cannot do the sign-in flow
 
-**If your app cannot do OAuth**, either use the bearer-token path above or put
-[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) in front of the server —
-it is a small bridge that handles the sign-in flow for clients that only speak
-stdio.
-
-## Connecting from a script or notebook
-
-Sign in to the course site in your browser, then visit
-`https://<course-site>/auth/mcp-token`. You get back JSON:
+Some MCP clients only speak stdio — they launch a local program and talk to it
+over a pipe — and cannot open a browser or hold a session. Put
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote) in front of the course
+site. It is a small bridge: the client launches `mcp-remote`, `mcp-remote` does
+the browser sign-in and talks to `/mcp` on the client's behalf.
 
 ```json
 {
-  "token": "eyJhbGci...",
-  "token_type": "Bearer",
-  "expires_in": 600,
-  "scopes": ["course:read", "grades:read", "submissions:read"]
+  "mcpServers": {
+    "yelukerest": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://<course-site>/mcp"]
+    }
+  }
 }
 ```
 
-Ask for particular permissions with the optional `scopes` parameter, separated by
-spaces, plus signs, or commas:
+The first run opens a browser for CAS login and the consent page, exactly as
+above; after that it renews on its own.
+
+`/mcp` accepts the sign-in flow and nothing else. A client that can neither do it
+nor run `mcp-remote` cannot use MCP here — write against the REST API instead,
+as below.
+
+## Connecting from a script or notebook
+
+MCP is built for assistants, not for your own code. When *you* are the one
+writing Python, JavaScript, or `curl`, use a **personal access token** against
+the REST API instead. Full instructions, with runnable examples, are in
+[personal access tokens](personal-access-tokens.md).
+
+The short version: create a token under **Settings → API tokens** on the course
+site, copy it once, and keep it in an environment variable. It lasts four months
+— longer than the semester — and you can revoke it from the same page the moment
+you suspect it has leaked. Your program trades the token for a one-hour access
+token at `POST /auth/token` and calls `/rest/…` with that:
 
 ```sh
-curl -sS -b cookies.txt \
-  "https://<course-site>/auth/mcp-token?scopes=course:read+submissions:read+submissions:write"
+ACCESS_TOKEN=$(curl -s -X POST https://<course-site>/auth/token \
+  -H "Authorization: Bearer $YELUKEREST_TOKEN" | jq -r .jwt)
+
+curl -s -H "Authorization: Bearer $ACCESS_TOKEN" \
+  "https://<course-site>/rest/meetings?order=begins_at" | jq .
 ```
 
-Then talk to the MCP endpoint directly. List the tools:
+The same scopes apply: a token is read-only unless you tick `submissions:write`
+when you create it. Leave it unticked unless you are deliberately writing code
+that submits work.
 
-```sh
-curl -sS https://<course-site>/mcp \
-  -H "Authorization: Bearer $YELUKEREST_MCP_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
-```
-
-Call one:
-
-```sh
-curl -sS https://<course-site>/mcp \
-  -H "Authorization: Bearer $YELUKEREST_MCP_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call",
-       "params":{"name":"list_assignments","arguments":{}}}'
-```
-
-Keep tokens in an environment variable for the current shell. Do not commit them
-to a repo or paste them into Canvas, Slack, or a notebook you share.
+Do not paste a token into your code, commit it to git, or post it in Slack,
+Canvas, or a notebook you share. If you commit one by accident, revoke it —
+deleting the commit is not enough, because the token stays in the repository
+history.
 
 ## What the tools do
 
@@ -231,30 +210,30 @@ a tool disagree, the policy wins. Ask if you are unsure.
 
 ## Troubleshooting
 
-**`401 Unauthorized`** — your token expired. Bearer tokens live ten minutes;
-re-mint one. OAuth clients should re-authorize (`/mcp` in Claude Code, or
-disconnect and reconnect the connector). It is not a sign that anything is broken.
+**`401 Unauthorized`** — your access ran out. Re-authorize: `/mcp` in Claude
+Code, or disconnect and reconnect the connector. It is not a sign that anything
+is broken.
+
+**Your client says it needs authorization and then gives up** — it cannot do the
+sign-in flow. Use `mcp-remote`, described above.
 
 **`403 Forbidden`** — you asked for something your account is not allowed to see
-or change. That is row-level security doing its job, not an expired token; a new
-token will not help. Common causes: a draft assignment, someone else's row, or a
-closed submission window.
+or change. That is row-level security doing its job, not an expired credential;
+signing in again will not help. Common causes: a draft assignment, someone else's
+row, or a closed submission window.
 
-**`429 Too Many Requests`** — you are going too fast. Wait a bit and retry. Loops
-that re-mint tokens on every call trip this quickly; mint once and reuse the token
-for its full lifetime.
+**`429 Too Many Requests`** — you are going too fast. Wait a bit and retry.
 
-**"This client cannot show you a write confirmation"** — your client does not
-support the confirmation prompt, so writes are refused. Use a client that does, or
-submit through the course website.
+**A write happened and nothing asked you to approve it** — the course site does
+not require confirmation, and does not refuse writes from clients that cannot ask.
+Any approval prompt you see comes from the client, and some clients show none.
+Granting `submissions:write` is the whole authorization: an assistant holding it
+can submit. If you want to be asked every time, use a client that prompts, or
+connect read-only and submit through the course website.
 
-**"The token carries no scopes" / a permission is denied** — you were issued a
-token without the scope that tool needs. Re-mint with the scope named
-(`?scopes=...`), or re-authorize and check the box on the consent page. Write
-access is never granted implicitly.
-
-**`503 Service Unavailable` from `/auth/mcp-token`** — this deployment has not
-turned on MCP token issuance. Tell the instructor.
+**A permission is denied** — you did not grant the scope that tool needs.
+Re-authorize and check the box on the consent page. Write access is never granted
+implicitly.
 
 **Nothing happens after you approve the consent page** — some connectors are
 flaky with self-hosted servers. Remove the connector and add it again; if it
@@ -262,6 +241,7 @@ still fails, report it with the time it happened.
 
 ## See also
 
+- `docs/personal-access-tokens.md` — tokens for your own scripts and notebooks.
 - `docs/api-client-security.md` — token handling rules for direct API clients.
 - `docs/adr/0001-mcp-and-oauth.md` — why the system is built this way.
 - `docs/hydra.md` — operator runbook for the OAuth server.

@@ -199,20 +199,23 @@ ChatGPT, or their own client) to the course app over
 [MCP](https://modelcontextprotocol.io) at `<site>/mcp`, served by the `mcpapp`
 container. Every tool call runs under the student's own JWT and row-level
 security, so an agent can see and do exactly what that student could do on the
-website. Two credential paths exist: a short-lived bearer token from
-`/auth/mcp-token`, and OAuth (authorization code + PKCE, dynamic client
-registration) through the `hydra` container with CAS login and consent delegated
-to authapp.
+website. OAuth (authorization code + PKCE, dynamic client registration) through
+the `hydra` container, with CAS login and consent delegated to authapp, is the
+only way in; a client that cannot do it uses `mcp-remote`, and a student writing
+their own code uses a personal access token against `/rest` instead.
 
 - `docs/mcp-for-students.md` — the student-facing guide: connecting each client,
   what the tools do, how writes are confirmed, privacy, and troubleshooting.
+- `docs/personal-access-tokens.md` — the student-facing guide to API tokens for
+  their own scripts and notebooks.
 - `docs/adr/0001-mcp-and-oauth.md` — architecture decision, threat model,
   rejected alternatives, and the client-compatibility caveats register.
 - `docs/hydra.md` — operator runbook for the OAuth server: routing, delegated
   login/consent, secrets and key rotation, backups, client pruning, upgrades.
 
-Both authapp and mcpapp need `MCPAPP_JWT`
-(`./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`) to mint MCP tokens.
+mcpapp needs `MCPAPP_JWT`
+(`./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'`) to exchange a verified
+OAuth token for an internal course credential.
 
 ## Random notes
 
