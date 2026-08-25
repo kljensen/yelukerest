@@ -6,6 +6,13 @@ Accepted, 2026-08-16. Decided in issue #298, under the "Roadmap 9: Admin API
 Surface" milestone. Phase 1 is in force today; phase 2 is required before any
 unattended run and is not yet implemented.
 
+Accuracy pass, 2026-08-25 (issue #327). **The decision stands unchanged.** One
+of its premises does not: personal access tokens landed on 2026-08-21 and give
+the *user*-credential path the revocability this ADR describes as missing. The
+stale premise is marked in place under *Context* and again after the threat
+model, along with the two objections that survive it. Nothing about phase 2, or
+about service-credential revocation, is affected.
+
 ## Context
 
 `pythonclient/api_client.py` is replacing direct `psql` access for course
@@ -25,6 +32,41 @@ picks the easy one at 11pm during grading:
    standing faculty credential replicated to Apple's servers and to every
    device on the account.
 3. **Give up and go back to `psql`**, which defeats the entire milestone.
+
+> **THE PREMISE IS STALE. THE CONCLUSION BELOW IS NOT — READ BOTH HALVES.**
+> A fourth option landed on 2026-08-21, five days after this ADR was accepted:
+> **personal access tokens** (migration
+> `01a02533-b663-7471-af4e-c45c05cd3069-add-user-api-token`, issues #314–#317).
+> A faculty PAT is long-lived (four months by default) and scoped, is **never
+> presented to PostgREST**, is exchanged per call for an ordinary ~1h JWT
+> carrying a `scopes` claim, records `last_used_at`, and is revoked by a single
+> `api.revoke_user_api_token` `UPDATE` — `JWT_SECRET` untouched, student
+> sessions unaffected, exposure after revocation capped at the minted token's
+> hour. That is materially the credential table this ADR describes as missing
+> under *Revocation needs database state, not just a new token*, built for the
+> user-credential path rather than the service-credential one. So the first
+> objection listed under *Rejected outright* below — "it cannot be revoked
+> without collateral damage" — and the "Not possible" cell in the threat model
+> are no longer accurate for a PAT. The second, "it is unauditable", is softened
+> too: `last_used_at` is a record of use, though still not a record of what was
+> done with it.
+>
+> **The decision below still stands**, because two of the four objections to a
+> standing credential in `.env` survive a PAT completely intact:
+>
+> - **Full faculty CRUD, including grade mutation.** `api.check_request_jwt`
+>   gates writes only on the coarse `submissions:write` scope. For a faculty
+>   subject that single scope means everything faculty row-level security
+>   permits — grades included. A "scoped" faculty PAT is not a narrowed faculty
+>   credential.
+> - **The same iCloud blast radius.** A PAT in a synced `.env` is replicated to
+>   Apple's servers and to every device on the account exactly as a JWT there
+>   would be. Phase 1's rule — the credential is never written into a synced
+>   `.env` — applies to a PAT unchanged.
+>
+> What a PAT changes is the cost of being wrong after a leak is *noticed*, not
+> the rules about where the credential may live, and not the phase 2 design for
+> unattended runs.
 
 Yelukerest is database-centric: PostgreSQL grants and RLS are the sole
 authorization authority (`docs/auth-jwt-flow.md`). Any answer must preserve
@@ -139,7 +181,10 @@ anomaly view sees a single, entirely normal-looking mint. So mint auditing alone
 does **not** detect bulk grade misuse.
 
 Phase 2 therefore needs auditing tied to actual operations, not to token
-issuance. `data.grade_event` already exists as grade history; the work is to
+issuance. Grade history already exists — in **three** tables, not one:
+`data.assignment_grade_event`, `data.quiz_grade_event` and `data.grade_event`
+(`db/src/data/yeluke/grade_event.sql`), so the work below has to cover all
+three. The work is to
 make imports populate `source`, `reason`, and `import_id` honestly (which is
 part of #299) and to make those columns carry the acting credential. Mint
 auditing remains useful — it answers "who could have acted" — but it is not the
@@ -176,6 +221,14 @@ should land first.
 | Compromised credential used for bulk grade mutation | Undetectable | **Only if mutation auditing lands.** Mint auditing alone does not catch this — one mint buys an hour of unlimited mutation |
 | Need to revoke without disrupting students | Not possible — token expires anyway | **Only with the credential-version table.** A replacement token alone does not invalidate a stolen one |
 | Operator bypasses the client and uses `psql` | Possible | Possible — out of scope, this ADR does not remove `psql` |
+
+> **ROW 4, PHASE 1 CELL: "Not possible" is stale.** Since 2026-08-21 a personal
+> access token can be revoked with one `UPDATE` and no `JWT_SECRET` rotation, so
+> revoking without disrupting students *is* possible for that credential class —
+> see the marker in *Context*. The phase 2 cell is unaffected: nothing in the
+> personal-access-token work gives a **service** credential a version claim or a
+> `revoked_at`, so the gap described under *Revocation needs database state*
+> remains open for `adminapp` and for `mcpapp` alike.
 
 The two bolded cells are the phase 2 work that is easy to skip and would leave
 the design claiming protection it does not have.

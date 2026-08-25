@@ -6,9 +6,28 @@ Accepted, 2026-08-05. The architecture and its alternatives were researched and
 adversarially reviewed (multi-model) on 2026-08-05. Implementation is tracked in
 the "Roadmap 6: MCP and OAuth" milestone (issues #261–#278).
 
-Amended 2026-08-22: phase 0 retired. The decision itself stands; only the first
+**Partially superseded by [ADR 0003: The Write Scope And RLS Are The MCP Write
+Boundary](0003-mcp-write-boundary.md), 2026-08-06.** The MCP write-gate portions
+of this ADR — the two-step prepare/commit flow, intent tokens, and elicitation
+confirmation — are **no longer in force**. They were built (`9e027b0`) and
+deleted a day later (`94be2f2`); ADR 0003 records why and states what bounds
+writes now. Every other decision here stands. The stale passages are marked in
+place rather than removed, at *Threat Model Summary* and *Escape Hatch*.
+
+Amended 2026-08-25: phase 0 retired. The decision itself stands; only the first
 step of the phased rollout is gone. See the retirement note under *Phased
 rollout*.
+
+Accuracy pass, 2026-08-25 (issue #327). Every claim in this ADR was checked
+against the code. The decision stands; several of its supporting claims did not.
+Corrections are marked in place, never by deleting the original: a blockquote
+saying **NEVER TRUE** marks a claim that was wrong when written, and one saying
+**NO LONGER TRUE** or **SUPERSEDED** marks a claim that has since changed —
+which of the two it was is itself part of the record. Markers were added under
+*MCP server* (protocol eras), *Token exchange*, *Phased rollout* (phase 2),
+*Threat Model Summary*, *Policy Note*, *Consequences*, and the *Caveats
+Register*. A new subsection, *Controls the code has that this ADR did not name*,
+records load-bearing controls this ADR omitted entirely.
 
 ## Context
 
@@ -41,11 +60,23 @@ PostgREST over the internal network carrying the calling student's own internal
 JWT, so RLS remains the sole authorization authority — mcpapp adds intent and
 presentation controls, never permissions.
 
+> **"intent controls" is HISTORICAL.** It meant the intent-token write gate,
+> removed 2026-08-06 ([ADR 0003](0003-mcp-write-boundary.md)). What mcpapp adds
+> today is curation, scope checks and presentation — still never permissions,
+> which is the part of this sentence that matters and still holds.
+
 Protocol eras: mcpapp serves the 2025-11-25 protocol era by default. The
 2026-07-28 stateless era sits behind an env feature flag because go-sdk support
 for it (`StreamableHTTPOptions.Stateless`) is pre-release and observed
 Claude/ChatGPT traffic is still legacy-era. The flag flips to default only when
 both conditions clear (issue #278).
+
+> **SUPERSEDED BY WHAT SHIPPED — the flag has already flipped.**
+> `MCP_STATELESS_ENABLED` defaults to **true** as of 2026-08-07 (`26ebcd2`,
+> `mcpapp/main.go`), and go-sdk is pinned to the stable **v1.7.0**, in which
+> `StreamableHTTPOptions.Stateless` is no longer pre-release. The stateful
+> handler is what now sits behind a flag: `MCP_STATELESS_ENABLED=false`. See the
+> marker on *Phase 2* below for how the second gating condition was resolved.
 
 ### OAuth: Ory Hydra with login/consent delegated to authapp
 
@@ -62,10 +93,33 @@ and the data categories shared (see the policy note below).
 Hydra-issued access tokens are validated by mcpapp (JWKS, issuer, expiry,
 strict audience) and go no further. mcpapp exchanges the verified identity for
 an internal user JWT by calling a new dedicated DB function,
-`api.issue_user_jwt_for_mcp(netid, scopes)`:
+`api.issue_user_jwt_for_mcp(p_netid text, p_scopes text[], p_external jsonb DEFAULT NULL)`:
 
 - Admits only a distinct `app_name=mcpapp` service credential — never
   authapp's — so either credential can be revoked independently.
+
+  > **"REVOKED INDEPENDENTLY" WAS NEVER TRUE.** This was wrong the day it was
+  > written; it is not a claim that stopped being true later. Both service
+  > credentials are stateless HS256 JWTs signed by the same `JWT_SECRET`
+  > (`bin/jwt.sh`, five-year default expiry) and accepted on signature, expiry,
+  > role and `app_name` alone. There is no credential-version table, no `jti`
+  > registry and no `revoked_at` for service tokens, so minting a replacement
+  > `mcpapp` credential invalidates nothing — the stolen one is still validly
+  > signed and still carries `app_name = 'mcpapp'`. The only actual revocation
+  > is rotating `JWT_SECRET`, which invalidates every student session. The one
+  > independent lever that does exist is
+  > `REVOKE EXECUTE ON FUNCTION api.issue_user_jwt_for_mcp(text, text[], jsonb) FROM app`,
+  > which withdraws the *capability* from both service credentials at once —
+  > not the credential from one of them.
+  >
+  > What the separate path does buy is real and still holds: authapp's
+  > credential cannot mint through this function, so a compromise of authapp is
+  > not automatically a compromise of this path, and every mint here is audited.
+  > [ADR 0002](0002-admin-api-authentication.md), under *Revocation needs
+  > database state, not just a new token*, documents this exact gap and states
+  > that it applies to the mcpapp path too. Closing it is a code change tracked
+  > separately, not a documentation change.
+
 - Mints a short internal JWT (~10 minutes, not the browser flow's 1 hour) with
   a `scopes` claim.
 - Writes an append-only mint-audit row in the same transaction: subject,
@@ -77,6 +131,30 @@ PostgREST therefore sees exactly the token shapes it sees today, and the JWT
 validation discipline in `api.check_request_jwt` is unchanged. Keeping the two
 token domains separate means a Hydra misconfiguration (or one of its known
 client-compatibility bugs) can never produce a token PostgREST accepts.
+
+> **NO LONGER TRUE — AND THE DRIFT IS TOWARD STRICTNESS.** Two halves of the
+> first sentence have both stopped being accurate.
+>
+> `api.check_request_jwt` is **not** unchanged. Migration
+> `01a02545-…-enforce-scopes-on-writes` (2026-08-21, `302e775`, issue #317)
+> rewrote it: a token carrying a non-empty `scopes` claim is now refused on any
+> request method other than `GET`, `HEAD` or `OPTIONS` unless the claim contains
+> `submissions:write`. Tokens with no `scopes` claim — the browser JWT and the
+> service credentials — are unaffected.
+>
+> And PostgREST does **not** see only the token shapes it saw before. An
+> MCP-minted JWT carries an array `aud` and a `scopes` claim the browser JWT has
+> never had; `check_request_jwt` accepts audience by string equality *or* array
+> membership for exactly that reason.
+>
+> Both differences make PostgREST stricter than this paragraph describes, so
+> nothing built on the paragraph is unsafe. It is corrected rather than left
+> alone because this paragraph is the ADR's entire argument for the two token
+> domains staying disjoint, and an argument that cannot be checked against the
+> code is not an argument. The conclusion itself still holds, on firmer ground
+> than stated: a Hydra token is signed asymmetrically against Hydra's JWKS and
+> PostgREST verifies HS256 against `JWT_SECRET`, so no Hydra misconfiguration
+> can produce a token PostgREST accepts.
 
 ### Phased rollout
 
@@ -93,8 +171,20 @@ client-compatibility bugs) can never produce a token PostgREST accepts.
 - **Phase 2 — 2026-07-28 stateless era by default**, once go-sdk support is a
   stable release and a major client is observed speaking it.
 
-**Phase 0 retired, 2026-08-22** (issue #320). `/auth/mcp-token` is gone and
-`/mcp` accepts OAuth alone. The plan above is left as written because it is what
+  > **DONE, 2026-08-07 (`26ebcd2`) — and the second gate was resolved rather
+  > than met.** The first condition cleared as written: go-sdk v1.7.0 is a
+  > stable release. The second — "a major client is observed speaking it" — was
+  > never satisfied and turned out not to need to be. It was a proxy for a
+  > different worry: a stateless server cannot hold a session, and the only
+  > thing in this design that needed one was the elicitation write gate, which
+  > held a tool call open on the SSE stream. That gate was deleted on
+  > 2026-08-06 ([ADR 0003](0003-mcp-write-boundary.md)), so the condition
+  > dissolved instead of being waited out. Stateless is now the default and the
+  > stateful handler is the fallback.
+
+**Phase 0 retired, 2026-08-25** (commits `59325c3`, `d0c7a64`, `bcccd0b`,
+closing issues #321, #322, #323 and #324 under umbrella issue #320).
+`/auth/mcp-token` is gone and `/mcp` accepts OAuth alone. The plan above is left as written because it is what
 was decided and it is why the code was built in that order; this note records
 that its first step has been carried out and then withdrawn.
 
@@ -166,6 +256,20 @@ Mint-audit rows written before that date may still carry
   (user, client, assignment, field, expected version, content hash), plus MCP
   elicitation confirmation where clients support it (issue #267). Client-side
   annotations are advisory and are never relied on.
+
+  > **HISTORICAL — NOT CURRENT BEHAVIOUR.** Everything from "Mitigation:"
+  > onward was reversed on 2026-08-06 by `94be2f2` and is superseded by
+  > [ADR 0003](0003-mcp-write-boundary.md). There is no prepare/commit flow, no
+  > intent token, and no elicitation confirmation. Writes are bounded by the
+  > `submissions:write` scope — unticked by default at consent — and by RLS;
+  > `destructiveHint` on the write tools asks the *host* to confirm, and that
+  > client-side annotation **is** now relied on for the prompt, which is the
+  > opposite of the last sentence above. The threat described in the first half
+  > of this bullet is real and is accepted; see ADR 0003's threat model. ADR 0003
+  > also records two ways this sentence misdescribed the gate even while it
+  > existed: the binding was to the access token's `jti`, not the OAuth client,
+  > and "where clients support it" was in fact fail-closed.
+
 - **mcpapp minting-credential blast radius.** mcpapp is a public endpoint
   holding a credential that mints user JWTs. If it reused authapp's
   unrestricted credential, compromise would mean minting faculty tokens.
@@ -174,14 +278,107 @@ Mint-audit rows written before that date may still carry
   access is an explicit opt-in decision, issue #263); ~10-minute token TTL;
   every mint audited, with an alert query for one credential minting unusually
   many distinct subjects in a short window.
+
+  > **TWO OF THESE MITIGATIONS WERE NEVER TRUE.** Not stale — wrong when
+  > written.
+  >
+  > *"Independently revocable."* See the marker under *Token exchange* above.
+  > Both service credentials are stateless HS256 JWTs under the same
+  > `JWT_SECRET` with a five-year default lifetime, and there is no state that
+  > could invalidate one of them.
+  >
+  > *"Minting restricted to student/ta subjects initially."* It never was.
+  > `api.issue_user_jwt_for_mcp` reads the allowlist from the course setting
+  > `mcp_mintable_roles`, which **defaults to `'student,ta,faculty'`**, and
+  > nothing in the schema, migrations, or sample data seeds that setting — so
+  > the default is what runs (`db/src/api/yeluke/mcp_jwt.sql`). This has been
+  > the behaviour since the first implementation commit (`4af2e45`,
+  > 2026-08-05), whose own inline comment says faculty are included because the
+  > pilot runs on faculty accounts. It matters precisely here, because the
+  > mintable-role set is what bounds a compromised `MCPAPP_JWT`: today that
+  > compromise does mean minting faculty tokens, which is the outcome this
+  > bullet says was avoided. Tightening it is one statement —
+  > `select settings.set('mcp_mintable_roles', 'student,ta');` — and is an
+  > operational decision the course operator must take deliberately; this ADR
+  > never established it.
+  >
+  > The remaining mitigations in this bullet are real and in force: the
+  > ~10-minute TTL, the same-transaction append-only mint audit
+  > (`data.mcp_jwt_mint_event`), and the alert query
+  > (`api.mcp_jwt_mint_anomalies`, >10 distinct subjects in a sliding 10-minute
+  > window).
+
 - **Grade-data exfiltration channels.** Once grades flow through an agent,
   they can leak via model context sent to third-party providers, via tool
   results echoed into other tools, or via the escape hatch. Mitigations:
-  grades appear only in a dedicated grades tool (never in broad "course
-  context" responses), output size caps with explicit truncation markers, no
-  auto-fetching of URLs found in database text, structured audit logs with
-  grade/submission-body redaction, and the consent screen naming grades as a
-  shared data category.
+  grades appear only in the two dedicated grades tools, `get_my_grades` and
+  `get_my_quiz_grades` (never in broad "course context" responses) — with one
+  deliberate exception, the anonymized class distribution `get_assignment`
+  includes once at least three grades exist; output size caps with explicit
+  truncation markers, no auto-fetching of URLs found in database text,
+  structured audit logs with grade/submission-body redaction, and the consent
+  screen naming grades as a shared data category.
+
+  > **THE CONSENT CLAUSE OVERSTATES THE GRANULARITY, AND ALWAYS DID.** The
+  > consent screen does name grades as a separate category with its own
+  > checkbox, but mcpapp does not enforce that separation: `scopeAliases` in
+  > `mcpapp/tools.go` collapses `course:read`, `grades:read` and
+  > `submissions:read` into a single `read` requirement, so a token granted only
+  > `course:read` can call `get_my_grades`. The read scopes are one scope in
+  > effect. This is a code defect, filed separately; it is recorded here so the
+  > ADR is not read as promising per-category read enforcement that the server
+  > does not perform.
+
+### Controls the code has that this ADR did not name
+
+Added 2026-08-25. None of the following were part of the original write-up, and
+all of them are load-bearing today. An ADR that omits a control is an invitation
+to delete it during a cleanup, which is the failure mode
+[ADR 0003](0003-mcp-write-boundary.md) records under *Consequences*. Each entry
+names the code so a reader can check it rather than trust this list.
+
+- **Grant revocation on disconnect** (`data.mcp_grant_revocation`;
+  `db/src/api/yeluke/mcp_jwt.sql`, the revocation block inside
+  `api.issue_user_jwt_for_mcp`). Disconnecting an application at
+  `/auth/connected-apps` revokes Hydra's consent sessions and appends a
+  revocation row. Hydra kills the refresh token at once, but an access token
+  already issued keeps verifying offline against the JWKS — so this check is
+  **the only thing that stops an already-issued OAuth token**. It compares the
+  external token's `iat` against `revoked_at` rather than merely asking whether
+  a revocation exists, so reconnecting works: a token from a new grant is newer
+  than the revocation. A five-second allowance absorbs clock skew between
+  Hydra's clock and Postgres's, closing a bypass in which a token issued just
+  before the disconnect carries an `iat` just after it; the cost is that a
+  reconnection finished within five seconds is refused and the user clicks
+  again. Removing or "simplifying" either the `iat` comparison or the skew
+  allowance reopens a real hole.
+- **Two-tier rate limiting** (`mcpapp/security.go`, wired in `mcpapp/main.go`).
+  A coarse pre-auth limiter keyed on client IP runs *before* any signature
+  verification, so an unauthenticated caller cannot spend unbounded CPU on
+  JWKS-backed signature checks; a finer post-auth limiter is keyed on the
+  **verified** token subject, never on a client-controlled header, with the IP
+  as a fallback only. Both must stay: the outer one protects the verifier, the
+  inner one protects the database from one authenticated account.
+- **JWKS cache bounds** (`mcpapp/hydra.go`). A 15-minute maximum cache age, so a
+  key withdrawn after a compromise cannot keep verifying tokens for the life of
+  the process; a 30-second minimum refresh interval, so tokens carrying random
+  `kid` values cannot drive one upstream fetch per request; a 1 MiB response
+  cap; and a 2048-bit floor on RSA keys regardless of what the authorization
+  server publishes. `kid` is required, because Hydra publishes both the id-token
+  and access-token signing keys and rotation adds more.
+- **ID-token rejection, on two independent grounds** (`mcpapp/hydra.go`). The
+  `typ` header must be an accepted access-token type, and any token carrying an
+  `at_hash` claim is refused as an id token. The audience check already refuses
+  an id token, whose `aud` is the client id; these are deliberate belt and
+  braces on the classic confused-deputy substitution.
+- **Exchange cache keyed on the external token's `iat`**
+  (`exchangeCacheKey`, `mcpapp/exchange.go`). The cache spares a database mint
+  per request, and a cache hit never reaches the database — so it never meets
+  the revocation check above. Including `iat` in the key confines each grant's
+  internal credentials to itself, so a hit cannot outlive the grant it came
+  from. The key also carries the OAuth `client_id`, so the mint-audit trail
+  keeps naming the client that actually reached the data, and every component is
+  length-prefixed so no value can be arranged to impersonate another tuple.
 
 ## Policy Note (FERPA / Institutional)
 
@@ -191,6 +388,25 @@ a technical one. The consent screen must name the data categories being shared
 Institutional/FERPA requirements must be confirmed before write scopes are
 enabled for students in production (tracked in issue #276). Until then, writes
 stay behind the pilot.
+
+> **NO SUCH GATE EXISTS IN THE CODE, AND NONE EVER DID.** "Writes stay behind
+> the pilot" describes a policy hold. In the implementation it is a checkbox
+> default, and nothing more. Hydra's `default_scope` grants `submissions:write`
+> to every client that registers through DCR (`hydra/hydra.yml`);
+> `mcpapp/prm.go` advertises it in the RFC 9728 metadata so clients know to ask
+> for it; the consent page renders its checkbox unticked (`authapp/oauth.go`)
+> and a single tick is the only barrier between any student and a write-capable
+> token. Separately and entirely outside this path,
+> `api.create_user_api_token` — granted to `student`, `ta` and `faculty` — lets
+> any student mint a personal access token carrying `submissions:write` with no
+> consent screen involved at all. Nothing in the repository reads a pilot flag,
+> a pilot roster, or an institutional-approval setting.
+>
+> The first half of this note *is* implemented: the consent screen names the
+> client and the data categories. The FERPA obligation in issue #276 remains a
+> real obligation. It is simply not enforced by anything here, and describing an
+> unticked default as a policy gate is how a control comes to be believed in
+> without being built.
 
 ## Escape Hatch: `postgrest_request` Kept, Gated
 
@@ -207,8 +423,24 @@ adopted from the dissent:
 - GET-only by default.
 - Any non-GET verb requires write scope *and* the same intent-token/elicitation
   confirmation gate as the curated write tools, keyed on HTTP verb.
-- Constrained to `/rest/*`, caller's own internal JWT, response size caps,
-  every call audit-logged.
+
+  > **HISTORICAL — NOT CURRENT BEHAVIOUR.** The gate in this bullet was
+  > deleted on 2026-08-06 by `94be2f2`; see
+  > [ADR 0003](0003-mcp-write-boundary.md). `prepare_api_request` no longer
+  > exists. A non-GET `postgrest_request` requires `submissions:write` and
+  > nothing else (`mcpapp/escape_hatch.go`). The rest of this section — keep the
+  > tool, GET-only default, `/rest/*`, caller's own JWT, size caps, audit
+  > logging — is unchanged and in force. The irony is recorded in ADR 0003: this
+  > section's own argument, that the front door must not grant less than the side
+  > door a student can already `curl`, is what removed the gate.
+
+- Constrained to `/rest/*` — in practice tighter than that phrase suggests.
+  `mcpapp/escape_hatch.go` admits only a single lowercase path segment
+  (`^/[a-z_][a-z0-9_]*$`): one PostgREST view or table, no traversal, no dots,
+  and **no `/rpc/*` function calls by construction**. That is exactly the
+  side-effecting-RPC concern the recorded dissent raised, closed by the shape
+  of the pattern rather than by a list of blocked names. Plus the caller's own
+  internal JWT, response size caps, and every call audit-logged.
 
 The dissent is recorded on issue #268; revisit before Phase 1 student rollout.
 
@@ -219,13 +451,47 @@ The dissent is recorded on issue #268; revisit before Phase 1 student rollout.
   work scale accordingly.
 - The DB gains a second service role and an audited minting function; the
   existing authapp path is untouched.
+
+  > **"A SECOND SERVICE ROLE" WAS NEVER TRUE.** There is one `app` role.
+  > mcpapp holds a second *credential* in that same role, distinguished only by
+  > its `app_name` claim, which `api.issue_user_jwt_for_mcp` checks in the
+  > function body. Every `GRANT … TO app` is therefore shared by authapp and
+  > mcpapp — including `GRANT EXECUTE … TO app` on the minting function itself
+  > (`db/src/authorization/yeluke/mcp_jwt.sql`) — and the separation between the
+  > two services is enforced inside the function, not by the grant system.
+  > [ADR 0002](0002-admin-api-authentication.md) states it correctly: "a
+  > dedicated service credential **in the `app` role**". This is the same family
+  > of overstatement as "independently revocable" above. The rest of this bullet
+  > — the audited minting function, the untouched authapp path — is accurate.
+
 - Scope enforcement is default-deny: a token whose granted scopes map to nothing
   this server exposes gets no access at all, reads included (this also defuses
   the Claude Code scope-omission bug below).
+
+  > **THE PARENTHESIS IS WRONG ABOUT WHICH CONTROL DOES THE WORK.**
+  > Default-deny is real and in force (`authorizeScope`, `mcpapp/tools.go`),
+  > but it fails **closed**: a client that omits scopes connects successfully
+  > and then has every tool call refused. It does not defuse the scope-omission
+  > bug — it is what makes that bug visible to the student as a server that
+  > answers nothing. The control that makes such a connection actually *work* is
+  > scope **advertisement**: `prmScopesSupported` in `mcpapp/prm.go` and
+  > `default_scope` in `hydra/hydra.yml`, both added 2026-08-21 in `4a763e5`.
+  > Neither was in the caveats register, which this ADR tells a reader to
+  > re-check and prune every semester — so both are now registered explicitly as
+  > permanent and load-bearing.
+
 - Client bugs become our operational surface: the caveats register below must
   be re-checked each semester, and a DCR response-cleaning proxy plus a
-  client-pruning job exist solely to work around upstream defects (issue
-  #272) — both are deletable once upstream fixes ship.
+  client-pruning job exist to work around upstream defects (issue #272). The
+  client-pruning job is deletable once upstream fixes ship. **The register
+  proxy is not.** Its response *cleaning* goes away with
+  [ory/hydra#4044](https://github.com/ory/hydra/issues/4044), but the same
+  proxy also injects the client `audience` allowlist
+  (`injectRegistrationAudience`, `authapp/register.go`), which Hydra requires
+  by design and not by defect: without it the initial token exchange succeeds
+  and every refresh fails (spike finding 2 below, and the caveats row that
+  records the injection). Deleting the proxy wholesale on the day #4044 merges
+  would break refresh for every DCR client.
 
 ## Caveats Register
 
@@ -237,10 +503,11 @@ feature flag. Append pilot and spike findings here (issues #271, #276).
 | Hydra DCR responses include null/empty optional fields that break strict-parser MCP clients (mcp-remote, Cursor, TS-SDK-based); confirmed in a comparable Hydra+MCP deployment (getlarge.eu) | [ory/hydra#4044](https://github.com/ory/hydra/issues/4044), fix [PR #4050](https://github.com/ory/hydra/pull/4050) | Open; PR unmerged, no nightly images | Response-cleaning proxy on `/oauth2/register` implemented in authapp (`authapp/register.go`, issue #272; also injects the audience allowlist from the #271 spike); remove the cleaning when fixed upstream |
 | Hydra lacks Client ID Metadata Documents (CIMD); may matter as DCR sunsets | [ory/hydra#4061](https://github.com/ory/hydra/issues/4061) | Open | None needed yet; re-check at Phase 2 |
 | Hydra does not implement RFC 8707 `resource`; it has its own `audience` mechanism | Hydra docs / #4061 discussion | No RFC 8707 support | Spike (issue #271) proves audience binding end-to-end or adds an adapter; mcpapp rejects missing/empty `aud` — audience validation is never disabled |
-| go-sdk 2026-07-28 stateless-era support is pre-release | [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk) | Pre-release | Pin stable release; 2026 era behind env flag |
+| go-sdk 2026-07-28 stateless-era support is pre-release | [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk) | ~~Pre-release~~ **Resolved 2026-08-07 (`26ebcd2`): stable in the pinned v1.7.0** | ~~Pin stable release; 2026 era behind env flag~~ **Now inverted: `MCP_STATELESS_ENABLED` defaults to true and the stateful handler is what sits behind the flag** |
 | Claude Code: localhost-loopback redirect handling and scope omission on connect | [anthropics/claude-code#42765](https://github.com/anthropics/claude-code/issues/42765) | Open | Register both 127.0.0.1 (port-agnostic) and localhost redirect forms; default-deny on missing scope claim |
 | Claude Code registers a new DCR client on every fresh connection — unbounded client-table growth | [anthropics/claude-code#59460](https://github.com/anthropics/claude-code/issues/59460) | Open | Implemented (issue #272): `bin/prune-hydra-clients.sh` (dry-run by default) deletes clients idle >30 days with no consent sessions; `bin/doctor.sh` warns above `HYDRA_CLIENT_COUNT_WARN` (default 500) |
 | claude.ai inconsistently sends the RFC 8707 `resource` parameter | Observed in the field; no single upstream issue | Ongoing | Never disable audience validation; consent-accept grants audience server-side |
+| MCP scopes must be advertised in two places or a connection grants nothing | Not an upstream bug — Hydra's DCR grants only `openid`/`offline_access` by design, and a scope a client was never granted cannot be requested at authorization | Permanent; added 2026-08-21 (`4a763e5`) | `prmScopesSupported` in `mcpapp/prm.go` (RFC 9728 metadata) **and** `default_scope` in `hydra/hydra.yml`. **Load-bearing — do not remove either when pruning this register.** Without them a client completes discovery, DCR, CAS login and consent and then has every tool call refused with "the OAuth access token granted no yelukerest scopes", which reads to the student as a broken server. Advertising is not granting: write scopes still start unticked at consent |
 | Self-hosted DCR connectors intermittently fail with claude.ai (zero inbound traffic or `McpAuthorizationError` after apparently-successful OAuth) | [anthropics/claude-ai-mcp#207](https://github.com/anthropics/claude-ai-mcp/issues/207), [#227](https://github.com/anthropics/claude-ai-mcp/issues/227), [#196](https://github.com/anthropics/claude-ai-mcp/issues/196) | Intermittent | Faculty/TA pilot on low-stakes accounts before student rollout (issue #276) |
 
 ### Spike findings — issue #271 (2026-08-05, Hydra v26.2.0, live dev stack)
