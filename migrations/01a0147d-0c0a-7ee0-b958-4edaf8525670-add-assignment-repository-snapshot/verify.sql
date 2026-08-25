@@ -132,12 +132,20 @@ BEGIN
         RAISE EXCEPTION 'student can write api.assignment_repository_snapshots';
     END IF;
 
-    -- The api schema gained two views, so the shape moved to 6. Checked exactly,
-    -- because a client tests this for set membership and not with >=.
+    -- The api schema gained two views, so the shape reaches 6 here.
+    --
+    -- Asserted as a floor, not an equality. verify runs against the deployed
+    -- state as a whole, not against a snapshot taken the day this migration
+    -- landed, so any later migration that adds an api view makes an equality
+    -- check here false -- which is exactly what happened when the personal
+    -- access token migration moved the shape to 7 and this went red on every
+    -- commit for four days. The exact current value is asserted once, in
+    -- tests/rest/yeluke/platform_version.js, where a single test is updated
+    -- with each bump.
     IF NOT EXISTS (
         SELECT 1 FROM api.platform_version
-        WHERE schema_compatibility_version = 6
-        AND admin_api_version = 9
+        WHERE schema_compatibility_version >= 6
+        AND admin_api_version >= 9
     ) THEN
         RAISE EXCEPTION 'api.platform_version does not report schema shape 6 and admin api 9';
     END IF;

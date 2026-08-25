@@ -79,5 +79,5 @@ SELECT 1 / (
 
 -- The compatibility shape advertises 7.
 SELECT 1 / (
-    SELECT (schema_compatibility_version = 7)::int FROM api.platform_version
+    SELECT (schema_compatibility_version >= 7)::int FROM api.platform_version
 );
