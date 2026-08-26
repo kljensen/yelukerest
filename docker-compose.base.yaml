@@ -143,6 +143,18 @@ services:
             - HYDRA_PUBLIC_INTERNAL_URL=${HYDRA_PUBLIC_INTERNAL_URL:-http://hydra:4444}
             - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
             - FQDN=${FQDN}
+            # Per-IP ceilings on the public, unauthenticated OAuth
+            # surfaces (issue #330). A class shares a few campus NAT
+            # addresses, so these are sized for a whole cohort connecting
+            # at once, not for one person. Lower them during an incident;
+            # see authapp/main.go for how the numbers were derived.
+            # /oauth2/register carries both a per-minute and a per-hour
+            # ceiling: the minute one absorbs the class, the hour one
+            # bounds a sustained flood of Hydra client rows that a
+            # per-minute limit alone would let through.
+            - DCR_RATE_LIMIT_PER_MINUTE=${DCR_RATE_LIMIT_PER_MINUTE:-300}
+            - DCR_RATE_LIMIT_PER_HOUR=${DCR_RATE_LIMIT_PER_HOUR:-1200}
+            - OAUTH_RATE_LIMIT_PER_MINUTE=${OAUTH_RATE_LIMIT_PER_MINUTE:-600}
 
     mcpapp:
         restart: unless-stopped
@@ -163,6 +175,11 @@ services:
             # issuer is the domain root (see hydra/hydra.yml).
             - HYDRA_PUBLIC_URL=${HYDRA_PUBLIC_URL:-https://${FQDN}}
             - MCP_STATELESS_ENABLED=${MCP_STATELESS_ENABLED:-true}
+            # The postgrest_request escape hatch is GET-only unless this
+            # is turned on (issue #331): raw POST/PATCH/DELETE has neither
+            # the row scoping nor the stale-write check that
+            # submit_submission_change enforces.
+            - MCP_ESCAPE_HATCH_WRITES_ENABLED=${MCP_ESCAPE_HATCH_WRITES_ENABLED:-false}
             - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-}
             - FQDN=${FQDN}
             # role=app app_name=mcpapp service credential used to exchange

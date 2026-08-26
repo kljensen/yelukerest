@@ -157,6 +157,12 @@ func main() {
 		logger:    logger,
 		postgrest: postgrest,
 		exchanger: newTokenExchanger(postgrest, mcpappJWT),
+		// Off by default (issue #331): the escape hatch reads, and writes go
+		// through submit_submission_change, which touches one field of one
+		// submission and refuses a stale write. Raw PATCH/DELETE has neither
+		// limit, so an operator turns it back on deliberately rather than a
+		// prompt injection reaching for it.
+		escapeHatchWritesEnabled: escapeHatchWritesEnabled(),
 	}
 
 	mux := newMux(config, deps)
@@ -267,6 +273,32 @@ func envIntOrDefault(name string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+// escapeHatchWritesEnabled reads MCP_ESCAPE_HATCH_WRITES_ENABLED strictly:
+// only a recognised spelling of on or off counts, and anything else is off.
+// The general helpers below take the opposite view — every value they do not
+// recognise is true — which is fine for a flag an operator sets to switch a
+// feature on, and wrong for the one flag whose job is to stay off. A typo
+// (MCP_ESCAPE_HATCH_WRITES_ENABLED=flase) or a word that reads as off to a
+// human ("disabled", "nope") would otherwise open raw multi-row PATCH and
+// DELETE without anyone noticing. Say what was rejected so the operator who
+// meant to turn writes on can see why they did not come on.
+func escapeHatchWritesEnabled() bool {
+	const name = "MCP_ESCAPE_HATCH_WRITES_ENABLED"
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return false
+	}
+	switch strings.ToLower(value) {
+	case "1", "t", "true", "yes", "on":
+		return true
+	case "0", "f", "false", "no", "off":
+		return false
+	default:
+		log.Printf("%s=%q is not a boolean; raw escape-hatch writes stay disabled", name, value)
+		return false
+	}
 }
 
 // envBoolOrDefault reads a boolean from the environment, returning fallback

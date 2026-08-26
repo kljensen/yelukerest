@@ -433,18 +433,30 @@ students can already `curl` PostgREST with their own JWT today
 adopted from the dissent:
 
 - GET-only by default.
+
+  > **TRUE AGAIN AS OF 2026-08-26 (issue #331).** Between `94be2f2` and #331 the
+  > shipped tool was not GET-only by default: any non-GET verb executed on the
+  > write scope alone. It is now GET-only unless
+  > `MCP_ESCAPE_HATCH_WRITES_ENABLED=true`, which is what this bullet said all
+  > along.
+
 - Any non-GET verb requires write scope *and* the same intent-token/elicitation
   confirmation gate as the curated write tools, keyed on HTTP verb.
 
   > **HISTORICAL — NOT CURRENT BEHAVIOUR.** The gate in this bullet was
   > deleted on 2026-08-06 by `94be2f2`; see
   > [ADR 0003](0003-mcp-write-boundary.md). `prepare_api_request` no longer
-  > exists. A non-GET `postgrest_request` requires `submissions:write` and
-  > nothing else (`mcpapp/escape_hatch.go`). The rest of this section — keep the
-  > tool, GET-only default, `/rest/*`, caller's own JWT, size caps, audit
+  > exists. The scope check survives — a non-GET `postgrest_request` requires
+  > `submissions:write` — but since issue #331 (2026-08-26) the verb is then
+  > refused anyway unless `MCP_ESCAPE_HATCH_WRITES_ENABLED=true`
+  > (`mcpapp/escape_hatch.go`), so what fronts the mutating verbs today is a
+  > deployment setting, not a per-call ceremony. The rest of this section — keep
+  > the tool, GET-only default, `/rest/*`, caller's own JWT, size caps, audit
   > logging — is unchanged and in force. The irony is recorded in ADR 0003: this
   > section's own argument, that the front door must not grant less than the side
-  > door a student can already `curl`, is what removed the gate.
+  > door a student can already `curl`, is what removed the gate. #331 answers
+  > that argument on its own terms: the read hatch, which is where the argument
+  > has force, is untouched.
 
 - Constrained to `/rest/*` — in practice tighter than that phrase suggests.
   `mcpapp/escape_hatch.go` admits only a single lowercase path segment

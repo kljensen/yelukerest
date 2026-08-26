@@ -116,11 +116,27 @@ func main() {
 	if mcpAudience == "" {
 		log.Println("warning: MCP_RESOURCE_URL and FQDN are unset; DCR audience injection is disabled and Hydra token refresh will fail for MCP clients")
 	}
-	registerLimiter := newRateLimiter(10, time.Minute)
+	// /oauth2/register is public and unauthenticated, and every call
+	// that gets through writes a client row in Hydra's database, so the
+	// limit is what stops a stranger from filling that table. The old
+	// 10/min was also below ordinary use: sixty students connecting at
+	// once share a handful of campus NAT addresses, and Claude registers
+	// two clients per connect attempt, so one class is ~120 registrations
+	// from one address before anyone retries a screen that looks stuck.
+	// 300 absorbs the class with a retry apiece.
+	//
+	// A per-minute ceiling alone only shapes the burst: 300/min sustained
+	// is 432,000 client rows a day from one address, and the cleanup we
+	// have (bin/prune-hydra-clients.sh by hand, a doctor.sh warning at
+	// 500) notices that afterwards rather than preventing it. So the
+	// route carries a second, hourly ceiling as well. Both apply; a
+	// request has to clear each.
+	registerLimiter := newRateLimiter(dcrRateLimitPerMinute(), time.Minute)
+	registerHourlyLimiter := newRateLimiter(dcrRateLimitPerHour(), time.Hour)
 	registerProxy := getRegisterProxyHandler(registerProxyConfig{
 		HydraPublicURL: envOrDefault("HYDRA_PUBLIC_INTERNAL_URL", "http://hydra:4444"),
 		MCPAudience:    mcpAudience,
-	}, registerLimiter)
+	}, registerLimiter, registerHourlyLimiter)
 	mux.Handle("/oauth2/register", registerProxy)
 	mux.Handle("/oauth2/register/", registerProxy)
 
@@ -135,16 +151,22 @@ func main() {
 		loginPath,
 		fetchJWTConfig,
 	)
-	// One authorization costs three requests (login GET, consent GET,
-	// consent POST), so 60/min leaves ample headroom for retries while
-	// bounding a challenge-probing loop. The end-to-end suite drives
-	// dozens of authorizations from one address in a couple of minutes,
-	// which is nothing like real traffic, so the ceiling is configurable
-	// and raised for the test stack rather than tuned down for production.
-	oauthLimiter := newRateLimiter(envIntOrDefault("OAUTH_RATE_LIMIT_PER_MINUTE", 60), time.Minute)
+	// These are public and unauthenticated too; the limit bounds a client
+	// stuck in a loop pounding Hydra's admin API with challenge lookups.
+	// One authorization costs three requests here (login GET, consent
+	// GET, consent POST), so a sixty-student class arriving together is
+	// ~180 from one campus address, and students retry. 600 clears that
+	// with room and is still an order of magnitude under what a script
+	// can generate, which is the case worth catching.
+	oauthLimit := oauthRateLimitPerMinute()
+	oauthLimiter := newRateLimiter(oauthLimit, time.Minute)
 	mux.Handle(oauthLoginPath, rateLimitMiddleware(oauthLimiter, getOAuthLoginHandler(oauthConfig, sessionManager)))
 	mux.Handle(oauthConsentPath, rateLimitMiddleware(oauthLimiter, getOAuthConsentHandler(oauthConfig, sessionManager)))
-	mux.Handle(oauthStylesheetPath, rateLimitMiddleware(oauthLimiter, getOAuthStylesheetHandler()))
+	// The consent stylesheet gets its own bucket of the same size. It is
+	// a constant string served from memory, and letting a page's CSS
+	// fetch spend the quota its own authorization needs is backwards.
+	oauthStylesheetLimiter := newRateLimiter(oauthLimit, time.Minute)
+	mux.Handle(oauthStylesheetPath, rateLimitMiddleware(oauthStylesheetLimiter, getOAuthStylesheetHandler()))
 	// Connected applications (issue #277): session-authenticated, so an
 	// application can never disconnect another on the user's behalf. Shares
 	// the OAuth limiter because it is the same browser-facing surface.
@@ -193,6 +215,40 @@ func resolveMCPAudience() string {
 		return "https://" + fqdn + "/mcp"
 	}
 	return ""
+}
+
+// Defaults for the public rate limits, raised in issue #330 so a whole
+// class connecting at once cannot trip them. All are overridable from the
+// environment: an operator watching a flood needs to be able to pull them
+// down, and the end-to-end suite raises the OAuth one because it drives
+// dozens of authorizations from one address in a few minutes. The
+// per-minute sizing arguments live where the limiters are built, in main.
+//
+// Every limiter here is a sliding log over its own window, not a fixed
+// window that resets on the clock, so a caller cannot double its
+// allowance by straddling a boundary.
+const (
+	defaultDCRRateLimitPerMinute   = 300
+	defaultOAuthRateLimitPerMinute = 600
+	// The hourly companion to the DCR burst allowance. A class of sixty
+	// costs ~120 registrations (two per connect attempt); assume every
+	// student retries once and a second section meets in the same hour
+	// and the honest worst case is ~480. 1200 clears that 2.5x over and
+	// still caps one address at 28,800 client rows a day rather than the
+	// 432,000 the per-minute limit allows on its own.
+	defaultDCRRateLimitPerHour = 1200
+)
+
+func dcrRateLimitPerMinute() int {
+	return envIntOrDefault("DCR_RATE_LIMIT_PER_MINUTE", defaultDCRRateLimitPerMinute)
+}
+
+func dcrRateLimitPerHour() int {
+	return envIntOrDefault("DCR_RATE_LIMIT_PER_HOUR", defaultDCRRateLimitPerHour)
+}
+
+func oauthRateLimitPerMinute() int {
+	return envIntOrDefault("OAUTH_RATE_LIMIT_PER_MINUTE", defaultOAuthRateLimitPerMinute)
 }
 
 // envIntOrDefault reads a positive integer from the environment, falling

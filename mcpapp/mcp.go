@@ -38,6 +38,10 @@ type toolDeps struct {
 	// exchanger turns a verified OAuth identity into an internal PostgREST
 	// credential (issue #274). Nil when no authorization server is wired up.
 	exchanger *tokenExchanger
+	// escapeHatchWritesEnabled allows POST/PATCH/DELETE through
+	// postgrest_request (issue #331). The zero value is the shipped posture:
+	// the hatch reads only, and writes go through submit_submission_change.
+	escapeHatchWritesEnabled bool
 }
 
 func newMCPServer(deps *toolDeps) *mcp.Server {
@@ -45,7 +49,7 @@ func newMCPServer(deps *toolDeps) *mcp.Server {
 		Name:    "yelukerest-mcp",
 		Title:   "Yelukerest MCP Server",
 		Version: "0.1.0",
-	}, &mcp.ServerOptions{Instructions: serverInstructions})
+	}, &mcp.ServerOptions{Instructions: serverInstructions(deps.escapeHatchWritesEnabled)})
 	server.AddReceivingMiddleware(auditMiddleware(deps.logger))
 	registerReadTools(server, deps)
 	registerWriteTools(server, deps)

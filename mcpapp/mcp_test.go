@@ -137,10 +137,12 @@ var expectedToolNames = []string{
 // writeCapableTools are the tools that must NOT carry readOnlyHint and must
 // carry destructiveHint=true. preview_submission_change is deliberately not
 // here: it resolves the same change submit_submission_change would make but
-// never writes, so it advertises itself as read-only.
+// never writes, so it advertises itself as read-only. Neither is
+// postgrest_request: with escapeHatchWritesEnabled off, which is the default
+// this test stack builds (issue #331), it refuses every mutating verb, so it
+// advertises itself read-only too. escape_hatch_test.go covers both postures.
 var writeCapableTools = map[string]bool{
 	"submit_submission_change": true,
-	"postgrest_request":        true,
 }
 
 func TestWhoamiOverStreamableHTTP(t *testing.T) {

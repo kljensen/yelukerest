@@ -28,8 +28,10 @@ the consent page is asking — is `docs/mcp-for-students.md`.
   fields from Hydra's DCR responses that break strict-parser MCP
   clients ([ory/hydra#4044](https://github.com/ory/hydra/issues/4044)),
   injects the MCP audience allowlist so token refresh works (issue
-  #271 spike), and hardens registration: per-IP rate limit (10/min),
-  64KB body cap, at most 10 `redirect_uris` of at most 2000 chars,
+  #271 spike), and hardens registration: per-IP rate limits
+  (`DCR_RATE_LIMIT_PER_MINUTE`, default 300/min, and
+  `DCR_RATE_LIMIT_PER_HOUR`, default 1200/hour — a request must clear
+  both), 64KB body cap, at most 10 `redirect_uris` of at most 2000 chars,
   https-only redirect URIs except `http://localhost` /
   `http://127.0.0.1` loopback. See `authapp/register.go`; remove the
   proxy when the upstream fix ships (issue #272).
@@ -79,6 +81,19 @@ authapp reads these variables for the OAuth and DCR handlers:
 | `HYDRA_ADMIN_URL` | Hydra's admin API. Default `http://hydra:4445`; override only if the admin listener moves. Never route it through Caddy. |
 | `MCP_RESOURCE_URL` | Canonical MCP resource, granted as the access-token audience and injected into client allowlists. Falls back to `https://$FQDN/mcp`. Must match mcpapp's expected audience exactly. |
 | `HYDRA_PUBLIC_INTERNAL_URL` | Where the DCR proxy forwards `/oauth2/register`. Default `http://hydra:4444`. |
+| `DCR_RATE_LIMIT_PER_MINUTE` | Per-IP ceiling on `/oauth2/register`. Default 300. Sized for a class: sixty students share a few campus NAT addresses and Claude registers two clients per connect attempt (issue #330). |
+| `DCR_RATE_LIMIT_PER_HOUR` | Second per-IP ceiling on `/oauth2/register`, applied on top of the per-minute one. Default 1200. The minute limit shapes the burst; alone it would still admit 432,000 Hydra client rows a day from one address, which `bin/prune-hydra-clients.sh` and `bin/doctor.sh` only clean up after the fact. 1200/hour clears two sixty-student sections with a retry apiece and caps one address at 28,800 rows a day. |
+| `OAUTH_RATE_LIMIT_PER_MINUTE` | Per-IP ceiling on the login, consent and connected-apps handlers. Default 600; one authorization costs three of them. The consent stylesheet has its own bucket of the same size, so a CSS fetch cannot spend an authorization's quota. |
+
+All of these limits are per source address, and a lecture hall is one or
+two source addresses. Each is a sliding log over its own window, not a
+fixed window that resets on the clock, so a caller cannot double its
+allowance by straddling a boundary. Raise them if a cohort is larger
+than sixty or an onboarding session runs hotter than expected; lower
+them if the public DCR endpoint is being flooded, which is the case they
+exist to bound. The dev stack raises `DCR_RATE_LIMIT_PER_HOUR` because a
+full end-to-end run registers many more clients in an hour than a class
+does.
 
 ### mcpapp Configuration
 
@@ -95,7 +110,12 @@ The rest: `MCP_RESOURCE_URL` (or `FQDN`) fixes the audience mcpapp demands;
 `HYDRA_PUBLIC_URL` is the authorization server advertised in the RFC 9728
 protected-resource metadata, and since OAuth is now the only way into `/mcp`,
 leaving it empty leaves the endpoint with no usable credential path at all;
-`HYDRA_ISSUER` and `HYDRA_JWKS_URL` override the two values derived from it.
+`HYDRA_ISSUER` and `HYDRA_JWKS_URL` override the two values derived from it;
+`MCP_ESCAPE_HATCH_WRITES_ENABLED` (default false) decides whether the
+`postgrest_request` escape hatch accepts anything but `GET` — see
+`docs/mcp-writes.md` for why it ships off. It is parsed strictly: only
+`true`/`1`/`yes`/`on` (or the matching off spellings) count, and any
+other value logs and leaves writes disabled, so a typo cannot open them.
 
 ## Delegated Login And Consent (Issue #273)
 

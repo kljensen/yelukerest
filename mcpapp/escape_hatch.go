@@ -10,6 +10,17 @@ package main
 // same boundary the curated write tool enforces, and the same one the student
 // crossed on the consent screen. Every call is audit-logged as method+path;
 // query values and bodies are never logged.
+//
+// Mutating verbs are refused by default (issue #331). Scope parity is not
+// blast-radius parity: a PATCH here may omit filters, in which case it hits
+// every row RLS permits — a student's team submissions included — and raw
+// PATCH skips the optimistic concurrency the curated tool enforces, because
+// assignment_field_submission.sql lets a client that omits updated_at past the
+// stale-write check. So one prompt injection buys a broad multi-row write
+// while staying inside RLS. GET stays on: the read hatch is what keeps the MCP
+// front door no worse than the caller's own token against the REST API, which
+// is the principle the hatch exists on. MCP_ESCAPE_HATCH_WRITES_ENABLED=true
+// restores the mutating verbs for a deployment that has decided it wants them.
 
 import (
 	"context"
@@ -22,6 +33,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -37,6 +49,16 @@ const escapeHatchBodyBudget = maxToolResultBytes - 2*1024
 
 var allowedAPIMethods = []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete}
 
+// allowedAPIMethodsFor is the verb list a given deployment will actually
+// execute. With writes off the handler refuses everything but GET, so that is
+// all the tool advertises.
+func allowedAPIMethodsFor(writesEnabled bool) []string {
+	if writesEnabled {
+		return allowedAPIMethods
+	}
+	return []string{http.MethodGet}
+}
+
 func registerEscapeHatchTools(server *mcp.Server, deps *toolDeps) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_api_schema",
@@ -44,19 +66,59 @@ func registerEscapeHatchTools(server *mcp.Server, deps *toolDeps) {
 			"Prefer the dedicated tools (list_assignments, get_my_grades, ...) when one fits.",
 		Annotations: readOnlyAnnotations("Get API schema"),
 	}, deps.getAPISchema)
-	mcp.AddTool(server, &mcp.Tool{
-		Name: "postgrest_request",
-		Description: "Escape hatch: perform one request against the course REST API under the caller's own credential and row-level security. " +
-			"GET requires the read scope; POST, PATCH, and DELETE require the write scope. This grants nothing beyond what the caller could do by calling the API directly with their own token. " +
-			"Call get_api_schema for the available views and filter syntax." + untrustedTextNote,
-		Annotations: &mcp.ToolAnnotations{
-			Title:           "PostgREST request",
-			ReadOnlyHint:    false,
-			DestructiveHint: boolPtr(true),
-			IdempotentHint:  false,
-			OpenWorldHint:   boolPtr(false),
-		},
-	}, deps.postgrestRequest)
+	mcp.AddTool(server, postgrestRequestTool(deps.escapeHatchWritesEnabled), deps.postgrestRequest)
+}
+
+// postgrestRequestTool describes the escape hatch as it is actually
+// configured. The description and the annotations track the setting because a
+// model told it can PATCH here, on a deployment that refuses the PATCH, spends
+// its turn discovering that instead of using submit_submission_change.
+func postgrestRequestTool(writesEnabled bool) *mcp.Tool {
+	description := "Escape hatch: perform one request against the course REST API under the caller's own credential and row-level security. "
+	annotations := &mcp.ToolAnnotations{
+		Title:         "PostgREST request",
+		ReadOnlyHint:  !writesEnabled,
+		OpenWorldHint: boolPtr(false),
+	}
+	if writesEnabled {
+		description += "GET requires the read scope; POST, PATCH, and DELETE require the write scope. "
+		annotations.DestructiveHint = boolPtr(true)
+	} else {
+		description += "GET only: it requires the read scope, and POST, PATCH, and DELETE are refused on this deployment — use submit_submission_change to change a submission. "
+		annotations.DestructiveHint = boolPtr(false)
+	}
+	description += "This grants nothing beyond what the caller could do by calling the API directly with their own token. " +
+		"Call get_api_schema for the available views and filter syntax." + untrustedTextNote
+	return &mcp.Tool{
+		Name:        "postgrest_request",
+		Description: description,
+		Annotations: annotations,
+		InputSchema: postgrestRequestSchema(writesEnabled),
+	}
+}
+
+// postgrestRequestSchema is the reflected schema for postgrestRequestInput
+// with the method property narrowed to the verbs this deployment executes. A
+// bare struct tag cannot vary by configuration, and a schema that still lists
+// POST/PATCH/DELETE invites the model to spend a call on a refusal.
+func postgrestRequestSchema(writesEnabled bool) *jsonschema.Schema {
+	schema, err := jsonschema.For[postgrestRequestInput](nil)
+	if err != nil {
+		// The type is a fixed struct of plain fields, so this cannot fail at
+		// runtime without a programming error; AddTool would panic anyway.
+		panic(fmt.Sprintf("postgrest_request input schema: %v", err))
+	}
+	methods := allowedAPIMethodsFor(writesEnabled)
+	method := schema.Properties["method"]
+	method.Description = strings.Join(methods, ", ")
+	method.Enum = make([]any, 0, len(methods))
+	for _, verb := range methods {
+		method.Enum = append(method.Enum, verb)
+	}
+	if !writesEnabled {
+		schema.Properties["body"].Description = "unused: this deployment accepts GET only"
+	}
+	return schema
 }
 
 // validateAPIRequest normalizes and checks postgrest_request's inputs. It
@@ -120,6 +182,16 @@ func (d *toolDeps) postgrestRequest(ctx context.Context, req *mcp.CallToolReques
 	} else {
 		if err := authorizeScope(id, scopeWrite); err != nil {
 			return nil, zero, err
+		}
+		// Checked after the scope gate so a caller without the write scope
+		// still hears the scope answer, which is the more fundamental one and
+		// the one that does not change when an operator flips this setting.
+		if !d.escapeHatchWritesEnabled {
+			return nil, zero, fmt.Errorf(
+				"%s through postgrest_request is disabled on this deployment; only GET is available. "+
+					"To change a submission use submit_submission_change, which writes one field of one submission and checks for a concurrent edit. "+
+					"An operator can re-enable raw writes with MCP_ESCAPE_HATCH_WRITES_ENABLED=true",
+				method)
 		}
 	}
 
@@ -256,11 +328,15 @@ Example GET: path=/assignments, query={"is_open": "is.true",
 
 ## Writes via postgrest_request (POST / PATCH / DELETE)
 
-Require the write scope; the server sets Prefer: return=representation so you
-see the affected rows.
-A PATCH/DELETE without filters targets EVERY row RLS lets you write — always
-filter (e.g. assignment_slug=eq.x). HTTP 409 means a conflict or a stale
-updated_at: re-read and retry deliberately.
+Usually DISABLED: postgrest_request is GET-only unless the operator has
+enabled mutating verbs, and it will tell you if a POST/PATCH/DELETE is
+refused. Use submit_submission_change instead — it writes one field of one
+submission and handles the stale-write check for you.
+Where they are enabled they need the write scope, and the server sets
+Prefer: return=representation so you see the affected rows. A PATCH/DELETE
+without filters targets EVERY row RLS lets you write — always filter (e.g.
+assignment_slug=eq.x). HTTP 409 means a conflict or a stale updated_at:
+re-read and retry deliberately.
 
 ## RPC endpoints (side effects!)
 

@@ -12,6 +12,14 @@ non-GET clause of *Escape Hatch: `postgrest_request` Kept, Gated*. Everything
 else in ADR 0001 — Hydra, the token exchange, the audited minting function, the
 curated-tool decision, the escape hatch itself — stands unchanged.
 
+Amended 2026-08-26 (issue #331): this ADR's boundary still governs
+`submit_submission_change`, which is unchanged. The escape hatch no longer
+accepts mutating verbs at all by default — `MCP_ESCAPE_HATCH_WRITES_ENABLED`
+defaults to false — because equal scope is not equal blast radius: an unfiltered
+`PATCH` reaches every row RLS permits and skips the stale-write check the
+curated tool enforces. The GET hatch, which is what this ADR's front-door/side-
+door argument is actually about, is untouched. See `docs/mcp-writes.md`.
+
 ## Context
 
 ADR 0001 was accepted on 2026-08-05 and said that MCP writes are protected by a

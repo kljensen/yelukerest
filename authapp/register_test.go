@@ -604,3 +604,96 @@ func TestRegisterProxyRateLimits(t *testing.T) {
 		t.Fatalf("upstream calls = %d, want 3", fake.calls)
 	}
 }
+
+// Both ceilings apply to /oauth2/register, and they bound different things:
+// the minute one shapes a class arriving together, the hour one bounds the
+// sustained flood a per-minute limit alone would wave through (issue #330
+// review). Here the hourly budget is the smaller of the two, so it is what
+// stops the caller even though no single minute exceeds its allowance.
+func TestRegisterProxyAppliesMinuteAndHourCeilings(t *testing.T) {
+	fake := newFakeHydra(http.StatusCreated, "application/json", `{"client_id":"abc"}`)
+	defer fake.server.Close()
+	handler := getRegisterProxyHandler(registerProxyConfig{
+		HydraPublicURL: fake.server.URL,
+		Client:         fake.server.Client(),
+	}, newRateLimiter(10, time.Minute), newRateLimiter(3, time.Hour))
+
+	makeRequest := func(remoteAddr string) int {
+		request := httptest.NewRequest(http.MethodPost, "http://example.test/oauth2/register",
+			strings.NewReader(`{"redirect_uris":["https://example.com/cb"]}`))
+		request.RemoteAddr = remoteAddr
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+
+	for i := 0; i < 3; i++ {
+		if code := makeRequest("192.0.2.1:1234"); code != http.StatusCreated {
+			t.Fatalf("request %d status = %d, want %d", i+1, code, http.StatusCreated)
+		}
+	}
+	// Under the per-minute allowance, over the hourly one.
+	if code := makeRequest("192.0.2.1:1234"); code != http.StatusTooManyRequests {
+		t.Fatalf("fourth request status = %d, want %d", code, http.StatusTooManyRequests)
+	}
+	if code := makeRequest("192.0.2.2:1234"); code != http.StatusCreated {
+		t.Fatalf("other-IP request status = %d, want %d", code, http.StatusCreated)
+	}
+	if fake.calls != 4 {
+		t.Fatalf("upstream calls = %d, want 4", fake.calls)
+	}
+
+	// And the reverse: with a tight minute and a loose hour, the minute
+	// limiter is the one that refuses.
+	burst := getRegisterProxyHandler(registerProxyConfig{
+		HydraPublicURL: fake.server.URL,
+		Client:         fake.server.Client(),
+	}, newRateLimiter(2, time.Minute), newRateLimiter(1000, time.Hour))
+	makeBurstRequest := func() int {
+		request := httptest.NewRequest(http.MethodPost, "http://example.test/oauth2/register",
+			strings.NewReader(`{"redirect_uris":["https://example.com/cb"]}`))
+		request.RemoteAddr = "192.0.2.3:1234"
+		recorder := httptest.NewRecorder()
+		burst.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+	for i := 0; i < 2; i++ {
+		if code := makeBurstRequest(); code != http.StatusCreated {
+			t.Fatalf("burst request %d status = %d, want %d", i+1, code, http.StatusCreated)
+		}
+	}
+	if code := makeBurstRequest(); code != http.StatusTooManyRequests {
+		t.Fatalf("burst request 3 status = %d, want %d", code, http.StatusTooManyRequests)
+	}
+}
+
+// The shipped hourly ceiling has to clear a real class and still be far
+// below what a per-minute limit alone permits, which was the finding.
+func TestDCRHourlyCeilingSizing(t *testing.T) {
+	t.Setenv("DCR_RATE_LIMIT_PER_HOUR", "")
+	if got := dcrRateLimitPerHour(); got != defaultDCRRateLimitPerHour {
+		t.Fatalf("dcrRateLimitPerHour() = %d, want %d", got, defaultDCRRateLimitPerHour)
+	}
+
+	// Two sixty-student sections in one hour, two registrations per
+	// connect attempt, each student retrying once.
+	worstHonestHour := 2 * 60 * 2 * 2
+	if dcrRateLimitPerHour() < worstHonestHour {
+		t.Fatalf("hourly ceiling %d throttles an honest hour of %d registrations", dcrRateLimitPerHour(), worstHonestHour)
+	}
+	// Far below the 432,000 rows a day the per-minute limit alone allows.
+	perDay := dcrRateLimitPerHour() * 24
+	if perDay >= dcrRateLimitPerMinute()*60*24/10 {
+		t.Fatalf("hourly ceiling admits %d rows a day, not meaningfully below the per-minute bound", perDay)
+	}
+
+	t.Setenv("DCR_RATE_LIMIT_PER_HOUR", "4000")
+	if got := dcrRateLimitPerHour(); got != 4000 {
+		t.Fatalf("dcrRateLimitPerHour() = %d, want 4000", got)
+	}
+	// A typo must not disable the ceiling.
+	t.Setenv("DCR_RATE_LIMIT_PER_HOUR", "plenty")
+	if got := dcrRateLimitPerHour(); got != defaultDCRRateLimitPerHour {
+		t.Fatalf("unparseable hourly limit = %d, want the default", got)
+	}
+}

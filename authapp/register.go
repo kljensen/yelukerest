@@ -111,16 +111,24 @@ type registerProxyConfig struct {
 }
 
 // getRegisterProxyHandler returns the handler for /oauth2/register and
-// /oauth2/register/{id}, wrapped in the shared per-IP rate limiter.
-func getRegisterProxyHandler(config registerProxyConfig, limiter *rateLimiter) http.Handler {
+// /oauth2/register/{id}, wrapped in the given per-IP rate limiters. Every
+// limiter must allow the request for it to reach Hydra, which is how one
+// short window sized for a class arriving together is combined with a longer
+// one that bounds sustained abuse. They are consulted in the order given and
+// a limiter only counts requests the ones before it allowed, so a caller
+// already being throttled per minute does not also burn the longer budget.
+func getRegisterProxyHandler(config registerProxyConfig, limiters ...*rateLimiter) http.Handler {
 	if config.Client == nil {
 		config.Client = &http.Client{Timeout: 15 * time.Second}
 	}
 	config.HydraPublicURL = strings.TrimRight(config.HydraPublicURL, "/")
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveRegisterProxy(w, r, config)
 	})
-	return rateLimitMiddleware(limiter, inner)
+	for i := len(limiters) - 1; i >= 0; i-- {
+		handler = rateLimitMiddleware(limiters[i], handler)
+	}
+	return handler
 }
 
 func serveRegisterProxy(w http.ResponseWriter, r *http.Request, config registerProxyConfig) {

@@ -2,11 +2,15 @@ package main
 
 // Tests for the escape hatch (issue #268): GET happy path and query
 // building, path constraints, the verb-keyed scope gate for non-GET requests,
-// response size caps, audit logging, and the schema tool bound.
+// response size caps, audit logging, and the schema tool bound. Since issue
+// #331 the mutating verbs are also gated on escapeHatchWritesEnabled, so
+// tests that expect a write to execute have to turn it on.
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -148,10 +152,10 @@ func TestPostgrestRequestNonGETRequiresWriteScope(t *testing.T) {
 	}
 }
 
-// With the write scope the request simply executes: there is no intent token,
-// no preparation step, and no confirmation round trip left on this path. The
-// scope the student granted on the consent screen is the whole gate, and RLS
-// enforces the rest.
+// On a deployment that has enabled the mutating verbs, the write scope is the
+// whole remaining gate: there is no intent token, no preparation step, and no
+// confirmation round trip on this path. The scope the student granted on the
+// consent screen is what authorizes it, and RLS enforces the rest.
 func TestPostgrestRequestNonGETWithWriteScopeExecutes(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusOK,
@@ -159,6 +163,7 @@ func TestPostgrestRequestNonGETWithWriteScopeExecutes(t *testing.T) {
 
 	logs := &safeBuffer{}
 	deps := fake.deps(t)
+	deps.escapeHatchWritesEnabled = true
 	deps.logger = slog.New(slog.NewJSONHandler(logs, nil))
 	req, token := writeToolRequest(t, nil)
 	ctx := context.Background()
@@ -206,6 +211,77 @@ func TestPostgrestRequestNonGETWithWriteScopeExecutes(t *testing.T) {
 	}
 	if strings.Contains(logText, `"body":"new"`) || strings.Contains(logText, "team-selection") {
 		t.Fatalf("audit log leaks request contents: %s", logText)
+	}
+}
+
+// The shipped posture (issue #331): the hatch reads, and a write is refused
+// even for a caller holding the write scope. Scope parity with the curated
+// tool is not blast-radius parity — a raw PATCH can omit filters and skips the
+// stale-write check — so the refusal has to name the tool that does neither.
+func TestPostgrestRequestRefusesMutatingVerbsByDefault(t *testing.T) {
+	fake := newFakePostgREST(t)
+	deps := fake.deps(t) // the zero value is the default: writes disabled
+	req, _ := writeToolRequest(t, nil)
+	ctx := context.Background()
+
+	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			in := postgrestRequestInput{Method: method, Path: "/assignment_field_submissions"}
+			if method != http.MethodDelete {
+				in.Body = `{"body":"x"}`
+			}
+			_, _, err := deps.postgrestRequest(ctx, req, in)
+			if err == nil {
+				t.Fatal("a mutating verb was accepted with writes disabled")
+			}
+			if !strings.Contains(err.Error(), "submit_submission_change") {
+				t.Fatalf("refusal does not point at the curated tool: %v", err)
+			}
+			if !strings.Contains(err.Error(), method) {
+				t.Fatalf("refusal does not name the verb: %v", err)
+			}
+		})
+	}
+	if len(fake.recorded()) != 0 {
+		t.Fatalf("a refused write reached PostgREST: %+v", fake.recorded())
+	}
+
+	// The read hatch is untouched: it is what keeps the MCP front door no
+	// worse than the caller's own token against the REST API.
+	fake.respond("/assignments", `[{"slug":"proj1"}]`)
+	readReq, _ := readToolRequest(t, nil)
+	_, out, err := deps.postgrestRequest(ctx, readReq, postgrestRequestInput{Method: http.MethodGet, Path: "/assignments"})
+	if err != nil {
+		t.Fatalf("GET with writes disabled: %v", err)
+	}
+	if out.Status != http.StatusOK || !strings.Contains(out.Body, `"slug":"proj1"`) {
+		t.Fatalf("output = %+v", out)
+	}
+}
+
+// The advertised tool has to match the configured tool, or a model spends its
+// turn attempting a write this deployment will refuse.
+func TestPostgrestRequestToolDescriptionTracksSetting(t *testing.T) {
+	readOnly := postgrestRequestTool(false)
+	if !readOnly.Annotations.ReadOnlyHint {
+		t.Fatal("with writes disabled the tool must advertise readOnlyHint")
+	}
+	if readOnly.Annotations.DestructiveHint == nil || *readOnly.Annotations.DestructiveHint {
+		t.Fatal("with writes disabled the tool must advertise destructiveHint=false")
+	}
+	if !strings.Contains(readOnly.Description, "GET only") || !strings.Contains(readOnly.Description, "submit_submission_change") {
+		t.Fatalf("description = %q", readOnly.Description)
+	}
+
+	writable := postgrestRequestTool(true)
+	if writable.Annotations.ReadOnlyHint {
+		t.Fatal("with writes enabled the tool must not advertise readOnlyHint")
+	}
+	if writable.Annotations.DestructiveHint == nil || !*writable.Annotations.DestructiveHint {
+		t.Fatal("with writes enabled the tool must advertise destructiveHint=true")
+	}
+	if !strings.Contains(writable.Description, "POST, PATCH, and DELETE require the write scope") {
+		t.Fatalf("description = %q", writable.Description)
 	}
 }
 
@@ -315,5 +391,107 @@ func TestGetAPISchemaSizeAndScope(t *testing.T) {
 	}
 	if len(fake.recorded()) != 0 {
 		t.Fatal("get_api_schema must not reach PostgREST")
+	}
+}
+
+// The flag that keeps raw writes off must fail closed on anything it does not
+// recognise. envBoolOrDefault reads every unknown value as true, so a typo
+// there would silently open POST/PATCH/DELETE; this is the one flag that
+// cannot afford that, and the operator has to be told why their value was
+// ignored.
+func TestEscapeHatchWritesEnabledFailsClosed(t *testing.T) {
+	cases := []struct {
+		value   string
+		set     bool
+		want    bool
+		wantLog bool
+	}{
+		{value: "", set: false, want: false},
+		{value: "true", set: true, want: true},
+		{value: "1", set: true, want: true},
+		{value: "TRUE", set: true, want: true},
+		{value: "on", set: true, want: true},
+		{value: "false", set: true, want: false},
+		{value: "0", set: true, want: false},
+		{value: "off", set: true, want: false},
+		{value: "flase", set: true, want: false, wantLog: true},
+		{value: "disabled", set: true, want: false, wantLog: true},
+		{value: "nope", set: true, want: false, wantLog: true},
+		{value: "yes please", set: true, want: false, wantLog: true},
+	}
+	for _, testCase := range cases {
+		name := testCase.value
+		if !testCase.set {
+			name = "unset"
+		}
+		t.Run(name, func(t *testing.T) {
+			if testCase.set {
+				t.Setenv("MCP_ESCAPE_HATCH_WRITES_ENABLED", testCase.value)
+			} else {
+				t.Setenv("MCP_ESCAPE_HATCH_WRITES_ENABLED", "")
+			}
+			logs := &safeBuffer{}
+			restore := log.Writer()
+			log.SetOutput(logs)
+			defer log.SetOutput(restore)
+
+			if got := escapeHatchWritesEnabled(); got != testCase.want {
+				t.Fatalf("escapeHatchWritesEnabled() = %v, want %v", got, testCase.want)
+			}
+			logged := strings.Contains(logs.String(), "MCP_ESCAPE_HATCH_WRITES_ENABLED")
+			if logged != testCase.wantLog {
+				t.Fatalf("logged = %v, want %v (log: %q)", logged, testCase.wantLog, logs.String())
+			}
+			if testCase.wantLog && !strings.Contains(logs.String(), testCase.value) {
+				t.Fatalf("the log does not name the rejected value: %q", logs.String())
+			}
+		})
+	}
+}
+
+// The tool's input schema is the other place the model reads the accepted
+// verbs. With writes off it must offer GET alone, or the model is invited to
+// attempt a request the handler will refuse.
+func TestPostgrestRequestSchemaTracksSetting(t *testing.T) {
+	readOnly := postgrestRequestSchema(false).Properties["method"]
+	if got := fmt.Sprint(readOnly.Enum); got != "[GET]" {
+		t.Fatalf("read-only method enum = %v, want [GET]", readOnly.Enum)
+	}
+	for _, verb := range []string{"POST", "PATCH", "DELETE"} {
+		if strings.Contains(readOnly.Description, verb) {
+			t.Fatalf("read-only method description still advertises %s: %q", verb, readOnly.Description)
+		}
+	}
+
+	writable := postgrestRequestSchema(true).Properties["method"]
+	if got := fmt.Sprint(writable.Enum); got != "[GET POST PATCH DELETE]" {
+		t.Fatalf("writable method enum = %v", writable.Enum)
+	}
+}
+
+// Same reasoning for the server instructions, which every client reads once at
+// initialize and which used to say other verbs need only the write scope.
+func TestServerInstructionsTrackEscapeHatchSetting(t *testing.T) {
+	readOnly := serverInstructions(false)
+	if !strings.Contains(readOnly, "accepts GET only") || !strings.Contains(readOnly, "submit_submission_change") {
+		t.Fatalf("read-only instructions = %q", readOnly)
+	}
+	if strings.Contains(readOnly, "other verbs need the write scope") {
+		t.Fatal("read-only instructions still advertise the mutating verbs")
+	}
+
+	writable := serverInstructions(true)
+	if !strings.Contains(writable, "other verbs need the write scope") {
+		t.Fatalf("writable instructions = %q", writable)
+	}
+
+	// Both postures keep the untrusted-content warning and the call order.
+	for _, instructions := range []string{readOnly, writable} {
+		if !strings.Contains(instructions, "untrusted data written by course participants") {
+			t.Fatalf("instructions lost the untrusted-content warning: %q", instructions)
+		}
+		if !strings.Contains(instructions, "Suggested call order") {
+			t.Fatalf("instructions lost the call order: %q", instructions)
+		}
 	}
 }

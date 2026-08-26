@@ -158,10 +158,15 @@ history.
 | `preview_submission_change` | Shows exactly what an edit would change, and writes nothing |
 | `submit_submission_change` | Writes one field of your submission |
 | `get_api_schema` | The REST API views and filter syntax, for the escape hatch |
-| `postgrest_request` | Escape hatch: one raw REST API call under your own permissions |
+| `postgrest_request` | Escape hatch: one raw REST API *read* under your own permissions |
 
 **Grades appear only in `get_my_grades` and `get_my_quiz_grades`.** No other tool
 returns your scores, so an assistant that only reads assignments never sees them.
+
+**`submit_submission_change` is the only tool that changes your work.** The
+escape hatch reads and nothing more: an assistant that tries to write through
+`postgrest_request` is refused and told to use `submit_submission_change`, which
+changes one field of one submission at a time.
 
 ## How editing a submission works
 

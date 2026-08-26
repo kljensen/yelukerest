@@ -85,7 +85,9 @@ artifact so it can be watched across upgrades.
 - **`tool-schemas.js`** — no model needed. Our published schemas survive the
   bridge to an OpenAI tool list, the server instructions are present, and the
   scope boundary is pinned down on both write mechanisms
-  (`submit_submission_change` and the `postgrest_request` escape hatch).
+  (`submit_submission_change` and the `postgrest_request` escape hatch, which
+  since issue #331 refuses mutating verbs entirely unless
+  `MCP_ESCAPE_HATCH_WRITES_ENABLED=true`).
   Mechanism coverage lives here, deterministically, because no model-driven
   test can guarantee the model attempts a write at all.
 - **`read-navigation.js`** — the everyday question. Ground truth comes from the

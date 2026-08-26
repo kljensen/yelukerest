@@ -29,9 +29,13 @@ services:
   authapp:
     environment:
       # The end-to-end suite drives dozens of authorizations from one
-      # address in a couple of minutes; production keeps the 60/min
-      # default. See authapp/main.go.
+      # address in a couple of minutes, and the DCR-heavy files can outrun
+      # even a raised limit (issue #326). Production defaults are 600/min
+      # here, and 300/min plus 1200/hour for registration. A full suite
+      # run registers far more clients in an hour than a class does, so
+      # the hourly ceiling is raised too. See authapp/main.go.
       - OAUTH_RATE_LIMIT_PER_MINUTE=${OAUTH_RATE_LIMIT_PER_MINUTE:-1000}
+      - DCR_RATE_LIMIT_PER_HOUR=${DCR_RATE_LIMIT_PER_HOUR:-20000}
       - CAS_VALIDATION_URI=http://authapp:${AUTHAPP_PORT}/cas/serviceValidate
       # In development the stack is served at https://localhost via Caddy;
       # FQDN may be unset, so pin the MCP resource URL explicitly (used
@@ -40,6 +44,10 @@ services:
 
   mcpapp:
     environment:
+      # The escape hatch ships GET-only (issue #331). The dev stack turns
+      # writes back on so tests/oauth/write-path.js still exercises the
+      # enabled path; the default-off path is covered by Go tests.
+      - MCP_ESCAPE_HATCH_WRITES_ENABLED=true
       # In development the stack is served at https://localhost via Caddy;
       # FQDN may be unset, so pin the MCP resource URL explicitly.
       - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-https://localhost/mcp}

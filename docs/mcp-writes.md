@@ -12,10 +12,11 @@ was deliberate.
 
 ## What is actually enforced
 
-1. **Scope.** `submit_submission_change` and any non-GET `postgrest_request`
-   require `submissions:write`. The student grants it on the OAuth consent
-   screen, per client. A read-only token cannot write, however the agent is
-   prompted or fooled.
+1. **Scope.** `submit_submission_change` requires `submissions:write`. The
+   student grants it on the OAuth consent screen, per client. A read-only token
+   cannot write, however the agent is prompted or fooled. A non-GET
+   `postgrest_request` requires the same scope *and* is refused outright unless
+   the deployment has enabled it — see *The escape hatch is GET-only* below.
 2. **Row-level security.** Every tool call runs under the caller's own
    credential, so an agent can only reach rows the student can reach. This is
    the guarantee that holds even when a model does something stupid.
@@ -30,6 +31,42 @@ was deliberate.
    `current_updated_at`; pass it back as `expected_updated_at` and a write that
    would clobber a value that moved is rejected instead. This is a correctness
    feature for concurrent writers, not a security control.
+
+### The escape hatch is GET-only
+
+`postgrest_request` refuses `POST`, `PATCH` and `DELETE` (issue #331). The
+refusal names `submit_submission_change`, which covers the case a student
+actually has. `MCP_ESCAPE_HATCH_WRITES_ENABLED=true` on the mcpapp service
+restores the mutating verbs; it defaults to false, so re-enabling them is a
+deployment decision rather than a code change. The flag is parsed strictly:
+only an explicit on spelling (`true`, `1`, `yes`, `on`) enables writes, and
+anything unrecognised — a typo such as `flase`, or a word like `disabled` that
+reads as off to a human — logs the value and leaves them disabled. The general
+environment helpers next to it treat every unknown value as true, which would
+turn a misspelling into open raw writes.
+
+The disabled posture is advertised as well as enforced. The tool description
+and annotations, the server instructions the client reads at `initialize`, and
+the `method` enum in `postgrest_request`'s input schema all describe `GET`
+alone when writes are off, so a model is never led to spend a call on a request
+this deployment will refuse.
+
+Equal scope is not equal blast radius, which is why one write mechanism is open
+and the other is not. `submit_submission_change` writes one field of one
+submission and refuses a stale write. A raw `PATCH` may omit its filters, in
+which case it targets every row RLS permits — for a student that includes the
+team's shared submissions — and it skips the optimistic-concurrency check
+entirely, because `db/src/data/yeluke/assignment_field_submission.sql`
+deliberately lets a client that omits `updated_at` past it. One prompt injection
+therefore buys a broad multi-row write while staying wholly inside RLS. "The
+student could curl it themselves" is a fair argument about capability and a poor
+one about likelihood: handing a model a generic mutation tool changes how often
+the mistake happens and how large it is when it does.
+
+GET stays on, and stays scope-gated. The read hatch is what keeps the MCP front
+door no worse than the caller's own token against the REST API, which is the
+principle the hatch was kept on in the first place (ADR 0001). Revisit after the
+pilot, with the concurrency question answered.
 
 `preview_submission_change` shows what a write would do and needs no write
 scope. Showing it to the student first is good manners and good agent design.
