@@ -95,7 +95,9 @@ and row-level security applies either way.
 
 const escapeHatchInstructionsReadWrite = `Power users can reach the rest of the API through postgrest_request (GET needs
 the read scope, other verbs need the write scope) and get_api_schema, which
-documents the views and the PostgREST filter syntax.`
+documents the views and the PostgREST filter syntax. A PATCH or DELETE there is
+capped at one row and is rejected and rolled back if it would affect more, so
+change one submission field with submit_submission_change.`
 
 const escapeHatchInstructionsReadOnly = `Power users can read the rest of the API through postgrest_request, which on
 this deployment accepts GET only and needs the read scope; POST, PATCH and

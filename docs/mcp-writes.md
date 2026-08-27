@@ -16,7 +16,8 @@ was deliberate.
    student grants it on the OAuth consent screen, per client. A read-only token
    cannot write, however the agent is prompted or fooled. A non-GET
    `postgrest_request` requires the same scope *and* is refused outright unless
-   the deployment has enabled it — see *The escape hatch is GET-only* below.
+   the deployment has enabled it — see *The escape hatch: off by default, and
+   capped at one row* below.
 2. **Row-level security.** Every tool call runs under the caller's own
    credential, so an agent can only reach rows the student can reach. This is
    the guarantee that holds even when a model does something stupid.
@@ -32,18 +33,18 @@ was deliberate.
    would clobber a value that moved is rejected instead. This is a correctness
    feature for concurrent writers, not a security control.
 
-### The escape hatch is GET-only
+### The escape hatch: off by default, and capped at one row
 
-`postgrest_request` refuses `POST`, `PATCH` and `DELETE` (issue #331). The
-refusal names `submit_submission_change`, which covers the case a student
-actually has. `MCP_ESCAPE_HATCH_WRITES_ENABLED=true` on the mcpapp service
-restores the mutating verbs; it defaults to false, so re-enabling them is a
-deployment decision rather than a code change. The flag is parsed strictly:
-only an explicit on spelling (`true`, `1`, `yes`, `on`) enables writes, and
-anything unrecognised — a typo such as `flase`, or a word like `disabled` that
-reads as off to a human — logs the value and leaves them disabled. The general
-environment helpers next to it treat every unknown value as true, which would
-turn a misspelling into open raw writes.
+`postgrest_request` refuses `POST`, `PATCH` and `DELETE` unless the deployment
+sets `MCP_ESCAPE_HATCH_WRITES_ENABLED=true` on the mcpapp service (issue #331).
+The refusal names `submit_submission_change`, which covers the case a student
+actually has. The flag defaults to false in this repository, so a fresh
+deployment is never write-open by accident; production turns it on explicitly.
+The flag is parsed strictly: only an explicit on spelling (`true`, `1`, `yes`,
+`on`) enables writes, and anything unrecognised — a typo such as `flase`, or a
+word like `disabled` that reads as off to a human — logs the value and leaves
+them disabled. The general environment helpers next to it treat every unknown
+value as true, which would turn a misspelling into open raw writes.
 
 The disabled posture is advertised as well as enforced. The tool description
 and annotations, the server instructions the client reads at `initialize`, and
@@ -51,22 +52,59 @@ the `method` enum in `postgrest_request`'s input schema all describe `GET`
 alone when writes are off, so a model is never led to spend a call on a request
 this deployment will refuse.
 
-Equal scope is not equal blast radius, which is why one write mechanism is open
-and the other is not. `submit_submission_change` writes one field of one
-submission and refuses a stale write. A raw `PATCH` may omit its filters, in
-which case it targets every row RLS permits — for a student that includes the
-team's shared submissions — and it skips the optimistic-concurrency check
-entirely, because `db/src/data/yeluke/assignment_field_submission.sql`
-deliberately lets a client that omits `updated_at` past it. One prompt injection
-therefore buys a broad multi-row write while staying wholly inside RLS. "The
-student could curl it themselves" is a fair argument about capability and a poor
-one about likelihood: handing a model a generic mutation tool changes how often
-the mistake happens and how large it is when it does.
+Where the mutating verbs are on, what is bounded is breadth rather than the
+verb (issue #337). A `PATCH` or `DELETE` goes upstream carrying
 
-GET stays on, and stays scope-gated. The read hatch is what keeps the MCP front
-door no worse than the caller's own token against the REST API, which is the
-principle the hatch was kept on in the first place (ADR 0001). Revisit after the
-pilot, with the concurrency question answered.
+```
+Prefer: return=representation, handling=strict, max-affected=1
+```
+
+so PostgREST evaluates the result set, and a request that would have affected
+more than one row returns HTTP 400 `PGRST124` with the transaction rolled back.
+`handling=strict` is not optional: PostgREST ignores `max-affected` without it.
+The server turns that response into a message saying the change would have
+affected more than one row, that nothing changed, and that
+`submit_submission_change` is the tool for a single-field edit; the raw upstream
+body is not echoed. `return=representation` still rides along, so a call that
+stays inside the cap gets its affected row back.
+
+N is one and is not configurable. The editing unit in this course is one
+assignment field, which is exactly what `submit_submission_change` writes, and a
+multi-row `PATCH` cannot supply different values per field anyway. `POST` is not
+capped: an insert names its target in the body, and capping it would refuse
+ordinary bulk inserts of the student's own rows.
+
+The reason to bound breadth rather than refuse the verb is that equal scope is
+not equal blast radius. An unfiltered `PATCH` targets every row RLS permits —
+for a student that includes the team's shared submissions — so one prompt
+injection would otherwise buy a broad multi-row write while staying wholly
+inside RLS. Requiring a filter would not have fixed that: `id=gt.0` is a filter,
+and PostgREST says the same of `pg-safeupdate`, that it "does not protect
+against malicious actions, since someone can add a url parameter that does not
+affect the result set." `max-affected` measures the result instead.
+
+GET stays on, and stays scope-gated, whatever the flag says. The read hatch is
+what keeps the MCP front door no worse than the caller's own token against the
+REST API, which is the principle the hatch was kept on in the first place
+(ADR 0001).
+
+#### Two residual risks the cap does not cover
+
+1. **`max-affected` does not constrain `POST`.** The cap is applied to `PATCH`
+   and `DELETE` only. A single `POST` with a JSON array body can insert many
+   rows. RLS still bounds them to rows the student may insert, and an insert
+   cannot overwrite existing work, which is why this is accepted rather than
+   solved. If bulk inserts ever become a nuisance, the fix is a cap on the
+   parsed body length, not `max-affected`.
+2. **A raw `PATCH` still bypasses optimistic concurrency.**
+   `submit_submission_change` sends the `updated_at` the caller last read and a
+   stale write is rejected. `db/src/data/yeluke/assignment_field_submission.sql`
+   deliberately lets a client that omits `updated_at` past that check, so a raw
+   `PATCH` through the escape hatch can silently clobber a value that moved
+   since it was read. The cap bounds how many rows that can happen to — one —
+   not whether it can happen. Prefer `submit_submission_change`, which is why
+   the tool description, the server instructions, `get_api_schema`, and the
+   `PGRST124` message all point at it.
 
 `preview_submission_change` shows what a write would do and needs no write
 scope. Showing it to the student first is good manners and good agent design.

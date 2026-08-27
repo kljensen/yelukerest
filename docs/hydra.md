@@ -113,7 +113,8 @@ leaving it empty leaves the endpoint with no usable credential path at all;
 `HYDRA_ISSUER` and `HYDRA_JWKS_URL` override the two values derived from it;
 `MCP_ESCAPE_HATCH_WRITES_ENABLED` (default false) decides whether the
 `postgrest_request` escape hatch accepts anything but `GET` — see
-`docs/mcp-writes.md` for why it ships off. It is parsed strictly: only
+`docs/mcp-writes.md` for why it ships off and for the one-row cap that bounds
+a `PATCH` or `DELETE` where it is on. It is parsed strictly: only
 `true`/`1`/`yes`/`on` (or the matching off spellings) count, and any
 other value logs and leaves writes disabled, so a typo cannot open them.
 

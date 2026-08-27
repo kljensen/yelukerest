@@ -20,6 +20,37 @@ defaults to false — because equal scope is not equal blast radius: an unfilter
 curated tool enforces. The GET hatch, which is what this ADR's front-door/side-
 door argument is actually about, is untouched. See `docs/mcp-writes.md`.
 
+Amended 2026-08-27 (issue #337): the escape hatch's mutating verbs are restored
+to capability parity with the REST API, **bounded by breadth rather than by
+verb**. A `PATCH` or `DELETE` through `postgrest_request` now carries
+`Prefer: return=representation, handling=strict, max-affected=1`, so PostgREST
+rejects a request that would affect more than one row with `PGRST124` and rolls
+the transaction back; `POST` is uncapped, because an insert names its target in
+the body. This ADR's decision is unchanged — the write scope and RLS are still
+the boundary — and so is `submit_submission_change`.
+
+The 2026-08-26 amendment above is superseded in its conclusion but not in its
+reasoning. Blast radius really is the thing worth bounding; refusing the verb was
+the wrong instrument for it, because the student can already do every one of
+those requests with their own token and `curl` (`docs/api-client-security.md`),
+so the refusal made the front door worse than the side door — the argument that
+removed the write gate in `94be2f2`, applied to the hatch it was borrowed from.
+`max-affected` bounds the breadth that argument does not answer for. A filter
+requirement was considered and rejected: it would refuse ordinary body-based
+`POST` inserts, and "carries a query parameter" does not mean "bounded"
+(`id=gt.0` sails through) — the objection PostgREST itself records against
+`pg-safeupdate`. `max-affected` measures the result set instead of the request.
+
+N is 1 and deliberately not configurable: the editing unit in this course is one
+assignment field, which is what `submit_submission_change` writes, and a
+multi-row `PATCH` cannot supply different values per field. The flag default
+stays false in the repository; enabling writes remains a per-deployment
+decision. Two residual risks are accepted and recorded in `docs/mcp-writes.md`
+rather than solved here — the cap does not constrain `POST`, and a raw `PATCH`
+still bypasses the optimistic concurrency `submit_submission_change` enforces,
+because the schema lets a client that omits `updated_at` past the stale-write
+check.
+
 ## Context
 
 ADR 0001 was accepted on 2026-08-05 and said that MCP writes are protected by a
@@ -202,4 +233,5 @@ what was built.
 - `docs/hydra.md` — consent, disconnection, and the revocation ledger.
 - `mcpapp/write_tools.go`, `mcpapp/escape_hatch.go` — the code this ADR describes.
 - Commits `9e027b0` (built the gate), `94be2f2` (removed it).
-- Issues #267, #268 (the gate), #284, #285, #286 (its removal), #327 (this ADR).
+- Issues #267, #268 (the gate), #284, #285, #286 (its removal), #327 (this ADR),
+  #331 (the GET-only posture), #337 (the `max-affected` cap that replaced it).
