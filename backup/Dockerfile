@@ -8,6 +8,10 @@ ENV POSTGRES_PORT=5432
 ENV POSTGRES_SOCKET_PATH=/var/run/postgresql
 ENV POSTGRES_USER=**None**
 ENV PGBACKREST_STANZA=yelukerest
+# How stale the newest full backup may be before backup.sh takes a full instead
+# of an incremental. Weekly keeps at least two independent full backups alive
+# under repo1-retention-full=2 for a database whose full compresses to a few MB.
+ENV BACKUP_FULL_INTERVAL_DAYS=7
 ENV PGBACKREST_REPO1_PATH=/pgbackrest
 ENV PGBACKREST_REPO1_RETENTION_FULL=2
 ENV PGBACKREST_REPO1_TYPE=s3

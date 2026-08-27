@@ -1,0 +1,62 @@
+#!/bin/sh
+# Stand-in for the real pgbackrest, put ahead of it on PATH by decision-case.sh,
+# so bin/test-pgbackrest.sh can drive backup.sh's backup-type decision through
+# repository states that are impractical to stage for real: a week-old full, an
+# `info` that fails, an `info` whose output we cannot parse. Every subcommand
+# backup.sh runs is appended to /tmp/stub-calls, which is how the test asserts
+# that an aborted run took no backup.
+#
+# STUB_INFO_MODE picks what `info` does. STUB_FULL_AGE_SECONDS ages the label it
+# reports; the label is generated here, in the container, because BusyBox `date`
+# understands @epoch and the macOS host's `date` does not.
+
+set -u
+
+subcommand=
+backup_type=
+for arg in "$@"; do
+  case "$arg" in
+    stanza-create | check | info | backup) subcommand=$arg ;;
+    --type=*) backup_type=${arg#--type=} ;;
+  esac
+done
+
+printf '%s%s\n' "$subcommand" "${backup_type:+ $backup_type}" >> /tmp/stub-calls
+
+if [ "$subcommand" != "info" ]; then
+  exit 0
+fi
+
+case "${STUB_INFO_MODE:-ok}" in
+  fail)
+    # What a transient S3 outage or a rotated key looks like: non-zero exit and
+    # nothing on stdout for the parser to find.
+    echo "ERROR: [041]: unable to get address for 'minio': [-3] Temporary failure in name resolution" >&2
+    exit 41
+    ;;
+  no-stanza)
+    # `info` succeeded but reported nothing about our stanza.
+    echo "No stanzas exist in the repository."
+    ;;
+  unparseable)
+    # A plausible future label format we do not understand. The count of "full
+    # backup:" lines is non-zero, so backup.sh must abort rather than conclude
+    # the repository has no full.
+    printf 'stanza: %s\n    status: ok\n    cipher: none\n\n    db (current)\n        full backup: 2026-08-20T19:51:44Z\n' \
+      "$PGBACKREST_STANZA"
+    ;;
+  no-full)
+    # A stanza that exists and archives WAL but has never had a backup.
+    printf 'stanza: %s\n    status: error (no valid backups)\n    cipher: none\n\n    db (current)\n        wal archive min/max (18): 000000010000000000000001/000000010000000000000002\n' \
+      "$PGBACKREST_STANZA"
+    ;;
+  full)
+    label=$(date -u -d "@$(( $(date -u +%s) - ${STUB_FULL_AGE_SECONDS:-0} ))" +%Y%m%d-%H%M%S)
+    printf 'stanza: %s\n    status: ok\n    cipher: none\n\n    db (current)\n        full backup: %sF\n            timestamp start/stop: 2026-08-20 19:51:44+00 / 2026-08-20 19:51:50+00\n        incr backup: %sF_20260821-195144I\n' \
+      "$PGBACKREST_STANZA" "$label" "$label"
+    ;;
+  *)
+    echo "stub: unknown STUB_INFO_MODE '${STUB_INFO_MODE:-}'" >&2
+    exit 2
+    ;;
+esac

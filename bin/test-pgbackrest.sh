@@ -310,10 +310,54 @@ verify_restored_backup() {
     return 1
 }
 
+run_backup_type_case() {
+    # Runs backup.sh against bin/pgbackrest-test-stub/pgbackrest instead of the
+    # real one, so the backup-type decision can be checked in repository states
+    # that cannot be staged in a two-minute test: a week-old full, an `info`
+    # that fails, an `info` we cannot parse. The expected string names both the
+    # exit status and every pgbackrest subcommand the run reached, which is how
+    # "aborted and took no backup" is distinguished from "aborted after taking
+    # one".
+    case_name=$1
+    info_mode=$2
+    full_age_seconds=$3
+    expected=$4
+
+    # -T keeps the report on stdout instead of merging it into a TTY; the
+    # container's stderr is left alone so a failing case shows backup.sh's own
+    # output.
+    actual=$(compose run --rm --no-deps -T \
+        -e STUB_INFO_MODE="$info_mode" \
+        -e STUB_FULL_AGE_SECONDS="$full_age_seconds" \
+        -v "${ROOT_DIR}/bin/pgbackrest-test-stub:/stub:ro" \
+        --entrypoint sh backup /stub/decision-case.sh |
+        tr -d '\r' | sed -n 's/^\(rc=.*\)$/\1/p' | tail -n 1)
+
+    if [ "$actual" != "$expected" ]; then
+        echo "backup-type case '$case_name': expected [$expected], got [$actual]" >&2
+        return 1
+    fi
+
+    echo "backup-type case '$case_name': $actual"
+}
+
 compose build db backup
 compose up -d db minio minio-init
 # shellcheck disable=SC2016
 compose exec -T db sh -ceu 'until pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 1; done'
+
+# The stub cases need the backup image and the volumes it mounts, but never S3.
+# An aborted run must stop before `backup`: a wrong guess here is what collapses
+# the recovery window (issue #341).
+run_backup_type_case 'info fails' fail 0 'rc=1 calls=stanza-create,check,info,'
+run_backup_type_case 'info succeeds but names no stanza' no-stanza 0 'rc=1 calls=stanza-create,check,info,'
+run_backup_type_case 'info lists a full we cannot parse' unparseable 0 'rc=1 calls=stanza-create,check,info,'
+run_backup_type_case 'no full backup yet' no-full 0 'rc=0 calls=stanza-create,check,info,backup full,info,'
+run_backup_type_case 'newest full is 7 days and a minute old' full 604860 'rc=0 calls=stanza-create,check,info,backup full,info,'
+# 6d23h: the calendar-date comparison this replaced would have called this
+# "7 days" and taken a full an hour early.
+run_backup_type_case 'newest full is 6 days 23 hours old' full 601200 'rc=0 calls=stanza-create,check,info,backup incr,info,'
+
 seed_backup_sentinel
 compose run --rm backup
 compose run --rm minio-client -ceu 'mc --insecure alias set local https://minio:9000 minioadmin minioadmin >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/backup/yelukerest/backup.info >/dev/null && mc --insecure stat local/yelukerest-backups/pgbackrest/archive/yelukerest/archive.info >/dev/null'

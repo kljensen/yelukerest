@@ -14,6 +14,10 @@ MinIO endpoint. It backs up, restores, then restores again to a time before a
 marker row and checks the marker is absent. Read it before you read the
 procedure below — the steps here are the same shape, pointed at the real S3
 repository, and this document does not repeat what that script already encodes.
+It also drives `backup.sh`'s backup-type decision through repository states that
+cannot be staged in a two-minute run — a week-old full, an `info` that fails, an
+`info` whose output does not parse — using the stub pgBackRest in
+`bin/pgbackrest-test-stub/`, and asserts that the failing cases take no backup.
 
 ## What this protects against, and what it does not
 
@@ -39,11 +43,13 @@ It does not protect against:
 
 ## The recovery window
 
-**Back to 2026-08-20 19:51 UTC**, the timestamp of the only full backup
-(`20260820-195144F`). Verified 2026-08-27.
+The window is bounded by the **oldest full backup still in the repository**,
+not by a rolling number of days, and it moves in jumps rather than sliding
+smoothly.
 
-The window is bounded by the oldest retained full backup, not by a rolling
-number of days. As of 2026-08-27 the repository holds:
+**Observed 2026-08-27: back to 2026-08-20 19:51 UTC**, the timestamp of what
+was then the only full backup (`20260820-195144F`). At that point the
+repository held:
 
 - stanza `yelukerest`, status `ok`, cipher `none`
 - one full backup, `20260820-195144F`, plus roughly 162 incrementals; the most
@@ -54,19 +60,77 @@ number of days. As of 2026-08-27 the repository holds:
 - database roughly 42.7 MB; the compressed backup set roughly 5.5 MB
 - `pg_stat_archiver` showing `failed_count = 0` and no `last_failed_wal`
 
-Two consequences worth holding in your head:
+That state was a single point of failure: every one of those incrementals was
+a delta against `20260820-195144F`, so losing that one object in S3 would have
+made the entire repository unrestorable. `backup.sh` ran `pgbackrest backup`
+with no `--type`, and pgBackRest defaults to incremental once any full exists,
+so no second full was ever taken. `PGBACKREST_REPO1_RETENTION_FULL` expires
+*fulls*, so with one full it had never pruned anything either. Issue #341.
 
-1. **Every incremental depends on that one full backup.** `backup.sh` runs
-   `pgbackrest backup` with no `--type`, and pgBackRest defaults to incremental
-   once a full exists, so no second full has ever been taken. If
-   `20260820-195144F` is lost or corrupt, the entire chain is unusable. Taking
-   a periodic full backup is the cheapest way to remove that single point of
-   failure.
-2. **The window can move forward without warning.**
-   `PGBACKREST_REPO1_RETENTION_FULL` is 2 (`backup/Dockerfile`). The moment a
-   third full backup lands, the oldest full and the WAL it anchors expire, and
-   the reachable window jumps forward to the second full. Re-read the window
-   before assuming an old target is reachable.
+### How the window moves now
+
+Since 2026-08-27, `backup/backup.sh` chooses the type instead of accepting
+pgBackRest's default. It reads the newest full backup's date out of
+`pgbackrest info` and takes:
+
+- a **full** when that full is at least `BACKUP_FULL_INTERVAL_DAYS` days old
+  (default 7, set in `backup/Dockerfile`, overridable in `.env`), or when the
+  repository has no full at all;
+- an **incremental** otherwise.
+
+The age is elapsed time, not calendar days: the whole `YYYYMMDD-HHMMSS`
+timestamp in the backup label is compared against the clock, so a full taken at
+23:59 UTC is seven days old at 23:59 seven days later, not just after midnight
+six days later.
+
+So fulls arrive weekly and the hourly runs in between stay incremental. The
+rule is stated as an age rather than a weekday deliberately: a fresh stanza and
+a week whose full failed both look overdue, so the next run repairs the gap
+instead of waiting for the next calendar slot.
+
+**If the repository cannot be read, the run takes no backup at all.** A failed
+`pgbackrest info`, or output the script cannot parse, aborts before `backup`
+runs. That is deliberate and it is the safe direction. The tempting alternative
+-- assume the worst and take a full -- is the one that loses data: retention 2
+expires the oldest full and the WAL it anchors the moment a third full lands, so
+a single transient S3 or credential failure would collapse the window to the age
+of the newest full, and a persistent parse failure on an hourly schedule would
+pin it at an hour indefinitely while every run still exited zero. An aborted run
+changes nothing in the repository and the next attempt is an hour later. Repeated
+aborts show up as a non-zero exit in `docker compose logs backup`; treat them as
+an outage of backups, not of recoverability.
+
+**What `PGBACKREST_REPO1_RETENTION_FULL=2` means in practice.** Keep the two
+most recent full backups *and everything that depends on them* — their
+incrementals, and the WAL archive from the oldest kept full onward. Anything
+older is deleted from S3. pgBackRest expires as part of a successful `backup`,
+so pruning happens the instant a new full completes, not on a separate
+schedule. Raising the number costs storage roughly linearly (a full of this
+database is a few MB, but the retained WAL between fulls is the larger share);
+lowering it to 1 would recreate the single-point-of-failure this section
+describes.
+
+With a weekly full and retention 2, the practical consequences are:
+
+1. **The reachable window is between one and two weeks**, never a fixed
+   fourteen days. It is longest just before a new full lands and shortest just
+   after: when the third full completes, the first full and the WAL it anchored
+   are expired in the same operation, and the window jumps forward by a week.
+2. **It moves without anyone doing anything.** A target that was reachable
+   yesterday can be gone today. Before you plan a restore against an old
+   target, re-read the actual window from `pgbackrest info` (step 1 below);
+   never plan against the date written in this document.
+3. **A lost or corrupt full no longer takes everything with it.** The most
+   recent week's incrementals depend on the newest full, but the older full and
+   its own chain are independent — losing one costs part of the window, not all
+   of it.
+4. **Recovering something older than the window is not possible from here.**
+   There is no other copy. If the course needs a longer window, raise
+   `PGBACKREST_REPO1_RETENTION_FULL`; deciding that after the fact is not an
+   option.
+
+`bin/doctor.sh` checks this: on the production host it runs `backup.sh info`
+and warns if the repository holds fewer than two full backups.
 
 ## The realistic recovery story
 
@@ -372,8 +436,11 @@ configuration, or the Postgres major version:
   advancing.
 - Re-read the recovery window from `pgbackrest info` and update the date above
   if a new full backup has expired the old one.
-- Confirm more than one full backup exists, or accept the
-  single-point-of-failure noted in *The recovery window*.
+- Run `./bin/doctor.sh` on the production host, which warns when the
+  repository holds fewer than two full backups. Fewer than two a week after
+  deployment means the weekly full is not happening; read the backup
+  container's log (`docker compose logs backup`) for the line naming the
+  backup type it chose.
 
 ## RPO and RTO, as observed
 
@@ -410,6 +477,9 @@ Stated plainly so nobody quotes this document for more than it supports:
   single target were read successfully. The other ~160 have never been used.
 - **Host-loss recovery has never been rehearsed.** Restoring the cluster onto a
   fresh machine and bringing the full stack up on it is untested.
+- **No restore from a full other than `20260820-195144F` has been done.** The
+  weekly fulls are taken but restoring from a later one is unrehearsed, and it
+  is the case most likely to be needed once the first full expires.
 - **The submission-recovery path end to end** — clobber a body, restore,
   extract, repair — has been rehearsed only in the local harness's sentinel-row
   form, not against production data.

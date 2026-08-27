@@ -247,6 +247,52 @@ check_hydra_client_count() {
     fi
 }
 
+check_backup_fulls() {
+    # Issue #341: backup.sh ran `pgbackrest backup` with no --type, so the
+    # repository held exactly one full backup with every incremental chained to
+    # it -- losing that single object would have invalidated every backup at
+    # once. backup.sh now takes a full whenever the newest one is
+    # BACKUP_FULL_INTERVAL_DAYS old; this confirms that happened in the
+    # repository, not just in the script. The count comes from `backup.sh info`
+    # so the S3 settings are the backup image's own, never a second copy here.
+    #
+    # The backup service is defined only in the production compose file and
+    # needs the production data volume and S3 credentials, so anywhere else
+    # this warns and skips rather than failing.
+    if [ "${DEVELOPMENT:-}" = "1" ]; then
+        warn "backup service is not part of the dev stack; skipping full-backup check"
+        return
+    fi
+
+    if [ -z "${BACKUP_S3_BUCKET:-}" ]; then
+        warn "BACKUP_S3_BUCKET is not set; skipping full-backup check"
+        return
+    fi
+
+    # Mount the checked-out backup.sh over the image's copy. Without this the
+    # probe runs whatever script is baked into the built image, and a backup
+    # image predating the `info` mode ignores the argument and takes a REAL
+    # backup -- a diagnostic that mutates the production repository and, worse,
+    # can trigger an expire. Bind-mounting makes the running script the one we
+    # are looking at, so an un-rebuilt image is harmless.
+    backup_info=$(docker compose -f docker-compose.base.yaml -f docker-compose.prod.yaml \
+        run --rm --no-deps \
+        -v "$(pwd)/backup/backup.sh:/backup.sh:ro" \
+        backup sh /backup.sh info 2>/dev/null || true)
+
+    if ! printf '%s\n' "$backup_info" | grep -q '^stanza:'; then
+        warn "pgbackrest info unavailable (needs the production host, its data volume, and S3 credentials); skipping full-backup check"
+        return
+    fi
+
+    full_count=$(printf '%s\n' "$backup_info" | grep -c 'full backup:' || true)
+    if [ "$full_count" -gt 1 ]; then
+        ok "pgbackrest repository holds $full_count full backups"
+    else
+        warn "pgbackrest repository holds $full_count full backup; every incremental depends on that one object until the next full lands (see BACKUP_FULL_INTERVAL_DAYS and docs/backup-recovery.md)"
+    fi
+}
+
 need_command jq
 need_command openssl
 
@@ -289,6 +335,7 @@ fi
 
 check_hydra
 check_hydra_client_count
+check_backup_fulls
 
 if [ "$failures" -ne 0 ]; then
     printf 'doctor failed: %d failure(s), %d warning(s)\n' "$failures" "$warnings" >&2
