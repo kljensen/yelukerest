@@ -221,6 +221,11 @@ OAuth token for an internal course credential.
 
 ### Restoring production backups
 
+**The runbook is [docs/backup-recovery.md](docs/backup-recovery.md)** — recovery
+window, the step-by-step procedure, and what a real recovery actually involves
+(restore in isolation, extract the value, repair production by hand; it is not a
+rollback). Read that before an incident, not during one.
+
 Backups are saved to S3 through pgBackRest. The local backup harness exercises
 the same backup image against a disposable Postgres volume and a self-hosted
 MinIO S3 endpoint:
