@@ -21,7 +21,8 @@ secret is shown exactly once, at creation, and after that only its prefix
 identifies it.
 
 `lastUsed` earns its place in the model rather than being computed away: for a
-credential that lives four months it is the only evidence that one the student
+credential that lives four months by default -- and up to 180 days, which is
+the bound the database enforces -- it is the only evidence that one the student
 forgot about is still being used.
 
 -}

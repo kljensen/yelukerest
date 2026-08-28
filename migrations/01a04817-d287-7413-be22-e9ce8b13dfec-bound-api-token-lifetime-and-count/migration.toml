@@ -1,0 +1,18 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a04817-d287-7413-be22-e9ce8b13dfec"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a02545-17ab-7352-82ca-a9cca3f3d4fc"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+reversibility = "irreversible"
+irreversible_reason = "deploy.sql caps every expires_at that already exceeds the new 180 day bound at created_at + 180 days. The original expiry is not recorded anywhere, so a revert could restore the constraint-free shape but not the dates it overwrote: it would report success while the tokens stayed shortened. Recover by restoring a backup."
+
+[[allow]]
+lint = "lint.constraint_scans_table"
+reason = "data.user_api_token holds a few tokens per person for one course -- tens of rows, not millions -- so the validating scan is bounded by that and finishes in microseconds. ADD CONSTRAINT takes the same ACCESS EXCLUSIVE lock with or without NOT VALID, and this migration runs inside the transaction Zapadka owns, so VALIDATE could not be separated from it anyway. Splitting into NOT VALID here and VALIDATE in a follow-up would leave the backstop unvalidated across two deploys for no measurable gain."

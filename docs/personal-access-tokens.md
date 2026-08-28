@@ -27,6 +27,18 @@ yk_2be8b799_1f3c…
 Treat it like a password. It lasts four months, which is longer than the
 semester, so you should only have to do this once.
 
+Two limits are worth knowing if you create tokens from a script rather than the
+site, where you can choose the expiry yourself:
+
+- **Four months is the default, and 180 days is the most you can ask for.** A
+  longer expiry is refused outright rather than quietly shortened, so a script
+  that asks for five years finds out immediately instead of believing it has a
+  credential it does not have.
+- **Five active tokens at a time.** Revoked and expired ones do not count, so
+  revoking one you have finished with frees a slot straight away. The point of
+  the limit is that the list on the token page stays short enough that an
+  unfamiliar **Last used** is something you would notice.
+
 ## Using it
 
 Your token is not the thing you send to the API. You trade it for a
@@ -176,6 +188,8 @@ token you forgot about is still being used.
 | `401` on `/rest/…` | Access token expired. Exchange again. |
 | `403` on `/rest/…` | Authentication worked; you are not allowed that data. A different token will not help. |
 | `429` | Too many exchanges. Exchange once an hour, not once per request. |
+| `400` creating a token | The expiry you asked for is more than 180 days away. |
+| `409` creating a token | You already hold five active tokens. Revoke one first. |
 
 `401` and `403` mean genuinely different things here, and the distinction is
 worth keeping straight: `401` is "I do not know who you are", `403` is "I know

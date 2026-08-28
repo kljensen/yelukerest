@@ -267,14 +267,35 @@ SELECT is_empty(
 );
 
 -- An expired token likewise, and indistinguishably from a revoked one.
+--
+-- Three statements, not one. The first version of this test made the token and
+-- expired it inside one statement's CTEs, where the UPDATE ran against the
+-- snapshot taken before make_token's INSERT: it matched no rows, the token
+-- never expired, and the cross join with the empty CTE made is_empty pass
+-- without testing anything.
+SELECT ok(
+    set_config('zapadka_test.expired_pat',
+               zapadka_test.make_token(1, 'expired', ARRAY['course:read']),
+               false) IS NOT NULL,
+    'a token to expire should be created'
+);
+
+-- created_at moves back with expires_at: the table now bounds the gap between
+-- them at 180 days as well as requiring expiry to follow creation.
+UPDATE data.user_api_token
+   SET created_at = current_timestamp - interval '10 days',
+       expires_at = current_timestamp - interval '1 day'
+ WHERE name = 'expired';
+
+SELECT is(
+    (SELECT count(*)::int FROM data.user_api_token
+      WHERE name = 'expired' AND expires_at < current_timestamp),
+    1,
+    'the token should now be expired'
+);
+
 SELECT is_empty(
-    $$ WITH t AS (
-           SELECT zapadka_test.make_token(1, 'expired', ARRAY['course:read']) AS tok
-       ), e AS (
-           UPDATE data.user_api_token SET expires_at = current_timestamp - interval '1 day'
-            WHERE name = 'expired' RETURNING 1
-       )
-       SELECT jwt FROM t, e, api.exchange_user_api_token(t.tok) $$,
+    $$ SELECT jwt FROM api.exchange_user_api_token(current_setting('zapadka_test.expired_pat')) $$,
     'an expired token should not exchange'
 );
 
@@ -287,6 +308,156 @@ SELECT is_empty(
            (SELECT id FROM data.user_api_token WHERE name = 'shape check')
        ) $$,
     'a student should not be able to revoke another user''s token'
+);
+
+-- ---------------------------------------------------------------
+-- Bounds: how long a token may live, and how many may be live (#347)
+-- ---------------------------------------------------------------
+-- Before this, four months was the default and nothing was the bound: an
+-- ordinary student JWT minted a submissions:write token expiring in 2031 in a
+-- single call. These run as a second student with no tokens of their own, so
+-- the counting below is self-contained.
+set request.jwt.claim.role = 'student';
+set request.jwt.claim.user_id = '2';
+set request.jwt.claim.app_name = '';
+
+-- The maximum is 180 days, and it is inclusive. Exactly 180 succeeds...
+SELECT ok(
+    (SELECT expires_at = current_timestamp + interval '180 days'
+     FROM api.create_user_api_token(
+         'boundary 180', ARRAY['course:read'], current_timestamp + interval '180 days')),
+    'an expiry exactly 180 days out should be accepted'
+);
+
+-- ...and one day past it does not. A caller that asked for more must be told
+-- so, not quietly given less: silently clamping would leave a script believing
+-- it had a credential it does not have.
+SELECT throws_ok(
+    $$ SELECT * FROM api.create_user_api_token(
+           'boundary 181', ARRAY['course:read'], current_timestamp + interval '181 days') $$,
+    '22023',
+    NULL,
+    'an expiry 181 days out should be refused'
+);
+
+SELECT throws_like(
+    $$ SELECT * FROM api.create_user_api_token(
+           'boundary 181 message', ARRAY['course:read'], current_timestamp + interval '181 days') $$,
+    '%at most 180 days%',
+    'the refusal should name the maximum rather than just saying no'
+);
+
+-- The exact call from issue #347: a five year, write-capable credential from a
+-- student account.
+SELECT throws_like(
+    $$ SELECT * FROM api.create_user_api_token(
+           'footgun', ARRAY['submissions:write'], current_timestamp + interval '5 years') $$,
+    '%at most 180 days%',
+    'a five year write-scoped token should be refused'
+);
+
+-- The table check is the backstop, for anything that reaches the row another
+-- way. The function refuses first and with a better message; this must refuse
+-- at all.
+SELECT throws_ok(
+    $$ INSERT INTO data.user_api_token
+           (user_id, token_prefix, token_hash, name, scopes, expires_at)
+       VALUES (2, 'yk_ffffffff', sha256('x'::bytea), 'backstop',
+               ARRAY['course:read'], current_timestamp + interval '2 years') $$,
+    '23514',
+    NULL,
+    'the table should refuse a row that outlives the bound however it arrives'
+);
+
+-- Five active tokens per person. Enough for the machines someone actually
+-- uses, few enough that an unfamiliar last_used_at in the listing is still
+-- noticeable.
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.create_user_api_token('cap 2')),
+    'a second token should be creatable'
+);
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.create_user_api_token('cap 3')),
+    'a third token should be creatable'
+);
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.create_user_api_token('cap 4')),
+    'a fourth token should be creatable'
+);
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.create_user_api_token('cap 5')),
+    'a fifth token should be creatable'
+);
+
+SELECT is(
+    (SELECT count(*)::int FROM api.user_api_tokens WHERE user_id = 2 AND is_active),
+    5,
+    'the fifth token should leave exactly five active'
+);
+
+SELECT throws_ok(
+    $$ SELECT * FROM api.create_user_api_token('cap 6') $$,
+    'PT409',
+    NULL,
+    'a sixth active token should be refused'
+);
+
+-- PT409 is the repo's convention for a conflict PostgREST should return as a
+-- 409, not a 400: nothing about the request is malformed, the account is full.
+SELECT throws_like(
+    $$ SELECT * FROM api.create_user_api_token('cap 6 message') $$,
+    '%maximum of 5%',
+    'the refusal should say what the limit is'
+);
+
+SELECT throws_like(
+    $$ SELECT * FROM api.create_user_api_token('cap 6 message') $$,
+    '%revoke one%',
+    'the refusal should say how to get back under the limit'
+);
+
+-- The cap is on live credentials, not on lifetime history, so revoking frees a
+-- slot immediately.
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.revoke_user_api_token(
+        (SELECT id FROM data.user_api_token WHERE user_id = 2 AND name = 'cap 2')
+    )),
+    'a token should be revocable to make room'
+);
+
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.create_user_api_token('after revoking')),
+    'revoking a token should free a slot'
+);
+
+-- ...and so does expiry, with nobody doing anything.
+UPDATE data.user_api_token
+   SET created_at = current_timestamp - interval '10 days',
+       expires_at = current_timestamp - interval '1 day'
+ WHERE user_id = 2 AND name = 'cap 3';
+
+SELECT is(
+    (SELECT count(*)::int FROM api.user_api_tokens WHERE user_id = 2 AND is_active),
+    4,
+    'an expired token should drop out of the active count'
+);
+
+SELECT ok(
+    (SELECT count(*) = 1 FROM api.create_user_api_token('after expiring')),
+    'an expired token should not count against the cap'
+);
+
+-- The count is a check-then-act, so it needs the caller's user row locked or
+-- two concurrent creates both read four and both insert. A single database
+-- session cannot exercise the race; tests/rest/api-tokens.js fires concurrent
+-- creates through PostgREST and asserts exactly five get through. This guards
+-- the lock itself, which is easy to drop by accident while editing the body.
+SELECT matches(
+    (SELECT p.prosrc FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'api' AND p.proname = 'create_user_api_token'),
+    'FOR UPDATE',
+    'create_user_api_token should lock the caller''s user row before counting'
 );
 
 SELECT * FROM finish();

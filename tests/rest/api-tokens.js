@@ -6,7 +6,7 @@
 // `request.method`, which PostgREST sets per request and a direct database
 // session never has, so the database tests cannot reach it.
 
-const { describe, it, expect, beforeAll } = require('bun:test');
+const { describe, it, expect, beforeAll, afterEach } = require('bun:test');
 const request = require('supertest');
 const { spawnSync } = require('child_process');
 const { baseURL } = require('./common.js');
@@ -39,9 +39,33 @@ const auth = () => request(`${baseURL}`);
 describe('personal access tokens', () => {
     let studentJWT;
 
-    beforeAll(() => {
+    // A person may hold five active tokens (issue #347), and this file creates
+    // more than that over its run. Clearing up after each test is also what a
+    // student does, so the suite exercises the intended shape of the feature
+    // rather than working around it -- and it stops one run leaving the next
+    // one at the cap.
+    async function revokeAllTokens() {
+        const listed = await rest()
+            .get('/user_api_tokens?is_active=is.true&select=id')
+            .set('Authorization', `Bearer ${studentJWT}`);
+        expect(listed.status).toBe(200);
+        for (const row of listed.body) {
+            const revoked = await rest()
+                .post('/rpc/revoke_user_api_token')
+                .set('Authorization', `Bearer ${studentJWT}`)
+                .send({ p_id: row.id });
+            expect(revoked.status).toBe(200);
+        }
+    }
+
+    beforeAll(async () => {
         studentJWT = mintUserJWT('abc123');
         expect(studentJWT.split('.').length).toBe(3);
+        await revokeAllTokens();
+    });
+
+    afterEach(async () => {
+        await revokeAllTokens();
     });
 
     async function createToken(name, scopes) {
@@ -201,5 +225,53 @@ describe('personal access tokens', () => {
             .get(`/user_api_tokens?token_prefix=eq.${created.token_prefix}`)
             .set('Authorization', `Bearer ${studentJWT}`);
         expect(res.body[0].last_used_at).not.toBeNull();
+    });
+
+    // ---------------------------------------------------------------
+    // Bounds (issue #347)
+    // ---------------------------------------------------------------
+    // The reproduction from the issue, over HTTP: an ordinary student JWT
+    // asking for a five year, write-capable credential in one call.
+    it('refuses an expiry beyond the maximum', async () => {
+        const fiveYears = new Date();
+        fiveYears.setFullYear(fiveYears.getFullYear() + 5);
+        const res = await rest()
+            .post('/rpc/create_user_api_token')
+            .set('Authorization', `Bearer ${studentJWT}`)
+            .send({
+                p_name: 'footgun probe',
+                p_scopes: ['submissions:write'],
+                p_expires_at: fiveYears.toISOString(),
+            });
+        // Refused, not clamped: a caller that asked for five years has to
+        // learn it cannot have them.
+        expect(res.status).toBe(400);
+        expect(JSON.stringify(res.body)).toContain('at most 180 days');
+    });
+
+    // The count is a check-then-act, so without a lock on the caller's user
+    // row two concurrent creates both read four active tokens and both insert.
+    // Only a real second connection can show this, which is why it lives here
+    // and not in the database tests: eight requests at once must still leave
+    // exactly five tokens.
+    it('never lets concurrent creates exceed the five token cap', async () => {
+        const attempts = await Promise.all(
+            Array.from({ length: 8 }, (unused, i) =>
+                rest()
+                    .post('/rpc/create_user_api_token')
+                    .set('Authorization', `Bearer ${studentJWT}`)
+                    .set('Accept', 'application/vnd.pgrst.object+json')
+                    .send({ p_name: `race ${i}` })));
+
+        const created = attempts.filter((r) => r.status === 200);
+        const refused = attempts.filter((r) => r.status === 409);
+        expect(created.length).toBe(5);
+        expect(refused.length).toBe(3);
+        expect(JSON.stringify(refused[0].body)).toContain('maximum of 5');
+
+        const listed = await rest()
+            .get('/user_api_tokens?is_active=is.true&select=id')
+            .set('Authorization', `Bearer ${studentJWT}`);
+        expect(listed.body.length).toBe(5);
     });
 });
