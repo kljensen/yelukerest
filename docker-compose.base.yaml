@@ -48,7 +48,11 @@ services:
         # back when the docker daemon itself restarts, and postgrest died with
         # exit 133 mid-life with nothing to restart it, taking the API down.
         restart: unless-stopped
-        image: ${POSTGREST_IMAGE:-ghcr.io/kljensen/docker-postgrest-static:14.14}
+        # PostgREST 16.2, pinned by immutable manifest digest: a tag can be
+        # repointed and Compose will reuse a same-named local image, so only a
+        # digest proves which bytes are running. Override POSTGREST_IMAGE to roll
+        # back (14.14 was sha256:65c4c60d236a652075cc8208d7c6e2cf9bceb873a2650287496bf76c9d92fdbe).
+        image: ${POSTGREST_IMAGE:-ghcr.io/kljensen/docker-postgrest-static@sha256:a9ec99a1191f7409ee6c6259d69bb32b8203a21adfa3479f1ee2d0bf98fa1e89}
         ports:
             - '127.0.0.1:3000:${POSTGREST_PORT}'
         environment:

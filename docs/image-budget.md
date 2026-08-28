@@ -32,11 +32,13 @@ docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml build elmc
 - `caddy` comes from `ghcr.io/kljensen/docker-caddy-dns-static:2.11.4`, a
   scratch runtime with a static Caddy binary and Route53/Cloudflare DNS
   providers.
-- `postgrest` uses `ghcr.io/kljensen/docker-postgrest-static:14.14`, a
+- `postgrest` uses `ghcr.io/kljensen/docker-postgrest-static`, a
   checksum-verified `scratch` image built from upstream PostgREST release
-  assets. The local arm64 image measured 86,556,914 bytes because upstream
-  publishes a dynamic Ubuntu aarch64 binary rather than a Linux static arm64
-  asset.
+  assets. It is pinned by manifest digest rather than tag, because a tag can be
+  repointed and Compose will reuse a same-named local image. The current pin is
+  16.2, `sha256:a9ec99a1…`. From 16.2 upstream publishes a Linux static aarch64
+  asset, so the arm64 image no longer carries the hand-assembled dynamic Ubuntu
+  binary and dropped from 86,824,466 to 20,613,276 bytes.
 
 ## Current Local Sizes
 
@@ -51,11 +53,11 @@ Measured on 2026-07-08 after building the REST stack and Elm test target:
 | `yelukerest-elmclient-test:latest` | 221.6 |
 | `yelukerest-postgres:18.4-pgbackrest` | 306.0 |
 | `postgres:18.4` | Not yet measured |
-| `ghcr.io/kljensen/docker-postgrest-static:14.14` | 82.5 |
-| **Total tracked current set** | **1071.5** |
+| `ghcr.io/kljensen/docker-postgrest-static` (16.2, re-measured 2026-08-28) | 19.7 |
+| **Total tracked current set** | **1008.7** |
 
 The current production-ish runtime subset, excluding `elmclient-test` and
-`postgres-dev`, is 563.6 MiB.
+`postgres-dev`, is 500.8 MiB.
 
 ## Pre-modernization Baseline
 
@@ -79,9 +81,9 @@ PostgREST, PostgreSQL, backup, and Caddy image changes.
 | `ghcr.io/kljensen/codeframe-docker:0.2.0` | 185.0 |
 | **Total pre-modernization set** | **2236.5** |
 
-The current tracked set is 1142.5 MiB smaller than that baseline, a 51.1%
-reduction. The current production-ish runtime subset is 1672.9 MiB smaller, a
-74.8% reduction.
+The current tracked set is 1227.8 MiB smaller than that baseline, a 54.9%
+reduction. The current production-ish runtime subset is 1735.7 MiB smaller, a
+77.6% reduction.
 
 The old AMQP bridge image cannot be rebuilt exactly today because its Rust
 dependency graph was not locked and now requires a newer Cargo than the pinned
