@@ -53,9 +53,40 @@ const resetdb = () => {
     }
 }
 
+/**
+ * Runs SQL against the development database as the superuser and returns
+ * stdout. Mirrors `resetdb`'s psql-or-docker fallback so tests work both on a
+ * host that has psql and on one where the database is only reachable inside
+ * the compose network. Throws on any SQL error (ON_ERROR_STOP).
+ * @param {String} sql the SQL to run
+ * @returns {String} the stdout produced by psql
+ */
+const runSQL = (sql) => {
+    let pg;
+    if (have_psql) {
+        const env = {
+            ...process.env,
+            PGPASSWORD: SUPER_USER_PASSWORD,
+        };
+        pg = spawnSync(psql_path, ['-q', '-h', DB_HOST, '-p', DB_PORT, '-U', SUPER_USER, DB_NAME, '-v', 'ON_ERROR_STOP=1', '-f', '-'], {
+            env,
+            input: sql,
+        });
+    } else {
+        pg = spawnSync('docker', ['compose', '-f', 'docker-compose.base.yaml', '-f', 'docker-compose.dev.yaml', 'exec', '-T', 'db', 'psql', '-q', '-U', SUPER_USER, DB_NAME, '-v', 'ON_ERROR_STOP=1', '-f', '-'], {
+            input: sql,
+        });
+    }
+    if (pg.status !== 0) {
+        throw new Error(`Could not run SQL in rest tests. Error = ${streamToString(pg.stderr)}${streamToString(pg.stdout)}${pg.error || ''}`);
+    }
+    return streamToString(pg.stdout);
+};
+
 module.exports = {
     jwt,
     resetdb,
+    runSQL,
     restService,
     baseURL,
     authPath: '/auth/login',
