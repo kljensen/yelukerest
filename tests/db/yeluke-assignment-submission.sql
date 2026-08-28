@@ -88,6 +88,12 @@ SELECT set_eq(
 );
 
 set local role student;
+-- The statement row bound (issue #346) accumulates per request, and
+-- api.check_request_jwt starts a fresh budget at the top of every real one.
+-- This file plays out a dozen separate requests inside a single transaction,
+-- so it marks those boundaries itself with
+-- request.reset_row_bound_counters() wherever it takes on a student role.
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1';
 
@@ -134,6 +140,7 @@ set request.jwt.claim.role = 'faculty';
 UPDATE api.assignments SET closed_at = current_timestamp - '1 hour'::INTERVAL WHERE slug='team-selection';
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '4';
 
@@ -148,6 +155,7 @@ set request.jwt.claim.role = 'faculty';
 UPDATE api.assignments SET closed_at = current_timestamp + '1 hour'::INTERVAL WHERE slug='team-selection';
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '4';
 
@@ -189,6 +197,7 @@ SELECT throws_like(
 
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '2';
 
@@ -207,6 +216,7 @@ set request.jwt.claim.role = 'faculty';
 DELETE FROM api.assignment_submissions WHERE team_nickname='hazy-mountain' AND assignment_slug='project-update-1';
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '2';
 
@@ -227,6 +237,7 @@ set request.jwt.claim.role = 'faculty';
 DELETE FROM api.assignment_submissions WHERE team_nickname='hazy-mountain' AND assignment_slug='project-update-1';
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '2';
 
@@ -241,6 +252,7 @@ UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
 UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 2;
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1';
 
@@ -267,6 +279,7 @@ UPDATE data.user SET team_nickname = 'bright-fog' WHERE id = 1;
 UPDATE data.user SET team_nickname = 'hazy-mountain' WHERE id = 2;
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '1';
 
@@ -277,6 +290,7 @@ RESET ROLE;
 UPDATE data.user SET team_nickname = 'damp-pond' WHERE id = 1;
 
 set local role student;
+SELECT request.reset_row_bound_counters();
 set request.jwt.claim.role = 'student';
 set request.jwt.claim.user_id = '6';
 
@@ -341,6 +355,8 @@ SELECT set_config('request.jwt.claims',
     (SELECT json_build_object('role', 'student', 'user_id', u.id, 'netid', u.netid)::text
      FROM data."user" u WHERE u.netid = 'abc123'), true);
 SET LOCAL ROLE student;
+SELECT request.reset_row_bound_counters();
+SELECT request.reset_row_bound_counters();
 
 SELECT lives_ok(
     $$INSERT INTO api.assignment_submissions (assignment_slug) VALUES ('exam-1')$$,

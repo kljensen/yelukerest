@@ -16,8 +16,7 @@ was deliberate.
    student grants it on the OAuth consent screen, per client. A read-only token
    cannot write, however the agent is prompted or fooled. A non-GET
    `postgrest_request` requires the same scope *and* is refused outright unless
-   the deployment has enabled it — see *The escape hatch: off by default, and
-   capped at one row* below.
+   the deployment has enabled it — see *The escape hatch: off by default* below.
 2. **Row-level security.** Every tool call runs under the caller's own
    credential, so an agent can only reach rows the student can reach. This is
    the guarantee that holds even when a model does something stupid.
@@ -33,7 +32,7 @@ was deliberate.
    would clobber a value that moved is rejected instead. This is a correctness
    feature for concurrent writers, not a security control.
 
-### The escape hatch: off by default, and capped at one row
+### The escape hatch: off by default
 
 `postgrest_request` refuses `POST`, `PATCH` and `DELETE` unless the deployment
 sets `MCP_ESCAPE_HATCH_WRITES_ENABLED=true` on the mcpapp service (issue #331).
@@ -52,63 +51,76 @@ the `method` enum in `postgrest_request`'s input schema all describe `GET`
 alone when writes are off, so a model is never led to spend a call on a request
 this deployment will refuse.
 
-Where the mutating verbs are on, what is bounded is breadth rather than the
-verb (issue #337). A `PATCH` or `DELETE` goes upstream carrying
-
-```
-Prefer: return=representation, handling=strict, max-affected=1
-```
-
-so PostgREST evaluates the result set, and a request that would have affected
-more than one row returns HTTP 400 `PGRST124` with the transaction rolled back.
-`handling=strict` is not optional: PostgREST ignores `max-affected` without it.
-The server turns that response into a message saying the change would have
-affected more than one row, that nothing changed, and that
-`submit_submission_change` is the tool for a single-field edit; the raw upstream
-body is not echoed. `return=representation` still rides along, so a call that
-stays inside the cap gets its affected row back.
-
-N is one and is not configurable. The editing unit in this course is one
-assignment field, which is exactly what `submit_submission_change` writes, and a
-multi-row `PATCH` cannot supply different values per field anyway. `POST` is not
-capped: an insert names its target in the body, and capping it would refuse
-ordinary bulk inserts of the student's own rows.
-
-The reason to bound breadth rather than refuse the verb is that equal scope is
-not equal blast radius. An unfiltered `PATCH` targets every row RLS permits —
-for a student that includes the team's shared submissions — so one prompt
-injection would otherwise buy a broad multi-row write while staying wholly
-inside RLS. Requiring a filter would not have fixed that: `id=gt.0` is a filter,
-and PostgREST says the same of `pg-safeupdate`, that it "does not protect
-against malicious actions, since someone can add a url parameter that does not
-affect the result set." `max-affected` measures the result instead.
+Where the mutating verbs are on, a write goes upstream carrying
+`Prefer: return=representation` and nothing else, so a call gets its affected
+rows back. The escape hatch sends no bound of its own.
 
 GET stays on, and stays scope-gated, whatever the flag says. The read hatch is
 what keeps the MCP front door no worse than the caller's own token against the
 REST API, which is the principle the hatch was kept on in the first place
 (ADR 0001).
 
-#### Two residual risks the cap does not cover
-
-1. **`max-affected` does not constrain `POST`.** The cap is applied to `PATCH`
-   and `DELETE` only. A single `POST` with a JSON array body can insert many
-   rows. RLS still bounds them to rows the student may insert, and an insert
-   cannot overwrite existing work, which is why this is accepted rather than
-   solved. If bulk inserts ever become a nuisance, the fix is a cap on the
-   parsed body length, not `max-affected`.
-2. **A raw `PATCH` still bypasses optimistic concurrency.**
-   `submit_submission_change` sends the `updated_at` the caller last read and a
-   stale write is rejected. `db/src/data/yeluke/assignment_field_submission.sql`
-   deliberately lets a client that omits `updated_at` past that check, so a raw
-   `PATCH` through the escape hatch can silently clobber a value that moved
-   since it was read. The cap bounds how many rows that can happen to — one —
-   not whether it can happen. Prefer `submit_submission_change`, which is why
-   the tool description, the server instructions, `get_api_schema`, and the
-   `PGRST124` message all point at it.
-
 `preview_submission_change` shows what a write would do and needs no write
 scope. Showing it to the student first is good manners and good agent design.
 It is not a gate, and nothing depends on the agent choosing to do it.
+
+## The row bound is in the database
+
+What is bounded is breadth rather than the verb, and since issue #346 that bound
+lives in PostgreSQL rather than in a header this client sends.
+
+`AFTER … FOR EACH STATEMENT` triggers with transition tables sit on every base
+table a `student` or `ta` may write — `assignment_field_submission`,
+`assignment_submission`, `engagement`. They count the rows the statement really
+affected and, past the bound, raise and roll the statement back. The numbers are
+schema constants, changed by migration and by nothing else:
+
+- **64 rows of one table per request**, from `data.request_row_bound_default()`.
+- **4 rows of `assignment_submission` per request**: creating or deleting a
+  submission is a one-at-a-time action in every client, and nothing legitimate
+  sweeps a term's worth of them.
+- **One parent submission per statement** on `assignment_field_submission`: the
+  logical unit of a save is one submission's fields, which is what the Elm
+  client posts.
+
+Both arms of an `INSERT … ON CONFLICT DO UPDATE` spend a single budget, so 64
+means 64 rather than 64-per-arm. `request.user_role()` decides who is bound, so
+faculty, the import RPCs and migrations are untouched — `sync_meetings` still
+deletes every stale meeting in one statement. A refusal comes back as HTTP 400
+with a message naming the bound, and nothing was written.
+
+Why here rather than in the header the escape hatch used to send
+(`Prefer: handling=strict, max-affected=1`, issue #337):
+
+- **A preference binds only the client that sends it.** A student with a
+  personal access token and `curl` omits it, and PostgREST has nothing to
+  enforce. The database sees every path — MCP, `curl`, the Elm client, `psql`.
+- **The header was verb-shaped, and the verbs were wrong.** It capped `PATCH`
+  and `DELETE` on the premise that "`POST` is uncapped by construction: an
+  insert names its target in the body." PostgREST turns a `POST` carrying
+  `Prefer: resolution=merge-duplicates` into `INSERT … ON CONFLICT DO UPDATE` —
+  a multi-row update wearing a `POST`, and the *normal* path, since that is
+  exactly what the Elm client sends.
+- **Counting rows is still the right measure.** Requiring a filter would not
+  have worked: `id=gt.0` is a filter, and PostgREST says the same of
+  `pg-safeupdate`, that it "does not protect against malicious actions, since
+  someone can add a url parameter that does not affect the result set."
+
+N is 64 rather than 1 because 1 would refuse the Elm client's own multi-field
+save. The bound is on blast radius, not on intent: sequential small writes still
+work, and the boundary for whether a write should happen at all remains the
+`submissions:write` scope.
+
+### A residual risk the bound does not cover
+
+**A raw `PATCH` still bypasses optimistic concurrency.**
+`submit_submission_change` sends the `updated_at` the caller last read and a
+stale write is rejected. `db/src/data/yeluke/assignment_field_submission.sql`
+deliberately lets a client that omits `updated_at` past that check, so a raw
+`PATCH` through the escape hatch can silently clobber a value that moved since
+it was read. The row bound limits how many rows that can happen to, not whether
+it can happen. Prefer `submit_submission_change`, which is why the tool
+description, the server instructions and `get_api_schema` all point at it.
 
 ## Why the confirmation flow was removed
 

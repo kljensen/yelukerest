@@ -165,10 +165,11 @@ returns your scores, so an assistant that only reads assignments never sees them
 
 **`submit_submission_change` is the tool that changes your work**, one field of
 one submission at a time. The escape hatch is a read tool unless this
-deployment has enabled its writes; where it has, a single `PATCH` or `DELETE`
-through it can still only affect **one row** — a request that would change more
-is rejected and undone, and nothing is written. Either way an assistant is
-steered back to `submit_submission_change` for editing a submission.
+deployment has enabled its writes. Either way the database limits how much any
+one request of yours can change — a sweeping write is rejected and undone, and
+nothing is written — and an assistant is steered back to
+`submit_submission_change` for editing a submission. That limit applies to
+anything acting with your credential, including a script you wrote yourself.
 
 ## How editing a submission works
 

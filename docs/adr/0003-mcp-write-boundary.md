@@ -51,6 +51,41 @@ still bypasses the optimistic concurrency `submit_submission_change` enforces,
 because the schema lets a client that omits `updated_at` past the stale-write
 check.
 
+Amended 2026-08-28 (issue #346): **the `max-affected` header is superseded by a
+statement-level row bound in PostgreSQL**, and has been removed from
+`mcpapp/escape_hatch.go`. The 2026-08-27 amendment's conclusion — that breadth
+is the right thing to bound — stands. Its instrument does not, for two reasons
+found by review and confirmed against the running stack.
+
+`max-affected` is a *request preference*. The server cannot require it, so it
+bound the one client we wrote and not a student's own personal access token with
+`curl` — which the front-door/side-door argument above says is the case that
+matters. And it was applied per verb, on the premise recorded here and in the
+code that "`POST` is uncapped, because an insert names its target in the body."
+That premise is false. PostgREST turns a `POST` carrying
+`Prefer: resolution=merge-duplicates` into `INSERT … ON CONFLICT DO UPDATE`,
+which is a multi-row update wearing a `POST`; an ordinary student token wrote two
+rows that way in one request. It is also the *normal* path — the Elm client
+submits exactly like that — so the cap missed the shape student writes actually
+take.
+
+The replacement is a set of `AFTER … FOR EACH STATEMENT` triggers with transition
+tables on every base table a `student` or `ta` may write. They count the rows a
+statement really affected and raise, rolling the statement back, past a bound
+that is a schema constant: 64 rows of one table per request, 4 for
+`assignment_submission`, and every `assignment_field_submission` row one
+statement touches must belong to a single parent submission. Both arms of an
+upsert spend one budget, so the bound means what it says. `request.user_role()`
+decides who is bound, so faculty, the import RPCs, and migrations are untouched.
+Because the check is in the database it holds for PATCH, DELETE and batch POST
+alike, from MCP, from `curl`, from the Elm client and from `psql` — which is the
+property `max-affected` never had. N is 64 rather than 1 because 1 would refuse
+the Elm client's own multi-field save.
+
+This ADR's decision is still unchanged: the write scope and RLS remain the
+boundary, and `submit_submission_change` is untouched. What changed is where the
+blast-radius bound lives. Issue #349 records the general form of that move.
+
 ## Context
 
 ADR 0001 was accepted on 2026-08-05 and said that MCP writes are protected by a
@@ -234,4 +269,5 @@ what was built.
 - `mcpapp/write_tools.go`, `mcpapp/escape_hatch.go` — the code this ADR describes.
 - Commits `9e027b0` (built the gate), `94be2f2` (removed it).
 - Issues #267, #268 (the gate), #284, #285, #286 (its removal), #327 (this ADR),
-  #331 (the GET-only posture), #337 (the `max-affected` cap that replaced it).
+  #331 (the GET-only posture), #337 (the `max-affected` cap that replaced it),
+  #346 (the database row bound that superseded the cap), #349 (the framing).

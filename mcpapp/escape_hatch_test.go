@@ -4,8 +4,11 @@ package main
 // building, path constraints, the verb-keyed scope gate for non-GET requests,
 // response size caps, audit logging, and the schema tool bound. Since issue
 // #331 the mutating verbs are also gated on escapeHatchWritesEnabled, so
-// tests that expect a write to execute have to turn it on, and since issue
-// #337 a PATCH or DELETE carries the max-affected=1 cap.
+// tests that expect a write to execute have to turn it on. The row bound that
+// used to ride along as Prefer: max-affected=1 now lives in PostgreSQL
+// (issue #346), so what this file asserts about a write is that it asks for
+// the affected rows back and nothing more; tests/rest/yeluke/row_bound.js
+// exercises the bound itself against a real database.
 
 import (
 	"context"
@@ -199,7 +202,7 @@ func TestPostgrestRequestNonGETWithWriteScopeExecutes(t *testing.T) {
 	if got.body != body {
 		t.Fatalf("body = %q", got.body)
 	}
-	if len(got.prefer) != 1 || got.prefer[0] != escapeHatchBoundedPrefer {
+	if len(got.prefer) != 1 || got.prefer[0] != "return=representation" {
 		t.Fatalf("Prefer = %v", got.prefer)
 	}
 
@@ -216,13 +219,12 @@ func TestPostgrestRequestNonGETWithWriteScopeExecutes(t *testing.T) {
 	}
 }
 
-// ---- the max-affected cap (issue #337) ----
+// ---- the Prefer header (issues #337, #346) ----
 
-// The cap is expressed to PostgREST, not computed here, so what this asserts
-// is the outgoing preference. handling=strict is the load-bearing half:
-// PostgREST ignores max-affected without it. POST must not be capped — an
-// insert names its target in the body, and a bulk insert of one student's own
-// rows is legitimate.
+// A write asks PostgREST for the affected rows and nothing else. The row bound
+// is the database's now, so this client sends no bounding preference: one that
+// it chose to send would bind only this client, and PostgREST cannot require
+// it of a student's own token.
 func TestPostgrestRequestPreferHeaderPerMethod(t *testing.T) {
 	tests := []struct {
 		method string
@@ -230,8 +232,8 @@ func TestPostgrestRequestPreferHeaderPerMethod(t *testing.T) {
 	}{
 		{method: http.MethodGet, want: nil},
 		{method: http.MethodPost, want: []string{"return=representation"}},
-		{method: http.MethodPatch, want: []string{"return=representation, handling=strict, max-affected=1"}},
-		{method: http.MethodDelete, want: []string{"return=representation, handling=strict, max-affected=1"}},
+		{method: http.MethodPatch, want: []string{"return=representation"}},
+		{method: http.MethodDelete, want: []string{"return=representation"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.method, func(t *testing.T) {
@@ -259,8 +261,8 @@ func TestPostgrestRequestPreferHeaderPerMethod(t *testing.T) {
 			if got := recorded[0].prefer; !slices.Equal(got, tt.want) {
 				t.Errorf("%s Prefer = %v, want %v", tt.method, got, tt.want)
 			}
-			// return=representation survives alongside the strict preferences:
-			// the caller still gets the affected rows back.
+			// return=representation is the whole preference now: the caller
+			// still gets the affected rows back.
 			for _, value := range recorded[0].prefer {
 				if !strings.Contains(value, "return=representation") {
 					t.Errorf("%s Prefer lost return=representation: %v", tt.method, recorded[0].prefer)
@@ -304,60 +306,9 @@ func TestPostgrestRequestOneRowPatchAndDeleteSucceed(t *testing.T) {
 	}
 }
 
-// Two rows: PostgREST evaluates the cap and answers 400 PGRST124, having
-// rolled the transaction back. The fake cannot count rows, so the split is
-// honest about which half each test owns — TestPostgrestRequestPreferHeaderPerMethod
-// asserts we ask PostgREST for the cap, and this asserts what we do with the
-// answer. The tool must surface a refusal, not a 400 body, and it must name
-// the tool that edits one field.
-func TestPostgrestRequestMultiRowPatchAndDeleteAreRefused(t *testing.T) {
-	const pgrst124 = `{"code":"PGRST124","message":"Query result exceeds max-affected preference constraint","details":"The query affects 2 rows","hint":null}`
-
-	for _, method := range []string{http.MethodPatch, http.MethodDelete} {
-		t.Run(method, func(t *testing.T) {
-			fake := newFakePostgREST(t)
-			fake.respondMethod(method, "/assignment_field_submissions", http.StatusBadRequest, pgrst124)
-			deps := fake.deps(t)
-			deps.escapeHatchWritesEnabled = true
-			req, _ := writeToolRequest(t, nil)
-
-			in := postgrestRequestInput{
-				Method: method,
-				Path:   "/assignment_field_submissions",
-				Query:  map[string]string{"assignment_slug": "eq.team-selection"},
-			}
-			if method == http.MethodPatch {
-				in.Body = `{"body":"clobbered"}`
-			}
-			_, out, err := deps.postgrestRequest(context.Background(), req, in)
-			if err == nil {
-				t.Fatalf("PGRST124 was reported as success: %+v", out)
-			}
-			for _, want := range []string{"more than one row", "rolled back", "submit_submission_change"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q does not mention %q", err.Error(), want)
-				}
-			}
-			// The raw upstream body never reaches the client, matching how the
-			// rest of the code handles upstream errors.
-			if strings.Contains(err.Error(), "PGRST124") || strings.Contains(err.Error(), "max-affected preference") {
-				t.Errorf("error leaks the upstream body: %q", err.Error())
-			}
-			if out.Status != 0 || out.Body != "" {
-				t.Errorf("a refused write returned output: %+v", out)
-			}
-			// The request that was sent carried the cap, which is what makes
-			// PostgREST roll it back rather than write two rows.
-			recorded := fake.recorded()
-			if len(recorded) != 1 || len(recorded[0].prefer) != 1 || recorded[0].prefer[0] != escapeHatchBoundedPrefer {
-				t.Fatalf("requests = %+v", recorded)
-			}
-		})
-	}
-}
-
-// Only PGRST124 gets the cap message; any other 400 keeps the pass-through
-// behaviour the escape hatch has always had.
+// An upstream 400 is passed through rather than turned into a tool error:
+// that is the behaviour the escape hatch has always had, and it is what a
+// refusal from the database row bound reaches the model as.
 func TestPostgrestRequestOtherBadRequestPassesThrough(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusBadRequest,
@@ -373,74 +324,6 @@ func TestPostgrestRequestOtherBadRequestPassesThrough(t *testing.T) {
 		t.Fatalf("unexpected tool error: %v", err)
 	}
 	if out.Status != http.StatusBadRequest || !strings.Contains(out.Body, "PGRST102") {
-		t.Fatalf("output = %+v", out)
-	}
-}
-
-func TestExceededMaxAffected(t *testing.T) {
-	tests := []struct {
-		name   string
-		status int
-		body   string
-		want   bool
-	}{
-		{name: "the cap", status: http.StatusBadRequest, body: `{"code":"PGRST124"}`, want: true},
-		{name: "another 400", status: http.StatusBadRequest, body: `{"code":"PGRST102"}`},
-		{name: "no code", status: http.StatusBadRequest, body: `{"message":"nope"}`},
-		{name: "not JSON", status: http.StatusBadRequest, body: `<html>bad gateway</html>`},
-		{name: "empty body", status: http.StatusBadRequest, body: ``},
-		{name: "the code on a 200", status: http.StatusOK, body: `{"code":"PGRST124"}`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := exceededMaxAffected(tt.status, []byte(tt.body)); got != tt.want {
-				t.Errorf("exceededMaxAffected(%d, %q) = %v, want %v", tt.status, tt.body, got, tt.want)
-			}
-		})
-	}
-}
-
-// The shipped posture (issue #331): the hatch reads, and a write is refused
-// even for a caller holding the write scope. Scope parity with the curated
-// tool is not blast-radius parity — a raw PATCH can omit filters and skips the
-// stale-write check — so the refusal has to name the tool that does neither.
-func TestPostgrestRequestRefusesMutatingVerbsByDefault(t *testing.T) {
-	fake := newFakePostgREST(t)
-	deps := fake.deps(t) // the zero value is the default: writes disabled
-	req, _ := writeToolRequest(t, nil)
-	ctx := context.Background()
-
-	for _, method := range []string{http.MethodPost, http.MethodPatch, http.MethodDelete} {
-		t.Run(method, func(t *testing.T) {
-			in := postgrestRequestInput{Method: method, Path: "/assignment_field_submissions"}
-			if method != http.MethodDelete {
-				in.Body = `{"body":"x"}`
-			}
-			_, _, err := deps.postgrestRequest(ctx, req, in)
-			if err == nil {
-				t.Fatal("a mutating verb was accepted with writes disabled")
-			}
-			if !strings.Contains(err.Error(), "submit_submission_change") {
-				t.Fatalf("refusal does not point at the curated tool: %v", err)
-			}
-			if !strings.Contains(err.Error(), method) {
-				t.Fatalf("refusal does not name the verb: %v", err)
-			}
-		})
-	}
-	if len(fake.recorded()) != 0 {
-		t.Fatalf("a refused write reached PostgREST: %+v", fake.recorded())
-	}
-
-	// The read hatch is untouched: it is what keeps the MCP front door no
-	// worse than the caller's own token against the REST API.
-	fake.respond("/assignments", `[{"slug":"proj1"}]`)
-	readReq, _ := readToolRequest(t, nil)
-	_, out, err := deps.postgrestRequest(ctx, readReq, postgrestRequestInput{Method: http.MethodGet, Path: "/assignments"})
-	if err != nil {
-		t.Fatalf("GET with writes disabled: %v", err)
-	}
-	if out.Status != http.StatusOK || !strings.Contains(out.Body, `"slug":"proj1"`) {
 		t.Fatalf("output = %+v", out)
 	}
 }

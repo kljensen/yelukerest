@@ -13,19 +13,26 @@ package main
 //
 // Mutating verbs are off by default (issue #331) and MCP_ESCAPE_HATCH_WRITES_ENABLED=true
 // turns them on for a deployment that has decided it wants them. Where they
-// are on, breadth — not the verb — is what is bounded (issue #337): a PATCH or
-// DELETE carries Prefer: max-affected=1 with handling=strict, so a request
-// that would touch more than one row returns PGRST124 and PostgreSQL rolls the
-// transaction back. Scope parity is not blast-radius parity: an unfiltered
-// PATCH otherwise hits every row RLS permits — a student's team submissions
-// included — so one prompt injection would buy a broad multi-row write while
-// staying inside RLS. A filter requirement would not have helped; id=gt.0 is a
-// filter. max-affected measures the result instead. POST is uncapped by
-// construction: an insert names its target in the body.
+// are on, breadth — not the verb — is what is bounded, and that bound now lives
+// in PostgreSQL (issue #346): statement-level triggers refuse a student or TA
+// statement that affects more than the schema's row bound and roll it back.
+// Scope parity is not blast-radius parity: an unfiltered PATCH otherwise hits
+// every row RLS permits — a student's team submissions included — so one prompt
+// injection would buy a broad multi-row write while staying inside RLS.
+//
+// This code used to send Prefer: handling=strict, max-affected=1 on a PATCH or
+// DELETE (issue #337). That was removed with the database bound, for two
+// reasons. A preference is chosen by the client, so it bound this client and
+// not a student's own token with curl. And it was verb-shaped, while the
+// comment that justified leaving POST alone — "POST is uncapped by
+// construction: an insert names its target in the body" — was wrong: PostgREST
+// turns a POST carrying resolution=merge-duplicates into
+// INSERT ... ON CONFLICT DO UPDATE, which is a multi-row update wearing a POST,
+// and that is the shape the Elm client and every batch write actually take.
+// Keeping both controls would have meant two bounds with different numbers.
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -51,43 +58,14 @@ const escapeHatchBodyBudget = maxToolResultBytes - 2*1024
 
 var allowedAPIMethods = []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete}
 
-// escapeHatchBoundedPrefer is the Prefer header sent with a PATCH or DELETE.
-// handling=strict is required: PostgREST silently ignores max-affected
-// without it. N is 1 and is deliberately not configurable — the editing unit
-// in this course is one assignment field, and a multi-row PATCH cannot supply
-// different values per field anyway.
-const escapeHatchBoundedPrefer = "return=representation, handling=strict, max-affected=1"
-
-// escapeHatchPrefer is the Prefer header for one verb, empty for GET.
+// escapeHatchPrefer is the Prefer header for one verb, empty for GET. A write
+// asks for the affected rows back and nothing else; the row bound is the
+// database's, not a preference this client chooses to send.
 func escapeHatchPrefer(method string) string {
-	switch method {
-	case http.MethodPatch, http.MethodDelete:
-		return escapeHatchBoundedPrefer
-	case http.MethodGet:
+	if method == http.MethodGet {
 		return ""
-	default:
-		return "return=representation"
 	}
-}
-
-// maxAffectedErrorCode is what PostgREST returns, with HTTP 400, when a
-// request exceeded the max-affected preference. The transaction is rolled
-// back, so nothing was changed.
-const maxAffectedErrorCode = "PGRST124"
-
-// exceededMaxAffected reports whether an upstream response is the cap being
-// hit, rather than any other 400.
-func exceededMaxAffected(status int, body []byte) bool {
-	if status != http.StatusBadRequest {
-		return false
-	}
-	var parsed struct {
-		Code string `json:"code"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return false
-	}
-	return parsed.Code == maxAffectedErrorCode
+	return "return=representation"
 }
 
 // allowedAPIMethodsFor is the verb list a given deployment will actually
@@ -123,7 +101,7 @@ func postgrestRequestTool(writesEnabled bool) *mcp.Tool {
 	}
 	if writesEnabled {
 		description += "GET requires the read scope; POST, PATCH, and DELETE require the write scope. " +
-			"A PATCH or DELETE is capped at one row: filter it down to exactly one, or the request is rejected and rolled back. " +
+			"The database bounds how many rows one request may change; a statement that reaches further is rejected and rolled back having changed nothing. " +
 			"To change a submission field, prefer submit_submission_change. "
 		annotations.DestructiveHint = boolPtr(true)
 	} else {
@@ -262,16 +240,6 @@ func (d *toolDeps) postgrestRequest(ctx context.Context, req *mcp.CallToolReques
 	if err != nil {
 		return nil, zero, err
 	}
-	// The upstream body is not echoed here: it is a raw PostgREST error, and
-	// the useful answer is what the cap is and which tool to use instead.
-	if exceededMaxAffected(status, responseBody) {
-		return nil, zero, fmt.Errorf(
-			"this %s would have affected more than one row, so it was rejected and rolled back; nothing changed. "+
-				"postgrest_request caps a PATCH or DELETE at one row. Add filters that identify exactly one row, "+
-				"or use submit_submission_change, which writes one field of one submission and checks for a concurrent edit",
-			method)
-	}
-
 	out := postgrestRequestOutput{Status: status}
 	out.Body, out.BodyTruncated = truncateBytes(string(responseBody), escapeHatchBodyBudget)
 	return nil, out, nil
@@ -385,12 +353,16 @@ mutating verbs, and it will tell you if a POST/PATCH/DELETE is refused. To
 change a submission field prefer submit_submission_change — it writes one
 field of one submission and handles the stale-write check for you.
 Where they are enabled they need the write scope, and the server sets
-Prefer: return=representation so you see the affected rows. A PATCH or DELETE
-is additionally capped at ONE row (Prefer: handling=strict, max-affected=1):
-filter down to exactly one row (e.g. assignment_slug=eq.x plus
-assignment_field_slug=eq.y), or the request is rejected and rolled back having
-changed nothing. POST is not capped. HTTP 409 means a conflict or a stale
-updated_at: re-read and retry deliberately.
+Prefer: return=representation so you see the affected rows.
+
+The DATABASE bounds how many rows one request may change, whatever the verb:
+at most 64 rows of one table for a student or TA, at most 4 assignment
+submissions, and every assignment_field_submissions row a single statement
+changes must belong to the same assignment submission. A request that reaches
+further gets HTTP 400 and is rolled back having changed nothing — narrow the
+filter (e.g. assignment_slug=eq.x plus assignment_field_slug=eq.y) or send
+several smaller requests. HTTP 409 means a conflict or a stale updated_at:
+re-read and retry deliberately.
 
 ## RPC endpoints (side effects!)
 
