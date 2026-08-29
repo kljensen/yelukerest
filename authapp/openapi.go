@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
@@ -60,7 +61,28 @@ func fetchOpenAPI(jwt string, config FetchJWTConfig) (map[string]interface{}, er
 	return data, nil, http.StatusOK
 }
 
+// courseTitle names this deployment in the OpenAPI document. PostgREST titles
+// its document "PostgREST API", which tells a student nothing about whose API
+// they are looking at, and the platform runs more than one course, so the name
+// cannot be baked into the schema either -- a COMMENT ON SCHEMA would title
+// every deployment the same. It is deployment configuration, so it arrives the
+// same way the web client's title does, from ELMCLIENT_COURSE_TITLE.
+func courseTitle() string {
+	return strings.TrimSpace(os.Getenv("COURSE_TITLE"))
+}
+
 func enrichOpenAPI(data map[string]interface{}, r *http.Request) map[string]interface{} {
+	if title := courseTitle(); title != "" {
+		info, ok := data["info"].(map[string]interface{})
+		if !ok || info == nil {
+			info = map[string]interface{}{}
+			data["info"] = info
+		}
+		// The version stays as PostgREST reported it: it describes the server
+		// actually answering, and replacing it with a course name would lose
+		// that without gaining anything.
+		info["title"] = title + " API"
+	}
 	data["host"] = getRequestHost(r)
 	data["basePath"] = "/rest/"
 	data["schemes"] = []string{requestScheme(r)}

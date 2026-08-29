@@ -138,6 +138,10 @@ services:
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
+            # Titles the OpenAPI document at /openapi/, which PostgREST
+            # otherwise calls "PostgREST API". Same value the web client
+            # is built with, so both name the course identically.
+            - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
             - JWT_ISSUER=${JWT_ISSUER:-yelukerest}
             - JWT_AUDIENCE=${JWT_AUDIENCE:-yelukerest-postgrest}
             # For the DCR response-cleaning proxy (issue #272,

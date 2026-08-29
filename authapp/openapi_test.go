@@ -240,3 +240,42 @@ func assertStringSlice(t *testing.T, got interface{}, want []string) {
 		}
 	}
 }
+
+func TestEnrichOpenAPITitlesTheDocumentWithTheCourse(t *testing.T) {
+	// PostgREST calls its document "PostgREST API", which says nothing about
+	// whose API a student is reading. The name is deployment configuration, not
+	// schema: the platform serves more than one course from the same migrations,
+	// so a COMMENT ON SCHEMA would give them all the same title.
+	t.Setenv("COURSE_TITLE", "MGT656")
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/api.json", nil)
+
+	data := enrichOpenAPI(map[string]interface{}{
+		"info": map[string]interface{}{"title": "PostgREST API", "version": "16.2"},
+	}, req)
+
+	info, ok := data["info"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("info missing: %#v", data)
+	}
+	if got := info["title"]; got != "MGT656 API" {
+		t.Fatalf("title = %v, want %q", got, "MGT656 API")
+	}
+	// The version describes the server actually answering, so it survives.
+	if got := info["version"]; got != "16.2" {
+		t.Fatalf("version = %v, want %q", got, "16.2")
+	}
+}
+
+func TestEnrichOpenAPILeavesTitleAloneWhenUnconfigured(t *testing.T) {
+	t.Setenv("COURSE_TITLE", "")
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/api.json", nil)
+
+	data := enrichOpenAPI(map[string]interface{}{
+		"info": map[string]interface{}{"title": "PostgREST API"},
+	}, req)
+
+	info := data["info"].(map[string]interface{})
+	if got := info["title"]; got != "PostgREST API" {
+		t.Fatalf("title = %v, want it untouched", got)
+	}
+}
