@@ -153,22 +153,74 @@ func TestRequestSchemeUsesFirstForwardedProto(t *testing.T) {
 	}
 }
 
-func TestOpenAPIEndpointRequiresSession(t *testing.T) {
+func TestOpenAPIEndpointServesSignedOutVisitors(t *testing.T) {
+	// The "API" link is in the navigation for everyone. It used to sit behind
+	// getSessionMiddleware, so a signed-out visitor who followed it got a 401 and
+	// Swagger UI rendered "Failed to load API definition." -- an error from a
+	// library with no idea that logging in was the missing step.
+	//
+	// The document is still built per caller. Without a session there is simply no
+	// JWT to build it with, and PostgREST answers as the anonymous role: meetings,
+	// ui_elements, platform_version. That is the honest public view.
 	sessionManager := newSessionManager(true)
-	var calledNext bool
-	protected := sessionManager.LoadAndSave(getSessionMiddleware(sessionManager, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calledNext = true
+	var sawNetID bool
+	var sawContextValue bool
+	open := sessionManager.LoadAndSave(withOptionalSession(sessionManager, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawNetID = true
+		_, sawContextValue = r.Context().Value("netid").(string)
 	})))
 	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/api.json", nil)
 	recorder := httptest.NewRecorder()
 
-	protected.ServeHTTP(recorder, req)
+	open.ServeHTTP(recorder, req)
 
-	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
-	if calledNext {
-		t.Fatal("protected handler was called without a session")
+	if !sawNetID {
+		t.Fatal("handler was not reached without a session")
+	}
+	if sawContextValue {
+		t.Fatal("a netid was attached to a request that has no session")
+	}
+}
+
+func TestOpenAPIWithoutSessionAsksPostgRESTAnonymously(t *testing.T) {
+	// The Authorization header must be absent rather than "Bearer ": PostgREST
+	// rejects a malformed token instead of falling back to the anonymous role.
+	var sawAuthHeader bool
+	var sawJWTLookup bool
+	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rpc/issue_user_jwt":
+			sawJWTLookup = true
+			t.Fatal("fetched a user JWT for a request with no session")
+		case "/":
+			_, sawAuthHeader = r.Header["Authorization"]
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"swagger":"2.0","info":{"title":"PostgREST API"},"paths":{"/meetings":{}}}`))
+		default:
+			t.Fatalf("unexpected upstream path %q", r.URL.Path)
+		}
+	})
+
+	handler := getOpenAPIHandler(config)
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/api.json", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	if sawAuthHeader {
+		t.Fatal("sent an Authorization header for a signed-out request")
+	}
+	if sawJWTLookup {
+		t.Fatal("looked up a JWT for a signed-out request")
+	}
+	if !strings.Contains(recorder.Body.String(), "/meetings") {
+		t.Fatalf("anonymous document missing public paths: %q", recorder.Body.String())
 	}
 }
 

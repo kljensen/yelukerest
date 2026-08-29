@@ -88,7 +88,9 @@ func main() {
 	getMe := getSessionMiddleware(sessionManager, getMeHandler(fetchJWTConfig))
 	jwtRateLimiter := newRateLimiter(60, time.Minute)
 	getJWT := getSessionMiddleware(sessionManager, rateLimitMiddleware(jwtRateLimiter, getJWTHandler(fetchJWTConfig)))
-	getOpenAPI := getSessionMiddleware(sessionManager, getOpenAPIHandler(fetchJWTConfig))
+	// withOptionalSession, not getSessionMiddleware: the OpenAPI document is served
+	// to signed-out visitors too, describing the anonymous role's view of the API.
+	getOpenAPI := withOptionalSession(sessionManager, getOpenAPIHandler(fetchJWTConfig))
 	// Personal access token exchange (issue #317). Deliberately NOT behind
 	// getSessionMiddleware: the caller presents a token precisely because they
 	// have no browser session. The limit is tighter than /auth/jwt because this
@@ -279,6 +281,21 @@ func getLogoutHandler(sessionManager *scs.SessionManager) http.HandlerFunc {
 		sessionManager.Destroy(r.Context())
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
+}
+
+// withOptionalSession attaches the netid when the caller has a session and
+// otherwise lets the request through unchanged. It is the counterpart to
+// getSessionMiddleware, for the one endpoint that has a meaningful answer for a
+// visitor who has not logged in.
+func withOptionalSession(sessionManager *scs.SessionManager, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		netid := sessionManager.GetString(r.Context(), "netid")
+		if netid == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), "netid", netid)))
+	})
 }
 
 func getSessionMiddleware(sessionManager *scs.SessionManager, next http.Handler) http.Handler {
