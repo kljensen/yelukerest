@@ -76,8 +76,6 @@ indexView currentUser uiElements =
         , div [] [ a [ href uiElements.aboutURL ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
-        , div [] [ a [ href "#/connected-apps" ] [ text "Connected apps" ] ]
-        , div [] [ a [ href "#/api-tokens" ] [ text "API tokens" ] ]
         , div [] [ Html.a [ href uiElements.canvasURL ] [ Html.text "Canvas" ] ]
         , piazzaLink uiElements.piazzaURL
         , slackLink uiElements.slackURL

@@ -27,6 +27,20 @@ tests =
                 Dashboard.Views.dashboard { dashboardData | userSecretsToShow = Set.empty }
                     |> Query.fromHtml
                     |> Query.hasNot [ Selector.attribute (Attrs.attribute "data-copy-text" baseSecret.body) ]
+
+        -- Connected apps and API tokens manage a person's own access rather than
+        -- show their coursework, and both need a session. On the front page they
+        -- sat beside Meetings and Assignments, advertised to signed-out visitors
+        -- who could not use them. This branch only renders for a signed-in user,
+        -- so being here is what makes the links appear exactly when they work.
+        , test "the dashboard links to the pages that manage your own access" <|
+            \_ ->
+                Dashboard.Views.dashboard dashboardData
+                    |> Query.fromHtml
+                    |> Query.has
+                        [ Selector.attribute (Attrs.href "#/connected-apps")
+                        , Selector.attribute (Attrs.href "#/api-tokens")
+                        ]
         ]
 
 

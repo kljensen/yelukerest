@@ -166,6 +166,7 @@ dashboard webDataGradeData =
         RemoteData.Success gd ->
             Html.div []
                 [ userInfoTable gd.currentUser
+                , accountLinks
                 , userSecretTable gd.currentUser gd.userSecrets gd.userSecretsToShow
                 , showGradeTable gd
                 ]
@@ -175,6 +176,34 @@ dashboard webDataGradeData =
 
         _ ->
             Html.div [] [ Html.text "Loading..." ]
+
+
+{-| The two pages that manage a person's own access rather than show their
+coursework: which applications they have connected over OAuth, and which API
+tokens they have issued.
+
+They used to sit on the front page beside Meetings and Assignments, which put
+two things a signed-out visitor cannot use in the same list as the course
+content, and read as though connecting an application were a course activity.
+Here they are behind the same guard as the rest of the dashboard -- this branch
+only renders for a signed-in user -- so the links appear exactly when they work.
+
+-}
+accountLinks : Html.Html Msg
+accountLinks =
+    Html.div []
+        [ Html.h2 [] [ Html.text "Your access" ]
+        , Html.ul []
+            [ Html.li []
+                [ Html.a [ Attrs.href "#/connected-apps" ] [ Html.text "Connected apps" ]
+                , Html.text " — applications you have allowed to read your course data"
+                ]
+            , Html.li []
+                [ Html.a [ Attrs.href "#/api-tokens" ] [ Html.text "API tokens" ]
+                , Html.text " — tokens for your own scripts and notebooks"
+                ]
+            ]
+        ]
 
 
 userInfoTable : CurrentUser -> Html.Html Msg
