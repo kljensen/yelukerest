@@ -21,3 +21,17 @@
 		}
 	}
 }
+
+# The codeframe editor. A separate name because what it serves is arbitrary
+# user-authored HTML and JavaScript: keeping it off the course origin means a
+# page a student writes cannot read the session cookie or local storage of the
+# course app, whatever it contains.
+code.{$NAKED_FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy codeframe:{$CODEFRAME_PORT}
+	tls {
+		dns route53 {
+			wait_for_propagation true
+		}
+	}
+}

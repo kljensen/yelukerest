@@ -4,6 +4,7 @@ volumes:
         external: false
     caddy_data:
     caddy_config:
+    codeframe_db:
 services:
     elmclient:
         build:
@@ -84,6 +85,7 @@ services:
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_PORT=${AUTHAPP_PORT}
             - MCPAPP_PORT=${MCPAPP_PORT:-8090}
+            - CODEFRAME_PORT=${CODEFRAME_PORT:-4556}
             - HYDRA_PUBLIC_PORT=${HYDRA_PUBLIC_PORT:-4444}
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
@@ -103,6 +105,18 @@ services:
     # (docs/adr/0001-mcp-and-oauth.md, issue #270).
     # Pinned by tag for now; recorded digest for later digest-pinning:
     # oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
+    # The browser editor served at code.<domain>. Students write a page and
+    # submit the URL it is hosted at, so this is storage as much as it is an
+    # editor -- the volume below holds every page anyone has ever submitted,
+    # and losing it breaks links recorded against past assignments.
+    codeframe:
+        build: codeframe
+        restart: unless-stopped
+        environment:
+            - PORT=${CODEFRAME_PORT:-4556}
+        volumes:
+            - codeframe_db:/codeframe/db
+
     hydra:
         image: oryd/hydra:v26.2.0
         command: serve all -c /etc/hydra/hydra.yml --sqa-opt-out
