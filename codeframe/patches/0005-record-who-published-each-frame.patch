@@ -1,0 +1,102 @@
+--- a/src/api.js
++++ b/src/api.js
+@@ -1,7 +1,68 @@
+ //> This file defines the few Codeframe-internal API endpoints
+ 
++const fs = require('fs');
++const path = require('path');
++
++const config = require('../config.js');
+ const {store} = require('./models.js');
+ 
++//> Since issue #359 only a signed-in person can reach `POST /api/frame/`: it
++//  is served on the CAS-authenticated editor host, behind the proxy's
++//  forward_auth, and behind an exact Origin check. So every publish is made by
++//  a known person -- and nothing recorded which one. A proxy access log cannot
++//  close that gap either, because the hash a publish creates appears only in
++//  the response body and never in the request line (issue #366).
++//
++//  Caddy names the publisher in `X-Yeluke-Netid`, copied from authapp's
++//  `/auth/me` response, and stamps its own request id in `X-Yeluke-Request-Id`.
++//  Neither can be supplied by the client: the proxy deletes both on the way in
++//  before setting its own.
++const PUBLISH_LOG = path.join(config.DATABASE, 'publish-log.jsonl');
++
++//> Bounding the copied header values keeps a record comfortably under
++//  PIPE_BUF, which is what makes concurrent publishes safe here: each record is
++//  one O_APPEND write, and the kernel keeps a write that small whole, so two
++//  saves at once interleave lines rather than halves of lines. Both headers
++//  come from the proxy and not from the client, so the bound is a floor under a
++//  mistake upstream rather than a defence against a caller.
++const HEADER_MAX = 128;
++const publishHeader = (req, name) => {
++    const value = req && req.get(name);
++    return value ? String(value).slice(0, HEADER_MAX) : null;
++}
++
++//> One JSON line per publish, appended to a file in the frame directory -- the
++//  `codeframe_db` volume -- rather than sent to stdout or to Postgres. Stdout
++//  is not durable enough to be worth writing: container logs are removed with
++//  the container, and this image is recreated on every redeploy, while the
++//  frames survive that. Postgres is more than the question needs: it would put
++//  a database client and a credential inside the one image that serves the
++//  editor, and give publishing a new way to fail that has nothing to do with
++//  publishing, for a file that is read by hand a few times a term. On the
++//  volume the record is exactly as durable as the artifact it attributes --
++//  the same storage, kept or lost together -- which is the right bar, because
++//  attribution for a frame that no longer exists answers nothing.
++const recordPublish = (req, frameHash) => {
++    const record = JSON.stringify({
++        ts: new Date().toISOString(),
++        netid: publishHeader(req, 'X-Yeluke-Netid'),
++        request_id: publishHeader(req, 'X-Yeluke-Request-Id'),
++        frame_hash: frameHash,
++    });
++    //> A failed append does NOT fail the request. By this point the frame is
++    //  already written and already reachable at its URL, so an error response
++    //  would be a lie that makes the editor retry and republish identical
++    //  content. It is loud on stderr instead.
++    return new Promise(res => {
++        fs.appendFile(PUBLISH_LOG, `${record}\n`, err => {
++            if (err) {
++                console.error(`could not record publish of ${frameHash}: ${err}`);
++            }
++            res();
++        });
++    });
++}
++
+ //> This is the object that will contain all API methods for frames.
+ const api = {
+     frame: {},
+@@ -13,8 +74,16 @@
+ }
+ 
+ //> `frame.post` lets us create a new frame, and returns the hash generated.
+-api.frame.post = async (_params, _query, body) => {
++api.frame.post = async (_params, _query, body, req) => {
+     const frameHash = await store.create(body);
++    //> The editor saves the HTML and the JS as two separate requests, so a
++    //  record covers one frame and an artifact URL -- /f/<html>/<js>.html --
++    //  is answered by looking up both halves, which the same person posted
++    //  within a moment of each other. `store.create` is content-addressed and
++    //  idempotent, so republishing content that already exists writes no file;
++    //  it still records the publish, because publishing somebody else's page
++    //  under your own name is precisely the thing worth being able to see.
++    await recordPublish(req, frameHash);
+     return frameHash;
+ }
+ 
+--- a/src/index.js
++++ b/src/index.js
+@@ -113,7 +113,9 @@
+     appMethod(route, async (req, res) => {
+         try {
+             res.set('Content-Type', contentType);
+-            const result = await handler(req.params, req.query, req.body);
++            //> `req` as well as its parts: `frame.post` records who published
++            //  each frame (issue #366) and needs the request's headers to do it.
++            const result = await handler(req.params, req.query, req.body, req);
+             if (typeof result === 'string') {
+                 res.send(result);
+             } else {

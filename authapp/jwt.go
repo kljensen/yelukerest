@@ -239,6 +239,17 @@ func getMeHandler(config FetchJWTConfig) http.HandlerFunc {
 			return
 		}
 
+		// Caddy's forward_auth guards codeframe's editor with this endpoint and
+		// can copy RESPONSE headers from the subrequest onto the request it
+		// lets through, but it cannot read this JSON body. Codeframe records
+		// who published each frame (issue #366) and the netid can only reach it
+		// that way, so it leaves here as a header as well.
+		//
+		// The session's netid, not data.NetID: this is a statement about who is
+		// signed in, which is what the session -- and nothing downstream of it
+		// -- is authoritative for.
+		w.Header().Set("X-Yeluke-Netid", netID)
+
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(encodedData)
 	}

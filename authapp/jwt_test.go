@@ -213,6 +213,38 @@ func TestGetMeHandlerUsesUserInfoEndpoint(t *testing.T) {
 	assertNoStoreHeaders(t, recorder.Result())
 }
 
+// Caddy's forward_auth can copy response headers from this endpoint onto the
+// request it lets through, but it cannot read the JSON body. Codeframe learns
+// who is publishing a frame that way (issue #366), so the header is part of
+// this endpoint's contract and not an incidental extra.
+func TestGetMeHandlerEmitsNetidHeader(t *testing.T) {
+	config := testFetchJWTConfig(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// A netid that disagrees with the session's, which cannot happen in
+		// practice: the point is that the header follows the session, the only
+		// thing that establishes who is signed in.
+		_ = json.NewEncoder(w).Encode(UserJWTInfo{
+			ID:    1,
+			NetID: "someone999",
+			Role:  "student",
+		})
+	})
+
+	handler := getMeHandler(config)
+	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/me", nil)
+	req = req.WithContext(context.WithValue(req.Context(), "netid", "abc123"))
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("X-Yeluke-Netid"); got != "abc123" {
+		t.Fatalf("X-Yeluke-Netid = %q, want %q", got, "abc123")
+	}
+}
+
 func TestFetchUserJWTInfoMapsPostgRESTStatuses(t *testing.T) {
 	tests := []struct {
 		name       string

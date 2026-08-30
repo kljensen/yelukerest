@@ -112,6 +112,13 @@ RUN yarn install --frozen-lockfile
 # config.js resolves DATABASE to the relative path "db", so frames land in
 # /codeframe/db. That directory is a named volume in the compose file: without
 # it, a restart deletes every page a student has submitted.
+#
+# publish-log.jsonl lives there too -- one line per publish, naming the netid
+# that made it (issue #366). It is deliberately on the same volume as the
+# frames rather than in stdout or a database; see the comment on recordPublish
+# in patches/0005. Read it with:
+#
+#   docker compose exec codeframe cat db/publish-log.jsonl
 ENV PORT=4556
 
 # Origin serving the public /f/<html>/<js>.html artifacts, stamped into the

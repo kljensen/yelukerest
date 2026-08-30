@@ -265,6 +265,14 @@
 					# too. KiB, not KB: codeframe means 50 * 1024.
 					max_size 50KiB
 				}
+				# Nobody downstream may name themselves. copy_headers below
+				# already deletes this before setting authapp's value, but only
+				# on the path where the subrequest returned 2xx; deleting it up
+				# front means the header reaching codeframe came from authapp
+				# under every outcome, including ones a later Caddy might
+				# handle differently.
+				request_header -X-Yeluke-Netid
+
 				# /auth/me answers 401 for a signed-out caller and forward_auth
 				# only continues on 2xx, so without this the browser would be
 				# shown that 401. handle_response, not handle_errors: a 401
@@ -272,6 +280,15 @@
 				# handler error, so handle_errors never sees it.
 				forward_auth authapp:{$AUTHAPP_PORT} {
 					uri /auth/me
+					# Every publish is now made by a known person, and nothing
+					# recorded which (issue #366). Codeframe writes an
+					# attribution record beside each frame it stores, and this
+					# is the only way the netid can reach it: forward_auth can
+					# copy response headers from the subrequest onto the
+					# request it lets through, but it cannot read /auth/me's
+					# JSON body, so authapp answers with the netid as a header
+					# for exactly this.
+					copy_headers X-Yeluke-Netid
 					@unauthenticated status 401
 					handle_response @unauthenticated {
 						# The path only, never {http.request.uri}: an "&" in a
@@ -280,7 +297,13 @@
 						redir * /auth/login?next={http.request.uri.path} temporary
 					}
 				}
-				reverse_proxy codeframe:{$CODEFRAME_PORT}
+				reverse_proxy codeframe:{$CODEFRAME_PORT} {
+					# Caddy's per-request id, so an attribution record can be
+					# matched against this proxy's own view of the request
+					# while the logs for it still exist. Set, not appended, so
+					# a client-supplied value is replaced rather than trusted.
+					header_up X-Yeluke-Request-Id {http.request.uuid}
+				}
 			}
 		}
 	}
