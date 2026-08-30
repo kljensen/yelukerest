@@ -293,6 +293,116 @@ check_backup_fulls() {
     fi
 }
 
+check_pending_migrations() {
+    # Issue #357: production ran two migrations behind for weeks and doctor
+    # said nothing, so data.user_api_token did not exist there and elmclient's
+    # API-tokens page had never worked in production. Every other check here
+    # asks about the running stack; none asked whether the database had been
+    # given the schema the checked-out tree assumes. That drift only widens,
+    # and it is invisible until someone runs `zapadka status` by hand.
+    #
+    # The target follows doctor's existing DEVELOPMENT convention, so this
+    # asks about production on the production host and about the local
+    # database when DEVELOPMENT=1.
+    zapadka_bin=${ZAPADKA_BIN:-zapadka}
+    if [ "${DEVELOPMENT:-}" = "1" ]; then
+        migration_target=${ZAPADKA_TARGET:-development}
+    else
+        migration_target=${ZAPADKA_TARGET:-production}
+    fi
+
+    if ! command -v "$zapadka_bin" >/dev/null 2>&1; then
+        warn "$zapadka_bin not available; cannot tell whether target $migration_target has pending migrations"
+        return
+    fi
+
+    # --output json is a ReportV1 document that, unlike the human summary,
+    # is documented not to vary with whether stdout is a terminal. -q keeps
+    # progress off stderr; a nonzero exit still writes the report to stdout,
+    # so the outcome is read from the document rather than from $?.
+    report=$("$zapadka_bin" status --target "$migration_target" --output json -q 2>/dev/null || true)
+
+    # Anything that is not a readable report means doctor could not tell.
+    # Passing quietly here would reproduce exactly the silence this check
+    # exists to end, so an unanswerable target fails rather than warns.
+    if ! printf '%s' "$report" | jq -e '.report_version == 1' >/dev/null 2>&1; then
+        fail "zapadka status --target $migration_target produced no ReportV1 document; cannot tell whether migrations are pending"
+        return
+    fi
+
+    if ! printf '%s' "$report" | jq -e '.outcome == "success"' >/dev/null 2>&1; then
+        reason=$(printf '%s' "$report" | jq -r '[.error.code, .error.message] | map(select(. != null)) | join(": ")')
+        fail "zapadka status --target $migration_target did not complete ($reason); cannot tell whether migrations are pending"
+        return
+    fi
+
+    # Anything not "applied" is drift between the graph and the registry, so
+    # the status travels with each name instead of being assumed to be
+    # "pending". The id is truncated to match zapadka's own human output.
+    unapplied=$(printf '%s' "$report" | jq -r '
+        [.migrations[]? | select(.status != "applied") | "\(.id[0:8]) \(.slug) (\(.status))"]
+        | join(", ")')
+
+    if [ -n "$unapplied" ]; then
+        fail "target $migration_target is out of sync with the checked-out migration graph: $unapplied; deploy with ./bin/migrate.sh $migration_target"
+    else
+        applied_count=$(printf '%s' "$report" | jq -r '[.migrations[]?] | length')
+        ok "target $migration_target has all $applied_count checked-out migrations applied"
+    fi
+}
+
+check_checkout_freshness() {
+    # The layer above check_pending_migrations: a host that never pulled has a
+    # graph as old as its database, so migration status looks clean while the
+    # repo has moved on. This warns rather than fails because deliberately
+    # holding at a commit is legitimate, whereas an unapplied migration is not.
+    #
+    # ls-remote is one read-only round trip -- it neither fetches objects nor
+    # moves refs -- and the -c/env settings below keep it from blocking on a
+    # credential prompt or a dead network, which is what would otherwise make a
+    # network call in doctor unsafe.
+    #
+    # This asks only about a deployed host. A developer is legitimately on a
+    # feature branch, where "differs from origin/main" is the normal state, so
+    # DEVELOPMENT skips it and pays no network cost.
+    if [ "${DEVELOPMENT:-}" = "1" ]; then
+        warn "a development checkout is expected to differ from origin/main; skipping freshness check"
+        return
+    fi
+
+    if ! command -v git >/dev/null 2>&1 || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        warn "not a git checkout with git available; cannot tell whether this tree is behind origin/main"
+        return
+    fi
+
+    head_commit=$(git rev-parse HEAD 2>/dev/null || true)
+
+    # ConnectTimeout and the http low-speed settings bound the transfer but not
+    # SSH auth, which has been seen to stall for a minute; timeout(1) is the
+    # only hard ceiling. It is not POSIX, so its absence just means no ceiling
+    # rather than no check.
+    if command -v timeout >/dev/null 2>&1; then
+        bounded='timeout 15'
+    else
+        bounded=''
+    fi
+    # shellcheck disable=SC2086
+    remote_main=$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=5' \
+        $bounded git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 \
+        ls-remote --heads origin main 2>/dev/null | awk 'NR==1 {print $1}')
+
+    if [ -z "$head_commit" ] || [ -z "$remote_main" ]; then
+        warn "origin/main not reachable; cannot tell whether this tree is behind it"
+        return
+    fi
+
+    if [ "$head_commit" = "$remote_main" ]; then
+        ok "checkout is at origin/main ($(printf '%.8s' "$head_commit"))"
+    else
+        warn "checkout is at $(printf '%.8s' "$head_commit") but origin/main is $(printf '%.8s' "$remote_main"); this tree may be missing code and migrations that exist on main"
+    fi
+}
+
 need_command jq
 need_command openssl
 
@@ -336,6 +446,8 @@ fi
 check_hydra
 check_hydra_client_count
 check_backup_fulls
+check_pending_migrations
+check_checkout_freshness
 
 if [ "$failures" -ne 0 ]; then
     printf 'doctor failed: %d failure(s), %d warning(s)\n' "$failures" "$warnings" >&2
