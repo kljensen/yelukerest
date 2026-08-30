@@ -188,3 +188,21 @@ fi
 # repo1-retention-full starts pruning old fulls and the WAL they anchor.
 pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" --type="$BACKUP_TYPE" backup
 pgbackrest --config="$CONFIG" --stanza="$PGBACKREST_STANZA" info
+
+# The codeframe volume holds the graded pages from the tacky-website activity
+# and nothing else backs it up (issue #369). It runs *after* everything above,
+# and inside a guard, on purpose. Last, because the database backup is the one
+# with a deadline -- it holds the pgBackRest lock against an hourly schedule --
+# and anything placed before it can delay or, under `set -e`, prevent it
+# entirely; by this line the backup is written, expire has run, and `info` has
+# already reported. Guarded, because these are two unrelated destinations and a
+# tarball that fails to upload says nothing about the repository.
+#
+# The failure is still reported, and the run still exits non-zero, because a
+# silently skipped artifact backup would stay broken for a term. The message
+# says which of the two failed so that a non-zero exit here is not read as a
+# database problem during an incident.
+if ! sh /codeframe.sh; then
+  echo "codeframe artifact backup FAILED; the PostgreSQL backup above completed and is unaffected" >&2
+  exit 1
+fi

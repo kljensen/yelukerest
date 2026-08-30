@@ -18,6 +18,14 @@ ENV PGBACKREST_REPO1_TYPE=s3
 ENV PGBACKREST_REPO1_S3_URI_STYLE=host
 ENV PGBACKREST_REPO1_STORAGE_PORT=443
 ENV PGBACKREST_REPO1_STORAGE_VERIFY_TLS=y
+# Where docker-compose.prod.yaml mounts the codeframe_db volume, read-only.
+# The pages students publish there are graded artifacts and pgBackRest does not
+# cover them (issue #369); backup.sh copies this directory to S3 after each
+# database backup.
+ENV CODEFRAME_DATA_PATH=/codeframe/db
+# Archives kept in S3. Only changed contents are uploaded, so this counts
+# distinct states of the volume, not scheduled runs.
+ENV CODEFRAME_RETAIN=14
 ENV S3_BUCKET=**None**
 ENV S3_ENDPOINT=**None**
 ENV S3_PREFIX=pgbackrest
@@ -26,5 +34,6 @@ ENV SCHEDULE=**None**
 
 COPY run.sh run.sh
 COPY backup.sh backup.sh
+COPY codeframe.sh /codeframe.sh
 
 CMD ["sh", "run.sh"]

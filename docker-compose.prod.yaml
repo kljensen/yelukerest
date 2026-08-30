@@ -120,3 +120,7 @@ services:
     volumes:
       - yelukerest-pg-data:/var/lib/postgresql:ro
       - postgres-run:/var/run/postgresql:ro
+      # The pages students publish for the tacky-website activity, which are
+      # graded artifacts that pgBackRest does not cover (issue #369). Read-only:
+      # this container only ever tars it up, and codeframe is the one writer.
+      - codeframe_db:/codeframe/db:ro

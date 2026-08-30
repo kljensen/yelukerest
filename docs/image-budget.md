@@ -47,7 +47,8 @@ Measured on 2026-07-08 after building the REST stack and Elm test target:
 | Image | MiB |
 | --- | ---: |
 | `yelukerest-authapp:latest` | 9.2 |
-| `yelukerest-backup:latest` | 45.2 |
+| `yelukerest-backup:latest` (re-measured 2026-08-30) | 75.8 |
+| `yelukerest-codeframe:latest` (added 2026-08-30) | 215.7 |
 | `yelukerest-caddy:latest` | 47.8 |
 | `yelukerest-elmclient:latest` | 72.9 |
 | `yelukerest-elmclient-test:latest` | 221.6 |
@@ -58,6 +59,23 @@ Measured on 2026-07-08 after building the REST stack and Elm test target:
 
 The current production-ish runtime subset, excluding `elmclient-test` and
 `postgres-dev`, is 500.8 MiB.
+
+Two entries moved on 2026-08-30 and the totals above have not been re-added:
+
+- `backup` grew 45.2 -> 75.8 MiB. The volume holding published student pages is
+  now backed up alongside PostgreSQL (issue #369), and that needs an S3 client
+  pgBackRest does not provide. `minio-client` was the cheapest defensible
+  option: measured `apk add --simulate` deltas were minio-client +30 MiB,
+  s3cmd +54, rclone +99, aws-cli +194.
+- `codeframe` is back, at 215.7 MiB. This document's history section says the
+  July 2026 cleanup removed it; it returned on 2026-08-30 because the
+  tacky-website activity submits a URL rather than a repository, so the service
+  hosting those pages is where the graded artifact lives. 23.6 MiB of it is a
+  vendored Monaco tree, which replaced 24 unpinned scripts loaded from unpkg
+  into what is now the CAS-authenticated origin (issue #367). Monaco's tree is
+  kept whole rather than pruned: `editor.main` lazily registers every language,
+  so a pruned tree would 404 only when a student opened a mode we had guessed
+  they would not.
 
 ## Pre-modernization Baseline
 

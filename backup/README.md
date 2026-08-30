@@ -26,3 +26,39 @@ untouched and the next scheduled attempt is an hour away.
 `sh backup.sh info` runs `pgbackrest info` using the same generated config and
 takes no backup; `bin/doctor.sh` uses it to check that more than one full backup
 exists.
+
+## The codeframe artifact backup
+
+pgBackRest covers PostgreSQL and nothing else. The `codeframe_db` volume holds
+the pages students publish for the tacky-website activity, plus the
+`publish-log.jsonl` that names who published each one. Those pages are the
+graded submission -- the activity asks for a URL, not a repository -- so
+`codeframe.sh` tars that volume and puts it in S3 (issue #369).
+
+It runs from `backup.sh`, after the PostgreSQL backup and its `info` report, and
+inside a guard. Ordering it last means a slow or failing artifact upload cannot
+delay or prevent the backup that has a deadline; guarding it means a failed
+upload to an unrelated prefix says nothing about the repository. The run still
+exits non-zero so the failure is not silent, and the message names which of the
+two failed.
+
+Details worth knowing before changing it:
+
+- The archives go to `${S3_PREFIX}-codeframe`, a **sibling** of the pgBackRest
+  prefix, never inside it. Nothing in that namespace belongs to a stanza.
+- Objects are named `codeframe-<UTC timestamp>-<content hash>.tar.gz`. The hash
+  is over a sorted list of per-file digests, not over the tarball, because gzip
+  stamps the time into its header and BusyBox `tar` cannot sort. If the newest
+  object in the prefix already carries the current hash, nothing is uploaded --
+  on an hourly schedule that turns `CODEFRAME_RETAIN` from a count of runs into
+  a count of distinct volume states.
+- Every upload is read back and compared by digest before the prune runs, and
+  the prune runs only after that succeeds, so a truncated upload can never be
+  the reason an older good archive was deleted.
+- `mcli` is Alpine's `minio-client` package: one static binary from the
+  distribution's own repository, and it points at any S3 endpoint. It reads the
+  same `S3_ENDPOINT` / `PGBACKREST_REPO1_STORAGE_PORT` /
+  `PGBACKREST_REPO1_STORAGE_VERIFY_TLS` settings pgBackRest does, so there is
+  one answer to where this stack writes to S3.
+
+Restoring is in `docs/backup-recovery.md`.

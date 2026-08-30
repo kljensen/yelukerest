@@ -8,6 +8,17 @@ Production Postgres is backed up by pgBackRest to S3: one base backup plus
 continuous WAL archiving, which together allow point-in-time recovery (PITR) —
 restoring a copy of the whole cluster as it existed at a chosen instant.
 
+Two different things are backed up, to two different places in the same bucket,
+and they have nothing to do with each other:
+
+| What | How | Where in the bucket | Restoring it |
+| --- | --- | --- | --- |
+| The Postgres cluster | pgBackRest, base backups plus WAL | `$BACKUP_S3_PREFIX/` | most of this document |
+| The published student pages on the `codeframe_db` volume | a gzipped tar per changed state | `$BACKUP_S3_PREFIX-codeframe/` | *The codeframe artifacts* below |
+
+Everything from here to *Making the narrow repair against production* is about
+the database. Skip to the codeframe section if that is what you lost.
+
 The local harness `bin/test-pgbackrest.sh` (`bun run test_pgbackrest`) proves
 the mechanism end to end against a disposable Postgres volume and a self-hosted
 MinIO endpoint. It backs up, restores, then restores again to a time before a
@@ -28,9 +39,10 @@ existed in the cluster at some earlier instant is recoverable.
 
 It does not protect against:
 
-- **Loss outside Postgres.** Uploaded files, the `.env` file, secrets, Caddy
-  certificates, and the Docker images themselves are not in the backup. Only
-  the Postgres cluster is.
+- **Loss outside Postgres.** The `.env` file, secrets, Caddy certificates, and
+  the Docker images themselves are not in any backup. The one non-Postgres
+  thing that *is* covered is the `codeframe_db` volume, separately and by a
+  different mechanism; see *The codeframe artifacts* below.
 - **Host loss, in any tested sense.** Rebuilding the server from nothing has
   never been rehearsed. The backups would very likely support it, but that is a
   belief, not a result.
@@ -414,6 +426,162 @@ Notes that will save you a confusing ten minutes:
   database repair rather than an API write. Confirm both after the `UPDATE`.
 - **Dollar-quote the body.** Student text contains quotes and backslashes.
 
+## The codeframe artifacts (published student pages)
+
+This is a separate backup of a separate thing, and it is not point-in-time.
+
+The `codeframe_db` volume holds every page a student has published for the
+tacky-website activity, as `cf_<hash>.frame`, plus `publish-log.jsonl` naming
+who published each one. Those pages are the graded submission: the activity asks
+for a URL, so `https://code.656.mba/f/<html>/<js>.html` *is* the work, and
+2025's submissions are recorded that way. Nothing else holds a copy. Issue #369.
+
+`backup/codeframe.sh` runs inside the backup container after each PostgreSQL
+backup and writes a gzipped tar of that volume to
+`s3://$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX-codeframe/`, named
+`codeframe-<UTC timestamp>-<content hash>.tar.gz`. A run whose content hash
+matches the newest object uploads nothing, so on the hourly schedule the
+`CODEFRAME_RETAIN` archives kept (default 14) are fourteen *distinct states of
+the volume*, not fourteen hours.
+
+**What that buys and what it does not.** You can recover the volume as it was at
+any of the retained states. You cannot recover an instant between them, and you
+cannot recover a page that was published and lost inside one interval. In
+practice frames are content-addressed and append-only — publishing never
+overwrites an existing frame — so the realistic loss is the whole volume, and
+for that this is enough.
+
+### Restoring the frames
+
+The frames are files, so this is much less delicate than the database
+procedure. Run it on the production host, in the repository directory. The
+backup container already knows the bucket, prefix, and endpoint, so use it
+rather than retyping them — `codeframe.sh` carries `list` and `get` for exactly
+this, and a hand-written second copy of those settings is what once produced an
+unrestorable pgBackRest repository.
+
+```sh
+set -a; . ./.env; set +a          # for $NAKED_FQDN in the verification below
+compose() {
+  docker compose -f docker-compose.base.yaml -f docker-compose.prod.yaml "$@"
+}
+mkdir -p tmp/codeframe-restore
+```
+
+List what is in S3 and pick one. Object names sort chronologically:
+
+```sh
+compose exec backup sh /codeframe.sh list
+```
+
+Download it to the host:
+
+```sh
+ARCHIVE=codeframe-20260830-144119-cbff9feb7216.tar.gz   # one from the list above
+
+compose run --rm --no-deps -v "$PWD/tmp/codeframe-restore:/out" \
+  --entrypoint sh backup /codeframe.sh get "$ARCHIVE" /out
+```
+Look inside before writing anything into the live volume:
+
+```sh
+tar -tzf "tmp/codeframe-restore/$ARCHIVE" | head
+```
+
+**Now decide which of the two restores you are doing, before extracting
+anything.** They differ only in how they treat `publish-log.jsonl`, and the
+wrong one destroys attribution that is not in the archive:
+
+```sh
+CODEFRAME_VOLUME=$(compose ps -q codeframe \
+  | xargs docker inspect -f '{{range .Mounts}}{{if eq .Destination "/codeframe/db"}}{{.Name}}{{end}}{{end}}')
+echo "$CODEFRAME_VOLUME"   # sanity-check the name before anything writes to it
+
+compose stop codeframe     # the only writer; stop it before reading or writing
+
+docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db:ro" alpine:3.24.1 \
+  sh -ceu 'if [ -s /codeframe/db/publish-log.jsonl ]; then
+             echo "LIVE LOG PRESENT: use the merging restore"
+           else
+             echo "no live log: the direct restore is safe"
+           fi'
+```
+
+codeframe stays stopped for the whole of either procedure below. Read the
+volume through a throwaway container rather than `compose exec`, which cannot
+reach a stopped service anyway.
+
+#### If there is no live log — empty or newly created volume
+
+`tar -xzf` merges: it writes what is in the archive and leaves everything else
+alone. Frames are content-addressed, so one restored from an old archive and one
+published since cannot collide.
+
+```sh
+docker run --rm \
+  -v "$CODEFRAME_VOLUME:/codeframe/db" \
+  -v "$PWD/tmp/codeframe-restore:/in:ro" \
+  alpine:3.24.1 tar -xzf "/in/$ARCHIVE" -C /codeframe/db
+
+compose start codeframe
+```
+
+#### If a live log is present — the usual case
+
+Merging is required, because `publish-log.jsonl` is a single appended-to file
+rather than content-addressed: extracting the archive over a newer log truncates
+it to the archive's contents and loses the attribution for every publish since.
+
+The live log is read here with codeframe already stopped, deliberately. Reading
+it while the service is running loses any publish that lands between the read
+and the replacement — the frame survives, its attribution does not.
+
+```sh
+mkdir -p tmp/codeframe-scratch
+docker run --rm -v "$PWD/tmp/codeframe-restore:/in:ro" \
+  -v "$PWD/tmp/codeframe-scratch:/out" \
+  alpine:3.24.1 tar -xzf "/in/$ARCHIVE" -C /out
+
+# codeframe is already stopped, so nothing can append while this runs
+docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db:ro" alpine:3.24.1 \
+  cat /codeframe/db/publish-log.jsonl > tmp/publish-log.live.jsonl
+
+sort -u tmp/codeframe-scratch/publish-log.jsonl tmp/publish-log.live.jsonl \
+  > tmp/publish-log.merged.jsonl
+rm tmp/codeframe-scratch/publish-log.jsonl
+
+docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db" \
+  -v "$PWD/tmp/codeframe-scratch:/in:ro" \
+  -v "$PWD/tmp/publish-log.merged.jsonl:/log:ro" \
+  alpine:3.24.1 sh -ceu '
+    cp -a /in/. /codeframe/db/
+    cp /log /codeframe/db/publish-log.jsonl
+  '
+
+compose start codeframe
+```
+
+Check the merge before starting codeframe if the log matters to you: the merged
+file should have at least as many lines as the live one did.
+
+`sort -u` is right here only because the log is one JSON object per line and
+duplicate lines are duplicates; it reorders the file, which nothing reads
+positionally. Delete `tmp/codeframe-restore`, `tmp/codeframe-scratch`, and the
+two `publish-log.*.jsonl` files when you are done — they hold student work.
+
+### Verifying it
+
+Fetch one restored page over HTTP, at the URL a submission actually recorded:
+
+```sh
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  "https://code.${NAKED_FQDN}/f/<html-hash>/<js-hash>.html"
+```
+
+A `200` from the public artifact host is the check that matters, because that is
+the form the grade referenced. A file on the volume that Caddy will not serve is
+not a restored submission.
+
 ## What to check periodically
 
 `pgbackrest info` looking healthy is **not** evidence that a restore works. It
@@ -441,6 +609,12 @@ configuration, or the Postgres major version:
   deployment means the weekly full is not happening; read the backup
   container's log (`docker compose logs backup`) for the line naming the
   backup type it chose.
+- List `$BACKUP_S3_PREFIX-codeframe/` and check the newest archive is not older
+  than the last time anyone published a page. Because unchanged volumes are not
+  re-uploaded, an old newest archive is normal on a quiet week and only
+  suspicious after a class that published. A failing artifact backup also makes
+  the whole backup run exit non-zero with a line saying so, so
+  `docker compose logs backup` is the faster check.
 
 ## RPO and RTO, as observed
 
@@ -483,5 +657,14 @@ Stated plainly so nobody quotes this document for more than it supports:
 - **The submission-recovery path end to end** — clobber a body, restore,
   extract, repair — has been rehearsed only in the local harness's sentinel-row
   form, not against production data.
+- **The codeframe restore has never been run against the production bucket.**
+  It was proved locally against MinIO on 2026-08-30 — back up a volume holding
+  known frames and a publish log, upload, download, extract into an empty
+  volume, and compare every file by digest, which matched — but the production
+  archives have never been downloaded, and no restored page has been fetched
+  through Caddy to confirm the URL still resolves.
+- **The `publish-log.jsonl` merge has not been rehearsed at all.** It is written
+  down above because extracting an old archive straight over a live log would
+  destroy attribution, not because anyone has done it.
 
 See issue #338 for the drill that produced this document.
