@@ -244,3 +244,21 @@ blockquote {
         font-size: 0.8rem;
     }
 }
+
+.engagement-student-holder .student .engagement-status {
+    font-weight: normal;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.engagement-student-holder .student.saving .radio-holder label {
+    opacity: 0.5;
+}
+
+.engagement-student-holder .student.save-failed .engagement-status {
+    color: #DD514C;
+}
+
+.engagement-student-holder .student.save-failed .radio-holder label {
+    border-color: #DD514C;
+}

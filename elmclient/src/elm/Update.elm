@@ -16,7 +16,8 @@ import Assignments.Updates
         ( onFetchAssignmentGradeDistributions
         , onFetchAssignmentGrades
         )
-import Auth.Model exposing (isFacultyOrTA)
+import Auth.Model exposing (JWT, isFacultyOrTA)
+import Auth.Updates exposing (onFetchCurrentUser)
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation exposing (load, pushUrl)
 import Common.TimeZones
@@ -24,7 +25,12 @@ import Dict exposing (Dict)
 import Engagements.Commands
     exposing
         ( fetchEngagements
-        , submitEngagement
+        , maybeSubmitEngagement
+        )
+import Engagements.Updates
+    exposing
+        ( onChangeEngagement
+        , onSubmitEngagementResponse
         )
 import Models exposing (Model, Route(..))
 import Msgs exposing (BrowserLocation(..), Msg)
@@ -67,6 +73,15 @@ listToDict : (a -> comparable) -> List a -> Dict.Dict comparable a
 listToDict getKey values =
     -- https://gist.github.com/Warry/b4382a5b4373de57f5ba
     Dict.fromList (List.map (\v -> ( getKey v, v )) values)
+
+
+{-| Turn what `Engagements.Updates` decided into a command. It reports the
+participation to send, if any, rather than building the request itself: it has
+no business knowing the signed-in user's JWT.
+-}
+sendPendingEngagement : JWT -> String -> Int -> ( Model, Maybe String ) -> ( Model, Cmd Msg )
+sendPendingEngagement jwt meetingSlug userID ( newModel, toSend ) =
+    ( newModel, maybeSubmitEngagement jwt meetingSlug userID toSend )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -239,43 +254,7 @@ update msg model =
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            case response of
-                RemoteData.Success user ->
-                    let
-                        newUserModel =
-                            { model | currentUser = response }
-
-                        newUserCmds =
-                            Cmd.batch
-                                [ fetchAssignments user
-                                , fetchQuizzes user
-                                , fetchQuizGradeDistributions user
-                                , fetchAssignmentSubmissions user
-                                , fetchQuizSubmissions user
-                                , fetchQuizArtifacts user
-                                , fetchQuizGrades user
-                                , fetchQuizGradeDistributions user
-                                , fetchAssignmentGrades user
-                                , fetchAssignmentGradeDistributions user
-                                , fetchAssignmentGradeExceptions user
-                                , fetchUserSecrets user
-                                ]
-
-                    in
-                    if isFacultyOrTA user.role then
-                        ( newUserModel
-                        , Cmd.batch
-                            [ newUserCmds
-                            , fetchEngagements user
-                            , fetchUsers user
-                            ]
-                        )
-
-                    else
-                        ( newUserModel, newUserCmds )
-
-                _ ->
-                    ( model, Cmd.none )
+            onFetchCurrentUser response model
 
         Msgs.OnBeginAssignment assignmentSlug ->
             let
@@ -388,31 +367,22 @@ update msg model =
             ( { model | users = response }, Cmd.none )
 
         Msgs.OnChangeEngagement meetingSlug userID level ->
-            let
-                npses =
-                    Dict.insert ( meetingSlug, userID ) RemoteData.Loading model.pendingSubmitEngagements
-
-                newModel =
-                    { model | pendingSubmitEngagements = npses }
-            in
             case model.currentUser of
                 RemoteData.Success user ->
-                    ( newModel, submitEngagement user.jwt meetingSlug userID level )
+                    onChangeEngagement meetingSlug userID level model
+                        |> sendPendingEngagement user.jwt meetingSlug userID
 
                 _ ->
                     ( model, Cmd.none )
 
         Msgs.OnSubmitEngagementResponse meetingSlug userID response ->
-            let
-                pses =
-                    case response of
-                        RemoteData.Success _ ->
-                            Dict.remove ( meetingSlug, userID ) model.pendingSubmitEngagements
+            case model.currentUser of
+                RemoteData.Success user ->
+                    onSubmitEngagementResponse meetingSlug userID response model
+                        |> sendPendingEngagement user.jwt meetingSlug userID
 
-                        _ ->
-                            Dict.insert ( meetingSlug, userID ) response model.pendingSubmitEngagements
-            in
-            ( { model | pendingSubmitEngagements = pses }, Cmd.none )
+                _ ->
+                    ( model, Cmd.none )
 
         Msgs.OnFetchTimeZone z ->
             let

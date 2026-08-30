@@ -17,7 +17,7 @@ import Browser.Navigation exposing (Key)
 import ApiTokens.Model exposing (ApiToken, CreatedToken, defaultScopes)
 import ConnectedApps.Model exposing (ConnectedApps)
 import Dict exposing (Dict)
-import Engagements.Model exposing (Engagement)
+import Engagements.Model exposing (Engagement, PendingSubmit)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Quizzes.Model
     exposing
@@ -109,7 +109,7 @@ type alias Model =
 
     , engagements : WebData (List Engagement)
     , users : WebData (List User)
-    , pendingSubmitEngagements : Dict ( String, Int ) (WebData Engagement)
+    , pendingSubmitEngagements : Dict ( String, Int ) PendingSubmit
     , engagementUserQuery : Maybe String
     }
 

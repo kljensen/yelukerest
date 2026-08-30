@@ -11,7 +11,7 @@ import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
-import Html.Lazy exposing (lazy2, lazy6)
+import Html.Lazy exposing (lazy2, lazy7)
 import Meetings.Views
 import Models exposing (Model, UIElements)
 import Msgs exposing (Msg)
@@ -52,7 +52,7 @@ page model =
             Assignments.Views.gradeView model.assignmentGrades model.assignmentSubmissions slug model.currentUser
 
         Models.EditEngagementsRoute meetingSlug ->
-            lazy6 maybeEditEngagements model.currentUser model.engagementUserQuery model.users model.engagements model.meetings meetingSlug
+            lazy7 maybeEditEngagements model.currentUser model.engagementUserQuery model.users model.engagements model.meetings model.pendingSubmitEngagements meetingSlug
 
         Models.ConnectedAppsRoute ->
             ConnectedApps.Views.listView model.connectedApps model.pendingDisconnects
