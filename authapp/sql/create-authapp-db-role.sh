@@ -29,7 +29,9 @@
 #
 # The role is least-privilege: LOGIN and nothing else. Its only object
 # privileges are the ones the migration grants on data.authapp_session, and
-# that migration's verify.sql asserts it holds no others.
+# that migration's verify.sql asserts -- by comparing against the exact
+# intended privilege set, not by checking the needed ones are present -- that
+# it holds no others and none of the attributes set below have drifted.
 set -euo pipefail
 
 if [ -f "${ENV_FILE:-.env}" ]; then
@@ -39,8 +41,40 @@ if [ -f "${ENV_FILE:-.env}" ]; then
     set +a
 fi
 
-AUTHAPP_DB_USER="${AUTHAPP_DB_USER:-authapp}"
+# The role name is fixed, deliberately, and is not read from the environment.
+# The migration that grants it anything spells "authapp" into its GRANT
+# statements and its verify.sql, and a migration is per-database with nowhere
+# to take a parameter from, so a configurable name could only ever produce a
+# login that holds no grants at all. Everything that names the role -- this
+# script, docker-compose.base.yaml, the migration -- says "authapp" literally
+# for that reason.
+AUTHAPP_ROLE=authapp
+
+# AUTHAPP_DB_USER used to be an override, and it never worked for the reason
+# above. Refusing it is louder than ignoring it, for anyone still carrying the
+# setting in a .env written when it looked supported.
+if [ -n "${AUTHAPP_DB_USER:-}" ] && [ "$AUTHAPP_DB_USER" != "$AUTHAPP_ROLE" ]; then
+    echo "AUTHAPP_DB_USER is no longer supported: the role name is fixed at '${AUTHAPP_ROLE}'." >&2
+    echo "Remove it from your environment or .env." >&2
+    exit 1
+fi
+
 AUTHAPP_DB_PASS="${AUTHAPP_DB_PASS:?AUTHAPP_DB_PASS must be set}"
+
+# The password ends up inside AUTHAPP_DB_URL, which docker-compose.base.yaml
+# builds by string interpolation and cannot percent-encode. A password holding
+# any of @ : / ? # % would silently reshape that URL -- an @ turns the rest of
+# the password into a hostname -- so it is refused here, at the one place a
+# password is set, rather than becoming a connection failure nobody can read.
+# Generate one with `openssl rand -hex 32`, which is what the rest of this
+# system's secrets use and is URL-safe by construction.
+case "$AUTHAPP_DB_PASS" in
+    *[!A-Za-z0-9._~-]*)
+        echo "AUTHAPP_DB_PASS must use only A-Z a-z 0-9 . _ ~ - so it survives" >&2
+        echo "interpolation into AUTHAPP_DB_URL. Generate one with: openssl rand -hex 32" >&2
+        exit 1
+        ;;
+esac
 
 # The database named here is irrelevant to the result -- role attributes are
 # cluster-wide -- but psql needs one to connect to.
@@ -55,7 +89,7 @@ else
 fi
 
 psql -X -v ON_ERROR_STOP=1 -q \
-    -v authapp_user="$AUTHAPP_DB_USER" \
+    -v authapp_user="$AUTHAPP_ROLE" \
     -v authapp_pass="$AUTHAPP_DB_PASS" \
     "$@" <<'EOSQL'
 select format(
@@ -72,4 +106,4 @@ select format(
 \gexec
 EOSQL
 
-echo "authapp session-store role '${AUTHAPP_DB_USER}' is ready"
+echo "authapp session-store role '${AUTHAPP_ROLE}' is ready"

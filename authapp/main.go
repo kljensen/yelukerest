@@ -71,11 +71,14 @@ func main() {
 	if sessionDatabaseURL == "" {
 		log.Panicln("AUTHAPP_DB_URL environment variable not set")
 	}
+	// Bounds connecting AND the check that the table is really readable and
+	// writable, so a half-provisioned database stops the container here instead
+	// of failing every request later.
 	sessionDBContext, cancelSessionDBContext := context.WithTimeout(context.Background(), 10*time.Second)
 	sessionDB, err := openSessionDatabase(sessionDBContext, sessionDatabaseURL)
 	cancelSessionDBContext()
 	if err != nil {
-		log.Panicf("session store is unavailable: %v", err)
+		log.Panicf("session store is unusable: %v", err)
 	}
 	defer sessionDB.Close()
 

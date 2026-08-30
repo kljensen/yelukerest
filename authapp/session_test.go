@@ -98,6 +98,60 @@ func startSessionServer(t *testing.T, databaseURL string) *httptest.Server {
 	return server
 }
 
+// The regression this guards: PingContext succeeds against a database that has
+// never had the migration deployed, so a ping alone let authapp start with a
+// store it could not use.
+func TestVerifySessionStoreRejectsAMissingTable(t *testing.T) {
+	databaseURL := sessionTestDatabaseURL(t)
+
+	db, err := openSessionDatabase(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("openSessionDatabase: %v", err)
+	}
+	defer db.Close()
+
+	// The connection is fine -- it is the same one the assertions below use.
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+	if err := verifySessionStore(context.Background(), db, "data.authapp_session_that_does_not_exist"); err == nil {
+		t.Fatal("verifySessionStore accepted a table that does not exist")
+	}
+}
+
+func TestVerifySessionStoreLeavesNothingBehind(t *testing.T) {
+	databaseURL := sessionTestDatabaseURL(t)
+
+	db, err := openSessionDatabase(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("openSessionDatabase: %v", err)
+	}
+	defer db.Close()
+
+	var before int
+	if err := db.QueryRow("SELECT count(*) FROM " + sessionTableName).Scan(&before); err != nil {
+		t.Fatalf("count before: %v", err)
+	}
+	if err := verifySessionStore(context.Background(), db, sessionTableName); err != nil {
+		t.Fatalf("verifySessionStore: %v", err)
+	}
+	var after int
+	if err := db.QueryRow("SELECT count(*) FROM " + sessionTableName).Scan(&after); err != nil {
+		t.Fatalf("count after: %v", err)
+	}
+	if after != before {
+		t.Fatalf("the check left rows behind: %d before, %d after", before, after)
+	}
+	// The probe is rolled back, so no row may carry its prefix either.
+	var probes int
+	if err := db.QueryRow("SELECT count(*) FROM " + sessionTableName + " WHERE token LIKE 'startup-probe-%'").Scan(&probes); err != nil {
+		t.Fatalf("count probes: %v", err)
+	}
+	if probes != 0 {
+		t.Fatalf("the check committed %d probe row(s)", probes)
+	}
+}
+
 func TestSessionSurvivesAProcessRestart(t *testing.T) {
 	databaseURL := sessionTestDatabaseURL(t)
 

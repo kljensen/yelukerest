@@ -170,7 +170,15 @@ services:
             # internal compose network, the same reasoning Hydra's DSN carries.
             # The role is created once per cluster by
             # authapp/sql/create-authapp-db-role.sh -- nothing bootstraps it.
-            - AUTHAPP_DB_URL=postgres://${AUTHAPP_DB_USER:-authapp}:${AUTHAPP_DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
+            # The name "authapp" is fixed, not configurable: the migration's
+            # GRANT statements and its verify.sql name it literally, and a
+            # migration is per-database with no place to take a parameter from.
+            # A configurable name here would build a URL for a login that holds
+            # none of the grants.
+            # AUTHAPP_DB_PASS must be URL-safe -- Compose interpolates it into
+            # this URL verbatim and cannot percent-encode. The role script
+            # rejects a password that is not; see it for the character set.
+            - AUTHAPP_DB_URL=postgres://authapp:${AUTHAPP_DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
             # Titles the OpenAPI document at /openapi/, which PostgREST
             # otherwise calls "PostgREST API". Same value the web client
             # is built with, so both name the course identically.
