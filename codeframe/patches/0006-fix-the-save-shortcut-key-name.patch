@@ -1,0 +1,16 @@
+--- a/static/js/main.js
++++ b/static/js/main.js
+@@ -392,7 +392,12 @@
+         //  respond accordingly from there, but that would lead to inconsistencies
+         //  between browsers/OS vendors and it would depend on the editor bubbling
+         //  events up.
+-        this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KEY_S, callbacks.save);
++        //> `KeyS`, not the `KEY_S` this said until issue #368: Monaco renamed
++        //  the `KeyCode` members long before the 0.56.0 pinned in the image.
++        //  A missing member is `undefined`, and `|` coerces that to 0, so the
++        //  old name did not throw -- it registered CtrlCmd with no key at all,
++        //  and the shortcut silently never fired.
++        this.monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, callbacks.save);
+     }
+ 
+     //> The following interface methods are shared between all `EditorCore` implementations

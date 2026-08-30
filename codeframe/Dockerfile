@@ -74,10 +74,10 @@ RUN mkdir -p static/vendor && \
 # (2026-08-30). Frozen rather than upgraded, for the same reason torus-dom was
 # pinned at 0.4.8: this is the code the editor is already running in production,
 # so pinning it changes nothing observable, while any other choice is an
-# untested upgrade. Note monaco.KeyCode.KEY_S, which main.js still uses for the
-# Ctrl/Cmd-S binding, was renamed upstream well before 0.56 -- that binding is
-# already dead in production, and freezing here keeps it exactly as dead rather
-# than mixing a behavior change into a supply-chain fix.
+# untested upgrade. The KeyCode member main.js names for the Ctrl/Cmd-S binding
+# has to match this version: it is monaco.KeyCode.KeyS here, renamed upstream
+# from KEY_S well before 0.56, and naming the old one silently disables the
+# shortcut rather than failing (issue #368, patches/0006).
 ARG MONACO_VERSION=0.56.0
 ARG MONACO_SHA256=b74bc4437205c194b779b0f21e5e7fcd3b4e9acbf3f7c8732a545d2059fb7412
 RUN mkdir -p static/editor-vendor/monaco && \
