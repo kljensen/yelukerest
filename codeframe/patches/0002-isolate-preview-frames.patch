@@ -1,0 +1,96 @@
+--- a/config.js
++++ b/config.js
+@@ -1,4 +1,9 @@
+ module.exports = {
+     PORT: process.env.PORT || 4556,
+     DATABASE: 'db',
++    //> Origin serving the public /f/<html>/<js>.html artifacts. The editor runs
++    //  on a separate, session-carrying host, so saved previews must not execute
++    //  student JavaScript on the editor's own origin. Empty means "wherever the
++    //  editor is", which is the single-host behavior this was written with.
++    ARTIFACT_ORIGIN: process.env.CODEFRAME_ARTIFACT_ORIGIN || '',
+ }
+--- a/src/index.js
++++ b/src/index.js
+@@ -28,6 +28,15 @@
+     '/favicon.ico': 'assets/favicon.ico',
+     '/h/:htmlFrameHash/j/:jsFrameHash/edit': 'editor.html',
+ }
++//> The artifact origin is a deployment setting, not an image build setting, so
++//  it is stamped into HTML on the way out rather than baked into the file. The
++//  value comes from the process environment and never from a request, so
++//  escaping the attribute delimiters is enough.
++const escapeAttr = value => value
++    .replace(/&/g, '&amp;')
++    .replace(/</g, '&lt;')
++    .replace(/"/g, '&quot;');
++
+ const respondWith = (res, static_path) => {
+     fs.readFile(`static/${static_path}`, (err, data) => {
+         if (err) {
+@@ -44,6 +53,13 @@
+             }
+         }
+ 
++        if (contentType === 'text/html') {
++            data = data.toString('utf8').replace(
++                '__CODEFRAME_ARTIFACT_ORIGIN__',
++                escapeAttr(config.ARTIFACT_ORIGIN),
++            );
++        }
++
+         res.set('Content-Type', contentType);
+         res.send(data);
+     });
+--- a/static/editor.html
++++ b/static/editor.html
+@@ -10,6 +10,11 @@
+     <link rel="icon" type="image/png" href="/static/assets/favicon-32x32.png" sizes="32x32" />
+     <link rel="icon" type="image/png" href="/static/assets/favicon-16x16.png" sizes="16x16" />
+ 
++    <!-- Rewritten per request from CODEFRAME_ARTIFACT_ORIGIN. Stays the raw
++         placeholder if this file is ever served without going through the app,
++         which main.js treats the same as unset. -->
++    <meta name="codeframe-artifact-origin" content="__CODEFRAME_ARTIFACT_ORIGIN__">
++
+     <!-- Upstream reported every visitor to the codeframe author's own Google
+          Analytics property. main.js calls gevent() from several handlers, so
+          the reporting goes but the symbol has to stay. -->
+--- a/static/js/main.js
++++ b/static/js/main.js
+@@ -28,6 +28,15 @@
+     errlog: e => console.error(`Codeframe API error:\n\t${e}`),
+ }
+ 
++//> Origin that serves saved frames, stamped into the page by the server. Anything
++//  that is not an absolute http(s) origin -- unset, or an unsubstituted
++//  placeholder -- means "this page's own origin", the historical behavior.
++const ARTIFACT_ORIGIN = (() => {
++    const meta = document.querySelector('meta[name="codeframe-artifact-origin"]');
++    const configured = meta === null ? '' : meta.content.trim();
++    return /^https?:\/\//.test(configured) ? configured : window.location.origin;
++})();
++
+ //> Debounce coalesces multiple calls to the same function in a short
+ //  period of time into one call, by cancelling subsequent calls within
+ //  a given timeframe.
+@@ -62,6 +71,10 @@
+         //  simply having Torus set it and adding unnecessary history entries in the browser.
+         this.iframe = document.createElement('iframe');
+         this.iframe.setAttribute('frameborder', 0);
++        //> Authored JavaScript must not run as a peer of the editor. Omitting
++        //  allow-same-origin is the point: it forces an opaque origin, so the
++        //  frame cannot reach the editor's session, DOM, or write API.
++        this.iframe.setAttribute('sandbox', 'allow-scripts');
+ 
+         this.bind(frameRecord, data => this.render(data));
+ 
+@@ -207,7 +220,7 @@
+         //  just use the URL to the saved preview.
+         let url = '';
+         if (data.liveRenderMarkup === null) {
+-            url = `${window.location.origin}/f/${data.htmlFrameHash}/${data.jsFrameHash}.html`;
++            url = `${ARTIFACT_ORIGIN}/f/${data.htmlFrameHash}/${data.jsFrameHash}.html`;
+         } else {
+             url = 'data:text/html,' + encodeURIComponent(data.liveRenderMarkup);
+         }

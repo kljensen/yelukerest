@@ -1,0 +1,33 @@
+--- a/src/api.js
++++ b/src/api.js
+@@ -32,7 +32,7 @@
+     </head>
+     <body>
+         ${htmlFrame}
+-        <script src="https://unpkg.com/torus-dom/dist/index.min.js"></script>
++        <script src="/static/vendor/torus-dom.min.js"></script>
+         <script>${jsFrame}</script>
+     </body>
+ </html>`;
+--- a/static/editor.html
++++ b/static/editor.html
+@@ -24,7 +24,7 @@
+   </head>
+ 
+   <body>
+-    <script src="https://unpkg.com/torus-dom/dist/index.min.js"></script>
++    <script src="/static/vendor/torus-dom.min.js"></script>
+     <script src="/static/js/main.js"></script>
+   </body>
+ 
+--- a/static/js/main.js
++++ b/static/js/main.js
+@@ -744,7 +744,7 @@
+     </head>
+     <body>
+         ${this.core.getValue('html')}
+-        <script src="https://unpkg.com/torus-dom/dist/index.min.js"></script>
++        <script src="${ARTIFACT_ORIGIN}/static/vendor/torus-dom.min.js"></script>
+         <script>${this.core.getValue('javascript')}</script>
+     </body>
+ </html>`;

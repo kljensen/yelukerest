@@ -101,22 +101,34 @@ services:
             - caddy_data:/data
             - caddy_config:/config
 
-    # Ory Hydra: OAuth 2.1 authorization server for MCP clients
-    # (docs/adr/0001-mcp-and-oauth.md, issue #270).
-    # Pinned by tag for now; recorded digest for later digest-pinning:
-    # oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
-    # The browser editor served at code.<domain>. Students write a page and
-    # submit the URL it is hosted at, so this is storage as much as it is an
-    # editor -- the volume below holds every page anyone has ever submitted,
-    # and losing it breaks links recorded against past assignments.
+    # Codeframe. One container, reached through Caddy on two hostnames: the
+    # editor at editor.<domain>, behind CAS, and the pages it publishes at
+    # code.<domain>, public and cookie-free (issue #359). Students write a page
+    # and submit the URL it is hosted at, so this is storage as much as it is
+    # an editor -- the volume below holds every page anyone has ever
+    # submitted, and losing it breaks links recorded against past assignments.
+    # No ports here on purpose: every request must come through Caddy, which is
+    # what enforces the split.
     codeframe:
         build: codeframe
         restart: unless-stopped
         environment:
             - PORT=${CODEFRAME_PORT:-4556}
+            # Origin the editor points saved previews at (issues #359, #360).
+            # The editor and the artifacts it publishes must not share an
+            # origin, or a page a student wrote could publish as whoever is
+            # viewing it. Codeframe stamps this into the editor page so a
+            # saved preview loads from the public artifact host instead of
+            # window.location.origin. Caddy redirects /f/* off the editor
+            # host as well, so the split holds even if this is unset.
+            - CODEFRAME_ARTIFACT_ORIGIN=https://code.${NAKED_FQDN}
         volumes:
             - codeframe_db:/codeframe/db
 
+    # Ory Hydra: OAuth 2.1 authorization server for MCP clients
+    # (docs/adr/0001-mcp-and-oauth.md, issue #270).
+    # Pinned by tag for now; recorded digest for later digest-pinning:
+    # oryd/hydra:v26.2.0@sha256:ff67c7fb5f95074fa53374d41151713554960504b340cd3f95b09e65deaea2a9
     hydra:
         image: oryd/hydra:v26.2.0
         command: serve all -c /etc/hydra/hydra.yml --sqa-opt-out

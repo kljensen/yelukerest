@@ -1,0 +1,59 @@
+--- a/static/editor.html
++++ b/static/editor.html
+@@ -10,24 +10,11 @@
+     <link rel="icon" type="image/png" href="/static/assets/favicon-32x32.png" sizes="32x32" />
+     <link rel="icon" type="image/png" href="/static/assets/favicon-16x16.png" sizes="16x16" />
+ 
+-    <!-- g analytics -->
+-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-137481167-1"></script>
++    <!-- Upstream reported every visitor to the codeframe author's own Google
++         Analytics property. main.js calls gevent() from several handlers, so
++         the reporting goes but the symbol has to stay. -->
+     <script>
+-      window.dataLayer = window.dataLayer || [];
+-      window.ga = window.ga || null;
+-      if (!window.location.hostname.includes('localhost')) {
+-        function gtag(){dataLayer.push(arguments);}
+-        gtag('js', new Date());
+-        gtag('config', 'UA-137481167-1');
+-        window.gevent = (category, action, label, value) => {
+-          const tracker = ga && ga.getAll && ga.getAll()[0];
+-          if (tracker) {
+-            tracker.send('event', category, action, label, value);
+-          }
+-        }
+-      } else {
+-        window.gevent = () => {}
+-      }
++      window.gevent = () => {};
+     </script>
+   </head>
+ 
+--- a/static/index.html
++++ b/static/index.html
+@@ -11,25 +11,6 @@
+     <link rel="icon" type="image/png" href="/static/assets/favicon-32x32.png" sizes="32x32" />
+     <link rel="icon" type="image/png" href="/static/assets/favicon-16x16.png" sizes="16x16" />
+ 
+-    <!-- g analytics -->
+-    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-137481167-1"></script>
+-    <script>
+-      window.dataLayer = window.dataLayer || [];
+-      window.ga = window.ga || null;
+-      if (!window.location.hostname.includes('localhost')) {
+-        function gtag(){dataLayer.push(arguments);}
+-        gtag('js', new Date());
+-        gtag('config', 'UA-137481167-1');
+-        window.gevent = (category, action, label, value) => {
+-          const tracker = ga && ga.getAll && ga.getAll()[0];
+-          if (tracker) {
+-            tracker.send('event', category, action, label, value);
+-          }
+-        }
+-      } else {
+-        window.gevent = () => {}
+-      }
+-    </script>
+   </head>
+ 
+   <body>

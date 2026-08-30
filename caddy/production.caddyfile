@@ -22,13 +22,30 @@
 	}
 }
 
-# The codeframe editor. A separate name because what it serves is arbitrary
-# user-authored HTML and JavaScript: keeping it off the course origin means a
-# page a student writes cannot read the session cookie or local storage of the
-# course app, whatever it contains.
+# Codeframe's public artifact host. It serves arbitrary user-authored HTML and
+# JavaScript, so it is kept off the course origin -- and, since issue #359, off
+# the editor's origin as well: no session cookie is ever set here, so a page a
+# student wrote has no cookie to borrow. See the codeframe_artifacts snippet.
 code.{$NAKED_FQDN} {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	reverse_proxy codeframe:{$CODEFRAME_PORT}
+	import codeframe_artifacts
+	tls {
+		dns route53 {
+			wait_for_propagation true
+		}
+	}
+}
+
+# Codeframe's authenticated editor. Everything that is not /auth/* is behind
+# CAS, and the session cookie lives only on this name. A single label under the
+# naked domain because Yale CAS's *.656.mba wildcard matches one label only
+# (issue #364).
+editor.{$NAKED_FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# The editor is never legitimately framed, and refusing to be framed stops
+	# a hostile page from driving a publish with a borrowed click.
+	header X-Frame-Options "DENY"
+	import codeframe_editor
 	tls {
 		dns route53 {
 			wait_for_propagation true

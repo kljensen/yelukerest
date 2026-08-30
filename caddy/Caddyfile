@@ -156,6 +156,136 @@
 	}
 }
 
+# Codeframe, split across two hostnames so that student-authored JavaScript
+# never shares an origin with a session cookie (issue #359). Codeframe serves
+# an editor that publishes AND the pages people publish with it; on one origin,
+# a page a student wrote could `fetch('/api/frame/', {method:'POST'})` and
+# publish as any signed-in visitor, because the cookie rides along same-origin.
+#
+#   code.<domain>     Public artifacts only: GET /f/<html>/<js>.html. No
+#                     session cookie is ever set on this host.
+#   editor.<domain>   The authenticated editor and the write API. The CAS
+#                     session cookie is host-only to this name.
+#
+# Both are a SINGLE label under the naked domain on purpose: Yale CAS accepts
+# *.656.mba and a conventional wildcard matches one label only (issue #364), so
+# editor.code.<domain> would fall outside it and need hand registration.
+(codeframe_artifacts) {
+	# Anchored at .html so the artifact path and the editor entry point that
+	# differs from it only by suffix -- /f/<h>/<j>.html/edit -- cannot be
+	# confused for one another. The artifact is matched first, below.
+	@artifact {
+		method GET HEAD
+		path_regexp ^/f/[^/]+/[^/]+\.html$
+	}
+
+	# The assignment prose already published to students recommends this host,
+	# and past submissions and handouts link to it, so the editor entry points
+	# redirect here rather than 404. A redirect sets no cookie and executes no
+	# script, so this host still never carries a session.
+	@editor_entry path_regexp ^(/|/new|/welcome|/h/[^/]+/j/[^/]+/edit|/f/[^/]+/[^/]+\.html/edit)$
+
+	# One route block so the order below is the literal file order rather than
+	# Caddy's directive ordering: the artifact match must be tried first.
+	route {
+		handle @artifact {
+			reverse_proxy codeframe:{$CODEFRAME_PORT} {
+				# Nothing upstream sets a cookie today, and nothing on this
+				# host ever may. Strip it rather than trust that.
+				header_down -Set-Cookie
+			}
+		}
+		handle @editor_entry {
+			redir https://editor.{$NAKED_FQDN}{uri} 302
+		}
+		# The one asset a published page needs. Rendered artifacts reference
+		# torus-dom, vendored into the image rather than pulled from unpkg at
+		# request time (issue #362), so it has to be readable here or every
+		# page that uses Torus breaks -- including 2025 submissions re-rendered
+		# for grading. Scoped to /static/vendor/ rather than /static/: the
+		# editor's own CSS and JS have no business on the public host.
+		@vendor {
+			method GET HEAD
+			path /static/vendor/*
+		}
+		handle @vendor {
+			reverse_proxy codeframe:{$CODEFRAME_PORT} {
+				header_down -Set-Cookie
+			}
+		}
+		# /api/*, /static/* and everything else: neither an artifact nor a
+		# user-facing entry point. Redirecting a write API across origins
+		# would only be confusing, so these are simply gone from this host.
+		handle {
+			respond 404
+		}
+	}
+}
+
+(codeframe_editor) {
+	# CSRF. The two codeframe hosts are same-SITE, so SameSite=Lax does not
+	# stop a top-level cross-origin request from carrying the session cookie;
+	# only an exact Origin check does. A state-changing request with no Origin
+	# header is rejected too -- browsers always send one on POST.
+	@cross_origin_write {
+		method POST PUT PATCH DELETE
+		not header Origin https://editor.{$NAKED_FQDN}
+	}
+
+	# A saved preview is an artifact and belongs on the artifact origin.
+	# Codeframe builds these URLs from window.location.origin and is being
+	# patched to use CODEFRAME_ARTIFACT_ORIGIN instead (issue #360); the proxy
+	# moves them regardless, so authored JavaScript cannot execute on the
+	# origin that holds the cookie even if that patch regresses.
+	@artifact path_regexp ^/f/[^/]+/[^/]+\.html$
+
+	route {
+		# The CAS dance happens on THIS host. authapp's login handler builds
+		# its CAS service URL from the request's own Host, so the session
+		# cookie it sets is host-only to editor.<domain> and never widens to
+		# the artifact host. Auth requests carry no large bodies.
+		handle /auth/* {
+			request_body {
+				max_size 1MB
+			}
+			reverse_proxy authapp:{$AUTHAPP_PORT}
+		}
+		handle @artifact {
+			redir https://code.{$NAKED_FQDN}{uri} 302
+		}
+		handle @cross_origin_write {
+			respond "Cross-origin request rejected" 403
+		}
+		handle {
+			# Nested route again for literal ordering: the body cap has to be
+			# in place before anything reads the body.
+			route {
+				request_body {
+					# codeframe's body parser accepts 50kb, so bound it here
+					# too. KiB, not KB: codeframe means 50 * 1024.
+					max_size 50KiB
+				}
+				# /auth/me answers 401 for a signed-out caller and forward_auth
+				# only continues on 2xx, so without this the browser would be
+				# shown that 401. handle_response, not handle_errors: a 401
+				# from an upstream is an ordinary response, not a Caddy
+				# handler error, so handle_errors never sees it.
+				forward_auth authapp:{$AUTHAPP_PORT} {
+					uri /auth/me
+					@unauthenticated status 401
+					handle_response @unauthenticated {
+						# The path only, never {http.request.uri}: an "&" in a
+						# raw query string would become a second parameter of
+						# the login URL. Codeframe's routes carry no query.
+						redir * /auth/login?next={http.request.uri.path} temporary
+					}
+				}
+				reverse_proxy codeframe:{$CODEFRAME_PORT}
+			}
+		}
+	}
+}
+
 (app) {
 	import security_headers
 	import app_csp
