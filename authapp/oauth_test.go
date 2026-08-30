@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/alexedwards/scs/v2/memstore"
 )
 
 // ---------------------------------------------------------------------
@@ -168,7 +170,7 @@ func newOAuthTestStack(t *testing.T, fake *fakeHydraAdmin, options oauthTestOpti
 		options.rateLimit = 1000
 	}
 
-	sessionManager := newSessionManager(true)
+	sessionManager := newSessionManager(true, memstore.New())
 	config := oauthFlowConfig{
 		Admin:        newHydraAdminClient(fake.server.URL, fake.server.Client()),
 		MCPAudience:  "https://localhost/mcp",

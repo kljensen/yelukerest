@@ -164,6 +164,13 @@ services:
             - POSTGREST_HOST=${POSTGREST_HOST}
             - POSTGREST_PORT=${POSTGREST_PORT}
             - AUTHAPP_JWT=${AUTHAPP_JWT}
+            # Sessions live in PostgreSQL rather than in this process's memory
+            # (issue #365): recreating the container used to sign everyone out.
+            # sslmode=disable is acceptable only because this never leaves the
+            # internal compose network, the same reasoning Hydra's DSN carries.
+            # The role is created once per cluster by
+            # authapp/sql/create-authapp-db-role.sh -- nothing bootstraps it.
+            - AUTHAPP_DB_URL=postgres://${AUTHAPP_DB_USER:-authapp}:${AUTHAPP_DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable
             # Titles the OpenAPI document at /openapi/, which PostgREST
             # otherwise calls "PostgREST API". Same value the web client
             # is built with, so both name the course identically.

@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/alexedwards/scs/v2/memstore"
 )
 
 func TestGetOpenAPIHandlerFetchesAndEnrichesSpec(t *testing.T) {
@@ -162,7 +164,7 @@ func TestOpenAPIEndpointServesSignedOutVisitors(t *testing.T) {
 	// The document is still built per caller. Without a session there is simply no
 	// JWT to build it with, and PostgREST answers as the anonymous role: meetings,
 	// ui_elements, platform_version. That is the honest public view.
-	sessionManager := newSessionManager(true)
+	sessionManager := newSessionManager(true, memstore.New())
 	var sawNetID bool
 	var sawContextValue bool
 	open := sessionManager.LoadAndSave(withOptionalSession(sessionManager, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

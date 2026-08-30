@@ -1,6 +1,7 @@
 /* eslint-disable no-useless-catch */
 /* eslint-disable no-console */
 
+const assert = require('assert');
 const request = require('supertest');
 const {
     resetdb,
@@ -59,12 +60,27 @@ describe('authentication API endpoint', () => {
             await request(baseURL)
                 .get(jwtPath)
                 .expect(401);
-            await request(baseURL)
-                .get(apiJSONPath)
-                .expect(401);
         } catch (error) {
             throw error;
         }
+    });
+
+    // The OpenAPI document is the one endpoint here that answers a signed-out
+    // caller. It is still built per caller -- with the caller's own JWT when
+    // there is one -- but without a session there is simply no JWT to build it
+    // with, so PostgREST answers as the anonymous role and the document
+    // describes the public surface. Requiring a session gave Swagger UI a 401
+    // and it rendered "Failed to load API definition.", which says nothing
+    // about logging in. The same document is already public at /rest/.
+    it('should serve the anonymous OpenAPI document without a session', async () => {
+        const response = await request(baseURL)
+            .get(apiJSONPath)
+            .expect(200);
+        const paths = Object.keys(response.body.paths || {});
+        assert.ok(paths.includes('/meetings'),
+            `anonymous document should describe the public surface, got ${paths}`);
+        assert.ok(!paths.includes('/assignments'),
+            `anonymous document must not describe endpoints anonymous cannot use, got ${paths}`);
     });
 
     it('should create a session for a valid user', async () => {

@@ -60,7 +60,26 @@ func main() {
 		ReturnPath:          authValidatePath,
 		IsDevelopment:       developmentEnabled(os.Getenv("DEVELOPMENT")),
 	}
-	sessionManager := newSessionManager(casConfig.IsDevelopment)
+
+	// Sessions live in PostgreSQL (issue #365). Required, not optional with a
+	// fallback: an in-memory fallback is exactly the bug being fixed, and it
+	// fails invisibly -- CAS re-establishes the session with a silent redirect,
+	// so nobody would notice authapp had quietly stopped persisting anything.
+	// This is authapp's only direct database connection; everything else goes
+	// through PostgREST.
+	var sessionDatabaseURL = os.Getenv("AUTHAPP_DB_URL")
+	if sessionDatabaseURL == "" {
+		log.Panicln("AUTHAPP_DB_URL environment variable not set")
+	}
+	sessionDBContext, cancelSessionDBContext := context.WithTimeout(context.Background(), 10*time.Second)
+	sessionDB, err := openSessionDatabase(sessionDBContext, sessionDatabaseURL)
+	cancelSessionDBContext()
+	if err != nil {
+		log.Panicf("session store is unavailable: %v", err)
+	}
+	defer sessionDB.Close()
+
+	sessionManager := newSessionManager(casConfig.IsDevelopment, newSessionStore(sessionDB, sessionCleanupInterval))
 
 	// Set up the JWT stuff
 	fetchJWTConfig := FetchJWTConfig{
@@ -181,14 +200,20 @@ func main() {
 	}
 
 	log.Println("Starting server on...", port)
-	err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux))
-	if err != nil {
+	if err := http.ListenAndServe(":"+port, sessionManager.LoadAndSave(mux)); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func newSessionManager(isDevelopment bool) *scs.SessionManager {
+// newSessionManager builds the session manager over the given store.
+//
+// The store is a parameter with no default on purpose. scs.New() falls back to
+// an in-memory store when none is set, which is how every container recreate
+// came to sign out everyone who was logged in (issue #365); making the caller
+// name a store means that fallback cannot be reached by omission.
+func newSessionManager(isDevelopment bool, store scs.Store) *scs.SessionManager {
 	sessionManager := scs.New()
+	sessionManager.Store = store
 	sessionManager.Lifetime = 24 * time.Hour
 	sessionManager.Cookie.HttpOnly = true
 	sessionManager.Cookie.SameSite = http.SameSiteLaxMode

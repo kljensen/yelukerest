@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/alexedwards/scs/v2/memstore"
 )
 
 func TestNewSessionManagerCookieSettings(t *testing.T) {
@@ -29,7 +31,7 @@ func TestNewSessionManagerCookieSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sessionManager := newSessionManager(tt.development)
+			sessionManager := newSessionManager(tt.development, memstore.New())
 
 			if sessionManager.Lifetime != 24*time.Hour {
 				t.Fatalf("Lifetime = %s, want 24h", sessionManager.Lifetime)
