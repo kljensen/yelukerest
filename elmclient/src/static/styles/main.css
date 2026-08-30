@@ -245,14 +245,44 @@ blockquote {
     }
 }
 
+/* Taken out of flow on purpose. This span appears and disappears on every
+   click, and as an ordinary flex child it added a line to the row and pushed
+   the other 73 students down and back on each save -- the page jumped under
+   the cursor while taking attendance. Absolute against the row means it can
+   say as much as it needs to without moving anything. */
+.engagement-student-holder .student {
+    position: relative;
+}
+
 .engagement-student-holder .student .engagement-status {
+    position: absolute;
+    top: 0;
+    right: 0;
+    max-width: 60%;
+    text-align: right;
     font-weight: normal;
     font-size: 0.8rem;
     color: #666;
+    /* The name sits at the top-left of the row, so the status shares that line
+       and cannot overlap the radios below it. */
+    pointer-events: none;
 }
 
 .engagement-student-holder .student.saving .radio-holder label {
     opacity: 0.5;
+}
+
+/* A save that completes quickly should not strobe. Held invisible briefly so a
+   fast round trip shows nothing at all, then faded in if it is still going --
+   the message is for saves slow enough to wonder about. Failures are not
+   delayed: those the user must see. */
+.engagement-student-holder .student.saving .engagement-status {
+    animation: engagement-saving-appears 1.2s ease-in forwards;
+}
+
+@keyframes engagement-saving-appears {
+    0%, 40% { opacity: 0; }
+    100% { opacity: 1; }
 }
 
 .engagement-student-holder .student.save-failed .engagement-status {
