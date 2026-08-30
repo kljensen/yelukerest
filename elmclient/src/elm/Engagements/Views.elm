@@ -49,10 +49,10 @@ maybeEditEngagements wdCurrentUser userQuery wdUsers wdEngagements wdMeetings pe
         -- is signed in, so without a session the data below can never leave
         -- Loading. Ask for a login instead of spinning forever.
         RemoteData.NotAsked ->
-            mustLogIn
+            mustLogIn meetingSlug
 
         RemoteData.Failure _ ->
-            mustLogIn
+            mustLogIn meetingSlug
 
         RemoteData.Loading ->
             Html.text "Loading..."
@@ -77,16 +77,41 @@ maybeEditEngagements wdCurrentUser userQuery wdUsers wdEngagements wdMeetings pe
                             ]
 
             else
-                Html.text "forbidden"
+                notForYou meetingSlug
 
 
-mustLogIn : Html.Html Msg
-mustLogIn =
+{-| Nothing in the app links a student here -- the "Take attendance" button on
+a meeting is rendered for faculty and TAs only -- but a shared link, a bookmark
+or a typed URL will land one here anyway. Say what the page is for and point at
+the meeting, rather than telling somebody what they are not.
+-}
+mustLogIn : String -> Html.Html Msg
+mustLogIn meetingSlug =
     Html.div []
-        [ Html.text "You must be signed in as faculty or a TA to take attendance. "
+        [ Html.text "This page is for recording attendance. "
         , loginLink
+        , Html.text " if you are faculty or a TA, or go to "
+        , meetingLink meetingSlug
         , Html.text "."
         ]
+
+
+{-| Signed in, but a student or an observer. They are not doing anything wrong
+by being here, so this used to render the bare word "forbidden", which reads as
+an accusation and offers nowhere to go.
+-}
+notForYou : String -> Html.Html Msg
+notForYou meetingSlug =
+    Html.div []
+        [ Html.text "Only faculty and TAs record attendance. Looking for the class meeting? It is "
+        , meetingLink meetingSlug
+        , Html.text "."
+        ]
+
+
+meetingLink : String -> Html.Html Msg
+meetingLink meetingSlug =
+    Html.a [ Attrs.href ("#meetings/" ++ meetingSlug) ] [ Html.text "this meeting" ]
 
 
 editEngagements : Maybe String -> EngagementData -> PendingSubmits -> String -> Html.Html Msg

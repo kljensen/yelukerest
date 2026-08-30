@@ -160,6 +160,28 @@ tests =
                 \_ ->
                     signedOutView
                         |> Query.hasNot [ Selector.text "Loading..." ]
+            , test "the visitor is pointed at the meeting, not just refused" <|
+                \_ ->
+                    signedOutView
+                        |> Query.has [ Selector.attribute (Attrs.href ("#meetings/" ++ meeting.slug)) ]
+            ]
+
+        -- A student or observer who arrives here by a shared link or a bookmark
+        -- is not doing anything wrong. This used to render the bare word
+        -- "forbidden", which reads as an accusation and offers nowhere to go.
+        , describe "signed in, but not faculty or a TA"
+            [ test "is not told it is forbidden" <|
+                \_ ->
+                    studentView
+                        |> Query.hasNot [ Selector.text "forbidden" ]
+            , test "is pointed at the meeting instead" <|
+                \_ ->
+                    studentView
+                        |> Query.has [ Selector.attribute (Attrs.href ("#meetings/" ++ meeting.slug)) ]
+            , test "is not shown the roster" <|
+                \_ ->
+                    studentView
+                        |> Query.hasNot [ Selector.class "student" ]
             ]
         ]
 
@@ -194,6 +216,21 @@ signedInView pendingSubmits =
         (RemoteData.Success [ adaIsAbsent ])
         (RemoteData.Success [ meeting ])
         pendingSubmits
+        meeting.slug
+        |> Query.fromHtml
+
+
+{-| Signed in as somebody who cannot take attendance.
+-}
+studentView : Query.Single Msg
+studentView =
+    maybeEditEngagements
+        (RemoteData.Success { plum | role = "student" })
+        Nothing
+        RemoteData.NotAsked
+        RemoteData.NotAsked
+        RemoteData.NotAsked
+        Dict.empty
         meeting.slug
         |> Query.fromHtml
 
