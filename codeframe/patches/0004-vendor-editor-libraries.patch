@@ -1,0 +1,60 @@
+--- a/static/js/main.js
++++ b/static/js/main.js
+@@ -280,6 +280,18 @@
+ //  CodeMirror, which powers Glitch, Chrome DevTools, and more. You can also find a
+ //  _reference implementation_ of a bare-bones editor built on `<textarea>` in `static/js/editors/textarea.js`.
+ 
++//> Roots of the editor libraries vendored into this image. Both were loaded
++//  from unpkg at runtime upstream, and Monaco's URL named no version at all,
++//  so the editor -- the origin that holds the CAS session cookie -- executed
++//  whatever unpkg considered latest at request time (issue #367).
++//
++//  Deliberately NOT under `/static/vendor/`: that prefix is the one part of
++//  `/static/` the public artifact host serves, and published pages need only
++//  torus-dom. Everything else under `/static/` 404s there, which is where
++//  editor-only code belongs.
++const MONACO_VS_ROOT = '/static/editor-vendor/monaco/vs';
++const CODEMIRROR_ROOT = '/static/editor-vendor/codemirror';
++
+ //> Monaco-based implementation of `EditorCore`
+ class MonacoEditor {
+ 
+@@ -309,14 +321,20 @@
+ 
+         //> Load the core editor module loader, and begin bootstrapping the Monaco
+         //  editor loading process.
+-        loadScript('https://unpkg.com/monaco-editor/min/vs/loader.js').then(() => this._loadEditor(callback));
++        loadScript(`${MONACO_VS_ROOT}/loader.js`).then(() => this._loadEditor(callback));
+     }
+ 
+     //> Loads the rest of the Monaco editor source code and initializes the editor.
+     _loadEditor(callback) {
++        //> This base path is all Monaco needs to stay on this origin: the AMD
++        //  loader resolves every language module, NLS bundle, `editor.main.css`
++        //  and web worker relative to it. No `MonacoEnvironment` shim of our
++        //  own -- `editor.main` assigns `self.MonacoEnvironment` itself, so one
++        //  set here would be overwritten; its `getWorker` wraps each worker in
++        //  a blob that `importScripts` the URL derived from this path.
+         require.config({
+             paths: {
+-                vs: 'https://unpkg.com/monaco-editor/min/vs',
++                vs: MONACO_VS_ROOT,
+             },
+         });
+         require(['vs/editor/editor.main'], () => {
+@@ -474,10 +492,11 @@
+     }
+ 
+     async _loadEditor(callback) {
+-        //> We fix the version number here because CM 6 is going to have breaking
+-        //  API changes, and it's unclear at time of writing if that'll be released under
+-        //  the same package.
+-        const EDITOR_SCRIPT_ROOT = 'https://unpkg.com/codemirror@5';
++        //> Upstream pinned the major version here because CM 6 breaks the API
++        //  this wrapper is written against. The vendored copy is a 5.x build, so
++        //  that constraint still holds; it is now pinned to an exact version by
++        //  the image rather than resolved by unpkg per request.
++        const EDITOR_SCRIPT_ROOT = CODEMIRROR_ROOT;
+         const EDITOR_SCRIPT_SRC = EDITOR_SCRIPT_ROOT + '/lib/codemirror.js';
+         const LANG_SCRIPT_SRC = [
+             'javascript',

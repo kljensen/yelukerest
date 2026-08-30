@@ -42,9 +42,17 @@ code.{$NAKED_FQDN} {
 # (issue #364).
 editor.{$NAKED_FQDN} {
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	# The editor is never legitimately framed, and refusing to be framed stops
-	# a hostile page from driving a publish with a borrowed click.
-	header X-Frame-Options "DENY"
+	# Framing the editor is how a hostile page would drive a publish with a
+	# borrowed click, so only this origin may do it. Not DENY: codeframe's own
+	# landing page embeds the editor in its "Try it live!" pane, and DENY broke
+	# that with "editor.656.mba refused to connect" -- the editor IS
+	# legitimately framed, just never by anybody else.
+	#
+	# frame-ancestors is the header modern browsers honour and the only one of
+	# the two that can say "same origin only" precisely; X-Frame-Options stays
+	# for anything that predates CSP.
+	header Content-Security-Policy "frame-ancestors 'self'"
+	header X-Frame-Options "SAMEORIGIN"
 	import codeframe_editor
 	tls {
 		dns route53 {
