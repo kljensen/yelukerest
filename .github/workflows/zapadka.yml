@@ -30,6 +30,7 @@ jobs:
       SUPER_USER_PASSWORD: bootstrap-admin-password
       JWT_SECRET: 0123456789abcdef0123456789abcdef
       YELUKEREST_MIGRATOR_PASSWORD: yelukerest-migrator-password
+      AUTHAPP_DB_PASS: authapp-session-store-password
       YELUKEREST_TEST_MIGRATOR_DATABASE_URL: postgresql://yelukerest_migrator:yelukerest-migrator-password@localhost:5432/yelukerest?sslmode=disable
       YELUKEREST_TEST_DATABASE_URL: postgresql://cluster_admin:bootstrap-admin-password@localhost:5432/yelukerest?sslmode=disable
       ZAPADKA_BIN: /usr/local/bin/zapadka

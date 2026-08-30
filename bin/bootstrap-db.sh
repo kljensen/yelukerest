@@ -30,5 +30,6 @@ case "$target" in
 esac
 
 ./bin/provision-db.sh
+./authapp/sql/create-authapp-db-role.sh
 "$ZAPADKA_BIN" deploy --target "$target"
 ./bin/configure-jwt-secret.sh

@@ -22,6 +22,7 @@ assert_not_contains() {
 assert_contains bin/migrate.sh 'deploy --target "$target"'
 assert_contains bin/test-db.sh 'test --target test'
 assert_contains bin/test-db.sh 'YELUKEREST_RESET_DATABASE_URL="$YELUKEREST_TEST_DATABASE_URL"'
+assert_contains bin/bootstrap-db.sh './authapp/sql/create-authapp-db-role.sh'
 assert_contains bin/new-table.sh 'new "add-$1"'
 assert_contains README.md 'Create a migration with `zapadka new add-thing`'
 assert_contains bin/test-rest-stack.sh 'do not identify the same database.'

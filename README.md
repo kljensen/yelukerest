@@ -105,8 +105,9 @@ known external image exceptions.
 When you checkout this repo anew and wish to work on yelukerest you'll
 need to complete a few steps.
 
-3. Create `.env`. Install Zapadka v0.4.1 or newer, and set
-   `YELUKEREST_DEV_DATABASE_URL` to the local `yelukerest_migrator` connection.
+3. Create `.env`. Install Zapadka v0.4.1 or newer, set
+   `YELUKEREST_DEV_DATABASE_URL` to the local `yelukerest_migrator` connection,
+   and set a URL-safe `AUTHAPP_DB_PASS` for the authapp session-store role.
    Database tests additionally require `YELUKEREST_TEST_MIGRATOR_DATABASE_URL`
    (the migrator connection) and `YELUKEREST_TEST_DATABASE_URL` (a privileged
    disposable-test connection). All three URLs must name their intended database.
@@ -121,9 +122,10 @@ need to complete a few steps.
 
 Yelukerest uses an immutable Zapadka bootstrap plus subsequent forward-only
 migrations. A new course database is provisioned with `bin/provision-db.sh`,
-deployed with `zapadka deploy --target production`, then configured with
-`bin/configure-jwt-secret.sh`. Rollback is restore from backup or rebuilding a
-disposable database, not migration reversal.
+then `authapp/sql/create-authapp-db-role.sh` creates the cluster-wide authapp
+login before `zapadka deploy --target production`; finally,
+`bin/configure-jwt-secret.sh` installs the runtime secret. Rollback is restore
+from backup or rebuilding a disposable database, not migration reversal.
 PostgreSQL major upgrades are the same kind of operation: dump/restore,
 `pg_upgrade`, or create a fresh course database, but do not expect an old data
 volume to start in place under a new major version. PostgreSQL 18 Docker images

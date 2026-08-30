@@ -168,8 +168,9 @@ services:
             # (issue #365): recreating the container used to sign everyone out.
             # sslmode=disable is acceptable only because this never leaves the
             # internal compose network, the same reasoning Hydra's DSN carries.
-            # The role is created once per cluster by
-            # authapp/sql/create-authapp-db-role.sh -- nothing bootstraps it.
+            # bin/bootstrap-db.sh creates this role for development and test
+            # clusters. For a production cluster, run
+            # authapp/sql/create-authapp-db-role.sh before the first deploy.
             # The name "authapp" is fixed, not configurable: the migration's
             # GRANT statements and its verify.sql name it literally, and a
             # migration is per-database with no place to take a parameter from.
