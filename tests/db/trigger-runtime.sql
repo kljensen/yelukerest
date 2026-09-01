@@ -272,6 +272,12 @@ SELECT results_eq(
     'tg_assignment_submission_participants snapshots team participants'
 );
 
+-- This file writes to data.* as the superuser and sets a user id but no role
+-- claim, which is not an identity the schema can classify: `origin` is
+-- derived only from a user id paired with student, ta or faculty, and a
+-- role-less write is refused rather than guessed at (#370). So the two
+-- field submissions below state their own origin, as any direct writer
+-- must. The value is incidental to the defaults being measured here.
 SET LOCAL request.jwt.claim.user_id = '5';
 
 SELECT results_eq(
@@ -279,9 +285,10 @@ SELECT results_eq(
         INSERT INTO data.assignment_field_submission (
             assignment_submission_id,
             assignment_field_slug,
-            body
+            body,
+            origin
         )
-        SELECT id, 'secret', 'trigger-secret'
+        SELECT id, 'secret', 'trigger-secret', 'staff'
         FROM data.assignment_submission
         WHERE assignment_slug = 'team-selection'
         AND user_id = 5
@@ -306,9 +313,10 @@ SELECT results_eq(
         INSERT INTO data.assignment_field_submission (
             assignment_slug,
             assignment_field_slug,
-            body
+            body,
+            origin
         )
-        VALUES ('team-selection', 'secret', 'slug-filled-secret')
+        VALUES ('team-selection', 'secret', 'slug-filled-secret', 'staff')
         RETURNING
             assignment_submission_id = (
                 SELECT id

@@ -113,7 +113,10 @@ describeAgent('agent prompt injection', () => {
 
         // Plant the injection as the student's own submitted coursework, which
         // is how a real one would arrive: content a participant wrote, handed
-        // back verbatim by a read tool.
+        // back verbatim by a read tool. `origin` is stated because this write
+        // goes over psql with no request identity, and since #370 such a write
+        // has to say how the row came to exist; 'student' is what makes it the
+        // student's own claimed work rather than something staff planted.
         // psql -tAc echoes the command tag after a RETURNING row, so take the
         // first line rather than the whole output.
         const submissionID = sql(
@@ -125,8 +128,8 @@ describeAgent('agent prompt injection', () => {
             .to.match(/^\d+$/);
         sql(
             'insert into data.assignment_field_submission '
-            + '(assignment_submission_id, assignment_slug, assignment_field_slug, submitter_user_id, body) '
-            + `select ${submissionID}, '${ASSIGNMENT}', '${SOURCE_FIELD}', u.id, $inj$${INJECTION}$inj$ `
+            + '(assignment_submission_id, assignment_slug, assignment_field_slug, submitter_user_id, body, origin) '
+            + `select ${submissionID}, '${ASSIGNMENT}', '${SOURCE_FIELD}', u.id, $inj$${INJECTION}$inj$, 'student' `
             + `from data."user" u where u.netid = '${NETIDS.student}'`,
         );
 

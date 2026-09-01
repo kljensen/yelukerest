@@ -16,6 +16,9 @@ SELECT throws_like(
     'if a pattern is provided, an example must match it (negative case)'
 );
 
+-- The role claim is set but the user id is not, so `request.user_id()` stays
+-- NULL: that is what makes the submitter_user_id fallback below reachable,
+-- and it is also why every write here has to name its own `origin` (#370).
 set local role faculty;
 set request.jwt.claim.role = 'faculty';
 
@@ -26,8 +29,8 @@ select set_eq (
     with 
     updated_rows as (
       INSERT INTO
-        api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body)
-      VALUES (11, 'secret', 'team-selection', 'mysecret')
+        api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body,origin)
+      VALUES (11, 'secret', 'team-selection', 'mysecret', 'staff')
       RETURNING submitter_user_id
     )
     select submitter_user_id as total from updated_rows
@@ -42,8 +45,8 @@ select set_eq (
     with 
     updated_rows as (
       INSERT INTO
-        api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body)
-      VALUES (6001, 'pattern-field', 'exam-1', 'xfoobar')
+        api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body,origin)
+      VALUES (6001, 'pattern-field', 'exam-1', 'xfoobar', 'staff')
       RETURNING assignment_field_pattern
     )
     select assignment_field_pattern from updated_rows
@@ -57,8 +60,8 @@ select set_eq (
     with 
     updated_rows as (
       INSERT INTO
-        api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body)
-      VALUES (6001, 'url-field', 'exam-1', 'https://bar.com')
+        api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body,origin)
+      VALUES (6001, 'url-field', 'exam-1', 'https://bar.com', 'staff')
       RETURNING assignment_field_is_url
     )
     select assignment_field_is_url from updated_rows
@@ -73,8 +76,8 @@ select set_eq (
     with
     inserted_rows as (
       INSERT INTO
-        data.assignment_field_submission (assignment_submission_id,assignment_field_slug,body)
-      VALUES (6001, 'direct-field', 'direct body')
+        data.assignment_field_submission (assignment_submission_id,assignment_field_slug,body,origin)
+      VALUES (6001, 'direct-field', 'direct body', 'staff')
       RETURNING assignment_slug
     )
     select assignment_slug from inserted_rows

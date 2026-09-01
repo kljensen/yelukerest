@@ -1,7 +1,9 @@
 -- Tests for the authoritative input size bounds added for issue #262.
 -- Every bound gets an accept-at-limit case and a reject-over-limit case.
 -- These are pure constraint tests, so we write to the data schema as the
--- superuser rather than exercising RLS (covered by other test files).
+-- superuser rather than exercising RLS (covered by other test files). Such a
+-- write carries no request identity, so since #370 it has to state its
+-- `origin`; the value is incidental to what is being measured here.
 select * from no_plan();
 
 -- ---------------------------------------------------------------
@@ -32,8 +34,8 @@ VALUES ('freeform', 'exam-1', 'Freeform', 'Anything goes', 'text', '.*', '');
 SELECT throws_like(
     $$
         INSERT INTO data.assignment_field_submission
-            (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id)
-        VALUES (6100, 'freeform', 'exam-1', repeat('x', 65537), 1)
+            (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, origin)
+        VALUES (6100, 'freeform', 'exam-1', repeat('x', 65537), 1, 'staff')
     $$,
     '%body_max_length%',
     'assignment_field_submission should reject bodies larger than 65536 bytes'
@@ -42,8 +44,8 @@ SELECT throws_like(
 SELECT lives_ok(
     $$
         INSERT INTO data.assignment_field_submission
-            (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id)
-        VALUES (6100, 'freeform', 'exam-1', repeat('x', 65536), 1)
+            (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, origin)
+        VALUES (6100, 'freeform', 'exam-1', repeat('x', 65536), 1, 'staff')
     $$,
     'assignment_field_submission should accept bodies of exactly 65536 bytes'
 );
@@ -64,8 +66,8 @@ SELECT lives_ok(
 SELECT lives_ok(
     $$
         INSERT INTO data.assignment_field_submission
-            (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, created_at)
-        VALUES (6100, 'profound', 'exam-1', 'profound words', 1, current_timestamp + interval '1 day')
+            (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, origin, created_at)
+        VALUES (6100, 'profound', 'exam-1', 'profound words', 1, 'staff', current_timestamp + interval '1 day')
     $$,
     'assignment_field_submission should accept a created_at ahead of the transaction clock'
 );

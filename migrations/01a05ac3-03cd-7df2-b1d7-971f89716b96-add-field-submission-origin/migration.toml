@@ -1,0 +1,23 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a05ac3-03cd-7df2-b1d7-971f89716b96"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a05285-1cc0-7cf0-96dc-e3df8fdebcd5"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+# Reversible in the sense the revert script restores the schema exactly: the
+# columns are new, the two trigger functions go back to the bodies they had,
+# and the api views are rebuilt with their owner, grants and comments. What it
+# does not restore is provenance -- once the columns are dropped, which
+# submissions the platform wrote on a student's behalf is unrecoverable. See
+# revert.sql.
+reversibility = "reversible"
+
+[[allow]]
+lint = "lint.constraint_scans_table"
+reason = "Both CHECKs are added moments after ADD COLUMN ... DEFAULT 'migration' gave every existing row a permitted value in this same transaction, so the validating scan cannot fail. The tables hold one course's coursework -- hundreds of submissions and a few thousand history rows, not millions -- so the scan is bounded by that. ADD CONSTRAINT takes the same ACCESS EXCLUSIVE lock with or without NOT VALID, and this migration runs inside the transaction Zapadka owns, so VALIDATE could not be separated from it anyway."
