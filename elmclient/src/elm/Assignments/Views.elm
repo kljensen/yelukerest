@@ -179,10 +179,13 @@ shortDateMonth time zone =
     DateFormat.format [ DateFormat.dayOfMonthFixed, DateFormat.monthNameAbbreviated ] zone time
 
 
+{-| Just "15 points". It read "Points possible: 15 points", which says points
+twice and buries the number in the middle of the phrase -- in a list where
+every row carries one, the label is the part nobody needs.
+-}
 pointsPossibleText : Int -> String
 pointsPossibleText points =
-    "Points possible: "
-        ++ String.fromInt points
+    String.fromInt points
         ++ (if points == 1 then
                 " point"
 

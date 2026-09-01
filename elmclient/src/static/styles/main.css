@@ -292,3 +292,157 @@ blockquote {
 .engagement-student-holder .student.save-failed .radio-holder label {
     border-color: #DD514C;
 }
+
+/* API tokens.
+ *
+ * This page shipped with no styles at all, so every class in its view was
+ * decorative and the browser default did the layout. The scope checkboxes were
+ * the visible casualty: three inline children per row, under a heading that was
+ * a loose text node rather than an element, collapsed into one run-on line
+ * reading "What it may docourse:readRead meetings...".
+ */
+.api-tokens-intro {
+    max-width: 40rem;
+}
+
+.api-token-usage {
+    display: block;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+}
+
+.api-token-created {
+    background-color: #f6f6f6;
+    border-left: 0.5rem solid #DD514C;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.api-token-created h2 {
+    margin-top: 0;
+}
+
+.api-token-warning {
+    font-weight: bold;
+}
+
+/* The secret and its copy button share a row, and the secret wraps rather than
+   widening the page: a token is long and unbreakable to the browser. */
+.api-token-secret-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.api-token-secret {
+    flex: 1;
+    padding: 0.5rem;
+    word-break: break-all;
+}
+
+.api-token-create {
+    margin-bottom: 2rem;
+}
+
+.api-token-field {
+    margin-bottom: 1rem;
+}
+
+.api-token-field-label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+}
+
+.api-token-create input[type="text"] {
+    width: 100%;
+    max-width: 24rem;
+    padding: 0.375rem 0.5rem;
+    box-sizing: border-box;
+}
+
+.api-token-scopes {
+    border: 1px solid #ddd;
+    padding: 0.5rem 1rem 0.75rem;
+    margin: 0 0 1rem;
+}
+
+.api-token-scopes legend {
+    font-weight: bold;
+    padding: 0 0.375rem;
+}
+
+/* Two columns: the checkbox, then the name above its description. Explicit
+   row and column placement rather than source order, so the description can
+   never wrap up alongside the name. */
+.api-token-scope {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.api-token-scope + .api-token-scope {
+    border-top: 1px solid #eee;
+}
+
+.api-token-scope input[type="checkbox"] {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0.25rem 0 0;
+}
+
+.api-token-scope-name {
+    grid-column: 2;
+    grid-row: 1;
+    font-family: monospace;
+}
+
+.api-token-scope-description {
+    grid-column: 2;
+    grid-row: 2;
+    color: #555;
+    font-size: 0.875rem;
+}
+
+/* The one choice worth a second look: read versus submit on your behalf. */
+.api-token-scope-write .api-token-scope-name {
+    color: #DD514C;
+}
+
+table.api-token-table {
+    width: 100%;
+    table-layout: auto;
+    text-align: left;
+    vertical-align: top;
+    border-collapse: collapse;
+}
+
+table.api-token-table tbody tr:nth-child(odd) {
+    background-color: #f6f6f6;
+}
+
+table.api-token-table td,
+table.api-token-table th {
+    padding: 0.375rem 0.5rem;
+    vertical-align: top;
+}
+
+table.api-token-table ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+table.api-token-table li {
+    font-family: monospace;
+    font-size: 0.875rem;
+}
+
+/* A token that is no longer usable should not compete with one that is. */
+.api-token-revoked,
+.api-token-expired {
+    color: #777;
+}

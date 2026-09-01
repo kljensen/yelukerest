@@ -1,8 +1,8 @@
 module ApiTokens.Views exposing (listView)
 
 import ApiTokens.Model exposing (ApiToken, CreatedToken, allScopes, scopeDescription, writeScope)
-import Html exposing (Html, a, button, code, div, h1, h2, input, label, li, p, span, table, tbody, td, text, th, thead, tr, ul)
-import Html.Attributes exposing (checked, class, disabled, href, placeholder, type_, value)
+import Html exposing (Html, button, code, div, fieldset, h1, h2, input, label, legend, li, p, span, table, tbody, td, text, th, thead, tr, ul)
+import Html.Attributes exposing (attribute, checked, class, disabled, for, id, placeholder, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
@@ -21,15 +21,17 @@ listView tokens justCreated draftName draftScopes pendingRevokes =
         ]
 
 
+{-| No link to the documentation, deliberately: it lives in a private
+repository, so every student following it would land on a 404 while being told
+it was their own sign-in that was wrong. The one thing they need is short
+enough to say here.
+-}
 introduction : Html Msg
 introduction =
     div [ class "api-tokens-intro" ]
         [ p []
-            [ text "An API token lets your own code read your course data — a script, a notebook, or an AI assistant writing code with you. "
-            , a [ href "https://github.com/kljensen/yelukerest/blob/main/docs/personal-access-tokens.md" ]
-                [ text "How to use one" ]
-            , text "."
-            ]
+            [ text "An API token lets your own code read your course data — a script, a notebook, or an AI assistant writing code with you. Send it to the course API as a header:" ]
+        , code [ class "api-token-usage" ] [ text "Authorization: Bearer <your token>" ]
         , p []
             [ text "If you only want an assistant to read your data, connect it over MCP instead — that needs no token at all." ]
         ]
@@ -50,7 +52,21 @@ justCreatedView justCreated =
                 [ h2 [] [ text ("Token created: " ++ created.name) ]
                 , p [ class "api-token-warning" ]
                     [ text "Copy this now. It will not be shown again." ]
-                , code [ class "api-token-secret" ] [ text created.token ]
+                , div [ class "api-token-secret-row" ]
+                    [ code [ class "api-token-secret" ] [ text created.token ]
+
+                    -- The click handler in init.js copies any element
+                    -- carrying data-copy-text, which is how the dashboard
+                    -- reveals user secrets. A token shown once and never
+                    -- again is the last place to make someone select it by
+                    -- hand.
+                    , button
+                        [ type_ "button"
+                        , attribute "data-copy-text" created.token
+                        , attribute "aria-label" ("copy the token " ++ created.name)
+                        ]
+                        [ text "Copy" ]
+                    ]
                 , p []
                     [ text "Treat it like a password: do not commit it, and do not paste it into Canvas, Slack or Piazza. It expires "
                     , text (shortDate created.expiresAt)
@@ -64,18 +80,24 @@ createFormView : String -> Set String -> Html Msg
 createFormView draftName draftScopes =
     div [ class "api-token-create" ]
         [ h2 [] [ text "Create a token" ]
-        , label []
-            [ text "Name"
+        , div [ class "api-token-field" ]
+            [ label [ class "api-token-field-label", for "api-token-name" ] [ text "Name" ]
             , input
-                [ type_ "text"
+                [ id "api-token-name"
+                , type_ "text"
                 , placeholder "laptop, colab, final project…"
                 , value draftName
                 , onInput Msgs.SetApiTokenDraftName
                 ]
                 []
             ]
-        , div [ class "api-token-scopes" ]
-            (text "What it may do" :: List.map (scopeCheckbox draftScopes) allScopes)
+
+        -- A fieldset with a legend, rather than a div with a loose text node
+        -- for a heading. The text node had no box of its own, so it ran
+        -- straight into the first scope and the whole list read as one
+        -- sentence.
+        , fieldset [ class "api-token-scopes" ]
+            (legend [] [ text "What it may do" ] :: List.map (scopeCheckbox draftScopes) allScopes)
         , button
             [ onClick Msgs.CreateApiToken
             , disabled (String.trim draftName == "" || Set.isEmpty draftScopes)
