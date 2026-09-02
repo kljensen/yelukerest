@@ -27,13 +27,20 @@ HOST="${YELUKEREST_PROD_HOST:-www.656.mba}"
 DIR="${YELUKEREST_PROD_DIR:-yelukerest}"
 REF="${YELUKEREST_PROD_REF:-origin/main}"
 DEPLOY=""
+SERVICES=""
 
 usage () {
     cat >&2 <<USAGE
-usage: $0 [--deploy] [--host HOST] [--ref REF]
+usage: $0 [--deploy] [--services "a b c"] [--host HOST] [--ref REF]
 
   (no flags)  fetch, report what is pending, change nothing
   --deploy    also apply the pending migrations, then verify
+
+  --services  after migrating, rebuild and restart these compose services.
+              Requires --deploy. Go services need the image rebuilt; the Elm
+              client bind-mounts its source and rebuilds on start, so a
+              recreate is enough for it. This does both, which is correct for
+              either.
 
   --host      production host (default $HOST, or YELUKEREST_PROD_HOST)
   --ref       git ref to deploy (default $REF, or YELUKEREST_PROD_REF)
@@ -44,6 +51,7 @@ USAGE
 while [ $# -gt 0 ]; do
     case "$1" in
         --deploy) DEPLOY=1; shift ;;
+        --services) SERVICES="${2:?--services needs a value}"; shift 2 ;;
         --host)   HOST="${2:?--host needs a value}"; shift 2 ;;
         --ref)    REF="${2:?--ref needs a value}"; shift 2 ;;
         -h|--help) usage ;;
@@ -83,7 +91,12 @@ echo "==> $HOST:$DIR  ->  $REF"
 # One ssh, one shell, so a failure part-way cannot leave the checkout moved
 # but the migration unapplied. `checkout --detach` matches how the server
 # already sits (detached, not on a branch) and never invents a merge.
-ssh "$HOST" DIR="$DIR" REF="$REF" DEPLOY="${DEPLOY:-}" 'sh -s' <<'REMOTE'
+if [ -n "$SERVICES" ] && [ -z "${DEPLOY:-}" ]; then
+    echo "Refusing: --services without --deploy. A read-only run changes nothing." >&2
+    exit 1
+fi
+
+ssh "$HOST" DIR="$DIR" REF="$REF" DEPLOY="${DEPLOY:-}" SERVICES="$SERVICES" 'sh -s' <<'REMOTE'
 set -eu
 cd "$DIR"
 
@@ -111,4 +124,16 @@ echo
 zapadka deploy --target production
 echo
 zapadka verify --target production
+
+if [ -n "${SERVICES:-}" ]; then
+    echo
+    echo "==> rebuilding: $SERVICES"
+    # --build for the services whose source is baked into an image, and
+    # --force-recreate because a service whose only change is a bind-mounted
+    # file or an environment variable is otherwise a no-op: `up -d` compares
+    # image and config, and neither moved.
+    ./bin/prod.sh up -d --build --force-recreate $SERVICES
+    echo
+    ./bin/prod.sh ps $SERVICES
+fi
 REMOTE

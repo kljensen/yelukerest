@@ -55,13 +55,18 @@ have to sign in again for the rest of the term.
 
 ## Connecting Claude Code
 
+The name in the command below -- `mgt656-fall-2026` -- is **your own label** for
+this connection, not the server's identity. Call it whatever you like; it is
+what you will pick from the list when you run `/mcp`. Nothing breaks if an
+existing connection is called something else.
+
 Add the server:
 
 ```sh
-claude mcp add --transport http yelukerest https://<course-site>/mcp
+claude mcp add --transport http mgt656-fall-2026 https://<course-site>/mcp
 ```
 
-Then, inside Claude Code, run `/mcp`, choose `yelukerest`, and authenticate. A
+Then, inside Claude Code, run `/mcp`, choose `mgt656-fall-2026`, and authenticate. A
 browser window opens, you log in with CAS, and you approve the permissions page
 described below. That is it — Claude Code renews access on its own.
 
@@ -97,7 +102,7 @@ the browser sign-in and talks to `/mcp` on the client's behalf.
 ```json
 {
   "mcpServers": {
-    "yelukerest": {
+    "mgt656-fall-2026": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://<course-site>/mcp"]
     }
@@ -252,4 +257,6 @@ still fails, report it with the time it happened.
 - `docs/personal-access-tokens.md` — tokens for your own scripts and notebooks.
 - `docs/api-client-security.md` — token handling rules for direct API clients.
 - `docs/adr/0001-mcp-and-oauth.md` — why the system is built this way.
+- `docs/adr/0004-course-name-not-platform-name.md` — which names are the
+  course's and which are compatibility identifiers that must not change.
 - `docs/hydra.md` — operator runbook for the OAuth server.
