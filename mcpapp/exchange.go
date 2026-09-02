@@ -156,7 +156,7 @@ func (e *tokenExchanger) tokenFor(ctx context.Context, request exchangeRequest) 
 		return mintedToken{}, errors.New("the access token carries no netid, so no course credential can be issued")
 	}
 	if len(request.scopes) == 0 {
-		return mintedToken{}, errors.New("the access token granted no yelukerest scopes, so no course credential can be issued")
+		return mintedToken{}, errors.New("the access token granted no course scopes, so no course credential can be issued")
 	}
 	if len(request.scopes) > exchangeMaxScopes {
 		return mintedToken{}, fmt.Errorf("the access token granted more than %d scopes", exchangeMaxScopes)

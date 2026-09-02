@@ -1014,3 +1014,71 @@ func TestServerInstructionsDescribeTheWriteTool(t *testing.T) {
 		t.Fatal("the two escape-hatch postures produce identical instructions")
 	}
 }
+
+// Issue #373: the strings a student can actually read must not carry the
+// internal platform name — a scope failure is exactly when they are already
+// confused — while keeping the half that tells them what to do about it.
+func TestStudentFacingStringsAvoidThePlatformName(t *testing.T) {
+	containsPlatformName := func(s string) bool {
+		return strings.Contains(strings.ToLower(s), "yeluke")
+	}
+
+	// The scope gate every tool shares.
+	scopeless := &identity{}
+	for _, required := range []string{scopeRead, scopeWrite} {
+		err := authorizeScope(scopeless, required)
+		if err == nil {
+			t.Fatalf("%q was allowed for a scopeless identity", required)
+		}
+		if containsPlatformName(err.Error()) {
+			t.Fatalf("scope denial names the platform: %q", err)
+		}
+		// The actionable half survives: which scopes to ask for, and that
+		// re-authorizing is what fixes it.
+		for _, want := range []string{
+			"re-authorize", "course:read", "grades:read", "submissions:read",
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("scope denial dropped %q: %q", want, err)
+			}
+		}
+		if !strings.Contains(err.Error(), required) {
+			t.Fatalf("scope denial no longer says what was denied: %q", err)
+		}
+	}
+
+	// The same failure reached through the token exchange.
+	exchanger := newTokenExchanger(newPostgRESTClient("postgrest", "3000"), "service-jwt")
+	_, err := exchanger.tokenFor(context.Background(), exchangeRequest{
+		netID:    "abc123",
+		outerExp: time.Now().Add(time.Hour),
+	})
+	if err == nil {
+		t.Fatal("a scopeless exchange request was allowed to mint a credential")
+	}
+	if containsPlatformName(err.Error()) {
+		t.Fatalf("exchange denial names the platform: %q", err)
+	}
+	if !strings.Contains(err.Error(), "no course credential can be issued") {
+		t.Fatalf("exchange denial lost its explanation: %q", err)
+	}
+
+	// The schema document get_api_schema hands to the assistant.
+	if containsPlatformName(apiSchemaDocument) {
+		t.Fatalf("the API schema document names the platform: %q", firstLine(apiSchemaDocument))
+	}
+
+	// Nothing above is worth much if the instructions reintroduce it.
+	for _, writesEnabled := range []bool{false, true} {
+		if containsPlatformName(serverInstructions(writesEnabled)) {
+			t.Fatalf("server instructions name the platform (writes=%v)", writesEnabled)
+		}
+	}
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}

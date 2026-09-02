@@ -150,7 +150,7 @@ var scopeAliases = map[string][]string{
 // built without knowing this rule existed, must land on a refusal.
 func authorizeScope(id *identity, required string) error {
 	if len(id.Scopes) == 0 {
-		return fmt.Errorf("the access token granted no yelukerest scopes, so %q is denied; re-authorize requesting course:read, grades:read, or submissions:read", required)
+		return fmt.Errorf("the access token granted no course scopes, so %q is denied; re-authorize requesting course:read, grades:read, or submissions:read", required)
 	}
 	for _, accepted := range scopeAliases[required] {
 		if slices.Contains(id.Scopes, accepted) {

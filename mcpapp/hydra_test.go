@@ -584,7 +584,7 @@ func TestExternalTokenWithoutMappedScopesIsDeniedEverything(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%q was allowed for an OAuth token with no mapped scopes", required)
 		}
-		if !strings.Contains(err.Error(), "granted no yelukerest scopes") {
+		if !strings.Contains(err.Error(), "granted no course scopes") {
 			t.Fatalf("error = %q", err)
 		}
 	}

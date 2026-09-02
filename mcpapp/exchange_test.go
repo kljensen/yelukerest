@@ -568,7 +568,7 @@ func TestOAuthCallerWithoutMappedScopesIsDenied(t *testing.T) {
 	})
 	result := callWhoami(t, server.URL, token)
 	if !result.IsError {
-		t.Fatal("a token with no yelukerest scopes was allowed to read")
+		t.Fatal("a token with no course scopes was allowed to read")
 	}
 	if got := len(fake.recorded()); got != 0 {
 		t.Fatalf("%d upstream calls, want 0 (no credential may be minted for an unauthorized caller)", got)

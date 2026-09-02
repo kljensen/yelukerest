@@ -24,8 +24,8 @@ type protectedResourceMetadata struct {
 // Without this the discovery chain completes and the connection still does not
 // work: Hydra's DCR grants only openid and offline_access, so a client that
 // cannot discover the course scopes never requests them, the consent screen
-// never offers them, and every tool call then fails with "the OAuth access
-// token granted no yelukerest scopes". The student did everything right and
+// never offers them, and every tool call then fails with "the access token
+// granted no course scopes". The student did everything right and
 // got a connected server that refuses to answer.
 //
 // submissions:write is advertised because a client must be able to ask for it,

@@ -134,7 +134,7 @@ func TestMetadataURLForResource(t *testing.T) {
 // Without them the whole discovery chain still completes -- 401, resource
 // metadata, authorization server, DCR, browser consent -- and the connection is
 // then useless: the client never learns to ask for course:read, so the token
-// carries no yelukerest scopes and every tool call is denied. A student who did
+// carries no course scopes and every tool call is denied. A student who did
 // everything correctly ends up with a connected server that refuses to answer,
 // which is the worst kind of failure because nothing looks broken.
 func TestProtectedResourceMetadataAdvertisesCourseScopes(t *testing.T) {

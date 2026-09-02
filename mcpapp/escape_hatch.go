@@ -283,7 +283,7 @@ func (d *toolDeps) getAPISchema(_ context.Context, req *mcp.CallToolRequest, _ a
 // is written from db/src/api/yeluke/comments.sql: accurate but deliberately
 // not exhaustive, and kept under 8KB (tested). Update it when the API views
 // change.
-const apiSchemaDocument = `# Yelukerest REST API (PostgREST) — curated schema
+const apiSchemaDocument = `# Course REST API (PostgREST) — curated schema
 
 All requests run under YOUR credential; PostgreSQL row-level security decides
 what you can see and write. Roles: student, ta, faculty. Timestamps are
