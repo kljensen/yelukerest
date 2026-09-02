@@ -44,10 +44,45 @@ type toolDeps struct {
 	escapeHatchWritesEnabled bool
 }
 
+// Server identity (issue #371). The SDK draws the distinction we have to
+// respect: Implementation.Name is "intended for programmatic or logical use"
+// and Title is "intended for UI and end-user contexts". A student picking this
+// connector out of a list reads the Title, so it names their course; clients
+// key configuration off the Name, so it stays fixed across terms and must not
+// be derived from the course title.
+const (
+	// defaultServerName is the machine identifier when MCP_SERVER_NAME is
+	// unset. Deployments set MCP_SERVER_NAME (mgt656-mcp in production) and
+	// then leave it alone.
+	defaultServerName = "course-mcp"
+	// defaultServerTitle is the display name when COURSE_TITLE is unset,
+	// which is every deployment that has not been told which course it runs.
+	defaultServerTitle = "Course data MCP"
+	// serverTitleSuffix turns a course title ("MGT656") into a connector
+	// title ("MGT656 MCP Server").
+	serverTitleSuffix = " MCP Server"
+)
+
+// serverName is the stable programmatic identifier this server advertises.
+func serverName() string {
+	return envOrDefault("MCP_SERVER_NAME", defaultServerName)
+}
+
+// serverTitle is the human-readable name a client shows in its connector
+// list. It comes from COURSE_TITLE, the same deployment configuration the web
+// client and the authapp OpenAPI document are titled from (authapp/openapi.go).
+func serverTitle() string {
+	title := envOrDefault("COURSE_TITLE", "")
+	if title == "" {
+		return defaultServerTitle
+	}
+	return title + serverTitleSuffix
+}
+
 func newMCPServer(deps *toolDeps) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
-		Name:    "yelukerest-mcp",
-		Title:   "Yelukerest MCP Server",
+		Name:    serverName(),
+		Title:   serverTitle(),
 		Version: "0.1.0",
 	}, &mcp.ServerOptions{Instructions: serverInstructions(deps.escapeHatchWritesEnabled)})
 	server.AddReceivingMiddleware(auditMiddleware(deps.logger))

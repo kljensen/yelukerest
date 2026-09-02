@@ -35,6 +35,13 @@
 //	                                                   versions only
 //	MCP_RATE_LIMIT_PER_MINUTE                          per-subject request
 //	                                                   ceiling (default 120)
+//	MCP_SERVER_NAME                                    the programmatic server
+//	                                                   name clients key on;
+//	                                                   stable across terms
+//	                                                   (default course-mcp)
+//	COURSE_TITLE                                       names the course in the
+//	                                                   human-readable server
+//	                                                   title, e.g. MGT656
 package main
 
 import (

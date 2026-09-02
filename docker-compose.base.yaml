@@ -237,6 +237,13 @@ services:
             # via api.issue_user_jwt_for_mcp (issue #274). Mint with
             # ./bin/jwt.sh '{"role":"app","app_name":"mcpapp"}'.
             - MCPAPP_JWT=${MCPAPP_JWT:-}
+            # Server identity advertised at initialize (issue #371).
+            # MCP_SERVER_NAME is the programmatic id clients key their
+            # configuration off, so it stays fixed across terms; COURSE_TITLE
+            # is the human-readable connector name and is the same value the
+            # web client and authapp are titled with.
+            - MCP_SERVER_NAME=${MCP_SERVER_NAME:-course-mcp}
+            - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
             # Hydra's JWKS is fetched over the internal compose network so
             # it never traverses Caddy's development TLS certificate.
             - HYDRA_PUBLIC_INTERNAL_URL=${HYDRA_PUBLIC_INTERNAL_URL:-http://hydra:4444}

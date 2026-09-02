@@ -476,3 +476,71 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 }
+
+// initializedServerInfo connects a client over an in-memory transport and
+// returns what the server advertised about itself during initialize, which is
+// what a connector list shows the student.
+func initializedServerInfo(t *testing.T) *mcp.Implementation {
+	t.Helper()
+	deps := &toolDeps{
+		logger:    slog.New(slog.NewJSONHandler(&safeBuffer{}, nil)),
+		postgrest: newPostgRESTClient("postgrest", "3000"),
+	}
+	server := newMCPServer(deps)
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	t.Cleanup(func() { serverSession.Close() })
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	t.Cleanup(func() { session.Close() })
+
+	result := session.InitializeResult()
+	if result == nil || result.ServerInfo == nil {
+		t.Fatal("initialize returned no server info")
+	}
+	return result.ServerInfo
+}
+
+// Issue #371: Name is the programmatic identifier and must be the configured,
+// term-stable one; Title is what a human reads and must name the course.
+func TestServerIdentityFromEnvironment(t *testing.T) {
+	t.Setenv("MCP_SERVER_NAME", "mgt656-mcp")
+	t.Setenv("COURSE_TITLE", "MGT656")
+
+	info := initializedServerInfo(t)
+	if info.Name != "mgt656-mcp" {
+		t.Fatalf("server name = %q, want %q", info.Name, "mgt656-mcp")
+	}
+	if info.Title != "MGT656 MCP Server" {
+		t.Fatalf("server title = %q, want %q", info.Title, "MGT656 MCP Server")
+	}
+}
+
+// A deployment that configures neither variable still must not introduce
+// itself with the internal platform name.
+func TestServerIdentityFallsBackWithoutEnvironment(t *testing.T) {
+	t.Setenv("MCP_SERVER_NAME", "")
+	t.Setenv("COURSE_TITLE", "")
+
+	info := initializedServerInfo(t)
+	if info.Name != defaultServerName {
+		t.Fatalf("server name = %q, want %q", info.Name, defaultServerName)
+	}
+	if info.Title != defaultServerTitle {
+		t.Fatalf("server title = %q, want %q", info.Title, defaultServerTitle)
+	}
+	for _, field := range []string{info.Name, info.Title} {
+		if strings.Contains(strings.ToLower(field), "yeluke") {
+			t.Fatalf("server identity still carries the platform name: %q", field)
+		}
+	}
+}
