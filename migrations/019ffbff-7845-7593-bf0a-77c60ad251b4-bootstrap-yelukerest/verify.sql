@@ -174,9 +174,20 @@ BEGIN
         RAISE EXCEPTION 'api.grade_snapshot_distributions privileges are incorrect';
     END IF;
 
-    IF pg_get_viewdef('api.assignments'::regclass) NOT LIKE '%WHERE ((request.user_role() = ''faculty''::text) OR (is_draft = false))%'
+    -- This used to require that api.assignments hide drafts from students, by
+    -- matching the view's source text. Migration 01a05f88 deliberately
+    -- reversed that: drafts are now visible and labelled, as draft meetings
+    -- always were, and what keeps them safe is that they cannot be submitted
+    -- to. Since verify.sql re-runs against every later state, an assertion
+    -- about a policy a later migration is allowed to change does not belong
+    -- here at all -- and matching source text would have broken on a mere
+    -- reformatting regardless. The durable half, that students may read the
+    -- view, is checked below; that a draft is not submittable is asserted
+    -- behaviourally in tests/db/yeluke-draft-assignment-visibility.sql.
+    IF NOT has_table_privilege('student', 'api.assignments', 'SELECT')
+        OR NOT has_table_privilege('ta', 'api.assignments', 'SELECT')
     THEN
-        RAISE EXCEPTION 'api.assignments must hide draft assignments from student and TA reads';
+        RAISE EXCEPTION 'students and TAs must be able to read api.assignments';
     END IF;
 
     IF NOT EXISTS (
@@ -190,10 +201,13 @@ BEGIN
         RAISE EXCEPTION 'api.assignments must be a security barrier view';
     END IF;
 
-    IF pg_get_viewdef('api.assignment_fields'::regclass) NOT LIKE '%request.user_role() = ''faculty''::text%'
-        OR pg_get_viewdef('api.assignment_fields'::regclass) NOT LIKE '%assignment.is_draft = false%'
+    -- Removed for the same reason as the api.assignments check above: 01a05f88
+    -- makes a draft's fields visible on purpose, so the page has a form to
+    -- render, and matching view source text is not a durable assertion.
+    IF NOT has_table_privilege('student', 'api.assignment_fields', 'SELECT')
+        OR NOT has_table_privilege('ta', 'api.assignment_fields', 'SELECT')
     THEN
-        RAISE EXCEPTION 'api.assignment_fields must hide fields for draft assignments from student and TA reads';
+        RAISE EXCEPTION 'students and TAs must be able to read api.assignment_fields';
     END IF;
 
     IF NOT EXISTS (
