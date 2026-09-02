@@ -15,12 +15,12 @@ import Time exposing (ZoneName(..))
 tests : Test
 tests =
     describe "Assignments.Views"
-        [ test "listView shows assignment points possible" <|
+        [ test "listView shows an assignment's points" <|
             \_ ->
                 Assignments.Views.listView timeZone (RemoteData.Success [ baseAssignment ])
                     |> Query.fromHtml
-                    |> Query.has [ Selector.text "Points possible: 10 points" ]
-        , test "detailView shows assignment points possible" <|
+                    |> Query.has [ Selector.text "10 points" ]
+        , test "detailView shows an assignment's points" <|
             \_ ->
                 Assignments.Views.detailView
                     (RemoteData.Success currentUser)
@@ -33,7 +33,7 @@ tests =
                     baseAssignment.slug
                     Nothing
                     |> Query.fromHtml
-                    |> Query.has [ Selector.text "Points possible: 10 points" ]
+                    |> Query.has [ Selector.text "10 points" ]
         ]
 
 
