@@ -1,8 +1,8 @@
 module ApiTokens.Views exposing (listView)
 
 import ApiTokens.Model exposing (ApiToken, CreatedToken, allScopes, scopeDescription, writeScope)
-import Html exposing (Html, button, code, div, fieldset, h1, h2, input, label, legend, li, p, span, table, tbody, td, text, th, thead, tr, ul)
-import Html.Attributes exposing (attribute, checked, class, disabled, for, id, placeholder, type_, value)
+import Html exposing (Html, a, button, code, div, fieldset, h1, h2, input, label, legend, li, p, span, table, tbody, td, text, th, thead, tr, ul)
+import Html.Attributes exposing (attribute, checked, class, disabled, for, href, id, placeholder, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput)
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
@@ -33,7 +33,10 @@ introduction =
             [ text "An API token lets your own code read your course data — a script, a notebook, or an AI assistant writing code with you. Send it to the course API as a header:" ]
         , code [ class "api-token-usage" ] [ text "Authorization: Bearer <your token>" ]
         , p []
-            [ text "If you only want an assistant to read your data, connect it over MCP instead — that needs no token at all." ]
+            [ text "If you only want an assistant to read your data, "
+            , a [ href "#/mcp" ] [ text "connect it over MCP" ]
+            , text " instead — that needs no token at all."
+            ]
         ]
 
 

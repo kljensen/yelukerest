@@ -178,9 +178,10 @@ dashboard webDataGradeData =
             Html.div [] [ Html.text "Loading..." ]
 
 
-{-| The two pages that manage a person's own access rather than show their
-coursework: which applications they have connected over OAuth, and which API
-tokens they have issued.
+{-| The pages that manage a person's own access rather than show their
+coursework: which applications they have connected over OAuth, which API
+tokens they have issued, and how to connect an AI assistant in the first
+place.
 
 They used to sit on the front page beside Meetings and Assignments, which put
 two things a signed-out visitor cannot use in the same list as the course
@@ -201,6 +202,10 @@ accountLinks =
             , Html.li []
                 [ Html.a [ Attrs.href "#/api-tokens" ] [ Html.text "API tokens" ]
                 , Html.text " — tokens for your own scripts and notebooks"
+                ]
+            , Html.li []
+                [ Html.a [ Attrs.href "#/mcp" ] [ Html.text "Connect an AI assistant" ]
+                , Html.text " — point Claude, ChatGPT or another assistant at your course data"
                 ]
             ]
         ]

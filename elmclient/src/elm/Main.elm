@@ -15,13 +15,13 @@ import View exposing (view)
 
 
 init : Flags -> Url -> Key -> ( Model, Cmd Msg )
-init flags _ key =
+init flags url key =
     let
         currentRoute =
-            Routing.parseLocation (StringLocation flags.location)
+            Routing.parseLocation (UrlLocation url)
 
         m =
-            initialModel flags currentRoute key
+            initialModel flags url currentRoute key
     in
     ( m
     , Cmd.batch

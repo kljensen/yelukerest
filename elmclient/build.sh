@@ -41,9 +41,7 @@ cp src/static/fonts/* "$dist/static/fonts/"
     var node = document.getElementById("main");
 
     window.Elm.Main.init({
-        flags: Object.assign({}, window.YELUKEREST_FLAGS, {
-            location: window.location.href
-        }),
+        flags: window.YELUKEREST_FLAGS,
         node: node
     });
 

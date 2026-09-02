@@ -11,7 +11,8 @@ import Dashboard.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
-import Html.Lazy exposing (lazy2, lazy7)
+import Html.Lazy exposing (lazy, lazy2, lazy7)
+import Mcp.Views
 import Meetings.Views
 import Models exposing (Model, UIElements)
 import Msgs exposing (Msg)
@@ -64,6 +65,9 @@ page model =
                 model.apiTokenDraftName
                 model.apiTokenDraftScopes
                 model.pendingApiTokenRevokes
+
+        Models.McpRoute ->
+            lazy Mcp.Views.page model.uiElements.mcpEndpoint
 
         Models.NotFoundRoute ->
             notFoundView

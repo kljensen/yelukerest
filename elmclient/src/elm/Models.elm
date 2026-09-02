@@ -1,4 +1,4 @@
-module Models exposing (Flags, Model, Route(..), TimeZone, UIElements, initialModel)
+module Models exposing (Flags, Model, Route(..), TimeZone, UIElements, initialModel, mcpEndpoint)
 
 import Assignments.Model
     exposing
@@ -30,6 +30,7 @@ import Quizzes.Model
 import RemoteData exposing (WebData)
 import Set exposing (Set)
 import Time exposing (Posix, Zone, ZoneName(..), utc)
+import Url exposing (Url)
 import Users.Model exposing (User, UserSecret)
 
 
@@ -39,7 +40,6 @@ type alias Flags =
     , aboutURL : String
     , canvasURL : String
     , slackURL : Maybe String
-    , location : String
     }
 
 
@@ -49,7 +49,41 @@ type alias UIElements =
     , aboutURL : String
     , canvasURL : String
     , slackURL : Maybe String
+
+    -- Where an AI assistant connects, built from the origin the browser is
+    -- already on rather than configured, so the #/mcp page can never show a
+    -- placeholder or a stale host.
+    , mcpEndpoint : String
     }
+
+
+{-| The course MCP endpoint for the origin of `url`.
+
+Only the scheme, host and port are kept: the URL this is derived from is the
+one the browser is on, fragment and all, and `#/mcp` is not part of an
+address anybody should type.
+
+-}
+mcpEndpoint : Url -> String
+mcpEndpoint url =
+    let
+        scheme =
+            case url.protocol of
+                Url.Https ->
+                    "https://"
+
+                Url.Http ->
+                    "http://"
+
+        port_ =
+            case url.port_ of
+                Just p ->
+                    ":" ++ String.fromInt p
+
+                Nothing ->
+                    ""
+    in
+    scheme ++ url.host ++ port_ ++ "/mcp"
 
 
 type alias TimeZone =
@@ -114,8 +148,8 @@ type alias Model =
     }
 
 
-initialModel : Flags -> Route -> Key -> Model
-initialModel flags route key =
+initialModel : Flags -> Url -> Route -> Key -> Model
+initialModel flags url route key =
     { current_date = Nothing
     , timeZone = { zone = utc, zoneName = Name "utc" }
     , route = route
@@ -136,6 +170,7 @@ initialModel flags route key =
         , aboutURL = flags.aboutURL
         , canvasURL = flags.canvasURL
         , slackURL = flags.slackURL
+        , mcpEndpoint = mcpEndpoint url
         }
     , assignmentGradeExceptions = RemoteData.NotAsked
     , assignmentSubmissions = RemoteData.NotAsked
@@ -169,4 +204,5 @@ type Route
     | EditEngagementsRoute String
     | ConnectedAppsRoute
     | ApiTokensRoute
+    | McpRoute
     | NotFoundRoute
