@@ -35,11 +35,18 @@ page endpoint =
 accepts nothing else. Saying "anything that speaks MCP" would send the
 stdio-only clients down three steps that cannot work for them; the bridge
 they need has its own section below.
+
+ChatGPT is named with a caveat rather than in the list: whether it can add a
+connector at all depends on the plan and the workspace. Which plans is not
+something this page can state and keep true, so it says what does not go
+stale -- that it depends -- rather than a tier that will have moved by the
+time somebody reads it.
+
 -}
 introduction : Html Msg
 introduction =
     p []
-        [ text "You can connect an AI assistant to your course data, so it can see your meetings, assignments, submissions and grades while it works with you. This works with assistants that can reach a remote MCP server over HTTP and open a browser to sign you in — Claude Code, Claude Desktop, claude.ai and ChatGPT all can. There is no token to create and nothing to paste into a configuration file: you sign in with CAS, as you did to reach this page, and approve what the assistant may do." ]
+        [ text "You can connect an AI assistant to your course data, so it can see your meetings, assignments, submissions and grades while it works with you. This works with assistants that can reach a remote MCP server over HTTP and open a browser to sign you in: Claude Code, Claude Desktop and claude.ai all connect directly. There is no token to create and nothing to paste into a configuration file — you sign in with CAS, as you did to reach this page, and approve what the assistant may do." ]
 
 
 endpointView : String -> Html Msg
@@ -108,9 +115,11 @@ commandLineView endpoint =
 guiClientView : Html Msg
 guiClientView =
     div []
-        [ h2 [] [ text "Claude Desktop, claude.ai, ChatGPT" ]
+        [ h2 [] [ text "Claude Desktop and claude.ai" ]
         , p []
             [ text "In an app with a settings screen, add a custom connector and give it the address above. The wording varies by app — connector, integration, MCP server — and changes often, so look for whichever of those your app calls it. The app registers itself, then the browser opens for CAS and the consent page." ]
+        , p []
+            [ text "ChatGPT can add connectors too, but whether that screen exists for you depends on your plan and your workspace, and it may not be there on a personal account. If you cannot find it, use one of the others." ]
         ]
 
 
@@ -139,7 +148,9 @@ bridgeView endpoint =
         , p []
             [ text "Some assistants only launch a local program and talk to it over a pipe. They cannot sign you in, and this address accepts nothing else. Put "
             , code [] [ text "mcp-remote" ]
-            , text " in front of it: your app launches the bridge, and the bridge does the browser sign-in and talks to the course on its behalf. In that app's configuration file:"
+            , text " in front of it: your app launches the bridge, and the bridge does the browser sign-in and talks to the course on its behalf. Clients that take an "
+            , code [] [ text "mcpServers" ]
+            , text " JSON configuration — Claude Desktop is the one most people mean — want this:"
             ]
         , div [ class "mcp-copy-row" ]
             [ pre [ class "mcp-copyable" ] [ text config ]
@@ -150,6 +161,7 @@ bridgeView endpoint =
                 ]
                 [ text "Copy" ]
             ]
+        , p [] [ text "Other clients keep their configuration in their own format and their own place; follow that client's MCP setup instructions and give it the same bridge command. The address is the part that does not change." ]
         , p [] [ text "The first run opens a browser for CAS and the consent page, exactly as above, and renews itself after that." ]
         ]
 
@@ -167,7 +179,7 @@ writeScopeView =
             [ text "The consent page asks for reading your course data. It also offers "
             , code [ class "mcp-write-scope" ] [ text "submissions:write" ]
             , text ", which starts unchecked. Ticking it lets the assistant create and change submissions in your name — "
-            , strong [] [ text "including your team's shared submissions" ]
+            , strong [] [ text "including your team's shared submissions on team assignments" ]
             , text ", which your teammates rely on and were never asked about."
             ]
         , p []
