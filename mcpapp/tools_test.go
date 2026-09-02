@@ -963,3 +963,54 @@ func TestAuthorizeScopeAcceptsGranularScopeNames(t *testing.T) {
 		}
 	}
 }
+
+// Issue #372: the instructions are injected into the calling model's context
+// and are the server's own account of what it can do. They used to open
+// "curated read-only tools" while newMCPServer registered the write tools, so
+// a model reasoning about whether it may change a student's submission read a
+// claim that was wrong in the permissive direction. Both escape-hatch modes
+// register the same write tool, so both must say so.
+func TestServerInstructionsDescribeTheWriteTool(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		writesEnabled bool
+	}{
+		{"escape hatch read-only", false},
+		{"escape hatch read-write", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			instructions := serverInstructions(tc.writesEnabled)
+
+			// The server must not describe its tool surface as read-only
+			// while registerWriteTools is registering a tool that writes.
+			for _, claim := range []string{"read-only tools", "curated read-only"} {
+				if strings.Contains(strings.ToLower(instructions), claim) {
+					t.Fatalf("instructions still claim %q: %q", claim, instructions)
+				}
+			}
+			// The write tool and the scope it needs are named, and the model
+			// is told the scope is not granted by default.
+			for _, want := range []string{
+				"submit_submission_change",
+				"submissions:write",
+				"unchecked by default",
+			} {
+				if !strings.Contains(instructions, want) {
+					t.Fatalf("instructions do not mention %q: %q", want, instructions)
+				}
+			}
+			// The prefix must not contradict the escape-hatch half that
+			// follows it: the hatch's posture is about postgrest_request, not
+			// about whether the server writes at all.
+			if !strings.Contains(instructions, "postgrest_request") {
+				t.Fatalf("instructions lost the escape-hatch description: %q", instructions)
+			}
+		})
+	}
+
+	// Only the escape-hatch half may differ between the two postures.
+	readOnly, writable := serverInstructions(false), serverInstructions(true)
+	if readOnly == writable {
+		t.Fatal("the two escape-hatch postures produce identical instructions")
+	}
+}

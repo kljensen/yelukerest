@@ -70,9 +70,12 @@ func serverInstructions(escapeHatchWritesEnabled bool) string {
 	return serverInstructionsPrefix + hatch + serverInstructionsSuffix
 }
 
-const serverInstructionsPrefix = `Yelukerest MCP server: curated read-only tools over a university class API.
-Every read runs under the caller's own credential and PostgreSQL row-level
-security, so results only ever contain rows the authenticated user may see.
+const serverInstructionsPrefix = `Course MCP server: curated tools over a university class API. Most tools read;
+submit_submission_change is the one tool that writes, and it needs the
+"submissions:write" scope, which the consent page leaves unchecked by default,
+so a caller has it only if the student ticked it deliberately. Every call runs
+under the caller's own credential and PostgreSQL row-level security, so
+results only ever contain rows the authenticated user may see.
 
 Suggested call order:
 1. whoami - confirm the caller (netid, nickname, team, role).
@@ -84,12 +87,13 @@ Suggested call order:
 5. get_my_grades, get_my_quiz_grades - the caller's grades. Grades appear
    ONLY in these two tools.
 
-Writes need a token carrying the "write" scope, which the student granted on
-the consent screen. submit_submission_change writes one assignment field;
-preview_submission_change shows what it would do first, and showing that to the
-user before writing is good practice. A write does exactly what the student
-could do through the course website or by calling the API with their own token,
-and row-level security applies either way.
+submit_submission_change writes one field of one assignment submission;
+preview_submission_change shows what it would do without writing, and showing
+that to the user before writing is good practice. Without the
+"submissions:write" scope the write is refused and the student has to
+re-authorize granting it. A write does exactly what the student could do
+through the course website or by calling the API with their own token, and
+row-level security applies either way.
 
 `
 
