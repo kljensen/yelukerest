@@ -62,20 +62,32 @@ const (
 // serverInstructions is assembled per deployment: what the model is told
 // about the escape hatch has to match what the escape hatch will do, or it
 // spends a turn attempting a verb this server refuses (issue #331).
+//
+// The write surface is assembled the same way, and for a stronger reason
+// (issue #372). Production runs with escape-hatch writes ENABLED, so the
+// read-write rendering is the document nearly every student's assistant
+// actually receives. It has to read as one coherent account of what can
+// change course data here: a fixed prefix claiming a single writer, with a
+// half spliced in below it describing a second one, is the same defect this
+// wording exists to fix, one level down.
 func serverInstructions(escapeHatchWritesEnabled bool) string {
+	writeSurface := writeSurfaceInstructionsSubmissionsOnly
 	hatch := escapeHatchInstructionsReadOnly
 	if escapeHatchWritesEnabled {
+		writeSurface = writeSurfaceInstructionsWithRawWrites
 		hatch = escapeHatchInstructionsReadWrite
 	}
-	return serverInstructionsPrefix + hatch + serverInstructionsSuffix
+	return serverInstructionsPrefix + writeToolInstructions + writeSurface + "\n\n" + hatch + serverInstructionsSuffix
 }
 
 const serverInstructionsPrefix = `Course MCP server: curated tools over a university class API. Most tools read;
-submit_submission_change is the one tool that writes, and it needs the
-"submissions:write" scope, which the consent page leaves unchecked by default,
-so a caller has it only if the student ticked it deliberately. Every call runs
-under the caller's own credential and PostgreSQL row-level security, so
-results only ever contain rows the authenticated user may see.
+the Writes paragraph below lists every path on this deployment that can change
+course data, and how many there are depends on how this deployment is
+configured. Writing needs the "submissions:write" scope, which the consent
+page leaves unchecked by default, so a caller has it only if the student
+ticked it deliberately. Every call runs under the caller's own credential and
+PostgreSQL row-level security, so results only ever contain rows the
+authenticated user may see.
 
 Suggested call order:
 1. whoami - confirm the caller (netid, nickname, team, role).
@@ -87,19 +99,37 @@ Suggested call order:
 5. get_my_grades, get_my_quiz_grades - the caller's grades. Grades appear
    ONLY in these two tools.
 
-submit_submission_change writes one field of one assignment submission. On a
-team assignment it resolves to the TEAM's shared submission, not to a row of
-the caller's own: the write lands on work several students share and can
-overwrite what a teammate wrote, and those teammates are not asked. Check
-is_team before writing. preview_submission_change shows what the write would
-do without writing it, including is_team and the team_nickname it would
-affect, so run it first and show the user what will change. Without the
+`
+
+// writeToolInstructions describes the dedicated submission writer. It is true
+// in both postures, so it is shared; what follows it is not.
+const writeToolInstructions = `Writes: submit_submission_change changes one field of one assignment
+submission. On a team assignment it resolves to the TEAM's shared submission,
+not to a row of the caller's own: the write lands on work several students
+share and can overwrite what a teammate wrote, and those teammates are not
+asked. Check is_team before writing. preview_submission_change shows what the
+write would do without writing it, including is_team and the team_nickname it
+would affect, so run it first and show the user what will change. Without the
 "submissions:write" scope the write is refused and the student has to
 re-authorize granting it. A write does exactly what the student could do
 through the course website or by calling the API with their own token, and
-row-level security applies either way.
+row-level security applies either way.`
 
-`
+// The two halves below must each agree with the escape-hatch half appended
+// after them: the count of write paths is stated once, here, and nowhere else.
+
+const writeSurfaceInstructionsSubmissionsOnly = `
+
+submit_submission_change is the ONLY path on this deployment that can change
+course data. postgrest_request cannot write here; every other tool reads.`
+
+const writeSurfaceInstructionsWithRawWrites = `
+
+This deployment has a SECOND write path: postgrest_request accepts POST, PATCH
+and DELETE (see below), so raw API writes are possible and are not limited to
+submissions. That path has neither the single-field scoping nor the stale-write
+check submit_submission_change applies, so use submit_submission_change to
+change a submission and treat a raw write as a deliberate last resort.`
 
 const escapeHatchInstructionsReadWrite = `Power users can reach the rest of the API through postgrest_request (GET needs
 the read scope, other verbs need the write scope) and get_api_schema, which
@@ -154,14 +184,33 @@ var scopeAliases = map[string][]string{
 // built without knowing this rule existed, must land on a refusal.
 func authorizeScope(id *identity, required string) error {
 	if len(id.Scopes) == 0 {
-		return fmt.Errorf("the access token granted no course scopes, so %q is denied; re-authorize requesting course:read, grades:read, or submissions:read", required)
+		return fmt.Errorf("the access token granted no course scopes, so %q is denied; re-authorize requesting %s", required, scopeGuidance(required))
 	}
 	for _, accepted := range scopeAliases[required] {
 		if slices.Contains(id.Scopes, accepted) {
 			return nil
 		}
 	}
-	return fmt.Errorf("the token is missing a scope granting %q access", required)
+	return fmt.Errorf("the token is missing a scope granting %q access; re-authorize requesting %s", required, scopeGuidance(required))
+}
+
+// scopeGuidance names scopes that would actually grant `required`. A denial
+// used to recite the three read scopes whatever was denied, so a student whose
+// write was refused re-authorized exactly as told, granted three read scopes,
+// and was refused again — the message sent them round a loop it could have
+// ended. The names are the granular ones api.issue_user_jwt_for_mcp mints and
+// the consent page offers, because those are what the student has to tick.
+func scopeGuidance(required string) string {
+	switch required {
+	case scopeWrite:
+		return "submissions:write"
+	case scopeRead:
+		return "course:read, grades:read, or submissions:read"
+	default:
+		// Unreachable today: callers pass one of the two constants. A future
+		// requirement with no guidance must still produce a usable sentence.
+		return "the scopes this deployment advertises in its protected-resource metadata"
+	}
 }
 
 // readCaller is the one accessor read tools use for per-request state: the

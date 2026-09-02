@@ -1012,11 +1012,31 @@ func TestServerInstructionsDescribeTheWriteTool(t *testing.T) {
 				}
 			}
 
-			// The prefix must not contradict the escape-hatch half that
-			// follows it: the hatch's posture is about postgrest_request, not
-			// about whether the server writes at all.
+			// The prefix must not contradict the escape-hatch half spliced in
+			// after it. Merely naming postgrest_request is not enough: the
+			// first version of this test did exactly that and passed against
+			// a document that claimed one writer in the prefix and described
+			// a second one four lines later.
 			if !strings.Contains(instructions, "postgrest_request") {
 				t.Fatalf("instructions lost the escape-hatch description: %q", instructions)
+			}
+			singleWriterClaim := strings.Contains(instructions, "ONLY path on this deployment that can change") ||
+				strings.Contains(instructions, "the one tool that writes")
+			secondWritePath := strings.Contains(instructions, "SECOND write path") ||
+				strings.Contains(instructions, "other verbs need the write scope")
+			if singleWriterClaim && secondWritePath {
+				t.Fatalf("instructions claim a single write path and describe a second one: %q", instructions)
+			}
+			if !singleWriterClaim && !secondWritePath {
+				t.Fatalf("instructions say nothing about how many write paths exist: %q", instructions)
+			}
+			// And each mode must state the one that matches its hatch.
+			if tc.writesEnabled != secondWritePath {
+				t.Fatalf("writesEnabled=%v but the instructions %s a second write path: %q",
+					tc.writesEnabled, map[bool]string{true: "describe", false: "do not describe"}[secondWritePath], instructions)
+			}
+			if tc.writesEnabled && !strings.Contains(instructions, "POST, PATCH") {
+				t.Fatalf("the deployed (writes-enabled) rendering does not name the raw verbs it permits: %q", instructions)
 			}
 		})
 	}
@@ -1036,27 +1056,59 @@ func TestStudentFacingStringsAvoidThePlatformName(t *testing.T) {
 		return strings.Contains(strings.ToLower(s), "yeluke")
 	}
 
-	// The scope gate every tool shares.
-	scopeless := &identity{}
-	for _, required := range []string{scopeRead, scopeWrite} {
-		err := authorizeScope(scopeless, required)
+	// The scope gate every tool shares. The guidance has to name scopes that
+	// would actually grant what was denied: a student told to re-authorize
+	// for the three read scopes after a denied write follows the instruction
+	// exactly and is denied again.
+	for _, tc := range []struct {
+		name     string
+		id       *identity
+		required string
+		want     []string
+		reject   []string
+	}{
+		{
+			name:     "no scopes at all, read denied",
+			id:       &identity{},
+			required: scopeRead,
+			want:     []string{"re-authorize", "course:read", "grades:read", "submissions:read"},
+		},
+		{
+			name:     "no scopes at all, write denied",
+			id:       &identity{},
+			required: scopeWrite,
+			want:     []string{"re-authorize", "submissions:write"},
+			// Sending a blocked write to the read scopes is the loop.
+			reject: []string{"course:read, grades:read, or submissions:read"},
+		},
+		{
+			// The realistic case: consent granted the reads, not the write.
+			name:     "read scopes only, write denied",
+			id:       &identity{Scopes: []string{"course:read", "grades:read", "submissions:read"}},
+			required: scopeWrite,
+			want:     []string{"re-authorize", "submissions:write"},
+			reject:   []string{"course:read, grades:read, or submissions:read"},
+		},
+	} {
+		err := authorizeScope(tc.id, tc.required)
 		if err == nil {
-			t.Fatalf("%q was allowed for a scopeless identity", required)
+			t.Fatalf("%s: %q was allowed", tc.name, tc.required)
 		}
 		if containsPlatformName(err.Error()) {
-			t.Fatalf("scope denial names the platform: %q", err)
+			t.Fatalf("%s: scope denial names the platform: %q", tc.name, err)
 		}
-		// The actionable half survives: which scopes to ask for, and that
-		// re-authorizing is what fixes it.
-		for _, want := range []string{
-			"re-authorize", "course:read", "grades:read", "submissions:read",
-		} {
+		for _, want := range tc.want {
 			if !strings.Contains(err.Error(), want) {
-				t.Fatalf("scope denial dropped %q: %q", want, err)
+				t.Fatalf("%s: scope denial dropped %q: %q", tc.name, want, err)
 			}
 		}
-		if !strings.Contains(err.Error(), required) {
-			t.Fatalf("scope denial no longer says what was denied: %q", err)
+		for _, reject := range tc.reject {
+			if strings.Contains(err.Error(), reject) {
+				t.Fatalf("%s: a denied write is sent to scopes that would not grant it: %q", tc.name, err)
+			}
+		}
+		if !strings.Contains(err.Error(), tc.required) {
+			t.Fatalf("%s: scope denial no longer says what was denied: %q", tc.name, err)
 		}
 	}
 
