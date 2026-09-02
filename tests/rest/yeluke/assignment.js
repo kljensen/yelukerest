@@ -184,15 +184,32 @@ describe('assignments API endpoint', () => {
             .set('Authorization', `Bearer ${studentJWT}`)
             .expect(200);
 
+        // Drafts are visible to students now, labelled rather than hidden, so
+        // both js-koans and the draft just created come back. What keeps a
+        // draft safe is that it cannot be submitted to, which the database
+        // enforces independently of what is readable -- see
+        // tests/db/yeluke-draft-assignment-visibility.sql.
         we.expect(studentAssignments.body.map(assignment => assignment.slug))
-            .to.deep.equal(['exam-1', 'project-update-1', 'team-selection']);
+            .to.deep.equal(['exam-1', 'js-koans', 'new-admin-assignment', 'project-update-1', 'team-selection']);
+
+        const studentDraft = await restService()
+            .get('/assignments?select=slug,is_draft,is_open&slug=eq.new-admin-assignment')
+            .set('Authorization', `Bearer ${studentJWT}`)
+            .expect(200);
+
+        // The two facts the client needs in order to show it correctly: it says
+        // it is a draft, and it says it is not open.
+        we.expect(studentDraft.body).to.deep.equal([
+            { slug: 'new-admin-assignment', is_draft: true, is_open: false },
+        ]);
 
         const studentFields = await restService()
             .get('/assignment_fields?select=assignment_slug,slug&assignment_slug=in.(exam-1,new-admin-assignment)&order=assignment_slug,slug')
             .set('Authorization', `Bearer ${studentJWT}`)
             .expect(200);
 
+        // The draft's fields come too, or its page would render with no form.
         we.expect(studentFields.body.map(field => `${field.assignment_slug}/${field.slug}`))
-            .to.deep.equal(['exam-1/new-field', 'exam-1/url']);
+            .to.deep.equal(['exam-1/new-field', 'exam-1/url', 'new-admin-assignment/repo-url']);
     });
 });

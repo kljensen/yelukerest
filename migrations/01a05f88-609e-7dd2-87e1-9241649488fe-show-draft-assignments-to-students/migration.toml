@@ -1,0 +1,13 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a05f88-609e-7dd2-87e1-9241649488fe"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a05ac3-03cd-7df2-b1d7-971f89716b96"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+reversibility = "reversible"

@@ -33,10 +33,13 @@ SELECT throws_like(
 set local role student;
 set request.jwt.claim.role = 'student';
 
+-- Drafts are visible now, labelled rather than hidden, so js-koans belongs in
+-- this list. What keeps a draft safe is that it is not submittable, which
+-- tests/db/yeluke-draft-assignment-visibility.sql asserts directly.
 SELECT set_eq(
     'SELECT slug FROM api.assignments ORDER BY (slug)',
-    ARRAY['exam-1', 'project-update-1', 'team-selection'],
-    'students should only see non-draft assignments'
+    ARRAY['exam-1', 'js-koans', 'project-update-1', 'team-selection'],
+    'students see draft assignments too, including js-koans'
 );
 
 set local role ta;
@@ -44,8 +47,8 @@ set request.jwt.claim.role = 'ta';
 
 SELECT set_eq(
     'SELECT slug FROM api.assignments ORDER BY (slug)',
-    ARRAY['exam-1', 'project-update-1', 'team-selection'],
-    'TAs should only see non-draft assignments'
+    ARRAY['exam-1', 'js-koans', 'project-update-1', 'team-selection'],
+    'TAs see draft assignments too'
 );
 
 PREPARE doinsert AS INSERT INTO api.assignments (slug,points_possible,title,body,closed_at) VALUES ('foo', 23, 'foo', 'foo', '2017-12-27 14:55:50');

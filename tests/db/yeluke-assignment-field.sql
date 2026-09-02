@@ -61,8 +61,8 @@ set request.jwt.claim.role = 'student';
 
 SELECT set_eq(
     'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
-    ARRAY['exam-1','exam-1', 'exam-1', 'project-update-1', 'project-update-1', 'team-selection'],
-    'students should only see fields for non-draft assignments'
+    ARRAY['exam-1','exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
+    'students see fields for draft assignments too, or the page renders empty'
 );
 
 set local role ta;
@@ -70,8 +70,8 @@ set request.jwt.claim.role = 'ta';
 
 SELECT set_eq(
     'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
-    ARRAY['exam-1','exam-1', 'exam-1', 'project-update-1', 'project-update-1', 'team-selection'],
-    'TAs should only see fields for non-draft assignments'
+    ARRAY['exam-1','exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
+    'TAs see fields for draft assignments too'
 );
 
 PREPARE doinsert AS INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen');
