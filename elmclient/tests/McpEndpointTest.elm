@@ -23,6 +23,13 @@ tests =
             \_ ->
                 endpointFor "https://www.656.mba/#/mcp"
                     |> Expect.equal "https://www.656.mba/mcp"
+        , -- A browser location for an ordinary https site parses to
+          -- `port_ = Nothing`, so there is no :443 to strip. The stripping
+          -- this test would justify is code for a URL the client never sees.
+          test "prints no port when the browser URL carries none" <|
+            \_ ->
+                endpointFor "https://localhost/#/assignments"
+                    |> Expect.equal "https://localhost/mcp"
         , test "keeps a non-default port" <|
             \_ ->
                 endpointFor "https://localhost:8443/#/mcp"

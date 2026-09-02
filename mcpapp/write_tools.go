@@ -45,9 +45,11 @@ var errStaleSubmission = errors.New("the submission changed while this write was
 func registerWriteTools(server *mcp.Server, deps *toolDeps) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "submit_submission_change",
-		Description: "Write one assignment field of the caller's own submission, creating the submission if this is their first field. " +
+		Description: "Write one assignment field of the caller's submission, creating the submission if this is their first field. " +
+			"On a team assignment (is_team) this is the TEAM's shared submission, not a row of the caller's own: the write affects work several students share, " +
+			"it can overwrite what a teammate wrote, and the teammates are not asked. " +
 			"Requires a token with the write scope. This is the same write a student can perform through the course website or the API directly; " +
-			"call preview_submission_change first if you want to show the user what would change. " +
+			"call preview_submission_change first to see is_team, the team_nickname affected, and what would change. " +
 			"Pass expected_updated_at from a preview or from get_my_submissions to be told (rather than silently overwrite) if the value changed since you read it.",
 		Annotations: &mcp.ToolAnnotations{
 			Title:           "Submit submission change",

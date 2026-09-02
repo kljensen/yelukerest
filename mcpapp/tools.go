@@ -87,9 +87,13 @@ Suggested call order:
 5. get_my_grades, get_my_quiz_grades - the caller's grades. Grades appear
    ONLY in these two tools.
 
-submit_submission_change writes one field of one assignment submission;
-preview_submission_change shows what it would do without writing, and showing
-that to the user before writing is good practice. Without the
+submit_submission_change writes one field of one assignment submission. On a
+team assignment it resolves to the TEAM's shared submission, not to a row of
+the caller's own: the write lands on work several students share and can
+overwrite what a teammate wrote, and those teammates are not asked. Check
+is_team before writing. preview_submission_change shows what the write would
+do without writing it, including is_team and the team_nickname it would
+affect, so run it first and show the user what will change. Without the
 "submissions:write" scope the write is refused and the student has to
 re-authorize granting it. A write does exactly what the student could do
 through the course website or by calling the API with their own token, and

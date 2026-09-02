@@ -447,19 +447,22 @@ table.api-token-table li {
     color: #777;
 }
 
-/* The MCP page. The address and the command are both things to copy, so they
-   share the row-with-a-button shape the API tokens page uses for a new token. */
-.mcp-endpoint-row {
+/* The MCP page. The address, the command and the bridge configuration are all
+   things to copy, so they share the row-with-a-button shape the API tokens
+   page uses for a new token. */
+.mcp-copy-row {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
     margin-bottom: 0.75rem;
 }
 
-.mcp-endpoint {
+.mcp-copyable {
     flex: 1;
+    margin: 0;
     padding: 0.5rem;
     background-color: #f6f6f6;
+    white-space: pre-wrap;
     word-break: break-all;
 }
 

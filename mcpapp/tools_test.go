@@ -999,6 +999,19 @@ func TestServerInstructionsDescribeTheWriteTool(t *testing.T) {
 					t.Fatalf("instructions do not mention %q: %q", want, instructions)
 				}
 			}
+			// The blast radius of a write: on a team assignment
+			// submit_submission_change resolves to the team's shared
+			// submission (write_tools.go filters by team_nickname), so one
+			// write can overwrite several students' shared work by people who
+			// never consented to this client. A model that reads only "the
+			// caller's own submission" would act without knowing that.
+			lower := strings.ToLower(instructions)
+			for _, want := range []string{"team", "shared submission", "teammate", "is_team"} {
+				if !strings.Contains(lower, want) {
+					t.Fatalf("instructions do not say a write can affect a team's shared work (missing %q): %q", want, instructions)
+				}
+			}
+
 			// The prefix must not contradict the escape-hatch half that
 			// follows it: the hatch's posture is about postgrest_request, not
 			// about whether the server writes at all.
@@ -1081,4 +1094,53 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// A model can call a tool from its tools/list description alone: the server
+// instructions are read once at initialize and a client may summarize or drop
+// them, but the description travels with every listing. So the team
+// consequence has to be stated there too, and the description used to say the
+// opposite -- "the caller's own submission".
+func TestSubmitSubmissionChangeDescriptionNamesTheTeamConsequence(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.0.1"}, nil)
+	registerWriteTools(server, &toolDeps{
+		logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		postgrest: newPostgRESTClient("postgrest", "3000"),
+	})
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	defer serverSession.Close()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil).
+		Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	defer session.Close()
+
+	list, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	var description string
+	for _, tool := range list.Tools {
+		if tool.Name == "submit_submission_change" {
+			description = tool.Description
+		}
+	}
+	if description == "" {
+		t.Fatal("submit_submission_change is not registered")
+	}
+	if strings.Contains(description, "the caller's own submission") {
+		t.Fatalf("description still claims the write touches only the caller's own row: %q", description)
+	}
+	for _, want := range []string{"team", "shared", "is_team"} {
+		if !strings.Contains(strings.ToLower(description), want) {
+			t.Fatalf("description does not mention %q: %q", want, description)
+		}
+	}
 }
