@@ -1190,9 +1190,19 @@ func TestSubmitSubmissionChangeDescriptionNamesTheTeamConsequence(t *testing.T) 
 	if strings.Contains(description, "the caller's own submission") {
 		t.Fatalf("description still claims the write touches only the caller's own row: %q", description)
 	}
-	for _, want := range []string{"team", "shared", "is_team"} {
-		if !strings.Contains(strings.ToLower(description), want) {
-			t.Fatalf("description does not mention %q: %q", want, description)
+	// Assert the CONSEQUENCE, not the vocabulary. Checking for "team",
+	// "shared" and "is_team" passes on any description that happens to use
+	// those words -- including one that dropped the warning and merely
+	// mentioned the is_team field. What a model has to be told is that the
+	// write lands on work several students share, that it can overwrite a
+	// teammate, and that the teammates are not consulted.
+	for _, want := range []string{
+		"affects work several students share",
+		"overwrite what a teammate wrote",
+		"teammates are not asked",
+	} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("description does not state %q, so a model is not told what a team write costs: %q", want, description)
 		}
 	}
 }
