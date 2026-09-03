@@ -22,9 +22,11 @@ page endpoint =
     div [ class "mcp" ]
         [ h1 [] [ text "Connect an AI assistant" ]
         , introduction
+        , networkView
         , endpointView endpoint
         , stepsView
         , commandLineView endpoint
+        , codexView endpoint
         , guiClientView
         , bridgeView endpoint
         , writeScopeView
@@ -46,7 +48,33 @@ time somebody reads it.
 introduction : Html Msg
 introduction =
     p []
-        [ text "You can connect an AI assistant to your course data, so it can see your meetings, assignments, submissions and grades while it works with you. This works with assistants that can reach a remote MCP server over HTTP and open a browser to sign you in: Claude Code, Claude Desktop and claude.ai all connect directly. There is no token to create and nothing to paste into a configuration file — you sign in with CAS, as you did to reach this page, and approve what the assistant may do." ]
+        [ text "You can connect an AI assistant to your course data, so it can see your meetings, assignments, submissions and grades while it works with you. This works with assistants that run on your own computer and can open a browser to sign you in: Claude Code, Codex and Claude Desktop all can. There is no token to create — you sign in with CAS, as you did to reach this page, and approve what the assistant may do." ]
+
+
+{-| The precondition that decides whether any of the rest works, so it goes
+before the address. The course's MCP and API endpoints are reachable only
+from the Yale network. What matters is where the HTTP request comes FROM: an
+assistant running on the student's laptop sends it from the laptop, which is
+on the network; a website such as claude.ai or chatgpt.com sends it from the
+vendor's servers, which are not.
+-}
+networkView : Html Msg
+networkView =
+    div [ class "mcp-network" ]
+        [ h2 [] [ text "Yale network only" ]
+        , p []
+            [ text "The course's MCP and API addresses can only be reached from the Yale network. Be on campus, or on the "
+            , strong [] [ text "Yale VPN" ]
+            , text ", whenever your assistant talks to the course."
+            ]
+        , p []
+            [ text "What matters is which computer sends the request. An assistant "
+            , strong [] [ text "running on your own machine" ]
+            , text " — Claude Code, Codex, Claude Desktop — sends it from your machine, which is on the network. The "
+            , strong [] [ text "claude.ai and ChatGPT websites" ]
+            , text " send it from the vendor's servers, which are not, so a connector added there will fail even though you are signed in. Use one of the desktop or terminal tools below instead."
+            ]
+        ]
 
 
 endpointView : String -> Html Msg
@@ -112,14 +140,40 @@ commandLineView endpoint =
         ]
 
 
+{-| OpenAI's terminal tool. Same shape as Claude Code: one command records
+the address, a second one signs in.
+-}
+codexView : String -> Html Msg
+codexView endpoint =
+    let
+        add =
+            "codex mcp add mgt656-fall-2026 --url " ++ endpoint
+
+        login =
+            "codex mcp login mgt656-fall-2026"
+    in
+    div []
+        [ h2 [] [ text "Codex" ]
+        , p [] [ text "Register the address:" ]
+        , copyRow add "copy the codex mcp add command"
+        , p [] [ text "Then sign in. This is the step that opens the browser for CAS and the consent page:" ]
+        , copyRow login "copy the codex mcp login command"
+        , p []
+            [ text "As with Claude Code, "
+            , code [] [ text "mgt656-fall-2026" ]
+            , text " is a label in your own configuration and can be anything you like."
+            ]
+        ]
+
+
 guiClientView : Html Msg
 guiClientView =
     div []
-        [ h2 [] [ text "Claude Desktop and claude.ai" ]
+        [ h2 [] [ text "Claude Desktop" ]
         , p []
-            [ text "In an app with a settings screen, add a custom connector and give it the address above. The wording varies by app — connector, integration, MCP server — and changes often, so look for whichever of those your app calls it. The app registers itself, then the browser opens for CAS and the consent page." ]
+            [ text "Claude Desktop runs on your machine, so it can reach the course. Use the bridge configuration below: it launches a small program on your computer that does the sign-in and talks to the course from there." ]
         , p []
-            [ text "ChatGPT can add connectors too, but whether that screen exists for you depends on your plan and your workspace, and it may not be there on a personal account. If you cannot find it, use one of the others." ]
+            [ text "The claude.ai and ChatGPT websites cannot be used, whatever your plan: their requests come from the vendor's servers, not from your computer, and the course does not answer them. For ChatGPT, use Codex on your machine instead." ]
         ]
 
 
@@ -144,7 +198,7 @@ bridgeView endpoint =
                 ]
     in
     div []
-        [ h2 [] [ text "If your app cannot open a browser" ]
+        [ h2 [] [ text "Claude Desktop, and any app that cannot open a browser" ]
         , p []
             [ text "Some assistants only launch a local program and talk to it over a pipe. They cannot sign you in, and this address accepts nothing else. Put "
             , code [] [ text "mcp-remote" ]
@@ -162,7 +216,7 @@ bridgeView endpoint =
                 [ text "Copy" ]
             ]
         , p [] [ text "Other clients keep their configuration in their own format and their own place; follow that client's MCP setup instructions and give it the same bridge command. The address is the part that does not change." ]
-        , p [] [ text "The first run opens a browser for CAS and the consent page, exactly as above, and renews itself after that." ]
+        , p [] [ text "The first run opens a browser for CAS and the consent page, exactly as above, and renews itself after that — as long as your computer is on the Yale network when it does." ]
         ]
 
 

@@ -1,8 +1,8 @@
 # Connecting An AI Assistant To The Course Site (MCP)
 
 The course site speaks [MCP](https://modelcontextprotocol.io), so you can let an
-AI assistant — Claude Code, Claude Desktop, claude.ai, ChatGPT, or something you
-write yourself — read your course data and, if you allow it, edit a submission
+AI assistant that runs on your own computer — Claude Code, Codex, Claude
+Desktop, or something you write yourself — read your course data and, if you allow it, edit a submission
 for you. You do not have to use this. Everything it does, you can also do on the
 website.
 
@@ -14,6 +14,18 @@ https://<course-site>/mcp
 
 Replace `<course-site>` with the address you use for the class (on a local
 development stack that is `https://localhost`).
+
+## Yale network only
+
+The `/mcp` endpoint and the REST API answer only from the Yale network. Be on
+campus or on the Yale VPN whenever an assistant talks to the course.
+
+What matters is which computer sends the request. An assistant running on your
+laptop sends it from your laptop, which is on the network. The **claude.ai and
+ChatGPT websites** send it from the vendor's servers, which are not — a
+connector added on either site will fail even though you are signed in. Use
+Claude Code, Codex, or Claude Desktop instead; they run on your machine. The
+same applies to hosted notebooks such as Colab for the REST API.
 
 ## What it can and cannot do
 
@@ -70,13 +82,31 @@ Then, inside Claude Code, run `/mcp`, choose `mgt656-fall-2026`, and authenticat
 browser window opens, you log in with CAS, and you approve the permissions page
 described below. That is it — Claude Code renews access on its own.
 
-## Connecting Claude Desktop, claude.ai, or ChatGPT
+## Connecting Codex
 
-Add a custom connector (the wording varies: "Add custom connector", "Add
-integration", "Developer mode connector") and give it the URL
-`https://<course-site>/mcp`.
+Register the address, then sign in — the second command is what opens the
+browser for CAS and the consent page:
 
-What you will see:
+```sh
+codex mcp add mgt656-fall-2026 --url https://<course-site>/mcp
+codex mcp login mgt656-fall-2026
+```
+
+As with Claude Code, `mgt656-fall-2026` is your own label for the connection.
+
+## Connecting Claude Desktop
+
+Claude Desktop runs on your machine, so it can reach the course. Use the
+`mcp-remote` bridge configuration in the next section: it launches a local
+program that does the sign-in and talks to the course from your computer.
+
+The claude.ai and ChatGPT websites cannot be used, whatever your plan — their
+requests come from the vendor's servers, not from your computer. For ChatGPT,
+use Codex instead.
+
+## What the consent page shows
+
+Whichever client you use, the sign-in looks the same:
 
 1. The app registers itself with the course site automatically.
 2. A browser window opens on the Yale CAS login page. Log in as usual.

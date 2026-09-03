@@ -33,6 +33,8 @@ introduction =
             [ text "An API token lets your own code read your course data — a script, a notebook, or an AI assistant writing code with you. Send it to the course API as a header:" ]
         , code [ class "api-token-usage" ] [ text "Authorization: Bearer <your token>" ]
         , p []
+            [ text "The API answers only from the Yale network, so run your code on your own computer while on campus or the Yale VPN. A hosted notebook such as Colab runs on Google's machines and cannot reach it." ]
+        , p []
             [ text "If you only want an assistant to read your data, "
             , a [ href "#/mcp" ] [ text "connect it over MCP" ]
             , text " instead — that needs no token at all."
@@ -88,7 +90,7 @@ createFormView draftName draftScopes =
             , input
                 [ id "api-token-name"
                 , type_ "text"
-                , placeholder "laptop, colab, final project…"
+                , placeholder "laptop, final project…"
                 , value draftName
                 , onInput Msgs.SetApiTokenDraftName
                 ]

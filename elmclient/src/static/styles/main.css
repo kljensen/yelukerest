@@ -491,3 +491,17 @@ table.api-token-table li {
     color: #DD514C;
     font-weight: bold;
 }
+
+/* The precondition for the whole MCP page: reachable only from the Yale
+   network. Boxed like the write-scope decision, because a student who skips
+   it gets a connector that silently never answers. */
+.mcp-network {
+    border: 1px solid #ddd;
+    border-left: 0.5rem solid #ddd;
+    padding: 0.75rem 1rem;
+    margin: 1rem 0 1.5rem;
+}
+
+.mcp-network h2 {
+    margin-top: 0;
+}
