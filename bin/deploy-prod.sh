@@ -96,7 +96,11 @@ if [ -n "$SERVICES" ] && [ -z "${DEPLOY:-}" ]; then
     exit 1
 fi
 
-ssh "$HOST" DIR="$DIR" REF="$REF" DEPLOY="${DEPLOY:-}" SERVICES="$SERVICES" 'sh -s' <<'REMOTE'
+# ssh flattens its arguments into one remote command string, so a value with a
+# space in it -- SERVICES="mcpapp elmclient" -- loses its quoting on the way
+# across and the remote shell reads the second word as a command of its own.
+# Quote each assignment for the REMOTE shell, not just for this one.
+ssh "$HOST" "DIR='$DIR' REF='$REF' DEPLOY='${DEPLOY:-}' SERVICES='$SERVICES' sh -s" <<'REMOTE'
 set -eu
 cd "$DIR"
 
