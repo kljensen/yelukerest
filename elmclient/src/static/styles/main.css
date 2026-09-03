@@ -466,13 +466,13 @@ table.api-token-table li {
     word-break: break-all;
 }
 
-.mcp-steps {
+.mcp-setup-links {
     margin: 0 0 1rem;
     padding-left: 1.5rem;
 }
 
-.mcp-steps li {
-    margin-bottom: 0.375rem;
+.mcp-setup-links li {
+    margin-bottom: 0.5rem;
 }
 
 /* The one choice worth a second look, emphasised the same way the API tokens

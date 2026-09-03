@@ -1,7 +1,7 @@
 module Mcp.Views exposing (page)
 
-import Html exposing (Html, a, button, code, div, h1, h2, li, ol, p, pre, strong, text)
-import Html.Attributes exposing (attribute, class, href, type_)
+import Html exposing (Html, a, button, code, div, h1, h2, li, p, strong, text, ul)
+import Html.Attributes exposing (attribute, class, href, target, type_)
 import Msgs exposing (Msg)
 
 
@@ -11,10 +11,15 @@ Static content. The one thing that is not static is the endpoint, which is
 built from the origin the browser is already on, so there is no
 `<course-site>` for anyone to mis-substitute.
 
+This page states only what is durable -- the address, the network rule, the
+one consent decision -- and LINKS to each vendor's own setup page for the
+clicks and commands. It used to embed those. Vendor CLIs and settings screens
+change several times a year, and an embedded recipe is wrong the moment they
+do, while the vendor's page is maintained by the people who changed it.
+
 No link to `docs/mcp-for-students.md`: it lives in a private repository, so
 every student following it would land on a 404 while being told it was their
-own sign-in that was wrong -- the same trap already removed from the API
-tokens page.
+own sign-in that was wrong.
 
 -}
 page : String -> Html Msg
@@ -24,31 +29,15 @@ page endpoint =
         , introduction
         , networkView
         , endpointView endpoint
-        , stepsView
-        , commandLineView endpoint
-        , codexView endpoint
-        , guiClientView
-        , bridgeView endpoint
+        , setupView
         , writeScopeView
         ]
 
 
-{-| The endpoint speaks HTTP and signs a person in through the browser, and
-accepts nothing else. Saying "anything that speaks MCP" would send the
-stdio-only clients down three steps that cannot work for them; the bridge
-they need has its own section below.
-
-ChatGPT is named with a caveat rather than in the list: whether it can add a
-connector at all depends on the plan and the workspace. Which plans is not
-something this page can state and keep true, so it says what does not go
-stale -- that it depends -- rather than a tier that will have moved by the
-time somebody reads it.
-
--}
 introduction : Html Msg
 introduction =
     p []
-        [ text "You can connect an AI assistant to your course data, so it can see your meetings, assignments, submissions and grades while it works with you. This works with assistants that run on your own computer and can open a browser to sign you in: Claude Code, Codex and Claude Desktop all can. There is no token to create — you sign in with CAS, as you did to reach this page, and approve what the assistant may do." ]
+        [ text "You can connect an AI assistant to your course data, so it can see your meetings, assignments, submissions and grades while it works with you. There is no token to create — you sign in with CAS, as you did to reach this page, and approve what the assistant may do." ]
 
 
 {-| The precondition that decides whether any of the rest works, so it goes
@@ -70,9 +59,9 @@ networkView =
         , p []
             [ text "What matters is which computer sends the request. An assistant "
             , strong [] [ text "running on your own machine" ]
-            , text " — Claude Code, Codex, Claude Desktop — sends it from your machine, which is on the network. The "
+            , text " — Claude Code, Codex — sends it from your machine, which is on the network. The "
             , strong [] [ text "claude.ai and ChatGPT websites" ]
-            , text " send it from the vendor's servers, which are not, so a connector added there will fail even though you are signed in. Use one of the desktop or terminal tools below instead."
+            , text " send it from the vendor's servers, which are not, so a connector added there will fail even though you are signed in."
             ]
         ]
 
@@ -82,6 +71,11 @@ endpointView endpoint =
     div []
         [ h2 [] [ text "The address" ]
         , copyRow endpoint "copy the course MCP address"
+        , p []
+            [ text "This is a remote MCP server that signs you in through your browser (OAuth). When a setup page asks for a URL, this is it. When it asks for a name, that name is a label in your own configuration and can be anything — "
+            , code [] [ text "mgt656-fall-2026" ]
+            , text " is a good one. Adding the address is not yet connecting: each tool has a second step that opens the browser for CAS and the consent page."
+            ]
         ]
 
 
@@ -102,122 +96,41 @@ copyRow body label =
         ]
 
 
-{-| Step two is the one people miss: giving an assistant the address does not
-connect it. In Claude Code that is a separate command, and until it is run
-nothing has signed in and nothing has been approved.
+{-| Links, not recipes. Each entry is the vendor's own page for adding a
+remote MCP server, checked to exist and to cover the OAuth sign-in when this
+was written. The Claude Code desktop app reads the same configuration the
+terminal writes, which is why its entry points at the terminal page as well.
 -}
-stepsView : Html Msg
-stepsView =
+setupView : Html Msg
+setupView =
     div []
-        [ h2 [] [ text "Three steps" ]
-        , ol [ class "mcp-steps" ]
-            [ li [] [ text "Give your assistant the address above." ]
-            , li [] [ text "Tell it to connect. Adding the address is not connecting: in Claude Code that is a second command, and in an app with a settings screen it happens as you finish adding the connector." ]
-            , li [] [ text "A browser window opens. Log in with CAS, the same way you log in here, and approve the consent page, which lists exactly what the assistant may do." ]
-            ]
-        , p [] [ text "That is the whole setup — nothing to renew by hand afterwards. If the connection ever stops working, do it again." ]
-        ]
-
-
-commandLineView : String -> Html Msg
-commandLineView endpoint =
-    div []
-        [ h2 [] [ text "Claude Code" ]
-        , p [] [ text "Register the address:" ]
-        , copyRow ("claude mcp add --transport http mgt656-fall-2026 " ++ endpoint)
-            "copy the claude mcp add command"
-        , p []
-            [ text "That command only records where the course is; nothing has signed in yet, and it will report success either way. Then, inside Claude Code, run "
-            , code [] [ text "/mcp" ]
-            , text ", choose "
-            , code [] [ text "mgt656-fall-2026" ]
-            , text " from the list, and authenticate. That is the step that opens the browser for CAS and the consent page. Afterwards Claude Code renews access on its own."
-            ]
-        , p []
-            [ code [] [ text "mgt656-fall-2026" ]
-            , text " is a label in your own configuration, not the server's name. It is what you will pick from that list, so call it whatever you like — and if you already have a working connection under a different name, leave it as it is."
-            ]
-        ]
-
-
-{-| OpenAI's terminal tool. Same shape as Claude Code: one command records
-the address, a second one signs in.
--}
-codexView : String -> Html Msg
-codexView endpoint =
-    let
-        add =
-            "codex mcp add mgt656-fall-2026 --url " ++ endpoint
-
-        login =
-            "codex mcp login mgt656-fall-2026"
-    in
-    div []
-        [ h2 [] [ text "Codex" ]
-        , p [] [ text "Register the address:" ]
-        , copyRow add "copy the codex mcp add command"
-        , p [] [ text "Then sign in. This is the step that opens the browser for CAS and the consent page:" ]
-        , copyRow login "copy the codex mcp login command"
-        , p []
-            [ text "As with Claude Code, "
-            , code [] [ text "mgt656-fall-2026" ]
-            , text " is a label in your own configuration and can be anything you like."
-            ]
-        ]
-
-
-guiClientView : Html Msg
-guiClientView =
-    div []
-        [ h2 [] [ text "Claude Desktop" ]
-        , p []
-            [ text "Claude Desktop runs on your machine, so it can reach the course. Use the bridge configuration below: it launches a small program on your computer that does the sign-in and talks to the course from there." ]
-        , p []
-            [ text "The claude.ai and ChatGPT websites cannot be used, whatever your plan: their requests come from the vendor's servers, not from your computer, and the course does not answer them. For ChatGPT, use Codex on your machine instead." ]
-        ]
-
-
-{-| Some clients only speak stdio: they launch a local program and talk to it
-over a pipe, and can neither open a browser nor hold a session. The endpoint
-accepts the browser sign-in and nothing else, so those clients need a bridge
-in front of it rather than a different set of steps.
--}
-bridgeView : String -> Html Msg
-bridgeView endpoint =
-    let
-        config =
-            String.join "\n"
-                [ "{"
-                , "  \"mcpServers\": {"
-                , "    \"mgt656-fall-2026\": {"
-                , "      \"command\": \"npx\","
-                , "      \"args\": [\"-y\", \"mcp-remote\", \"" ++ endpoint ++ "\"]"
-                , "    }"
-                , "  }"
-                , "}"
+        [ h2 [] [ text "Setting it up" ]
+        , p [] [ text "Follow the vendor's own instructions for adding a remote MCP server, and give it the address above:" ]
+        , ul [ class "mcp-setup-links" ]
+            [ li []
+                [ vendorLink "https://code.claude.com/docs/en/mcp" "Claude Code in the terminal"
+                , text " — add the server, then run "
+                , code [] [ text "/mcp" ]
+                , text " to sign in."
                 ]
-    in
-    div []
-        [ h2 [] [ text "Claude Desktop, and any app that cannot open a browser" ]
-        , p []
-            [ text "Some assistants only launch a local program and talk to it over a pipe. They cannot sign you in, and this address accepts nothing else. Put "
-            , code [] [ text "mcp-remote" ]
-            , text " in front of it: your app launches the bridge, and the bridge does the browser sign-in and talks to the course on its behalf. Clients that take an "
-            , code [] [ text "mcpServers" ]
-            , text " JSON configuration — Claude Desktop is the one most people mean — want this:"
-            ]
-        , div [ class "mcp-copy-row" ]
-            [ pre [ class "mcp-copyable" ] [ text config ]
-            , button
-                [ type_ "button"
-                , attribute "data-copy-text" config
-                , attribute "aria-label" "copy the mcp-remote configuration"
+            , li []
+                [ vendorLink "https://code.claude.com/docs/en/desktop#connect-external-tools" "Claude Code desktop app"
+                , text " — it uses the same configuration as the terminal, so the terminal page's steps apply. Do not add the course as a claude.ai connector: those run through Anthropic's servers, which are off the Yale network."
                 ]
-                [ text "Copy" ]
+            , li []
+                [ vendorLink "https://learn.chatgpt.com/docs/extend/mcp" "Codex"
+                , text " — one page covering the terminal, the desktop app and the IDE extension. Add the server, then sign in with "
+                , code [] [ text "codex mcp login" ]
+                , text "."
+                ]
             ]
-        , p [] [ text "Other clients keep their configuration in their own format and their own place; follow that client's MCP setup instructions and give it the same bridge command. The address is the part that does not change." ]
-        , p [] [ text "The first run opens a browser for CAS and the consent page, exactly as above, and renews itself after that — as long as your computer is on the Yale network when it does." ]
+        , p [] [ text "Whichever you use, the sign-in is the same: a browser window opens on Yale CAS, then a consent page from this site lists what the assistant may do. Access renews on its own afterwards, as long as your computer is on the Yale network when it does." ]
         ]
+
+
+vendorLink : String -> String -> Html Msg
+vendorLink url label =
+    a [ href url, target "_blank" ] [ text label ]
 
 
 {-| The one real decision on the consent page, given the emphasis the API

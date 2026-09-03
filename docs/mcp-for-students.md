@@ -65,40 +65,30 @@ renews it. The renewal is good for 30 days, and **each use pushes that 30 days
 out again** — so if you use the assistant at least once a month, you will not
 have to sign in again for the rest of the term.
 
-## Connecting Claude Code
+## Setting it up
 
-The name in the command below -- `mgt656-fall-2026` -- is **your own label** for
-this connection, not the server's identity. Call it whatever you like; it is
-what you will pick from the list when you run `/mcp`. Nothing breaks if an
-existing connection is called something else.
+Follow the vendor's own page for adding a remote MCP server, and give it
+`https://<course-site>/mcp`. Those pages are maintained by the people who
+change the tools; a recipe copied here would be wrong the next time a flag or a
+settings screen moved, which is why none is.
 
-Add the server:
+- **Claude Code in the terminal** —
+  <https://code.claude.com/docs/en/mcp>. Add the server, then run `/mcp` to
+  sign in.
+- **Claude Code desktop app** —
+  <https://code.claude.com/docs/en/desktop#connect-external-tools>. It reads
+  the same configuration the terminal writes, so the terminal page's steps
+  apply. Do **not** add the course as a claude.ai connector: those run through
+  Anthropic's servers, which are off the Yale network.
+- **Codex** — <https://learn.chatgpt.com/docs/extend/mcp>, one page covering
+  the terminal, the desktop app and the IDE extension. Add the server, then
+  sign in with `codex mcp login`.
 
-```sh
-claude mcp add --transport http mgt656-fall-2026 https://<course-site>/mcp
-```
-
-Then, inside Claude Code, run `/mcp`, choose `mgt656-fall-2026`, and authenticate. A
-browser window opens, you log in with CAS, and you approve the permissions page
-described below. That is it — Claude Code renews access on its own.
-
-## Connecting Codex
-
-Register the address, then sign in — the second command is what opens the
-browser for CAS and the consent page:
-
-```sh
-codex mcp add mgt656-fall-2026 --url https://<course-site>/mcp
-codex mcp login mgt656-fall-2026
-```
-
-As with Claude Code, `mgt656-fall-2026` is your own label for the connection.
-
-## Connecting Claude Desktop
-
-Claude Desktop runs on your machine, so it can reach the course. Use the
-`mcp-remote` bridge configuration in the next section: it launches a local
-program that does the sign-in and talks to the course from your computer.
+Two things that are the same everywhere. The name a tool asks for is **your own
+label** for the connection — `mgt656-fall-2026` is a good one — not the
+server's identity, and nothing breaks if an existing connection is called
+something else. And adding the address is not yet connecting: each tool has a
+second step that opens the browser for CAS and the consent page below.
 
 The claude.ai and ChatGPT websites cannot be used, whatever your plan — their
 requests come from the vendor's servers, not from your computer. For ChatGPT,
