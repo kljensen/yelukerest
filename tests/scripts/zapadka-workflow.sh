@@ -57,13 +57,24 @@ probe_deployed=
 
 # The throwaway migration below is deployed to the test target; put the file
 # back and revert it however this script ends, so the target is left as it was.
+# A revert that fails is itself a failure: the target would hold an applied
+# migration that exists in no checkout, which breaks every later status,
+# rehash, and test-db.sh run. The temporary project is kept on that path so the
+# revert can be retried by hand from it.
 cleanup() {
-  rm -f "$fake_zapadka" "$fake_zapadka.args" "$report"
+  rm -f "$fake_zapadka" "$fake_zapadka.args"
   if [ -n "$probe_deployed" ]; then
     cp "$probe_dir/deploy.sql.orig" "$probe_dir/deploy.sql"
-    "$ZAPADKA_BIN" -C "$project" -q revert --target test "$probe_id" >/dev/null 2>&1 ||
-      echo "warning: could not revert $probe_id from the test target" >&2
+    if ! "$ZAPADKA_BIN" -C "$project" -q revert --target test "$probe_id" >"$report" 2>&1; then
+      cat "$report" >&2
+      echo "could not revert probe migration $probe_id from the test target;" >&2
+      echo "the target now holds a migration no checkout has. Retry with:" >&2
+      echo "  $ZAPADKA_BIN -C $project revert --target test $probe_id" >&2
+      rm -f "$report"
+      exit 1
+    fi
   fi
+  rm -f "$report"
   if [ -n "$project" ]; then
     rm -rf "$project"
   fi
@@ -121,6 +132,19 @@ fi
 
 : "${YELUKEREST_TEST_DATABASE_URL:?YELUKEREST_TEST_DATABASE_URL is required and must use a privileged disposable-test role}"
 
+# zapadka.toml resolves the test target from that variable alone, and what
+# follows deploys SQL and rewrites the registry it finds there. The variable's
+# name is not proof of anything: a pre-exported value or another ENV_FILE can
+# put any database behind it. The disposable database is zapcheck; refuse
+# every other name.
+test_database=${YELUKEREST_TEST_DATABASE_URL##*/}
+test_database=${test_database%%\?*}
+if [ "$test_database" != zapcheck ]; then
+  echo "refusing to run migration history cases against database '$test_database':" >&2
+  echo "YELUKEREST_TEST_DATABASE_URL must name the disposable database zapcheck" >&2
+  exit 1
+fi
+
 zap() {
   "$ZAPADKA_BIN" -C "$project" -q "$@"
 }
@@ -157,6 +181,19 @@ expect_probe_changed() {
 project=$(mktemp -d)
 cp zapadka.toml "$project/"
 cp -R migrations "$project/migrations"
+
+# deploy applies everything pending, and cleanup reverts only the probe. The
+# target must already be at the checkout, so the probe is all deploy can apply
+# and the target really does end with the migrations it started with.
+if ! zap status --target test --output json >"$report" 2>&1; then
+  echo "the test target's history must be intact before the probe is deployed:" >&2
+  cat "$report" >&2
+  exit 1
+fi
+if grep -Fq '"status": "pending"' "$report"; then
+  echo "the test target is behind the checkout; run 'zapadka deploy --target test' before these cases" >&2
+  exit 1
+fi
 
 zap new prove-structural-hashing >/dev/null
 probe_dir=$(ls -d "$project"/migrations/*-prove-structural-hashing)
