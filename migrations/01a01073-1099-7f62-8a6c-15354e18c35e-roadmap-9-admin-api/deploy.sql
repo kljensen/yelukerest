@@ -18,7 +18,6 @@
 --   plus  the online-quiz remnants: quiz.is_offline and quiz.duration
 --
 -- Zapadka owns the transaction, so there is no BEGIN/COMMIT here.
-
 -- ---------------------------------------------------------------------------
 -- Row timestamps (#308)
 -- ---------------------------------------------------------------------------
@@ -70,40 +69,34 @@
 --
 -- Takes its inputs rather than reading them, so it works for callers whose row
 -- variable is not named `NEW`.
-CREATE OR REPLACE FUNCTION data.touched_at(
-    row_created_at TIMESTAMP WITH TIME ZONE,
-    prior_updated_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
-)
-RETURNS TIMESTAMP WITH TIME ZONE AS $$
+CREATE OR REPLACE FUNCTION data.touched_at(row_created_at timestamp with time zone, prior_updated_at timestamp with time zone = NULL) RETURNS timestamp with time zone AS $$
     SELECT GREATEST(
         current_timestamp,
         row_created_at,
         prior_updated_at + interval '1 microsecond'
     );
-$$ LANGUAGE sql STABLE;
-
+$$ LANGUAGE sql STABLE
+;
 -- If there is an `updated_at` column on the model, set it to the
 -- current timestamp with timezone. This is used so that we know
 -- when a row was last changed.
 --
 -- Function taken from https://gist.github.com/logrusorgru/82b002b8807253b2adef
-CREATE OR REPLACE FUNCTION data.update_updated_at_column()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION data.update_updated_at_column() RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-
+$$ LANGUAGE plpgsql
+;
 -- ---------------------------------------------------------------------------
 -- The ten per-table updated_at triggers, routed through data.touched_at (#308).
 -- Only the timestamp line changes; the bodies are otherwise as deployed.
 -- ---------------------------------------------------------------------------
-SET search_path = data, public;
-
+SET search_path TO data, public
+;
 -- from db/src/data/yeluke/assignment_field_submission.sql
-CREATE OR REPLACE FUNCTION fill_assignment_field_submission_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_assignment_field_submission_defaults() RETURNS trigger AS $$
 BEGIN
     -- Fill in the assignment_slug if it is NULL by looking
     -- at the assignment_slug from the assignment_submission.
@@ -185,13 +178,10 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- from db/src/data/yeluke/assignment_grade.sql
-CREATE OR REPLACE FUNCTION fill_assignment_grade_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_assignment_grade_defaults() RETURNS trigger AS $$
 BEGIN
     IF (NEW.assignment_slug IS NULL) THEN
         SELECT ass_sub.assignment_slug INTO NEW.assignment_slug
@@ -206,13 +196,10 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- from db/src/data/yeluke/assignment_grade_exception.sql
-CREATE OR REPLACE FUNCTION fill_assignment_grade_exception_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_assignment_grade_exception_defaults() RETURNS trigger AS $$
 BEGIN
     -- Set default is_team from assignment table
     IF (NEW.is_team IS NULL) THEN
@@ -223,13 +210,10 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- from db/src/data/yeluke/assignment_submission.sql
-CREATE OR REPLACE FUNCTION fill_assignment_submission_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_assignment_submission_defaults() RETURNS trigger AS $$
 BEGIN
     -- Set default is_team from assignment table
     IF (NEW.is_team IS NULL) THEN
@@ -262,31 +246,26 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- from db/src/data/yeluke/grade.sql
-CREATE OR REPLACE FUNCTION fill_grade_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_grade_defaults() RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-
+$$ LANGUAGE plpgsql
+;
 -- from db/src/data/yeluke/grade_snapshot.sql
-CREATE OR REPLACE FUNCTION fill_grade_snapshot_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_grade_snapshot_defaults() RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-
+$$ LANGUAGE plpgsql
+;
 -- from db/src/data/yeluke/quiz_grade.sql
-CREATE OR REPLACE FUNCTION fill_quiz_grade_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_quiz_grade_defaults() RETURNS trigger AS $$
 BEGIN
     -- Fill in the quiz_id if it is null
     IF (NEW.points_possible IS NULL) THEN
@@ -300,13 +279,10 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- from db/src/data/yeluke/quiz_submission.sql
-CREATE OR REPLACE FUNCTION fill_quiz_submission_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION fill_quiz_submission_defaults() RETURNS trigger AS $$
 BEGIN
     IF (NEW.user_id IS NULL) THEN
         NEW.user_id = request.user_id();
@@ -314,8 +290,8 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-
+$$ LANGUAGE plpgsql
+;
 -- from db/src/data/yeluke/quiz.sql
 CREATE OR REPLACE FUNCTION quiz_set_defaults() RETURNS trigger AS $$
 BEGIN
@@ -331,11 +307,10 @@ BEGIN
   END IF;
   NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
   RETURN NEW;
-END; $$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
+END; $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- from db/src/libs/auth/data/user.sql
-CREATE OR REPLACE function clean_user_fields() returns trigger as $$
+CREATE OR REPLACE FUNCTION clean_user_fields() RETURNS trigger AS $$
 BEGIN
     NEW.email := lower(NEW.email);
     NEW.netid := lower(NEW.netid);
@@ -343,14 +318,13 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     return NEW;
 END;
-$$ language plpgsql;
-
+$$ LANGUAGE plpgsql
+;
 -- ---------------------------------------------------------------------------
 -- Grade history learns to name its writer (#299, #300).
 -- An unset setting keeps the historical default, so no other writer changes.
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION record_assignment_grade_event()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION record_assignment_grade_event() RETURNS trigger AS $$
 DECLARE
     grade_row data.assignment_grade%ROWTYPE;
     event_kind TEXT;
@@ -403,12 +377,8 @@ BEGIN
 
     RETURN COALESCE(NEW, OLD);
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
-CREATE OR REPLACE FUNCTION record_quiz_grade_event()
-RETURNS TRIGGER AS $$
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+; CREATE OR REPLACE FUNCTION record_quiz_grade_event() RETURNS trigger AS $$
 DECLARE
     grade_row data.quiz_grade%ROWTYPE;
     event_kind TEXT;
@@ -461,51 +431,33 @@ BEGIN
 
     RETURN COALESCE(NEW, OLD);
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+;
 -- The insert-time participant snapshot (#299). Deliberately in `data`, not
 -- `api`: PostgREST must not expose it, and faculty already see every
 -- submission, so it grants no new visibility.
 CREATE OR REPLACE VIEW team_submission_participation AS
     SELECT
-        submission.assignment_slug,
-        participant.user_id,
+        submission.assignment_slug, participant.user_id,
         participant.assignment_submission_id
-    FROM assignment_submission_participant AS participant
-    JOIN assignment_submission AS submission
-        ON submission.id = participant.assignment_submission_id
-    WHERE submission.is_team;
-
+    FROM
+        assignment_submission_participant participant
+        JOIN assignment_submission submission ON submission.id = participant.assignment_submission_id
+    WHERE submission.is_team
+;
 -- ---------------------------------------------------------------------------
 -- The admin API surface (#299, #300, #301) and its data-schema helpers.
 -- Taken verbatim from db/src as it stood before the cutover.
 -- ---------------------------------------------------------------------------
-SET search_path = api, public;
-
+SET search_path TO api, public
+;
 -- Resolve import rows to the submission each grade belongs on.
 --
 -- This lives in the data schema because PostgREST exposes only the api schema
 -- and this is not an endpoint, but it is defined here because it reads the api
 -- views. It is SECURITY INVOKER on purpose: the caller's own row visibility
 -- applies, and a caller who cannot see a submission cannot grade it.
-CREATE OR REPLACE FUNCTION data.resolve_assignment_grade_import(p_grades jsonb)
-RETURNS TABLE (
-    assignment_slug text,
-    netid text,
-    user_id integer,
-    is_team boolean,
-    team_nickname text,
-    points_possible smallint,
-    points real,
-    has_description boolean,
-    description text,
-    assignment_submission_id integer
-)
-LANGUAGE sql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION data.resolve_assignment_grade_import(p_grades jsonb) RETURNS TABLE (assignment_slug text, netid text, user_id int, is_team boolean, team_nickname text, points_possible smallint, points real, has_description boolean, description text, assignment_submission_id int) LANGUAGE sql STABLE AS $$
     SELECT
         assignment.slug,
         student.netid,
@@ -540,10 +492,9 @@ AS $$
         ON assignment.is_team
         AND team_submission.assignment_slug = assignment.slug
         AND team_submission.user_id = student.id;
-$$;
-
-REVOKE ALL ON FUNCTION data.resolve_assignment_grade_import(jsonb) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION data.resolve_assignment_grade_import(jsonb) FROM public
+;
 -- Import final assignment grades keyed on assignment_slug + netid.
 --
 -- The payload carries final, absolute points. This function never derives a
@@ -555,23 +506,7 @@ REVOKE ALL ON FUNCTION data.resolve_assignment_grade_import(jsonb) FROM PUBLIC;
 -- Everything is re-runnable. A second run of the same payload writes nothing
 -- and reports every row as unchanged, so no redundant 'corrected' rows land in
 -- data.assignment_grade_event.
-CREATE OR REPLACE FUNCTION import_assignment_grades(
-    p_grades jsonb,
-    p_create_missing_submissions boolean DEFAULT true,
-    p_dry_run boolean DEFAULT false,
-    p_import_id text DEFAULT NULL,
-    p_reason text DEFAULT NULL
-)
-RETURNS TABLE (
-    inserted_count integer,
-    updated_count integer,
-    unchanged_count integer,
-    submission_created_count integer,
-    import_id text,
-    dry_run boolean
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION import_assignment_grades(p_grades jsonb, p_create_missing_submissions boolean = true, p_dry_run boolean = false, p_import_id text = NULL, p_reason text = NULL) RETURNS TABLE (inserted_count int, updated_count int, unchanged_count int, submission_created_count int, import_id text, dry_run boolean) LANGUAGE plpgsql AS $$
 DECLARE
     input_count integer;
     description_limit integer;
@@ -1007,10 +942,9 @@ BEGIN
 
     RETURN NEXT;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION import_assignment_grades(jsonb, boolean, boolean, text, text) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION import_assignment_grades(jsonb, boolean, boolean, text, text) FROM public
+;
 -- Resolve quiz import rows to the quiz, the student, and the two rows the
 -- import may touch: the existing grade's submission and the existing
 -- engagement.
@@ -1023,22 +957,7 @@ REVOKE ALL ON FUNCTION import_assignment_grades(jsonb, boolean, boolean, text, t
 -- is UNIQUE and data.user.netid is UNIQUE, so a meeting_slug/netid pair names
 -- at most one quiz and one student. There is no team-submission ambiguity to
 -- resolve here, which is why this is so much shorter than its assignment twin.
-CREATE OR REPLACE FUNCTION data.resolve_quiz_result_import(p_results jsonb)
-RETURNS TABLE (
-    meeting_slug text,
-    netid text,
-    quiz_id integer,
-    user_id integer,
-    points_possible smallint,
-    points real,
-    has_description boolean,
-    description text,
-    has_submission boolean,
-    participation data.participation_enum
-)
-LANGUAGE sql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION data.resolve_quiz_result_import(p_results jsonb) RETURNS TABLE (meeting_slug text, netid text, quiz_id int, user_id int, points_possible smallint, points real, has_description boolean, description text, has_submission boolean, participation data.participation_enum) LANGUAGE sql STABLE AS $$
     SELECT
         quiz.meeting_slug,
         student.netid,
@@ -1065,10 +984,9 @@ AS $$
     LEFT JOIN api.engagements existing_engagement
         ON existing_engagement.meeting_slug = quiz.meeting_slug
         AND existing_engagement.user_id = student.id;
-$$;
-
-REVOKE ALL ON FUNCTION data.resolve_quiz_result_import(jsonb) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION data.resolve_quiz_result_import(jsonb) FROM public
+;
 -- Import paper quiz results keyed on meeting_slug + netid.
 --
 -- Named for the import rather than for the grades because it has a second
@@ -1084,26 +1002,7 @@ REVOKE ALL ON FUNCTION data.resolve_quiz_result_import(jsonb) FROM PUBLIC;
 -- Everything is re-runnable. A second run of the same payload writes nothing,
 -- reports every row as unchanged, and appends no redundant 'corrected' rows to
 -- data.quiz_grade_event.
-CREATE OR REPLACE FUNCTION import_quiz_results(
-    p_results jsonb,
-    p_mark_attended boolean DEFAULT false,
-    p_dry_run boolean DEFAULT false,
-    p_import_id text DEFAULT NULL,
-    p_reason text DEFAULT NULL
-)
-RETURNS TABLE (
-    inserted_count integer,
-    updated_count integer,
-    unchanged_count integer,
-    submission_created_count integer,
-    attendance_inserted integer,
-    attendance_updated integer,
-    attendance_unchanged integer,
-    import_id text,
-    dry_run boolean
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION import_quiz_results(p_results jsonb, p_mark_attended boolean = false, p_dry_run boolean = false, p_import_id text = NULL, p_reason text = NULL) RETURNS TABLE (inserted_count int, updated_count int, unchanged_count int, submission_created_count int, attendance_inserted int, attendance_updated int, attendance_unchanged int, import_id text, dry_run boolean) LANGUAGE plpgsql AS $$
 DECLARE
     input_count integer;
     description_limit integer;
@@ -1483,10 +1382,9 @@ BEGIN
 
     RETURN NEXT;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION import_quiz_results(jsonb, boolean, boolean, text, text) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION import_quiz_results(jsonb, boolean, boolean, text, text) FROM public
+;
 -- Read the fractional_credit bounds off a grade exception table's own CHECK
 -- constraint, so the extension functions cannot drift from the schema they
 -- write to.
@@ -1495,14 +1393,7 @@ REVOKE ALL ON FUNCTION import_quiz_results(jsonb, boolean, boolean, text, text) 
 -- every comparison against them is NULL rather than true, and the real write
 -- becomes the only check again; the test suite pins the shape so that a reshape
 -- is noticed rather than silently tolerated.
-CREATE OR REPLACE FUNCTION data.grade_exception_credit_bounds(p_table_name text)
-RETURNS TABLE (
-    credit_minimum numeric,
-    credit_maximum numeric
-)
-LANGUAGE sql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION data.grade_exception_credit_bounds(p_table_name text) RETURNS TABLE (credit_minimum numeric, credit_maximum numeric) LANGUAGE sql STABLE AS $$
     SELECT
         (regexp_match(
             pg_get_constraintdef(credit_constraint.oid),
@@ -1521,10 +1412,9 @@ AS $$
         AND exception_table.relname = p_table_name
         AND credit_constraint.contype = 'c'
         AND pg_get_constraintdef(credit_constraint.oid) LIKE '%fractional_credit%';
-$$;
-
-REVOKE ALL ON FUNCTION data.grade_exception_credit_bounds(text) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION data.grade_exception_credit_bounds(text) FROM public
+;
 -- Write one assignment grade exception, creating it or moving the one already
 -- there.
 --
@@ -1538,20 +1428,7 @@ REVOKE ALL ON FUNCTION data.grade_exception_credit_bounds(text) FROM PUBLIC;
 -- It is SECURITY INVOKER and writes through the api view, so the caller's own
 -- RLS applies: the WITH CHECK on data.assignment_grade_exception still requires
 -- the writer to be faculty.
-CREATE OR REPLACE FUNCTION data.upsert_assignment_grade_exception(
-    p_assignment_slug text,
-    p_is_team boolean,
-    p_user_id integer,
-    p_team_nickname text,
-    p_closed_at timestamptz,
-    p_fractional_credit numeric
-)
-RETURNS TABLE (
-    written_id integer,
-    was_inserted boolean
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION data.upsert_assignment_grade_exception(p_assignment_slug text, p_is_team boolean, p_user_id int, p_team_nickname text, p_closed_at timestamptz, p_fractional_credit numeric) RETURNS TABLE (written_id int, was_inserted boolean) LANGUAGE plpgsql AS $$
 BEGIN
     -- The uniqueness rules are partial indexes, so each branch has to state the
     -- predicate its arbiter carries. This is exactly what PostgREST's
@@ -1602,10 +1479,9 @@ BEGIN
 
     RETURN NEXT;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, integer, text, timestamptz, numeric) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, int, text, timestamptz, numeric) FROM public
+;
 -- Grant one student, or one student's team, a later deadline on an assignment.
 --
 -- p_closed_at is absolute. The script this replaces accepted '+7 days' and
@@ -1622,24 +1498,7 @@ REVOKE ALL ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, int
 -- joining the exception's team_nickname to the submitting student's current
 -- team_nickname. An older team snapshotted here would write a row that the
 -- check consuming it could never match.
-CREATE OR REPLACE FUNCTION grant_assignment_extension(
-    p_user_id integer,
-    p_assignment_slug text,
-    p_closed_at timestamptz,
-    p_fractional_credit numeric DEFAULT 1
-)
-RETURNS TABLE (
-    exception_id integer,
-    assignment_slug text,
-    is_team boolean,
-    user_id integer,
-    team_nickname text,
-    closed_at timestamptz,
-    fractional_credit numeric,
-    created boolean
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION grant_assignment_extension(p_user_id int, p_assignment_slug text, p_closed_at timestamptz, p_fractional_credit numeric = 1) RETURNS TABLE (exception_id int, assignment_slug text, is_team boolean, user_id int, team_nickname text, closed_at timestamptz, fractional_credit numeric, created boolean) LANGUAGE plpgsql AS $$
 DECLARE
     -- Everything the queries below read is held in a local whose name matches
     -- no column of any table touched here. The OUT parameters are named for the
@@ -1733,10 +1592,9 @@ BEGIN
 
     RETURN NEXT;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION grant_assignment_extension(integer, text, timestamptz, numeric) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION grant_assignment_extension(int, text, timestamptz, numeric) FROM public
+;
 -- ---------------------------------------------------------------------------
 -- Grants
 -- ---------------------------------------------------------------------------
@@ -1744,16 +1602,15 @@ REVOKE ALL ON FUNCTION grant_assignment_extension(integer, text, timestamptz, nu
 -- actually worked on. They can already see every submission, so this adds no
 -- visibility; it only makes the historical roster reachable without the api
 -- role's RLS context.
-GRANT SELECT ON data.team_submission_participation TO faculty;
-
-GRANT EXECUTE ON FUNCTION data.resolve_assignment_grade_import(jsonb) TO faculty;
-GRANT EXECUTE ON FUNCTION api.import_assignment_grades(jsonb, boolean, boolean, text, text) TO faculty;
-GRANT EXECUTE ON FUNCTION data.resolve_quiz_result_import(jsonb) TO faculty;
-GRANT EXECUTE ON FUNCTION api.import_quiz_results(jsonb, boolean, boolean, text, text) TO faculty;
-GRANT EXECUTE ON FUNCTION data.grade_exception_credit_bounds(text) TO faculty;
-GRANT EXECUTE ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, integer, text, timestamptz, numeric) TO faculty;
-GRANT EXECUTE ON FUNCTION api.grant_assignment_extension(integer, text, timestamptz, numeric) TO faculty;
-
+GRANT select ON data.team_submission_participation TO faculty
+; GRANT execute ON FUNCTION data.resolve_assignment_grade_import(jsonb) TO faculty
+; GRANT execute ON FUNCTION api.import_assignment_grades(jsonb, boolean, boolean, text, text) TO faculty
+; GRANT execute ON FUNCTION data.resolve_quiz_result_import(jsonb) TO faculty
+; GRANT execute ON FUNCTION api.import_quiz_results(jsonb, boolean, boolean, text, text) TO faculty
+; GRANT execute ON FUNCTION data.grade_exception_credit_bounds(text) TO faculty
+; GRANT execute ON FUNCTION data.upsert_assignment_grade_exception(text, boolean, int, text, timestamptz, numeric) TO faculty
+; GRANT execute ON FUNCTION api.grant_assignment_extension(int, text, timestamptz, numeric) TO faculty
+;
 -- ---------------------------------------------------------------------------
 -- The online-quiz remnants (#302 and the paper-only cleanup)
 -- ---------------------------------------------------------------------------
@@ -1762,72 +1619,58 @@ GRANT EXECUTE ON FUNCTION api.grant_assignment_extension(integer, text, timestam
 -- changed nothing a student could do, so the table goes rather than gaining an
 -- RPC. api.grant_assignment_extension stays -- assignment exceptions have two
 -- real readers.
-DROP VIEW IF EXISTS api.quiz_grade_exceptions;
-DROP TABLE IF EXISTS data.quiz_grade_exception;
-
+DROP VIEW IF EXISTS api.quiz_grade_exceptions
+; DROP TABLE IF EXISTS data.quiz_grade_exception
+;
 -- api.quizzes selects quiz.*, so it must go before the columns it depends on.
-DROP VIEW IF EXISTS api.quizzes;
-
+DROP VIEW IF EXISTS api.quizzes
+;
 -- `is_offline` had one possible value once quizzes went paper-only, and
 -- `duration` measured a clock that only ran for an online attempt.
-ALTER TABLE data.quiz DROP COLUMN IF EXISTS is_offline;
-ALTER TABLE data.quiz DROP COLUMN IF EXISTS duration;
-
-SET search_path = api, public;
-
-create or replace view quizzes
-with (security_barrier = true) as
-    select
-        quiz.*,
-        (
-            quiz.is_draft = false and
-            quiz.open_at < current_timestamp and
-            current_timestamp < quiz.closed_at
-        ) AS is_open
-    from data.quiz
-    where request.user_role() = 'faculty'
-    or quiz.is_draft = false;
-
+ALTER TABLE data.quiz
+    DROP IF EXISTS is_offline
+; ALTER TABLE data.quiz
+    DROP IF EXISTS duration
+; SET search_path TO api, public
+; CREATE OR REPLACE VIEW quizzes WITH (security_barrier=true) AS
+    SELECT
+        quiz.*, quiz.is_draft = false AND quiz.open_at < current_timestamp
+        AND current_timestamp < quiz.closed_at AS is_open
+    FROM data.quiz
+    WHERE request.user_role() = 'faculty' OR quiz.is_draft = false
+;
 -- It is important to set the correct owner so the RLS policy kicks in.
-alter view quizzes owner to api;
-
+ALTER VIEW quizzes
+    OWNER TO api
+;
 -- Compatibility versions. The schema shape genuinely changed, so
 -- schema_compatibility_version moves to 4; admin_api_version reaches 8.
-create or replace view platform_version as
-    select
-        'yelukerest'::text as platform,
-        1::integer as platform_compatibility_version,
-        4::integer as schema_compatibility_version,
-        8::integer as admin_api_version;
-
-alter view platform_version owner to api;
-
-COMMENT ON VIEW platform_version IS
-    'Single-row compatibility metadata for course admin preflight checks';
-COMMENT ON COLUMN platform_version.platform IS
-    'Platform identifier expected by course admin tooling';
-COMMENT ON COLUMN platform_version.platform_compatibility_version IS
-    'Integer compatibility version for Yelukerest platform behavior';
-COMMENT ON COLUMN platform_version.schema_compatibility_version IS
-    'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
-COMMENT ON COLUMN platform_version.admin_api_version IS
-    'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';
-
+CREATE OR REPLACE VIEW platform_version AS
+    SELECT
+        'yelukerest'::text AS platform,
+        1::int AS platform_compatibility_version,
+        4::int AS schema_compatibility_version, 8::int AS admin_api_version
+; ALTER VIEW platform_version
+    OWNER TO api
+; COMMENT ON VIEW platform_version IS 'Single-row compatibility metadata for course admin preflight checks'
+; COMMENT ON COLUMN platform_version.platform IS 'Platform identifier expected by course admin tooling'
+; COMMENT ON COLUMN platform_version.platform_compatibility_version IS 'Integer compatibility version for Yelukerest platform behavior'
+; COMMENT ON COLUMN platform_version.schema_compatibility_version IS 'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.'
+; COMMENT ON COLUMN platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.'
+;
 -- Recreating api.quizzes dropped its comments with it; structure.sql asserts
 -- every api view and column carries one.
-
-COMMENT ON VIEW quizzes IS
-    'Paper quiz metadata and availability windows';
-COMMENT ON COLUMN quizzes.id IS 'Unique quiz id';
-COMMENT ON COLUMN quizzes.meeting_slug IS 'Meeting associated with the quiz';
-COMMENT ON COLUMN quizzes.points_possible IS 'Maximum score for the quiz';
-COMMENT ON COLUMN quizzes.is_draft IS 'Whether the quiz is still hidden from students and TAs';
-COMMENT ON COLUMN quizzes.open_at IS 'When the quiz becomes available';
-COMMENT ON COLUMN quizzes.closed_at IS 'When the quiz closes';
-COMMENT ON COLUMN quizzes.created_at IS 'When this quiz row was created';
-COMMENT ON COLUMN quizzes.updated_at IS 'When this quiz row was last updated';
-COMMENT ON COLUMN quizzes.is_open IS 'Whether the quiz is published and currently open';
-
+COMMENT ON VIEW quizzes IS 'Paper quiz metadata and availability windows'
+; COMMENT ON COLUMN quizzes.id IS 'Unique quiz id'
+; COMMENT ON COLUMN quizzes.meeting_slug IS 'Meeting associated with the quiz'
+; COMMENT ON COLUMN quizzes.points_possible IS 'Maximum score for the quiz'
+; COMMENT ON COLUMN quizzes.is_draft IS 'Whether the quiz is still hidden from students and TAs'
+; COMMENT ON COLUMN quizzes.open_at IS 'When the quiz becomes available'
+; COMMENT ON COLUMN quizzes.closed_at IS 'When the quiz closes'
+; COMMENT ON COLUMN quizzes.created_at IS 'When this quiz row was created'
+; COMMENT ON COLUMN quizzes.updated_at IS 'When this quiz row was last updated'
+; COMMENT ON COLUMN quizzes.is_open IS 'Whether the quiz is published and currently open'
+;
 -- Dropping api.quizzes took its grants with it (db/src/authorization/yeluke/quiz.sql).
-GRANT SELECT ON api.quizzes TO student, ta;
-GRANT SELECT, INSERT, UPDATE, DELETE ON api.quizzes TO faculty;
+GRANT select ON api.quizzes TO student, ta
+; GRANT select, insert, update, delete ON api.quizzes TO faculty

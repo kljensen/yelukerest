@@ -28,4 +28,4 @@ BEGIN
     IF n <> 2 THEN
         RAISE EXCEPTION 'students should hold SELECT on both views, found % grants', n;
     END IF;
-END $$;
+END $$

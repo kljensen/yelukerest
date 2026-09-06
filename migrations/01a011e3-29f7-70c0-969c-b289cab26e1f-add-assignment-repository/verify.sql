@@ -3,7 +3,6 @@
 -- Runs after the migration commits, in a fresh READ ONLY transaction that is
 -- always rolled back. No CREATE is possible here, not even a temp table, so
 -- expected sets are built with VALUES.
-
 DO $$
 DECLARE
     missing text;
@@ -237,4 +236,4 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'api.platform_version should report schema 5 or later and admin_api 9 or later';
     END IF;
-END $$;
+END $$

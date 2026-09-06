@@ -1,6 +1,5 @@
 -- Deployed inside a transaction Zapadka opens and commits.
 -- Do not write BEGIN, COMMIT, ROLLBACK, or SAVEPOINT here.
-
 -- Bound personal access tokens: a maximum lifetime, and a maximum number of
 -- live ones per person (issue #347).
 --
@@ -20,7 +19,6 @@
 -- Refuse, do not clamp. A caller that asked for five years and silently got
 -- 180 days would go on believing it had five years, and would discover
 -- otherwise at the least convenient moment. The error names the bound.
-
 -- ---------------------------------------------------------------------------
 -- Preflight: say what the new rules would catch before enforcing them
 -- ---------------------------------------------------------------------------
@@ -97,8 +95,8 @@ BEGIN
             over_count, detail;
     END IF;
 END;
-$$;
-
+$$
+;
 -- ---------------------------------------------------------------------------
 -- Existing data: cap the over-long, leave the over-numerous alone
 -- ---------------------------------------------------------------------------
@@ -108,9 +106,9 @@ $$;
 -- its holder was told. That is a real, if small, harm, which is why the
 -- preflight above names the prefixes.
 UPDATE data.user_api_token
-   SET expires_at = created_at + interval '180 days'
- WHERE expires_at > created_at + interval '180 days';
-
+SET expires_at = created_at + '180 days'::interval
+WHERE expires_at > (created_at + '180 days'::interval)
+;
 -- The count cap is deliberately NOT a table constraint, and no existing token
 -- is revoked to satisfy it.
 --
@@ -124,26 +122,14 @@ UPDATE data.user_api_token
 -- every token they have and simply cannot mint another until revocation or
 -- expiry brings them under five. The population converges on the policy
 -- without anyone losing access.
-
 ALTER TABLE data.user_api_token
-    ADD CONSTRAINT user_api_token_max_lifetime
-    CHECK (expires_at <= created_at + interval '180 days');
-
-COMMENT ON CONSTRAINT user_api_token_max_lifetime ON data.user_api_token IS
-    'Backstop for the 180 day bound. api.create_user_api_token refuses first, with a message that names the limit; this catches anything that reaches the table another way.';
-
+    ADD CONSTRAINT user_api_token_max_lifetime CHECK (expires_at <= (created_at + '180 days'::interval))
+; COMMENT ON CONSTRAINT user_api_token_max_lifetime ON data.user_api_token IS 'Backstop for the 180 day bound. api.create_user_api_token refuses first, with a message that names the limit; this catches anything that reaches the table another way.'
+;
 -- ---------------------------------------------------------------------------
 -- Creating a token, now bounded
 -- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION api.create_user_api_token(
-    p_name TEXT,
-    p_scopes TEXT[] DEFAULT ARRAY['course:read', 'grades:read', 'submissions:read']::TEXT[],
-    p_expires_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
-) RETURNS TABLE (id INT, token TEXT, token_prefix TEXT, name TEXT, scopes TEXT[], expires_at TIMESTAMP WITH TIME ZONE)
-SECURITY DEFINER
-LANGUAGE plpgsql
-SET search_path = pg_catalog, api, auth, data, request, settings, public, pg_temp
-AS $$
+CREATE OR REPLACE FUNCTION api.create_user_api_token(p_name text, p_scopes text[] = ARRAY['course:read', 'grades:read', 'submissions:read']::text[], p_expires_at timestamp with time zone = NULL) RETURNS TABLE (id int, token text, token_prefix text, name text, scopes text[], expires_at timestamp with time zone) SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, api, auth, data, request, settings, public, pg_temp AS $$
 DECLARE
     -- Six months. Longer than the semester the credential is for, so a
     -- default-expiry token created in week one never runs into it, and short
@@ -259,15 +245,9 @@ BEGIN
         p_scopes,
         new_expires;
 END;
-$$;
-
-ALTER FUNCTION api.create_user_api_token(TEXT, TEXT[], TIMESTAMP WITH TIME ZONE)
-    OWNER TO yelukerest_migrator;
-REVOKE ALL PRIVILEGES ON FUNCTION api.create_user_api_token(TEXT, TEXT[], TIMESTAMP WITH TIME ZONE) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION api.create_user_api_token(TEXT, TEXT[], TIMESTAMP WITH TIME ZONE)
-    TO student, ta, faculty;
-
-COMMENT ON FUNCTION api.create_user_api_token(TEXT, TEXT[], TIMESTAMP WITH TIME ZONE) IS
-    'Create a personal access token for the calling user. Returns the secret exactly once; read-only scopes by default, four month expiry, 180 days maximum, five active tokens per person.';
-
-NOTIFY pgrst, 'reload schema';
+$$
+; ALTER FUNCTION api.create_user_api_token(text, text[], timestamp with time zone) OWNER TO yelukerest_migrator
+; REVOKE ALL ON FUNCTION api.create_user_api_token(text, text[], timestamp with time zone) FROM public
+; GRANT execute ON FUNCTION api.create_user_api_token(text, text[], timestamp with time zone) TO student, ta, faculty
+; COMMENT ON FUNCTION api.create_user_api_token(text, text[], timestamp with time zone) IS 'Create a personal access token for the calling user. Returns the secret exactly once; read-only scopes by default, four month expiry, 180 days maximum, five active tokens per person.'
+; NOTIFY pgrst, 'reload schema'

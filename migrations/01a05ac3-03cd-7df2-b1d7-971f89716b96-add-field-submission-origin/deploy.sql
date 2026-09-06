@@ -28,7 +28,6 @@
 -- means producer identity in this schema (`api.import_assignment_grades`).
 -- Two columns named `source` meaning "which function wrote this" and "what
 -- kind of act was this" would be a trap.
-
 -- ---------------------------------------------------------------------------
 -- The columns.
 -- ---------------------------------------------------------------------------
@@ -51,33 +50,21 @@
 -- from bodies and NULL actors would manufacture the fiction this column is
 -- meant to prevent. 'migration' says "this row predates the question", which
 -- is the only true thing available.
-
 ALTER TABLE data.assignment_field_submission
-    ADD COLUMN origin TEXT NOT NULL DEFAULT 'migration';
-
-ALTER TABLE data.assignment_field_submission
-    ALTER COLUMN origin DROP DEFAULT;
-
-ALTER TABLE data.assignment_field_submission
-    ADD CONSTRAINT origin_is_known
-    CHECK (origin IN ('student', 'provisioning', 'import', 'staff', 'migration'));
-
-COMMENT ON COLUMN data.assignment_field_submission.origin IS
-    'How this field submission first came to exist. Set once by tg_assignment_field_submission_default and never changed. Issue #370.';
-
-ALTER TABLE data.assignment_field_submission_event
-    ADD COLUMN origin TEXT NOT NULL DEFAULT 'migration';
-
-ALTER TABLE data.assignment_field_submission_event
-    ALTER COLUMN origin DROP DEFAULT;
-
-ALTER TABLE data.assignment_field_submission_event
-    ADD CONSTRAINT origin_is_known
-    CHECK (origin IN ('student', 'provisioning', 'import', 'staff', 'migration'));
-
-COMMENT ON COLUMN data.assignment_field_submission_event.origin IS
-    'Origin copied from the submission row this event describes. Never decided independently. Issue #370.';
-
+    ADD COLUMN origin text NOT NULL DEFAULT 'migration'
+; ALTER TABLE data.assignment_field_submission
+    ALTER COLUMN origin DROP DEFAULT
+; ALTER TABLE data.assignment_field_submission
+    ADD CONSTRAINT origin_is_known CHECK (origin IN ('student', 'provisioning', 'import', 'staff', 'migration'))
+; COMMENT ON COLUMN data.assignment_field_submission.origin IS 'How this field submission first came to exist. Set once by tg_assignment_field_submission_default and never changed. Issue #370.'
+; ALTER TABLE data.assignment_field_submission_event
+    ADD COLUMN origin text NOT NULL DEFAULT 'migration'
+; ALTER TABLE data.assignment_field_submission_event
+    ALTER COLUMN origin DROP DEFAULT
+; ALTER TABLE data.assignment_field_submission_event
+    ADD CONSTRAINT origin_is_known CHECK (origin IN ('student', 'provisioning', 'import', 'staff', 'migration'))
+; COMMENT ON COLUMN data.assignment_field_submission_event.origin IS 'Origin copied from the submission row this event describes. Never decided independently. Issue #370.'
+;
 -- ---------------------------------------------------------------------------
 -- The defaults trigger, which is the only enforcement.
 -- ---------------------------------------------------------------------------
@@ -93,8 +80,7 @@ COMMENT ON COLUMN data.assignment_field_submission_event.origin IS
 -- 01a01073-roadmap-9-admin-api left it -- including the `data.touched_at`
 -- timestamp line from #308, which db/src still predates -- with one block
 -- added. Nothing else changes.
-CREATE OR REPLACE FUNCTION data.fill_assignment_field_submission_defaults()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION data.fill_assignment_field_submission_defaults() RETURNS trigger AS $$
 DECLARE
     -- The origin the request identity implies, or NULL when the identity does
     -- not imply one. See the origin block below.
@@ -235,12 +221,9 @@ BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
-ALTER FUNCTION data.fill_assignment_field_submission_defaults() OWNER TO yelukerest_migrator;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+; ALTER FUNCTION data.fill_assignment_field_submission_defaults() OWNER TO yelukerest_migrator
+;
 -- ---------------------------------------------------------------------------
 -- The history trigger copies the origin; it does not decide one.
 -- ---------------------------------------------------------------------------
@@ -249,8 +232,7 @@ ALTER FUNCTION data.fill_assignment_field_submission_defaults() OWNER TO yeluker
 -- point of the column is that the submission row and its history tell the same
 -- story. On DELETE `submission_row` is OLD, so the deleted event carries the
 -- origin the row had.
-CREATE OR REPLACE FUNCTION data.record_assignment_field_submission_event()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION data.record_assignment_field_submission_event() RETURNS trigger AS $$
 DECLARE
     submission_row data.assignment_field_submission%ROWTYPE;
     event_kind TEXT;
@@ -298,12 +280,9 @@ BEGIN
 
     RETURN COALESCE(NEW, OLD);
 END;
-$$ LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = data, pg_temp;
-
-ALTER FUNCTION data.record_assignment_field_submission_event() OWNER TO yelukerest_migrator;
-
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp
+; ALTER FUNCTION data.record_assignment_field_submission_event() OWNER TO yelukerest_migrator
+;
 -- ---------------------------------------------------------------------------
 -- The api views have to be recreated to see the column.
 -- ---------------------------------------------------------------------------
@@ -319,23 +298,21 @@ ALTER FUNCTION data.record_assignment_field_submission_event() OWNER TO yelukere
 -- security apply at all, so it is worth saying out loud where the view is
 -- redefined.
 CREATE OR REPLACE VIEW api.assignment_field_submissions AS
-    SELECT * FROM data.assignment_field_submission;
-
-ALTER VIEW api.assignment_field_submissions OWNER TO api;
-GRANT SELECT, INSERT, UPDATE ON api.assignment_field_submissions TO student, ta;
-GRANT SELECT, INSERT, UPDATE, DELETE ON api.assignment_field_submissions TO faculty;
-
-CREATE OR REPLACE VIEW api.assignment_field_submission_events AS
-    SELECT * FROM data.assignment_field_submission_event;
-
-ALTER VIEW api.assignment_field_submission_events OWNER TO api;
-GRANT SELECT ON api.assignment_field_submission_events TO faculty;
-
+    SELECT *
+    FROM data.assignment_field_submission
+; ALTER VIEW api.assignment_field_submissions
+    OWNER TO api
+; GRANT select, insert, update ON api.assignment_field_submissions TO student, ta
+; GRANT select, insert, update, delete ON api.assignment_field_submissions TO faculty
+; CREATE OR REPLACE VIEW api.assignment_field_submission_events AS
+    SELECT *
+    FROM data.assignment_field_submission_event
+; ALTER VIEW api.assignment_field_submission_events
+    OWNER TO api
+; GRANT select ON api.assignment_field_submission_events TO faculty
+;
 -- Every api view column must carry a comment; the bootstrap verify script and
 -- tests/db/structure.sql both assert it.
-COMMENT ON COLUMN api.assignment_field_submissions.origin IS
-    'How this field submission came to exist: student, provisioning, import, staff or migration. Set on insert and immutable thereafter';
-COMMENT ON COLUMN api.assignment_field_submission_events.origin IS
-    'Origin of the field submission this event describes, copied from the submission row';
-
-NOTIFY pgrst, 'reload schema';
+COMMENT ON COLUMN api.assignment_field_submissions.origin IS 'How this field submission came to exist: student, provisioning, import, staff or migration. Set on insert and immutable thereafter'
+; COMMENT ON COLUMN api.assignment_field_submission_events.origin IS 'Origin of the field submission this event describes, copied from the submission row'
+; NOTIFY pgrst, 'reload schema'

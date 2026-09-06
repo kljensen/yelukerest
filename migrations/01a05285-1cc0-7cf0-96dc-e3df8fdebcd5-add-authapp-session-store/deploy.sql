@@ -1,6 +1,5 @@
 -- Deployed inside a transaction Zapadka opens and commits.
 -- Do not write BEGIN, COMMIT, ROLLBACK, or SAVEPOINT here.
-
 -- Browser sessions for authapp, kept in PostgreSQL (issue #365).
 --
 -- authapp used the SCS in-memory store, so every container recreate threw away
@@ -18,7 +17,6 @@
 -- literal SQL of github.com/alexedwards/scs/postgresstore, so renaming a
 -- column breaks authapp at runtime rather than at deploy time. verify.sql
 -- pins the shape for that reason.
-
 -- The role authapp logs in as has to exist before this runs, and this
 -- migration cannot create it: roles are cluster-wide while migrations are
 -- per-database, and yelukerest_migrator is deliberately NOCREATEROLE
@@ -38,31 +36,26 @@ BEGIN
             USING HINT = 'run authapp/sql/create-authapp-db-role.sh once per cluster before deploying this migration';
     END IF;
 END;
-$$;
-
-CREATE TABLE data.authapp_session (
-    token TEXT PRIMARY KEY,
-    data BYTEA NOT NULL,
-    expiry TIMESTAMPTZ NOT NULL
-);
-
+$$
+; CREATE TABLE data.authapp_session (
+    token text PRIMARY KEY,
+    data bytea NOT NULL,
+    expiry timestamptz NOT NULL
+)
+;
 -- Serves the cleanup pass, which deletes by expiry every five minutes. Lookups
 -- go through the primary key, so this index exists for the delete alone.
-CREATE INDEX authapp_session_expiry_idx ON data.authapp_session (expiry);
-
-ALTER TABLE data.authapp_session OWNER TO yelukerest_migrator;
-
-COMMENT ON TABLE data.authapp_session IS
-    'Opaque browser sessions for authapp. Readable only by the authapp role: no api view exposes it and no application role holds a privilege on it.';
-COMMENT ON COLUMN data.authapp_session.token IS
-    'The session cookie value itself. Anyone who can read this column can impersonate the session, which is why nothing but the authapp role may.';
-COMMENT ON COLUMN data.authapp_session.data IS
-    'Gob-encoded session payload written by SCS. Opaque to the database.';
-COMMENT ON COLUMN data.authapp_session.expiry IS
-    'When the session stops being honoured. Rows past it are deleted by authapp''s cleanup goroutine.';
-
+CREATE INDEX authapp_session_expiry_idx
+ON data.authapp_session USING btree (expiry)
+; ALTER TABLE data.authapp_session
+    OWNER TO yelukerest_migrator
+; COMMENT ON TABLE data.authapp_session IS 'Opaque browser sessions for authapp. Readable only by the authapp role: no api view exposes it and no application role holds a privilege on it.'
+; COMMENT ON COLUMN data.authapp_session.token IS 'The session cookie value itself. Anyone who can read this column can impersonate the session, which is why nothing but the authapp role may.'
+; COMMENT ON COLUMN data.authapp_session.data IS 'Gob-encoded session payload written by SCS. Opaque to the database.'
+; COMMENT ON COLUMN data.authapp_session.expiry IS 'When the session stops being honoured. Rows past it are deleted by authapp''s cleanup goroutine.'
+;
 -- No row-level security: every row is reachable by exactly one bearer token
 -- and there is no second party to distinguish, so the privilege grant below is
 -- the whole access decision. RLS here would only add a policy that says true.
-GRANT USAGE ON SCHEMA data TO authapp;
-GRANT SELECT, INSERT, UPDATE, DELETE ON data.authapp_session TO authapp;
+GRANT usage ON SCHEMA data TO authapp
+; GRANT select, insert, update, delete ON data.authapp_session TO authapp

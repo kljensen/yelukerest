@@ -9,7 +9,6 @@
 --
 -- Deployed inside a transaction Zapadka opens and commits.
 -- Do not write BEGIN, COMMIT, ROLLBACK, or SAVEPOINT here.
-
 -- ---------------------------------------------------------------------------
 -- The last updated_at trigger not routed through data.touched_at (#308)
 -- ---------------------------------------------------------------------------
@@ -25,16 +24,14 @@
 -- That matters more here than it did anywhere else, because a CHECK violation
 -- on this table prints `DETAIL: Failing row contains (...)`, and this table's
 -- rows are generated database passwords.
-SET search_path = data, public;
-
-CREATE OR REPLACE FUNCTION fill_user_secret_defaults()
-RETURNS TRIGGER AS $$
+SET search_path TO data, public
+; CREATE OR REPLACE FUNCTION fill_user_secret_defaults() RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = data.touched_at(NEW.created_at, CASE WHEN TG_OP = 'UPDATE' THEN OLD.updated_at END);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
-
+$$ LANGUAGE plpgsql
+;
 -- ---------------------------------------------------------------------------
 -- Bulk secret distribution (#303)
 -- ---------------------------------------------------------------------------
@@ -48,16 +45,7 @@ $$ LANGUAGE plpgsql;
 -- instead, and PostgreSQL printed the secret body in the error DETAIL -- which
 -- is the one outcome these functions exist to prevent. Failing closed on a
 -- reshaped constraint is the only safe direction.
-CREATE OR REPLACE FUNCTION data.user_secret_input_bounds()
-RETURNS TABLE (
-    body_octet_limit integer,
-    slug_pattern text,
-    slug_length_limit integer,
-    team_nickname_length_limit integer
-)
-LANGUAGE sql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION data.user_secret_input_bounds() RETURNS TABLE (body_octet_limit int, slug_pattern text, slug_length_limit int, team_nickname_length_limit int) LANGUAGE sql STABLE AS $$
     SELECT
         max((regexp_match(pg_get_constraintdef(secret_constraint.oid),
             'octet_length\(body\) <= (\d+)'))[1]::integer),
@@ -70,10 +58,9 @@ AS $$
     FROM pg_constraint secret_constraint
     WHERE secret_constraint.conrelid = 'data.user_secret'::regclass
         AND secret_constraint.contype = 'c';
-$$;
-
-REVOKE ALL ON FUNCTION data.user_secret_input_bounds() FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION data.user_secret_input_bounds() FROM public
+;
 -- Everything both upsert variants check about a payload, which is everything
 -- except who the secret belongs to.
 --
@@ -97,15 +84,7 @@ REVOKE ALL ON FUNCTION data.user_secret_input_bounds() FROM PUBLIC;
 -- p_caller names the api function in every message. The alternative, a shared
 -- name, would tell a caller that "upsert_secrets" rejected their row when no
 -- such endpoint exists.
-CREATE OR REPLACE FUNCTION data.check_user_secret_batch(
-    p_secrets jsonb,
-    p_target_key text,
-    p_caller text
-)
-RETURNS void
-LANGUAGE plpgsql
-STABLE
-AS $$
+CREATE OR REPLACE FUNCTION data.check_user_secret_batch(p_secrets jsonb, p_target_key text, p_caller text) RETURNS void LANGUAGE plpgsql STABLE AS $$
 DECLARE
     input_count integer;
     bounds record;
@@ -248,12 +227,10 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION data.check_user_secret_batch(jsonb, text, text) FROM PUBLIC;
-
-SET search_path = api, public;
-
+$$
+; REVOKE ALL ON FUNCTION data.check_user_secret_batch(jsonb, text, text) FROM public
+; SET search_path TO api, public
+;
 -- Distribute per-student secrets in one call, keyed on netid + slug.
 --
 -- Replaces the per-student `psql` loops in add-final-exam-link.sh,
@@ -286,18 +263,7 @@ SET search_path = api, public;
 --
 -- Re-runnable. A second run of the same payload writes nothing: the DO UPDATE
 -- carries a WHERE, so an unchanged secret is not even restamped.
-CREATE OR REPLACE FUNCTION upsert_user_secrets(
-    p_secrets jsonb,
-    p_dry_run boolean DEFAULT false
-)
-RETURNS TABLE (
-    inserted_count integer,
-    updated_count integer,
-    unchanged_count integer,
-    dry_run boolean
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION upsert_user_secrets(p_secrets jsonb, p_dry_run boolean = false) RETURNS TABLE (inserted_count int, updated_count int, unchanged_count int, dry_run boolean) LANGUAGE plpgsql AS $$
 DECLARE
     input_count integer;
     offenders text;
@@ -582,10 +548,9 @@ BEGIN
 
     RETURN NEXT;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION upsert_user_secrets(jsonb, boolean) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION upsert_user_secrets(jsonb, boolean) FROM public
+;
 -- Distribute per-team secrets in one call, keyed on team_nickname + slug.
 --
 -- The other half of the pair. Everything api.upsert_user_secrets says about why
@@ -593,18 +558,7 @@ REVOKE ALL ON FUNCTION upsert_user_secrets(jsonb, boolean) FROM PUBLIC;
 -- nullable payload field, and why nothing here returns a body, applies
 -- unchanged; the arbiter is the other partial index,
 -- `(team_nickname, slug) WHERE user_id IS NULL`.
-CREATE OR REPLACE FUNCTION upsert_team_secrets(
-    p_secrets jsonb,
-    p_dry_run boolean DEFAULT false
-)
-RETURNS TABLE (
-    inserted_count integer,
-    updated_count integer,
-    unchanged_count integer,
-    dry_run boolean
-)
-LANGUAGE plpgsql
-AS $$
+CREATE OR REPLACE FUNCTION upsert_team_secrets(p_secrets jsonb, p_dry_run boolean = false) RETURNS TABLE (inserted_count int, updated_count int, unchanged_count int, dry_run boolean) LANGUAGE plpgsql AS $$
 DECLARE
     input_count integer;
     nickname_limit integer;
@@ -820,10 +774,9 @@ BEGIN
 
     RETURN NEXT;
 END;
-$$;
-
-REVOKE ALL ON FUNCTION upsert_team_secrets(jsonb, boolean) FROM PUBLIC;
-
+$$
+; REVOKE ALL ON FUNCTION upsert_team_secrets(jsonb, boolean) FROM public
+;
 -- ---------------------------------------------------------------------------
 -- Grants
 -- ---------------------------------------------------------------------------
@@ -831,37 +784,30 @@ REVOKE ALL ON FUNCTION upsert_team_secrets(jsonb, boolean) FROM PUBLIC;
 -- admits `request.user_role() = 'faculty'` alone, and these functions are
 -- SECURITY INVOKER writing through api.user_secrets, so that still governs.
 -- These grants say who may reach the endpoint at all.
-GRANT EXECUTE ON FUNCTION data.user_secret_input_bounds() TO faculty;
-GRANT EXECUTE ON FUNCTION data.check_user_secret_batch(jsonb, text, text) TO faculty;
-GRANT EXECUTE ON FUNCTION api.upsert_user_secrets(jsonb, boolean) TO faculty;
-GRANT EXECUTE ON FUNCTION api.upsert_team_secrets(jsonb, boolean) TO faculty;
-
+GRANT execute ON FUNCTION data.user_secret_input_bounds() TO faculty
+; GRANT execute ON FUNCTION data.check_user_secret_batch(jsonb, text, text) TO faculty
+; GRANT execute ON FUNCTION api.upsert_user_secrets(jsonb, boolean) TO faculty
+; GRANT execute ON FUNCTION api.upsert_team_secrets(jsonb, boolean) TO faculty
+;
 -- ---------------------------------------------------------------------------
 -- Compatibility version
 -- ---------------------------------------------------------------------------
 -- admin_api_version reaches 9: two RPCs added, nothing removed, so the floor
 -- check clients use stays correct. The api schema shape is unchanged -- no
 -- view, no column, no removal -- so schema_compatibility_version stays 4.
-create or replace view platform_version as
-    select
-        'yelukerest'::text as platform,
-        1::integer as platform_compatibility_version,
-        4::integer as schema_compatibility_version,
-        9::integer as admin_api_version;
-
-alter view platform_version owner to api;
-
-COMMENT ON VIEW platform_version IS
-    'Single-row compatibility metadata for course admin preflight checks';
-COMMENT ON COLUMN platform_version.platform IS
-    'Platform identifier expected by course admin tooling';
-COMMENT ON COLUMN platform_version.platform_compatibility_version IS
-    'Integer compatibility version for Yelukerest platform behavior';
-COMMENT ON COLUMN platform_version.schema_compatibility_version IS
-    'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.';
-COMMENT ON COLUMN platform_version.admin_api_version IS
-    'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.';
-
+CREATE OR REPLACE VIEW platform_version AS
+    SELECT
+        'yelukerest'::text AS platform,
+        1::int AS platform_compatibility_version,
+        4::int AS schema_compatibility_version, 9::int AS admin_api_version
+; ALTER VIEW platform_version
+    OWNER TO api
+; COMMENT ON VIEW platform_version IS 'Single-row compatibility metadata for course admin preflight checks'
+; COMMENT ON COLUMN platform_version.platform IS 'Platform identifier expected by course admin tooling'
+; COMMENT ON COLUMN platform_version.platform_compatibility_version IS 'Integer compatibility version for Yelukerest platform behavior'
+; COMMENT ON COLUMN platform_version.schema_compatibility_version IS 'Integer identifying the api schema shape. Check for membership in the set of shapes the client supports, NOT with >=: a shape can lose columns and views, and version 4 did. A client pinned to >= 3 would pass its own preflight against 4 and then fail on its first request.'
+; COMMENT ON COLUMN platform_version.admin_api_version IS 'Integer compatibility version for generic admin API operations. Only ever grows -- each bump adds an RPC without removing one -- so >= is the correct check.'
+;
 -- ---------------------------------------------------------------------------
 -- Tell PostgREST the API changed
 -- ---------------------------------------------------------------------------
@@ -883,4 +829,4 @@ COMMENT ON COLUMN platform_version.admin_api_version IS
 -- channel and this deployment does not override it -- docker-compose.base.yaml
 -- sets no PGRST_DB_CHANNEL_ENABLED. A deployment that turns the listener off,
 -- or has no PostgREST at all, is unaffected: an unheard NOTIFY costs nothing.
-NOTIFY pgrst, 'reload schema';
+NOTIFY pgrst, 'reload schema'

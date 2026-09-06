@@ -1,142 +1,63 @@
-select plan(18);
-
-SELECT view_owner_is(
-    'api', 'assignment_fields', 'api',
-    'api.assignment_fields view should be owned by the api role'
-);
-
-SELECT table_privs_are(
-    'api', 'assignment_fields', 'student', ARRAY['SELECT'],
-    'student should only be granted SELECT on view "api.assignment_fields"'
-);
-
-SELECT table_privs_are(
-    'api', 'assignment_fields', 'faculty', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
-    'faculty should only be granted select, insert, update, delete on view "api.assignment_fields"'
-);
-
-SELECT table_privs_are(
-    'data', 'assignment_field', 'faculty', ARRAY[]::text[],
-    'faculty should only be granted nothing on "data.assignment_field"'
-);
-
-SELECT is(
-    (
+SELECT plan(18)
+; SELECT view_owner_is('api', 'assignment_fields', 'api', 'api.assignment_fields view should be owned by the api role')
+; SELECT table_privs_are('api', 'assignment_fields', 'student', ARRAY['SELECT'], 'student should only be granted SELECT on view "api.assignment_fields"')
+; SELECT table_privs_are('api', 'assignment_fields', 'faculty', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'], 'faculty should only be granted select, insert, update, delete on view "api.assignment_fields"')
+; SELECT table_privs_are('data', 'assignment_field', 'faculty', ARRAY[]::text[], 'faculty should only be granted nothing on "data.assignment_field"')
+; SELECT
+    "is"((
         SELECT count(*)::int
-        FROM pg_trigger t
-        JOIN pg_class c ON c.oid = t.tgrelid
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE t.tgname = 'tg_assignment_field_default'
-        AND n.nspname = 'data'
-        AND c.relname = 'assignment_field'
-        AND NOT t.tgisinternal
-    ),
-    1,
-    'assignment_field should have its own updated_at trigger'
-);
-
-SELECT is(
-    (
+        FROM
+            pg_trigger t
+            JOIN pg_class c ON c.oid = t.tgrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE
+            t.tgname = 'tg_assignment_field_default'
+            AND n.nspname = 'data'
+            AND c.relname = 'assignment_field'
+            AND NOT t.tgisinternal
+    ), 1, 'assignment_field should have its own updated_at trigger')
+; SELECT
+    "is"((
         SELECT is_updatable
         FROM information_schema.views
-        WHERE table_schema = 'api'
-        AND table_name = 'assignment_fields'
-    ),
-    'YES',
-    'api.assignment_fields should remain automatically updatable'
-);
-
+        WHERE
+            table_schema = 'api'
+            AND table_name = 'assignment_fields'
+    ), 'YES', 'api.assignment_fields should remain automatically updatable')
+;
 -- switch to a anonymous application user
-set local role anonymous;
-set request.jwt.claim.role = 'anonymous';
-
-SELECT throws_like(
-    'select * from api.assignment_fields',
-    '%permission denied%',
-    'anonymous users should not be able to use the api.assignment_fields view'
-);
-
-set local role student;
-set request.jwt.claim.role = 'student';
-
-SELECT set_eq(
-    'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
-    ARRAY['exam-1','exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
-    'students see fields for draft assignments too, or the page renders empty'
-);
-
-set local role ta;
-set request.jwt.claim.role = 'ta';
-
-SELECT set_eq(
-    'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
-    ARRAY['exam-1','exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
-    'TAs see fields for draft assignments too'
-);
-
-PREPARE doinsert AS INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen');
-
-SELECT throws_like(
-    'doinsert',
-    '%permission denied%',
-    'students should not be able to insert'
-);
-
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-
-SELECT set_eq(
-    'SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)',
-    ARRAY['exam-1','exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'],
-    'faculty should see fields for draft and non-draft assignments'
-);
-
-SELECT lives_ok(
-    'doinsert',
-    'faculty should be able to insert'
-);
-
-SELECT lives_ok(
-    'DELETE FROM api.assignment_fields WHERE label = ''gobblygook''',
-    'faculty can delete assignment_fields'
-);
-
-SELECT throws_like(
-    $$
-        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*')
-    $$,
-    '%violates check constraint%',
-    'if a pattern is provided, an example must be provided'
-);
-
-SELECT throws_like(
-    $$
-        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'bar')
-    $$,
-    '%violates check constraint%',
-    'if a pattern is provided, an example must match it (negative case)'
-);
-
-SELECT lives_ok(
-    $$
-        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'foobar')
-    $$,
-    'if a pattern is provided, an example must match it (positive case)'
-);
-
-SELECT throws_like(
-    $$
-        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'xfoobar')
-    $$,
-    '%violates check constraint%',
-    'patterns are anchored to front and back, so "foo.*" does not match "xfoobar"'
-);
-
-SELECT lives_ok(
-    $$
-        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug2', 'gobblygook', 'find this online', 'e.g. kljensen', '.*foo.*', 'xfoobar')
-    $$,
-    'patterns are anchored to front and back, so ".*foo.*" does not match "xfoobar"'
-);
-
-select * from finish();
+SET LOCAL role TO anonymous
+; SET "request.jwt.claim.role" TO anonymous
+; SELECT throws_like('select * from api.assignment_fields', '%permission denied%', 'anonymous users should not be able to use the api.assignment_fields view')
+; SET LOCAL role TO student
+; SET "request.jwt.claim.role" TO student
+; SELECT set_eq('SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)', ARRAY['exam-1', 'exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'], 'students see fields for draft assignments too, or the page renders empty')
+; SET LOCAL role TO ta
+; SET "request.jwt.claim.role" TO ta
+; SELECT set_eq('SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)', ARRAY['exam-1', 'exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'], 'TAs see fields for draft assignments too')
+; PREPARE doinsert AS
+    INSERT INTO api.assignment_fields (assignment_slug, slug, label, help, placeholder)
+    VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen')
+; SELECT throws_like('doinsert', '%permission denied%', 'students should not be able to insert')
+; SET LOCAL role TO faculty
+; SET "request.jwt.claim.role" TO faculty
+; SELECT set_eq('SELECT assignment_slug FROM api.assignment_fields ORDER BY (assignment_slug)', ARRAY['exam-1', 'exam-1', 'exam-1', 'js-koans', 'project-update-1', 'project-update-1', 'team-selection'], 'faculty should see fields for draft and non-draft assignments')
+; SELECT lives_ok('doinsert', 'faculty should be able to insert')
+; SELECT lives_ok('DELETE FROM api.assignment_fields WHERE label = ''gobblygook''', 'faculty can delete assignment_fields')
+; SELECT throws_like('
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern) VALUES (''exam-1'', ''myfieldslug'', ''gobblygook'', ''find this online'', ''e.g. kljensen'', ''foo.*'')
+    ', '%violates check constraint%', 'if a pattern is provided, an example must be provided')
+; SELECT throws_like('
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES (''exam-1'', ''myfieldslug'', ''gobblygook'', ''find this online'', ''e.g. kljensen'', ''foo.*'', ''bar'')
+    ', '%violates check constraint%', 'if a pattern is provided, an example must match it (negative case)')
+; SELECT lives_ok('
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES (''exam-1'', ''myfieldslug'', ''gobblygook'', ''find this online'', ''e.g. kljensen'', ''foo.*'', ''foobar'')
+    ', 'if a pattern is provided, an example must match it (positive case)')
+; SELECT throws_like('
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES (''exam-1'', ''myfieldslug'', ''gobblygook'', ''find this online'', ''e.g. kljensen'', ''foo.*'', ''xfoobar'')
+    ', '%violates check constraint%', 'patterns are anchored to front and back, so "foo.*" does not match "xfoobar"')
+; SELECT lives_ok('
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES (''exam-1'', ''myfieldslug2'', ''gobblygook'', ''find this online'', ''e.g. kljensen'', ''.*foo.*'', ''xfoobar'')
+    ', 'patterns are anchored to front and back, so ".*foo.*" does not match "xfoobar"')
+; SELECT *
+FROM finish()

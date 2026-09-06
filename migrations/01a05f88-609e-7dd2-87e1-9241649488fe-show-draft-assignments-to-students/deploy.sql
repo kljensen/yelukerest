@@ -33,47 +33,29 @@
 -- Both definitions below are the deployed ones with the WHERE clause removed;
 -- the column lists are reproduced exactly, since CREATE OR REPLACE VIEW
 -- requires the same columns in the same order.
-
-CREATE OR REPLACE VIEW api.assignments WITH (security_barrier='true') AS
- SELECT slug,
-    points_possible,
-    is_draft,
-    is_markdown,
-    is_team,
-    title,
-    body,
-    closed_at,
-    created_at,
-    updated_at,
-    ((is_draft = false) AND (CURRENT_TIMESTAMP < closed_at)) AS is_open
-   FROM data.assignment;
-
-ALTER VIEW api.assignments OWNER TO api;
-
-CREATE OR REPLACE VIEW api.assignment_fields WITH (security_barrier='true') AS
- SELECT slug,
-    assignment_slug,
-    label,
-    help,
-    placeholder,
-    is_url,
-    is_multiline,
-    display_order,
-    pattern,
-    example,
-    created_at,
-    updated_at
-   FROM data.assignment_field field;
-
-ALTER VIEW api.assignment_fields OWNER TO api;
-
+CREATE OR REPLACE VIEW api.assignments WITH (security_barrier=true) AS
+    SELECT
+        slug, points_possible, is_draft, is_markdown, is_team, title, body,
+        closed_at, created_at, updated_at, is_draft = false
+        AND current_timestamp < closed_at AS is_open
+    FROM data.assignment
+; ALTER VIEW api.assignments
+    OWNER TO api
+; CREATE OR REPLACE VIEW api.assignment_fields WITH (security_barrier=true) AS
+    SELECT
+        slug, assignment_slug, label, help, placeholder, is_url, is_multiline,
+        display_order, pattern, example, created_at, updated_at
+    FROM data.assignment_field field
+; ALTER VIEW api.assignment_fields
+    OWNER TO api
+;
 -- CREATE OR REPLACE VIEW keeps existing privileges, but restating them costs
 -- nothing and means this migration is a complete description of the end state.
-GRANT SELECT ON api.assignments TO student, ta;
-GRANT SELECT, INSERT, UPDATE, DELETE ON api.assignments TO faculty;
-GRANT SELECT ON api.assignment_fields TO student, ta;
-GRANT SELECT, INSERT, UPDATE, DELETE ON api.assignment_fields TO faculty;
-
+GRANT select ON api.assignments TO student, ta
+; GRANT select, insert, update, delete ON api.assignments TO faculty
+; GRANT select ON api.assignment_fields TO student, ta
+; GRANT select, insert, update, delete ON api.assignment_fields TO faculty
+;
 -- Close the exception branch of the field-write guard while we are here.
 --
 -- Making drafts readable is only safe because writing to one is refused, and
@@ -90,11 +72,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON api.assignment_fields TO faculty;
 -- write to one, is the wrong order to do things in. The exception branch now
 -- carries the same condition as the ordinary branch, which is what
 -- assignment_submission already does.
-
-CREATE OR REPLACE FUNCTION data.assignment_field_submission_is_writable_by_current_user(the_assignment_submission_id integer) RETURNS boolean
-    LANGUAGE plpgsql SECURITY DEFINER
-    SET search_path TO 'data', 'pg_temp'
-    AS $function$
+CREATE OR REPLACE FUNCTION data.assignment_field_submission_is_writable_by_current_user(the_assignment_submission_id int) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
 BEGIN
     RETURN EXISTS (
         SELECT ass_sub.id
@@ -138,7 +116,7 @@ BEGIN
             )
     );
 END;
-$function$;
-
+$$
+;
 -- PostgREST caches the schema; without this it keeps serving the old views.
-NOTIFY pgrst, 'reload schema';
+NOTIFY pgrst, 'reload schema'

@@ -5,35 +5,25 @@
 -- ability to change every row row-level security admits, which for a team
 -- submission is other people's work. This exists so the migration is
 -- reversible, not as a routine operation.
-
-DROP TRIGGER IF EXISTS tg_engagement_row_bound_delete ON data.engagement;
-DROP TRIGGER IF EXISTS tg_engagement_row_bound_update ON data.engagement;
-DROP TRIGGER IF EXISTS tg_engagement_row_bound_insert ON data.engagement;
-
-DROP TRIGGER IF EXISTS tg_assignment_submission_row_bound_delete ON data.assignment_submission;
-DROP TRIGGER IF EXISTS tg_assignment_submission_row_bound_update ON data.assignment_submission;
-DROP TRIGGER IF EXISTS tg_assignment_submission_row_bound_insert ON data.assignment_submission;
-
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_single_parent_delete ON data.assignment_field_submission;
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_single_parent_update ON data.assignment_field_submission;
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_single_parent_insert ON data.assignment_field_submission;
-
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_row_bound_delete ON data.assignment_field_submission;
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_row_bound_update ON data.assignment_field_submission;
-DROP TRIGGER IF EXISTS tg_assignment_field_submission_row_bound_insert ON data.assignment_field_submission;
-
-DROP FUNCTION IF EXISTS data.enforce_single_assignment_submission();
-DROP FUNCTION IF EXISTS data.enforce_request_row_bound();
-DROP FUNCTION IF EXISTS data.request_row_bound_default();
-
+DROP TRIGGER IF EXISTS tg_engagement_row_bound_delete ON data.engagement
+; DROP TRIGGER IF EXISTS tg_engagement_row_bound_update ON data.engagement
+; DROP TRIGGER IF EXISTS tg_engagement_row_bound_insert ON data.engagement
+; DROP TRIGGER IF EXISTS tg_assignment_submission_row_bound_delete ON data.assignment_submission
+; DROP TRIGGER IF EXISTS tg_assignment_submission_row_bound_update ON data.assignment_submission
+; DROP TRIGGER IF EXISTS tg_assignment_submission_row_bound_insert ON data.assignment_submission
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_single_parent_delete ON data.assignment_field_submission
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_single_parent_update ON data.assignment_field_submission
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_single_parent_insert ON data.assignment_field_submission
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_row_bound_delete ON data.assignment_field_submission
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_row_bound_update ON data.assignment_field_submission
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_row_bound_insert ON data.assignment_field_submission
+; DROP FUNCTION IF EXISTS data.enforce_single_assignment_submission()
+; DROP FUNCTION IF EXISTS data.enforce_request_row_bound()
+; DROP FUNCTION IF EXISTS data.request_row_bound_default()
+;
 -- api.check_request_jwt as 01a02545-enforce-scopes-on-writes left it, without
 -- the row-budget reset. Restored before the function it called is dropped.
-CREATE OR REPLACE FUNCTION api.check_request_jwt() RETURNS void
-STABLE
-SECURITY DEFINER
-LANGUAGE plpgsql
-SET search_path = pg_catalog, api, settings, request, pg_temp
-AS $$
+CREATE OR REPLACE FUNCTION api.check_request_jwt() RETURNS void STABLE SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, api, settings, request, pg_temp AS $$
 DECLARE
     claims jsonb;
     claim_role text;
@@ -94,12 +84,9 @@ BEGIN
         END IF;
     END IF;
 END;
-$$;
-
-ALTER FUNCTION api.check_request_jwt() OWNER TO yelukerest_migrator;
-REVOKE ALL ON FUNCTION api.check_request_jwt() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION api.check_request_jwt() TO anonymous, student, ta, faculty, observer, app;
-
-DROP FUNCTION IF EXISTS request.reset_row_bound_counters();
-
-NOTIFY pgrst, 'reload schema';
+$$
+; ALTER FUNCTION api.check_request_jwt() OWNER TO yelukerest_migrator
+; REVOKE ALL ON FUNCTION api.check_request_jwt() FROM public
+; GRANT execute ON FUNCTION api.check_request_jwt() TO anonymous, student, ta, faculty, observer, app
+; DROP FUNCTION IF EXISTS request.reset_row_bound_counters()
+; NOTIFY pgrst, 'reload schema'

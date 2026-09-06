@@ -1,6 +1,4 @@
 -- Verify yelukerest:ddl on pg
-
-
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'api') THEN
@@ -789,4 +787,4 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'all api view columns must have non-empty comments';
     END IF;
-END $$;
+END $$

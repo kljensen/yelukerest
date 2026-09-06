@@ -2,12 +2,7 @@
 -- Reverting reopens the hole described in deploy.sql -- a read-only token
 -- regains the ability to write -- so this exists for completeness, not as a
 -- routine operation.
-CREATE OR REPLACE FUNCTION api.check_request_jwt() RETURNS void
-STABLE
-SECURITY DEFINER
-LANGUAGE plpgsql
-SET search_path = pg_catalog, api, settings, request, pg_temp
-AS $$
+CREATE OR REPLACE FUNCTION api.check_request_jwt() RETURNS void STABLE SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, api, settings, request, pg_temp AS $$
 DECLARE
     claims jsonb;
     claim_role text;
@@ -55,11 +50,8 @@ BEGIN
         RAISE insufficient_privilege USING MESSAGE = 'invalid jwt subject';
     END IF;
 END;
-$$;
-
-
-ALTER FUNCTION api.check_request_jwt() OWNER TO yelukerest_migrator;
-REVOKE ALL ON FUNCTION api.check_request_jwt() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION api.check_request_jwt() TO anonymous, student, ta, faculty, observer, app;
-
-NOTIFY pgrst, 'reload schema';
+$$
+; ALTER FUNCTION api.check_request_jwt() OWNER TO yelukerest_migrator
+; REVOKE ALL ON FUNCTION api.check_request_jwt() FROM public
+; GRANT execute ON FUNCTION api.check_request_jwt() TO anonymous, student, ta, faculty, observer, app
+; NOTIFY pgrst, 'reload schema'

@@ -1,350 +1,184 @@
 
-
 -- Plan the tests.
-SELECT plan(39);
-
-SELECT view_owner_is(
-    'api', 'meetings', 'api',
-    'api.meetings view should be owned by the api role'
-);
-
-SELECT results_eq(
-    $$
+SELECT plan(39)
+; SELECT view_owner_is('api', 'meetings', 'api', 'api.meetings view should be owned by the api role')
+; SELECT results_eq('
         SELECT n.nspname, t.typname
         FROM pg_attribute a
         JOIN pg_class c ON c.oid = a.attrelid
         JOIN pg_namespace cn ON cn.oid = c.relnamespace
         JOIN pg_type t ON t.oid = a.atttypid
         JOIN pg_namespace n ON n.oid = t.typnamespace
-        WHERE cn.nspname = 'data'
-        AND c.relname = 'meeting'
-        AND a.attname = 'meeting_type'
-    $$,
-    $$ VALUES ('data'::name, 'meeting_type_enum'::name) $$,
-    'data.meeting.meeting_type should use data.meeting_type_enum'
-);
-
+        WHERE cn.nspname = ''data''
+        AND c.relname = ''meeting''
+        AND a.attname = ''meeting_type''
+    ', ' VALUES (''data''::name, ''meeting_type_enum''::name) ', 'data.meeting.meeting_type should use data.meeting_type_enum')
+;
 -- switch to a anonymous application user
-set local role anonymous;
-set request.jwt.claim.role = 'anonymous';
-
-SELECT throws_ok(
-    'SELECT * FROM data.meeting',
-    '42501',
-    NULL,
-    'anonymous user should not have access to the data schema'
-);
-SELECT throws_ok(
-    'INSERT INTO api.meetings (slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''intro'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
-    '42501',
-    'permission denied for view meetings',
-    'anonymous user should not be able to insert into the api.meetings view'
-);
-
-select set_eq(
-    'select slug from api.meetings',
-    array['intro', 'structuredquerylang', 'entrepreneurship-woot', 'server-side-apps'],
-    'anonymous user can see all rows of the api.meetings view'
-);
-
+SET LOCAL role TO anonymous
+; SET "request.jwt.claim.role" TO anonymous
+; SELECT throws_ok('SELECT * FROM data.meeting', '42501', NULL, 'anonymous user should not have access to the data schema')
+; SELECT throws_ok('INSERT INTO api.meetings (slug, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''intro'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')', '42501', 'permission denied for view meetings', 'anonymous user should not be able to insert into the api.meetings view')
+; SELECT set_eq('select slug from api.meetings', ARRAY['intro', 'structuredquerylang', 'entrepreneurship-woot', 'server-side-apps'], 'anonymous user can see all rows of the api.meetings view')
+;
 -- switch to a faculty application user
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-
+SET LOCAL role TO faculty
+; SET "request.jwt.claim.role" TO faculty
+;
 -- Note that, here we are testing the `data` schema,
 -- and NOT the `api` schema.
-SELECT throws_ok(
-    'SELECT * FROM data.meeting',
-    '42501',
-    NULL,
-    'faculty should not have direct table access in the data schema'
-);
-
-select set_eq(
-    'select slug from api.meetings',
-    array['intro', 'structuredquerylang', 'entrepreneurship-woot', 'server-side-apps'],
-    'faculty user can see all rows of the api.meetings view'
-);
-
-SELECT lives_ok(
-    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
-    'faculty should be able to insert into the api.meetings view'
-);
-
-SELECT is(
-    (SELECT meeting_type::text FROM api.meetings WHERE slug = 'fakeclass'),
-    'lecture',
-    'meetings should default to lecture type'
-);
-
-SELECT lives_ok(
-    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('spring-break', 'Spring Break', '', 'No class', '2018-03-24T14:00:00Z', '1 minute', 'no-meeting', false) $$,
-    'faculty should be able to insert a no-meeting row'
-);
-
-SELECT lives_ok(
-    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('office-hours', 'Office Hours', '', 'Extra help', '2018-03-25T14:00:00Z', '1 hour', 'office-hours', false) $$,
-    'faculty should be able to insert an office-hours row'
-);
-
-SELECT throws_like(
-    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES ('bad-type', 'Bad Type', '', 'Invalid', '2018-03-25T14:00:00Z', '1 hour', 'field-trip', false) $$,
-    '%invalid input value for enum meeting_type_enum%',
-    'meetings should reject unknown meeting types'
-);
-
-SELECT lives_ok(
-    'UPDATE api.meetings SET description = ''foo'' WHERE slug=''fakeclass''',
-    'faculty should be able to update meetings in the api.meetings view'
-);
-
-SELECT throws_like(
-    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
-    '%duplicate key%',
-    'meetings schema should reject duplicate slugs'
-);
-
-SELECT throws_like(
-    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''abcdeX'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
-    '%violates check constraint "meeting_slug_check"%',
-    'meetings slugs should be only [a-z0-9-]'
-);
-SELECT throws_like(
-    'INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''abcdefghij0123456789abcdefghij0123456789abcdefghij0123456789'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')',
-    '%violates check constraint "meeting_slug_check"%',
-    'meetings slugs should be limited to 100 length'
-);
-
-SELECT throws_like(
-    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft) VALUES ('zero-duration', 'Zero duration', '', 'invalid', '2018-01-01T14:00:00Z', '0 seconds', false) $$,
-    '%violates check constraint "meeting_duration_positive"%',
-    'meetings should reject zero duration'
-);
-
-SELECT throws_like(
-    $$ INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft) VALUES ('negative-duration', 'Negative duration', '', 'invalid', '2018-01-01T14:00:00Z', '-10 minutes', false) $$,
-    '%violates check constraint "meeting_duration_positive"%',
-    'meetings should reject negative duration'
-);
-
-SELECT table_privs_are(
-    'api', 'meetings', 'faculty', ARRAY['SELECT', 'DELETE', 'INSERT', 'UPDATE'],
-    'faculty should have CRUD privileges on the api.meetings view'
-);
-
-SELECT function_privs_are(
-    'api', 'sync_meetings', ARRAY['jsonb'], 'anonymous', ARRAY[]::text[],
-    'anonymous should not be able to execute api.sync_meetings'
-);
-
-SELECT function_privs_are(
-    'api', 'sync_meetings', ARRAY['jsonb'], 'student', ARRAY[]::text[],
-    'students should not be able to execute api.sync_meetings'
-);
-
-SELECT function_privs_are(
-    'api', 'sync_meetings', ARRAY['jsonb'], 'faculty', ARRAY['EXECUTE'],
-    'faculty should be able to execute api.sync_meetings'
-);
-
-set local role student;
-set request.jwt.claim.role = 'student';
-set request.jwt.claim.user_id = '1';
-
-SELECT throws_like(
-    $$ SELECT * FROM api.sync_meetings('[]'::jsonb) $$,
-    '%permission denied%',
-    'students should not be able to sync meetings'
-);
-
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-
-SELECT throws_like(
-    $$ SELECT * FROM api.sync_meetings('[]'::jsonb) $$,
-    '%refuses to sync an empty meeting list%',
-    'sync_meetings should reject empty meeting lists'
-);
-
-SELECT throws_like(
-    $$ SELECT * FROM api.sync_meetings('{"slug":"intro"}'::jsonb) $$,
-    '%expects a JSON array%',
-    'sync_meetings should reject non-array JSON'
-);
-
-SELECT throws_like(
-    $$
+SELECT throws_ok('SELECT * FROM data.meeting', '42501', NULL, 'faculty should not have direct table access in the data schema')
+; SELECT set_eq('select slug from api.meetings', ARRAY['intro', 'structuredquerylang', 'entrepreneurship-woot', 'server-side-apps'], 'faculty user can see all rows of the api.meetings view')
+; SELECT lives_ok('INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')', 'faculty should be able to insert into the api.meetings view')
+; SELECT
+    "is"((
+        SELECT meeting_type::text
+        FROM api.meetings
+        WHERE slug = 'fakeclass'
+    ), 'lecture', 'meetings should default to lecture type')
+; SELECT lives_ok(' INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES (''spring-break'', ''Spring Break'', '''', ''No class'', ''2018-03-24T14:00:00Z'', ''1 minute'', ''no-meeting'', false) ', 'faculty should be able to insert a no-meeting row')
+; SELECT lives_ok(' INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES (''office-hours'', ''Office Hours'', '''', ''Extra help'', ''2018-03-25T14:00:00Z'', ''1 hour'', ''office-hours'', false) ', 'faculty should be able to insert an office-hours row')
+; SELECT throws_like(' INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, meeting_type, is_draft) VALUES (''bad-type'', ''Bad Type'', '''', ''Invalid'', ''2018-03-25T14:00:00Z'', ''1 hour'', ''field-trip'', false) ', '%invalid input value for enum meeting_type_enum%', 'meetings should reject unknown meeting types')
+; SELECT lives_ok('UPDATE api.meetings SET description = ''foo'' WHERE slug=''fakeclass''', 'faculty should be able to update meetings in the api.meetings view')
+; SELECT throws_like('INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''fakeclass'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')', '%duplicate key%', 'meetings schema should reject duplicate slugs')
+; SELECT throws_like('INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''abcdeX'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')', '%violates check constraint "meeting_slug_check"%', 'meetings slugs should be only [a-z0-9-]')
+; SELECT throws_like('INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft, created_at, updated_at) VALUES (''abcdefghij0123456789abcdefghij0123456789abcdefghij0123456789'', ''fake class title'', ''my awesome summary'', ''description_1_'', ''2017-12-27 14:54:50+00'', ''00:00:03'', false, ''2017-12-27 14:54:50+00'', ''2017-12-27 21:11:02.845995+00'')', '%violates check constraint "meeting_slug_check"%', 'meetings slugs should be limited to 100 length')
+; SELECT throws_like(' INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft) VALUES (''zero-duration'', ''Zero duration'', '''', ''invalid'', ''2018-01-01T14:00:00Z'', ''0 seconds'', false) ', '%violates check constraint "meeting_duration_positive"%', 'meetings should reject zero duration')
+; SELECT throws_like(' INSERT INTO api.meetings (slug, title, summary, description, begins_at, duration, is_draft) VALUES (''negative-duration'', ''Negative duration'', '''', ''invalid'', ''2018-01-01T14:00:00Z'', ''-10 minutes'', false) ', '%violates check constraint "meeting_duration_positive"%', 'meetings should reject negative duration')
+; SELECT table_privs_are('api', 'meetings', 'faculty', ARRAY['SELECT', 'DELETE', 'INSERT', 'UPDATE'], 'faculty should have CRUD privileges on the api.meetings view')
+; SELECT function_privs_are('api', 'sync_meetings', ARRAY['jsonb'], 'anonymous', ARRAY[]::text[], 'anonymous should not be able to execute api.sync_meetings')
+; SELECT function_privs_are('api', 'sync_meetings', ARRAY['jsonb'], 'student', ARRAY[]::text[], 'students should not be able to execute api.sync_meetings')
+; SELECT function_privs_are('api', 'sync_meetings', ARRAY['jsonb'], 'faculty', ARRAY['EXECUTE'], 'faculty should be able to execute api.sync_meetings')
+; SET LOCAL role TO student
+; SET "request.jwt.claim.role" TO student
+; SET "request.jwt.claim.user_id" TO "1"
+; SELECT throws_like(' SELECT * FROM api.sync_meetings(''[]''::jsonb) ', '%permission denied%', 'students should not be able to sync meetings')
+; SET LOCAL role TO faculty
+; SET "request.jwt.claim.role" TO faculty
+; SELECT throws_like(' SELECT * FROM api.sync_meetings(''[]''::jsonb) ', '%refuses to sync an empty meeting list%', 'sync_meetings should reject empty meeting lists')
+; SELECT throws_like(' SELECT * FROM api.sync_meetings(''{"slug":"intro"}''::jsonb) ', '%expects a JSON array%', 'sync_meetings should reject non-array JSON')
+; SELECT throws_like('
         SELECT * FROM api.sync_meetings(
             (
                 SELECT jsonb_agg(
                     jsonb_build_object(
-                        'slug', 'cardinality-' || i,
-                        'title', 'Cardinality ' || i,
-                        'summary', '',
-                        'description', 'd',
-                        'begins_at', '2018-01-01T14:00:00Z',
-                        'duration', '01:00:00',
-                        'is_draft', true
+                        ''slug'', ''cardinality-'' || i,
+                        ''title'', ''Cardinality '' || i,
+                        ''summary'', '''',
+                        ''description'', ''d'',
+                        ''begins_at'', ''2018-01-01T14:00:00Z'',
+                        ''duration'', ''01:00:00'',
+                        ''is_draft'', true
                     )
                 )
                 FROM generate_series(1, 501) AS i
             )
         )
-    $$,
-    '%accepts at most 500 meetings%',
-    'sync_meetings should reject more than 500 meetings'
-);
-
-SELECT throws_like(
-    $$
+    ', '%accepts at most 500 meetings%', 'sync_meetings should reject more than 500 meetings')
+; SELECT throws_like('
         SELECT * FROM api.sync_meetings(
             jsonb_build_array(
                 jsonb_build_object(
-                    'slug', 'oversized-payload',
-                    'title', 'Oversized payload',
-                    'summary', '',
-                    'description', repeat('x', 4194305),
-                    'begins_at', '2018-01-01T14:00:00Z',
-                    'duration', '01:00:00',
-                    'is_draft', true
+                    ''slug'', ''oversized-payload'',
+                    ''title'', ''Oversized payload'',
+                    ''summary'', '''',
+                    ''description'', repeat(''x'', 4194305),
+                    ''begins_at'', ''2018-01-01T14:00:00Z'',
+                    ''duration'', ''01:00:00'',
+                    ''is_draft'', true
                 )
             )
         )
-    $$,
-    '%payload exceeds the 4 MB limit%',
-    'sync_meetings should reject payloads larger than 4 MB'
-);
-
-SELECT throws_like(
-    $$
+    ', '%payload exceeds the 4 MB limit%', 'sync_meetings should reject payloads larger than 4 MB')
+; SELECT throws_like('
         SELECT * FROM api.sync_meetings(
-            '[{"slug":"same","title":"Same","summary":"","description":"first","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
-              {"slug":"same","title":"Same","summary":"","description":"second","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false}]'::jsonb
+            ''[{"slug":"same","title":"Same","summary":"","description":"first","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
+              {"slug":"same","title":"Same","summary":"","description":"second","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false}]''::jsonb
         )
-    $$,
-    '%duplicate meeting slug%',
-    'sync_meetings should reject duplicate input slugs'
-);
-
-SELECT throws_like(
-    $$
+    ', '%duplicate meeting slug%', 'sync_meetings should reject duplicate input slugs')
+; SELECT throws_like('
         SELECT * FROM api.sync_meetings(
-            '[{"slug":"intro","title":"Introduction to the class","summary":"summary","description":"description","begins_at":"2018-01-01T14:00:00Z","duration":"0 seconds","is_draft":false},
+            ''[{"slug":"intro","title":"Introduction to the class","summary":"summary","description":"description","begins_at":"2018-01-01T14:00:00Z","duration":"0 seconds","is_draft":false},
               {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
               {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
               {"slug":"server-side-apps","title":"Server-side Apps","summary":"summary","description":"description","begins_at":"2018-01-04T14:00:00Z","duration":"01:20:00","is_draft":false},
-              {"slug":"fakeclass","title":"fake class title","summary":"my awesome summary","description":"foo","begins_at":"2017-12-27T14:54:50Z","duration":"00:00:03","is_draft":false}]'::jsonb
+              {"slug":"fakeclass","title":"fake class title","summary":"my awesome summary","description":"foo","begins_at":"2017-12-27T14:54:50Z","duration":"00:00:03","is_draft":false}]''::jsonb
         )
-    $$,
-    '%meeting_duration_positive%',
-    'sync_meetings should reject zero meeting durations'
-);
-
-SELECT throws_like(
-    $$
+    ', '%meeting_duration_positive%', 'sync_meetings should reject zero meeting durations')
+; SELECT throws_like('
         SELECT * FROM api.sync_meetings(
-            '[{"slug":"intro","title":"Introduction to the class","summary":"summary","description":"description","begins_at":"2018-01-01T14:00:00Z","duration":"-10 minutes","is_draft":false},
+            ''[{"slug":"intro","title":"Introduction to the class","summary":"summary","description":"description","begins_at":"2018-01-01T14:00:00Z","duration":"-10 minutes","is_draft":false},
               {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
               {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
               {"slug":"server-side-apps","title":"Server-side Apps","summary":"summary","description":"description","begins_at":"2018-01-04T14:00:00Z","duration":"01:20:00","is_draft":false},
-              {"slug":"fakeclass","title":"fake class title","summary":"my awesome summary","description":"foo","begins_at":"2017-12-27T14:54:50Z","duration":"00:00:03","is_draft":false}]'::jsonb
+              {"slug":"fakeclass","title":"fake class title","summary":"my awesome summary","description":"foo","begins_at":"2017-12-27T14:54:50Z","duration":"00:00:03","is_draft":false}]''::jsonb
         )
-    $$,
-    '%meeting_duration_positive%',
-    'sync_meetings should reject negative meeting durations'
-);
-
-SELECT throws_like(
-    $$
+    ', '%meeting_duration_positive%', 'sync_meetings should reject negative meeting durations')
+; SELECT throws_like('
         SELECT * FROM api.sync_meetings(
-            '[{"slug":"intro","title":"Rollback Target","summary":"updated","description":"should not stick","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
+            ''[{"slug":"intro","title":"Rollback Target","summary":"updated","description":"should not stick","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
               {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
               {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
-              {"slug":"BadSlug","title":"Invalid Slug","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]'::jsonb
+              {"slug":"BadSlug","title":"Invalid Slug","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]''::jsonb
         )
-    $$,
-    '%meeting_slug_check%',
-    'sync_meetings should roll back earlier deletes and updates when a later row fails'
-);
-
-SELECT set_eq(
-    'SELECT slug FROM api.meetings ORDER BY slug',
-    ARRAY['entrepreneurship-woot', 'fakeclass', 'intro', 'office-hours', 'server-side-apps', 'spring-break', 'structuredquerylang'],
-    'failed sync_meetings should leave the meeting set unchanged'
-);
-
-SELECT is(
-    (SELECT title FROM api.meetings WHERE slug = 'intro'),
-    'Introduction to the class',
-    'failed sync_meetings should leave updated rows unchanged'
-);
-
-SELECT results_eq(
-    $$
+    ', '%meeting_slug_check%', 'sync_meetings should roll back earlier deletes and updates when a later row fails')
+; SELECT set_eq('SELECT slug FROM api.meetings ORDER BY slug', ARRAY['entrepreneurship-woot', 'fakeclass', 'intro', 'office-hours', 'server-side-apps', 'spring-break', 'structuredquerylang'], 'failed sync_meetings should leave the meeting set unchanged')
+; SELECT
+    "is"((
+        SELECT title
+        FROM api.meetings
+        WHERE slug = 'intro'
+    ), 'Introduction to the class', 'failed sync_meetings should leave updated rows unchanged')
+; SELECT results_eq('
         SELECT inserted_count, updated_count, unchanged_count, deleted_count
         FROM api.sync_meetings(
-            '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
+            ''[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","is_draft":false},
               {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true},
               {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","is_draft":false},
-              {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]'::jsonb
+              {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","is_draft":true}]''::jsonb
         )
-    $$,
-    $$ VALUES (1, 3, 0, 4) $$,
-    'sync_meetings should report inserted, updated, and deleted counts'
-);
-
-SELECT set_eq(
-    'SELECT slug FROM api.meetings ORDER BY slug',
-    ARRAY['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang'],
-    'sync_meetings should replace the meeting set'
-);
-
-SELECT is(
-    (SELECT meeting_type::text FROM api.meetings WHERE slug = 'new-admin-meeting'),
-    'lecture',
-    'sync_meetings should default omitted meeting_type to lecture'
-);
-
-SELECT results_eq(
-    $$
+    ', ' VALUES (1, 3, 0, 4) ', 'sync_meetings should report inserted, updated, and deleted counts')
+; SELECT set_eq('SELECT slug FROM api.meetings ORDER BY slug', ARRAY['entrepreneurship-woot', 'intro', 'new-admin-meeting', 'structuredquerylang'], 'sync_meetings should replace the meeting set')
+; SELECT
+    "is"((
+        SELECT meeting_type::text
+        FROM api.meetings
+        WHERE slug = 'new-admin-meeting'
+    ), 'lecture', 'sync_meetings should default omitted meeting_type to lecture')
+; SELECT results_eq('
         SELECT inserted_count, updated_count, unchanged_count, deleted_count
         FROM api.sync_meetings(
-            '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
+            ''[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
               {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":true},
               {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
-              {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"office-hours","is_draft":true}]'::jsonb
+              {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"office-hours","is_draft":true}]''::jsonb
         )
-    $$,
-    $$ VALUES (0, 1, 3, 0) $$,
-    'sync_meetings should update meeting_type when provided'
-);
-
-SELECT is(
-    (SELECT meeting_type::text FROM api.meetings WHERE slug = 'new-admin-meeting'),
-    'office-hours',
-    'sync_meetings should persist provided meeting_type'
-);
-
-SELECT results_eq(
-    $$
+    ', ' VALUES (0, 1, 3, 0) ', 'sync_meetings should update meeting_type when provided')
+; SELECT
+    "is"((
+        SELECT meeting_type::text
+        FROM api.meetings
+        WHERE slug = 'new-admin-meeting'
+    ), 'office-hours', 'sync_meetings should persist provided meeting_type')
+; SELECT results_eq('
         WITH before_sync AS (
             SELECT updated_at
             FROM api.meetings
-            WHERE slug = 'intro'
+            WHERE slug = ''intro''
         ),
         sync_result AS (
             SELECT inserted_count, updated_count, unchanged_count, deleted_count
             FROM api.sync_meetings(
-                '[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
+                ''[{"slug":"intro","title":"Updated Introduction","summary":"updated","description":"updated description","begins_at":"2018-01-01T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
                   {"slug":"structuredquerylang","title":"Databases and Structured Query Language","summary":"summary","description":"description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":true},
                   {"slug":"entrepreneurship-woot","title":"The Lean Start-up","summary":"summary","description":"description","begins_at":"2018-01-03T14:00:00Z","duration":"01:20:00","meeting_type":"lecture","is_draft":false},
-                  {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"office-hours","is_draft":true}]'::jsonb
+                  {"slug":"new-admin-meeting","title":"New Admin Meeting","summary":"new","description":"new description","begins_at":"2018-01-02T14:00:00Z","duration":"01:20:00","meeting_type":"office-hours","is_draft":true}]''::jsonb
             )
         ),
         after_sync AS (
             SELECT updated_at
             FROM api.meetings
-            WHERE slug = 'intro'
+            WHERE slug = ''intro''
         )
         SELECT
             sync_result.inserted_count,
@@ -353,10 +187,8 @@ SELECT results_eq(
             sync_result.deleted_count,
             before_sync.updated_at = after_sync.updated_at
         FROM sync_result, before_sync, after_sync
-    $$,
-    $$ VALUES (0, 0, 4, 0, true) $$,
-    'rerunning sync_meetings should report unchanged rows without touching updated_at'
-);
-
+    ', ' VALUES (0, 0, 4, 0, true) ', 'rerunning sync_meetings should report unchanged rows without touching updated_at')
+;
 -- Finish the tests and clean up.
-SELECT * FROM finish();
+SELECT *
+FROM finish()

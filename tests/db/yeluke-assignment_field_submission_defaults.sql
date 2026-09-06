@@ -1,90 +1,63 @@
-select plan(5);
-
-INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example)
-VALUES ('exam-1', 'pattern-field', 'gobblygook', 'find this online', 'e.g. foo', '.*foo.*', 'xfoobar');
-
-INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,is_url,example)
-VALUES ('exam-1', 'url-field', 'gobblygook', 'find this online', 'e.g. http://kljensen', true, 'https://foo.com');
-INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder)
-VALUES ('exam-1', 'direct-field', 'gobblygook', 'find this online', 'e.g. foo');
-
-SELECT throws_like(
-    $$
-        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES ('exam-1', 'myfieldslug', 'gobblygook', 'find this online', 'e.g. kljensen', 'foo.*', 'bar')
-    $$,
-    '%violates check constraint%',
-    'if a pattern is provided, an example must match it (negative case)'
-);
-
+SELECT plan(5)
+; INSERT INTO api.assignment_fields (assignment_slug, slug, label, help, placeholder, pattern, example)
+VALUES ('exam-1', 'pattern-field', 'gobblygook', 'find this online', 'e.g. foo', '.*foo.*', 'xfoobar')
+; INSERT INTO api.assignment_fields (assignment_slug, slug, label, help, placeholder, is_url, example)
+VALUES ('exam-1', 'url-field', 'gobblygook', 'find this online', 'e.g. http://kljensen', true, 'https://foo.com')
+; INSERT INTO api.assignment_fields (assignment_slug, slug, label, help, placeholder)
+VALUES ('exam-1', 'direct-field', 'gobblygook', 'find this online', 'e.g. foo')
+; SELECT throws_like('
+        INSERT INTO api.assignment_fields (assignment_slug,slug,label,help,placeholder,pattern,example) VALUES (''exam-1'', ''myfieldslug'', ''gobblygook'', ''find this online'', ''e.g. kljensen'', ''foo.*'', ''bar'')
+    ', '%violates check constraint%', 'if a pattern is provided, an example must match it (negative case)')
+;
 -- The role claim is set but the user id is not, so `request.user_id()` stays
 -- NULL: that is what makes the submitter_user_id fallback below reachable,
 -- and it is also why every write here has to name its own `origin` (#370).
-set local role faculty;
-set request.jwt.claim.role = 'faculty';
-
-
-INSERT INTO api.assignment_submissions (id,assignment_slug, user_id, submitter_user_id) VALUES (11,'team-selection', 4, 4);
-select set_eq (
-  $$
+SET LOCAL role TO faculty
+; SET "request.jwt.claim.role" TO faculty
+; INSERT INTO api.assignment_submissions (id, assignment_slug, user_id, submitter_user_id)
+VALUES (11, 'team-selection', 4, 4)
+; SELECT set_eq('
     with 
     updated_rows as (
       INSERT INTO
         api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body,origin)
-      VALUES (11, 'secret', 'team-selection', 'mysecret', 'staff')
+      VALUES (11, ''secret'', ''team-selection'', ''mysecret'', ''staff'')
       RETURNING submitter_user_id
     )
     select submitter_user_id as total from updated_rows
-  $$,
-  ARRAY[4],
-  'submitter_user_id is autopopulated from the assignment_submission when not available'
-);
-
-INSERT INTO api.assignment_submissions (id,assignment_slug, user_id, submitter_user_id) VALUES (6001,'exam-1', 4, 4);
-select set_eq (
-  $$
+  ', ARRAY[4], 'submitter_user_id is autopopulated from the assignment_submission when not available')
+; INSERT INTO api.assignment_submissions (id, assignment_slug, user_id, submitter_user_id)
+VALUES (6001, 'exam-1', 4, 4)
+; SELECT set_eq('
     with 
     updated_rows as (
       INSERT INTO
         api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body,origin)
-      VALUES (6001, 'pattern-field', 'exam-1', 'xfoobar', 'staff')
+      VALUES (6001, ''pattern-field'', ''exam-1'', ''xfoobar'', ''staff'')
       RETURNING assignment_field_pattern
     )
     select assignment_field_pattern from updated_rows
-  $$,
-  ARRAY['.*foo.*'],
-  'pattern is autopopulated from the assignment when not available'
-);
-
-select set_eq (
-  $$
+  ', ARRAY['.*foo.*'], 'pattern is autopopulated from the assignment when not available')
+; SELECT set_eq('
     with 
     updated_rows as (
       INSERT INTO
         api.assignment_field_submissions (assignment_submission_id,assignment_field_slug,assignment_slug,body,origin)
-      VALUES (6001, 'url-field', 'exam-1', 'https://bar.com', 'staff')
+      VALUES (6001, ''url-field'', ''exam-1'', ''https://bar.com'', ''staff'')
       RETURNING assignment_field_is_url
     )
     select assignment_field_is_url from updated_rows
-  $$,
-  ARRAY[true],
-  'is_url is autopopulated from the assignment when not available'
-);
-
-RESET ROLE;
-select set_eq (
-  $$
+  ', ARRAY[true], 'is_url is autopopulated from the assignment when not available')
+; RESET role
+; SELECT set_eq('
     with
     inserted_rows as (
       INSERT INTO
         data.assignment_field_submission (assignment_submission_id,assignment_field_slug,body,origin)
-      VALUES (6001, 'direct-field', 'direct body', 'staff')
+      VALUES (6001, ''direct-field'', ''direct body'', ''staff'')
       RETURNING assignment_slug
     )
     select assignment_slug from inserted_rows
-  $$,
-  ARRAY['exam-1'],
-  'assignment_slug is autopopulated for direct data.assignment_field_submission inserts'
-);
-
-
-select * from finish();
+  ', ARRAY['exam-1'], 'assignment_slug is autopopulated for direct data.assignment_field_submission inserts')
+; SELECT *
+FROM finish()

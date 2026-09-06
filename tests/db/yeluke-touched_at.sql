@@ -12,77 +12,48 @@
 -- whole of this transaction, so any row whose `created_at` is in this
 -- transaction's future reproduces the condition exactly -- that is precisely
 -- what a concurrent writer produces, and it is deterministic here.
-
-SELECT plan(16);
-
+SELECT plan(16)
+;
 -- The helper itself.
-
-SELECT is(
-    data.touched_at(current_timestamp - interval '1 hour'),
-    current_timestamp,
-    'touched_at should return now for a row created in the past'
-);
-
-SELECT is(
-    data.touched_at(current_timestamp),
-    current_timestamp,
-    'touched_at should return now for a row created at this transaction start'
-);
-
-SELECT is(
-    data.touched_at(current_timestamp + interval '1 hour'),
-    current_timestamp + interval '1 hour',
-    'touched_at should return created_at when created_at is later than now'
-);
-
-SELECT ok(
-    data.touched_at(current_timestamp + interval '1 hour') >= current_timestamp + interval '1 hour',
-    'touched_at should never return a value that violates updated_after_created'
-);
-
+SELECT "is"(data.touched_at(current_timestamp - '1 hour'::interval), current_timestamp, 'touched_at should return now for a row created in the past')
+; SELECT "is"(data.touched_at(current_timestamp), current_timestamp, 'touched_at should return now for a row created at this transaction start')
+; SELECT "is"(data.touched_at(current_timestamp + '1 hour'::interval), current_timestamp + '1 hour'::interval, 'touched_at should return created_at when created_at is later than now')
+; SELECT ok(data.touched_at(current_timestamp + '1 hour'::interval) >= (current_timestamp + '1 hour'::interval), 'touched_at should never return a value that violates updated_after_created')
+;
 -- The property that made GREATEST the right choice over clock_timestamp():
 -- an untouched insert keeps updated_at equal to created_at, so a freshly
 -- created row does not look edited.
-
-SELECT is(
-    data.touched_at(current_timestamp),
-    current_timestamp,
-    'touched_at should not advance within a transaction, so a fresh insert is not marked edited'
-);
-
+SELECT "is"(data.touched_at(current_timestamp), current_timestamp, 'touched_at should not advance within a transaction, so a fresh insert is not marked edited')
+;
 -- Every trigger that maintains updated_at must route through it. This is the
 -- assertion that fails if someone reintroduces the raw current_timestamp.
-
 -- `fill_user_secret_defaults` was the one holdout: its source file matched the
 -- `Read(**/*secret*)` deny rule in this machine's Claude settings, so it could
 -- not be edited when the rest were. #303 converted it, and the set is now
 -- empty. Asserting the exact set rather than a count is what made the fix show
 -- up here and get recorded, and it is still what catches a *different* trigger
 -- regressing -- which a bare count never would.
-SELECT is(
-    (
-        SELECT coalesce(string_agg(p.proname::text, ', ' ORDER BY p.proname::text), '')
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'data'
-        AND p.prosrc ~ 'NEW\.updated_at\s*:?=\s*current_timestamp'
-    ),
-    '',
-    'no trigger should still assign current_timestamp directly'
-);
-
-SELECT is(
-    (
+SELECT
+    "is"((
+        SELECT COALESCE(string_agg(p.proname::text, ', ' ORDER BY p.proname::text), '')
+        FROM
+            pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE
+            n.nspname = 'data'
+            AND p.prosrc ~ E'NEW\\.updated_at\\s*:?=\\s*current_timestamp'
+    ), '', 'no trigger should still assign current_timestamp directly')
+; SELECT
+    "is"((
         SELECT count(*)::int
-        FROM pg_proc p
-        JOIN pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'data'
-        AND p.prosrc ~ 'NEW\.updated_at\s*:?=\s*data\.touched_at'
-    ),
-    12,
-    'the twelve updated_at triggers should all route through data.touched_at'
-);
-
+        FROM
+            pg_proc p
+            JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE
+            n.nspname = 'data'
+            AND p.prosrc ~ E'NEW\\.updated_at\\s*:?=\\s*data\\.touched_at'
+    ), 12, 'the twelve updated_at triggers should all route through data.touched_at')
+;
 -- `updated_at` is the optimistic concurrency token on
 -- `assignment_field_submission`: a client sends back the value it last read and
 -- the trigger rejects the write if it no longer matches. So the token has to
@@ -90,89 +61,61 @@ SELECT is(
 -- equals `created_at`, so an update clamping back up to `created_at` returns
 -- the value already stored, and a client holding the stale token would pass the
 -- staleness check and overwrite a concurrent change.
-
-SELECT ok(
-    data.touched_at(current_timestamp + interval '1 hour', current_timestamp + interval '1 hour')
-        > current_timestamp + interval '1 hour',
-    'touched_at should advance strictly past the prior token even when clamping'
-);
-
-SELECT ok(
-    data.touched_at(current_timestamp - interval '1 hour', current_timestamp)
-        > current_timestamp - interval '1 microsecond',
-    'touched_at should not go backwards from the prior token'
-);
-
-SELECT is(
-    data.touched_at(current_timestamp - interval '1 hour', current_timestamp - interval '2 hours'),
-    current_timestamp,
-    'an ordinary update should still land on the transaction timestamp'
-);
-
-SELECT ok(
-    data.touched_at(current_timestamp, current_timestamp) > current_timestamp,
-    'two updates in one transaction should still produce distinct tokens'
-);
-
+SELECT ok(data.touched_at(current_timestamp + '1 hour'::interval, current_timestamp + '1 hour'::interval) > (current_timestamp + '1 hour'::interval), 'touched_at should advance strictly past the prior token even when clamping')
+; SELECT ok(data.touched_at(current_timestamp - '1 hour'::interval, current_timestamp) > (current_timestamp - '1 microsecond'::interval), 'touched_at should not go backwards from the prior token')
+; SELECT "is"(data.touched_at(current_timestamp - '1 hour'::interval, current_timestamp - '2 hours'::interval), current_timestamp, 'an ordinary update should still land on the transaction timestamp')
+; SELECT ok(data.touched_at(current_timestamp, current_timestamp) > current_timestamp, 'two updates in one transaction should still produce distinct tokens')
+;
 -- End to end, on a real table, against the exact condition that used to fail.
 -- A row whose created_at is later than this transaction's start is what a
 -- concurrent writer leaves behind.
-
 PREPARE update_future_row AS
-    UPDATE data.meeting SET title = title || '' WHERE slug = 'test-future-meeting';
-
-INSERT INTO data.meeting (slug, title, description, begins_at, duration, meeting_type, created_at)
-VALUES (
-    'test-future-meeting', 'Future', 'created by a later-starting transaction',
-    current_timestamp + interval '1 day',
-    '01:00:00', 'lecture', current_timestamp + interval '1 hour'
-);
-
-SELECT lives_ok(
-    'update_future_row',
-    'updating a row created by a later-starting transaction should not violate the check'
-);
-
-SELECT ok(
-    (SELECT updated_at >= created_at FROM data.meeting WHERE slug = 'test-future-meeting'),
-    'the updated row should satisfy updated_after_created'
-);
-
+    UPDATE data.meeting
+    SET title = title || ''
+    WHERE slug = 'test-future-meeting'
+; INSERT INTO data.meeting (slug, title, description, begins_at, duration, meeting_type, created_at)
+VALUES ('test-future-meeting', 'Future', 'created by a later-starting transaction', current_timestamp + '1 day'::interval, '01:00:00', 'lecture', current_timestamp + '1 hour'::interval)
+; SELECT lives_ok('update_future_row', 'updating a row created by a later-starting transaction should not violate the check')
+; SELECT
+    ok((
+        SELECT updated_at >= created_at
+        FROM data.meeting
+        WHERE slug = 'test-future-meeting'
+    ), 'the updated row should satisfy updated_after_created')
+;
 -- Clamped up to created_at, then one microsecond further so the concurrency
 -- token still advances. Before the fix this write raised; a clamp without the
 -- advance would have returned created_at unchanged.
-SELECT is(
-    (SELECT updated_at FROM data.meeting WHERE slug = 'test-future-meeting'),
-    current_timestamp + interval '1 hour' + interval '1 microsecond',
-    'updated_at should be clamped up to created_at and then advanced past the prior token'
-);
-
+SELECT
+    "is"((
+        SELECT updated_at
+        FROM data.meeting
+        WHERE slug = 'test-future-meeting'
+    ), (current_timestamp + '1 hour'::interval) + '1 microsecond'::interval, 'updated_at should be clamped up to created_at and then advanced past the prior token')
+;
 -- And the ordinary case is unchanged: a row created in the past gets now.
-
 INSERT INTO data.meeting (slug, title, description, begins_at, duration, meeting_type, created_at)
-VALUES (
-    'test-past-meeting', 'Past', 'the ordinary case',
-    current_timestamp + interval '1 day',
-    '01:00:00', 'lecture', current_timestamp - interval '1 hour'
-);
-
-SELECT is(
-    (SELECT updated_at FROM data.meeting WHERE slug = 'test-past-meeting'),
-    current_timestamp,
-    'inserting a row created in the past should stamp the transaction timestamp'
-);
-
-UPDATE data.meeting SET title = title || '' WHERE slug = 'test-past-meeting';
-
+VALUES ('test-past-meeting', 'Past', 'the ordinary case', current_timestamp + '1 day'::interval, '01:00:00', 'lecture', current_timestamp - '1 hour'::interval)
+; SELECT
+    "is"((
+        SELECT updated_at
+        FROM data.meeting
+        WHERE slug = 'test-past-meeting'
+    ), current_timestamp, 'inserting a row created in the past should stamp the transaction timestamp')
+; UPDATE data.meeting
+SET title = title || ''
+WHERE slug = 'test-past-meeting'
+;
 -- The insert above already stamped `current_timestamp`, and this update runs in
 -- the same transaction, so `current_timestamp` has not moved. The token still
 -- has to advance -- otherwise two writes in one transaction would share a
 -- concurrency token. In a later transaction this lands exactly on
 -- `current_timestamp`, since that is then already the greatest of the three.
-SELECT is(
-    (SELECT updated_at FROM data.meeting WHERE slug = 'test-past-meeting'),
-    current_timestamp + interval '1 microsecond',
-    'updating it in the same transaction should still advance the token'
-);
-
-SELECT * FROM finish();
+SELECT
+    "is"((
+        SELECT updated_at
+        FROM data.meeting
+        WHERE slug = 'test-past-meeting'
+    ), current_timestamp + '1 microsecond'::interval, 'updating it in the same transaction should still advance the token')
+; SELECT *
+FROM finish()

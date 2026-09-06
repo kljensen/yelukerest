@@ -22,4 +22,4 @@
 -- so this cannot announce a change that did not happen. `db-channel-enabled`
 -- defaults to true on channel `pgrst`, and this deployment does not override it
 -- (docker-compose.base.yaml sets no PGRST_DB_CHANNEL_ENABLED).
-NOTIFY pgrst, 'reload schema';
+NOTIFY pgrst, 'reload schema'

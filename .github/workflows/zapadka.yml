@@ -47,6 +47,7 @@ jobs:
       - name: Lint and deploy a fresh PostgreSQL 18 database
         run: |
           zapadka lint
+          zapadka format --check
           ./bin/bootstrap-db.sh test-migrator
           zapadka verify --target test
           zapadka status --target test --output json
