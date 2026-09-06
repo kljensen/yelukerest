@@ -72,6 +72,13 @@ Yelukerest is a class management system built around PostgreSQL with PostgREST p
 
 1. Deployable schema changes live in a new Zapadka migration under `migrations/`; provide `deploy.sql` and `verify.sql`, and `revert.sql` when reversible. Run `zapadka lint`, deploy to a disposable target, then run `bun run test_db`.
 
+   Deployed migrations are hashed *structurally* (zapadka ≥ 0.6.0): whitespace and
+   ordinary comments may be edited after deploy, and `zapadka format --check` runs in
+   CI. Anything else — a literal, statement order, or any text inside a dollar-quoted
+   body, comments included — is a substantive edit, and `history.definition_changed`
+   means exactly that. The remedy is a new corrective migration, never editing the
+   registry. `tests/scripts/zapadka-workflow.sh` proves the boundary.
+
 2. `db/src/` is the immutable-bootstrap input and test fixtures. Do not add deployable schema changes there.
 
 3. All API access goes through PostgREST which enforces PostgreSQL's row-level security
