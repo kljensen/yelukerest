@@ -27,14 +27,20 @@ HOST="${YELUKEREST_PROD_HOST:-www.656.mba}"
 DIR="${YELUKEREST_PROD_DIR:-yelukerest}"
 REF="${YELUKEREST_PROD_REF:-origin/main}"
 DEPLOY=""
+REHASH=""
 SERVICES=""
 
 usage () {
     cat >&2 <<USAGE
-usage: $0 [--deploy] [--services "a b c"] [--host HOST] [--ref REF]
+usage: $0 [--deploy] [--rehash] [--services "a b c"] [--host HOST] [--ref REF]
 
   (no flags)  fetch, report what is pending, change nothing
   --deploy    also apply the pending migrations, then verify
+
+  --rehash    convert production's registry to zapadka's structural hashes:
+              preview with --dry-run, convert, then verify. Executes no
+              migration SQL. One-time, after the server binary is 0.6.0 --
+              an older binary refuses a converted registry.
 
   --services  after migrating, rebuild and restart these compose services.
               Requires --deploy. Go services need the image rebuilt; the Elm
@@ -51,6 +57,7 @@ USAGE
 while [ $# -gt 0 ]; do
     case "$1" in
         --deploy) DEPLOY=1; shift ;;
+        --rehash) REHASH=1; shift ;;
         --services) SERVICES="${2:?--services needs a value}"; shift 2 ;;
         --host)   HOST="${2:?--host needs a value}"; shift 2 ;;
         --ref)    REF="${2:?--ref needs a value}"; shift 2 ;;
@@ -100,7 +107,7 @@ fi
 # space in it -- SERVICES="mcpapp elmclient" -- loses its quoting on the way
 # across and the remote shell reads the second word as a command of its own.
 # Quote each assignment for the REMOTE shell, not just for this one.
-ssh "$HOST" "DIR='$DIR' REF='$REF' DEPLOY='${DEPLOY:-}' SERVICES='$SERVICES' sh -s" <<'REMOTE'
+ssh "$HOST" "DIR='$DIR' REF='$REF' DEPLOY='${DEPLOY:-}' REHASH='${REHASH:-}' SERVICES='$SERVICES' sh -s" <<'REMOTE'
 set -eu
 cd "$DIR"
 
@@ -117,6 +124,20 @@ echo "    now: $(git rev-parse --short HEAD)  $(git log -1 --format=%s)"
 
 echo
 zapadka status --target production
+
+if [ -n "${REHASH:-}" ]; then
+    # Preview first: it verifies every recorded byte hash against the
+    # checked-out files and computes the structural hash, writing nothing.
+    # Only then convert, which records the new hashes under the deploy lock in
+    # one transaction and runs no migration SQL. If the preview needs
+    # --accept-current, stop and look: it means a deployed file was edited.
+    echo
+    zapadka rehash --target production --dry-run
+    echo
+    zapadka rehash --target production
+    echo
+    zapadka verify --target production
+fi
 
 if [ -z "${DEPLOY:-}" ]; then
     echo
