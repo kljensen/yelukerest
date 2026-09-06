@@ -36,12 +36,12 @@ jobs:
       ZAPADKA_BIN: /usr/local/bin/zapadka
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Install Zapadka v0.4.1
+      - name: Install Zapadka v0.6.0
         run: |
           curl --fail --location --silent --show-error \
             --output /tmp/zapadka \
-            https://github.com/kljensen/zapadka/releases/download/v0.4.1/zapadka-x86_64-unknown-linux-musl
-          echo '3bf73f20b018cd801280c1e0a8c5a108c65d8fe18a78be689060bbc9a9770e1e  /tmp/zapadka' | sha256sum --check
+            https://github.com/kljensen/zapadka/releases/download/v0.6.0/zapadka-x86_64-unknown-linux-musl
+          echo '6ee66e99a1c73d04e765a81cd41d102fe784572bd9cb6e9c874a850ac9ba5820  /tmp/zapadka' | sha256sum --check
           install -m 0755 /tmp/zapadka /usr/local/bin/zapadka
           zapadka --version
       - name: Lint and deploy a fresh PostgreSQL 18 database
