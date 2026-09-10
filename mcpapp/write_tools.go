@@ -61,7 +61,7 @@ func registerWriteTools(server *mcp.Server, deps *toolDeps) {
 	}, deps.submitSubmissionChange)
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "preview_submission_change",
-		Description: "Show exactly what submit_submission_change would do for one assignment field: the current value, the proposed value, whether this creates or overwrites, whether the assignment is open, and the current updated_at. " +
+		Description: "Show exactly what submit_submission_change would do for one assignment field: the current value, the proposed value, whether this creates or overwrites, whether the caller can submit (can_submit and effective_closed_at account for any extension granted to them), and the current updated_at. " +
 			"Performs no write and needs no write scope. Showing this to the user before submitting is good manners, not a security boundary." + untrustedTextNote,
 		Annotations: &mcp.ToolAnnotations{
 			Title:         "Preview submission change",
@@ -85,6 +85,7 @@ type submissionChangePlan struct {
 	TeamNickname     string
 	IsOpen           bool
 	ClosedAt         string
+	Eligibility      assignmentEligibility // from api.my_assignments; extension-aware
 	SubmissionID     int
 	CreateSubmission bool
 	CurrentBody      string
@@ -144,6 +145,14 @@ func (d *toolDeps) resolveSubmissionChange(ctx context.Context, token string, id
 	plan.IsTeam = assignment.IsTeam
 	plan.IsOpen = assignment.IsOpen
 	plan.ClosedAt = assignment.ClosedAt
+
+	// Eligibility comes from the me-scoped view, which knows about the
+	// caller's extension; is_open above does not (issue #381).
+	status, err := d.fetchMyAssignmentStatus(ctx, token, in.AssignmentSlug)
+	if err != nil {
+		return plan, err
+	}
+	plan.Eligibility = status.eligibility()
 
 	// Locate the caller's (or their team's) existing submission and the
 	// current field value, all under the caller's own RLS context.
@@ -226,8 +235,9 @@ type previewSubmissionChangeOutput struct {
 	CreatesSubmission bool   `json:"creates_submission" jsonschema:"true when no submission row exists yet and the write will create one"`
 	IsTeam            bool   `json:"is_team"`
 	TeamNickname      string `json:"team_nickname,omitempty" jsonschema:"the team whose shared submission this change affects"`
-	AssignmentIsOpen  bool   `json:"assignment_is_open"`
-	ClosedAt          string `json:"closed_at"`
+	AssignmentIsOpen  bool   `json:"assignment_is_open" jsonschema:"whether the assignment is published and its own closed_at has not passed; ignores extensions, see can_submit"`
+	ClosedAt          string `json:"closed_at" jsonschema:"the assignment's own deadline; ignores extensions, see effective_closed_at"`
+	assignmentEligibility
 
 	CurrentBody           string `json:"current_body,omitempty" jsonschema:"the value that would be overwritten; untrusted course content"`
 	CurrentBodyTruncated  bool   `json:"current_body_truncated,omitempty"`
@@ -254,31 +264,55 @@ func (d *toolDeps) previewSubmissionChange(ctx context.Context, req *mcp.CallToo
 	}
 
 	out := previewSubmissionChangeOutput{
-		AssignmentSlug:      plan.AssignmentSlug,
-		AssignmentTitle:     plan.AssignmentTitle,
-		FieldSlug:           plan.FieldSlug,
-		Action:              plan.Action,
-		CreatesSubmission:   plan.CreateSubmission,
-		IsTeam:              plan.IsTeam,
-		TeamNickname:        plan.TeamNickname,
-		AssignmentIsOpen:    plan.IsOpen,
-		ClosedAt:            plan.ClosedAt,
-		CurrentUpdatedAt:    plan.CurrentUpdatedAt,
+		AssignmentSlug:    plan.AssignmentSlug,
+		AssignmentTitle:   plan.AssignmentTitle,
+		FieldSlug:         plan.FieldSlug,
+		Action:            plan.Action,
+		CreatesSubmission: plan.CreateSubmission,
+		IsTeam:            plan.IsTeam,
+		TeamNickname:      plan.TeamNickname,
+		AssignmentIsOpen:  plan.IsOpen,
+		ClosedAt:          plan.ClosedAt,
+		CurrentUpdatedAt:  plan.CurrentUpdatedAt,
+
 		CurrentLengthBytes:  len(plan.CurrentBody),
 		ProposedLengthBytes: len(in.Body),
 		Changed:             plan.CurrentBody != in.Body,
+
+		assignmentEligibility: plan.Eligibility,
 	}
 	out.ProposedBody, out.ProposedBodyTruncated = boundText(in.Body, maxSubmissionBodyChars)
 	if plan.Action == "overwrite" {
 		out.CurrentBody, out.CurrentBodyTruncated = boundText(plan.CurrentBody, maxSubmissionBodyChars)
 	}
-	if !plan.IsOpen {
-		out.Warning = "The assignment is not currently open. A write will be rejected by the database unless you have a deadline exception."
-	}
+	out.Warning = eligibilityWarning(plan.Eligibility)
 	if !out.Changed {
 		out.Warning = joinWarnings(out.Warning, "The proposed value is identical to the current value; writing would change nothing.")
 	}
 	return nil, out, nil
+}
+
+// eligibilityWarning says why the database will reject the write, from the
+// extension-aware can_submit_reason rather than is_open: a student writing
+// under an extension is eligible and gets no warning.
+func eligibilityWarning(e assignmentEligibility) string {
+	if e.CanSubmit {
+		return ""
+	}
+	switch e.CanSubmitReason {
+	case "draft":
+		return "The assignment is a draft and not yet open for submission; the database will reject a write."
+	case "deadline_passed":
+		deadline := "The submission deadline passed at " + e.EffectiveClosedAt
+		if e.Extension != nil {
+			deadline += " (your extended deadline)"
+		}
+		return deadline + "; the database will reject a write."
+	case "no_team":
+		return "This is a team assignment and you are not on a team; the database will reject a write."
+	default:
+		return "You are not currently eligible to submit to this assignment; the database will reject a write."
+	}
 }
 
 func joinWarnings(existing string, extra string) string {

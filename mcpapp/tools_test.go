@@ -214,7 +214,22 @@ const (
 
 	fixtureUserRowsNoTeam = `[{"id":42,"netid":"abc123","name":"Alice Ok","known_as":"Al","nickname":"fuzzy-bunny","team_nickname":null,"role":"student"}]`
 
-	fixtureAssignments = `[{"slug":"proj1","title":"Project 1","points_possible":10,"is_team":false,"is_draft":false,"is_open":true,"closed_at":"2026-09-01T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00"}]`
+	// fixtureAssignments is one api.my_assignments row (issue #381). The
+	// assignment's own deadline has passed (is_open=false), but the caller
+	// holds an extension to Sept 5 at 0.8 credit, so can_submit is true: the
+	// exact situation the me-scoped view exists to surface. The same row
+	// serves list_assignments, get_assignment's status read and
+	// preview_submission_change, which is what lets the tests prove the three
+	// agree.
+	fixtureAssignments = `[{"slug":"proj1","title":"Project 1","points_possible":10,"is_team":false,"is_draft":false,"is_open":false,"closed_at":"2026-09-01T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00",` +
+		`"effective_closed_at":"2026-09-05T00:00:00+00:00","submission_window_open":true,"can_submit":true,"can_submit_reason":null,"extension_closed_at":"2026-09-05T00:00:00+00:00","extension_fractional_credit":0.8,` +
+		`"submissions":[{"id":9,"team_nickname":null,"created_at":"2026-09-02T00:00:00+00:00","updated_at":"2026-09-02T00:00:00+00:00","fields_submitted":1,"fields_total":1,"grade":{"points":8,"description":"late but fine","created_at":"2026-09-06T00:00:00+00:00"}},` +
+		`{"id":7,"team_nickname":"team-one","created_at":"2026-08-20T00:00:00+00:00","updated_at":"2026-08-20T00:00:00+00:00","fields_submitted":0,"fields_total":1,"grade":null}]}]`
+
+	// fixtureAssignmentsNoExtension is the ordinary case: open, no extension,
+	// nothing submitted yet.
+	fixtureAssignmentsNoExtension = `[{"slug":"proj1","title":"Project 1","points_possible":10,"is_team":false,"is_draft":false,"is_open":true,"closed_at":"2026-09-01T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00",` +
+		`"effective_closed_at":"2026-09-01T00:00:00+00:00","submission_window_open":true,"can_submit":true,"can_submit_reason":null,"extension_closed_at":null,"extension_fractional_credit":null,"submissions":[]}]`
 
 	fixtureAssignmentDetail = `[{"slug":"proj1","title":"Project 1","body":"Do the thing","is_markdown":true,"points_possible":10,"is_team":false,"is_draft":false,"is_open":true,"closed_at":"2026-09-01T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00","fields":[{"slug":"repo-url","label":"Repo URL","help":"paste it","placeholder":"https://...","is_url":true,"is_multiline":false,"display_order":0,"pattern":".*","example":"https://example.com"}]}]`
 
@@ -283,15 +298,15 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 		},
 		{
 			name:  "list_assignments",
-			setup: func(f *fakePostgREST) { f.respond("/assignments", fixtureAssignments) },
+			setup: func(f *fakePostgREST) { f.respond("/my_assignments", fixtureAssignments) },
 			call: func(d *toolDeps, req *mcp.CallToolRequest) (any, error) {
 				_, out, err := d.listAssignments(ctx, req, nil)
 				return out, err
 			},
 			want: []wantRequest{{
-				path: "/assignments",
+				path: "/my_assignments",
 				query: map[string]string{
-					"select": "slug,title,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at",
+					"select": "slug,title,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at,effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit,submissions",
 					"order":  "closed_at.asc,slug.asc",
 				},
 			}},
@@ -300,7 +315,7 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 				if got.TotalCount != 1 || got.Truncated || len(got.Assignments) != 1 {
 					t.Fatalf("output = %+v", got)
 				}
-				if got.Assignments[0].Slug != "proj1" || !got.Assignments[0].IsOpen {
+				if got.Assignments[0].Slug != "proj1" || got.Assignments[0].IsOpen || !got.Assignments[0].CanSubmit {
 					t.Fatalf("assignment = %+v", got.Assignments[0])
 				}
 			},
@@ -309,6 +324,7 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 			name: "get_assignment",
 			setup: func(f *fakePostgREST) {
 				f.respond("/assignments", fixtureAssignmentDetail)
+				f.respond("/my_assignments", fixtureAssignments)
 				f.respond("/assignment_grade_distributions", fixtureAssignmentDistribution)
 			},
 			call: func(d *toolDeps, req *mcp.CallToolRequest) (any, error) {
@@ -322,6 +338,13 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 						"slug":         "eq.proj1",
 						"select":       "slug,title,body,is_markdown,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at,fields:assignment_fields(slug,label,help,placeholder,is_url,is_multiline,display_order,pattern,example)",
 						"fields.order": "display_order.asc,slug.asc",
+					},
+				},
+				{
+					path: "/my_assignments",
+					query: map[string]string{
+						"slug":   "eq.proj1",
+						"select": "effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit,submissions",
 					},
 				},
 				{
@@ -345,6 +368,9 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 				}
 				if got.GradeDistribution.Grades != nil {
 					t.Fatal("individual scores must not appear in get_assignment")
+				}
+				if !got.CanSubmit || got.Extension == nil || len(got.Submissions) != 2 || got.SubmissionsTruncated {
+					t.Fatalf("status = %+v", got.assignmentEligibility)
 				}
 			},
 		},
@@ -602,11 +628,11 @@ func TestListToolTruncatesOversizedResults(t *testing.T) {
 	rows := make([]string, 0, 1200)
 	for i := range 1200 {
 		rows = append(rows, fmt.Sprintf(
-			`{"slug":"a-%04d","title":%q,"points_possible":10,"is_team":false,"is_draft":false,"is_open":true,"closed_at":"2026-09-01T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00"}`,
+			`{"slug":"a-%04d","title":%q,"points_possible":10,"is_team":false,"is_draft":false,"is_open":true,"closed_at":"2026-09-01T00:00:00+00:00","created_at":"2026-08-01T00:00:00+00:00","updated_at":"2026-08-01T00:00:00+00:00","effective_closed_at":"2026-09-01T00:00:00+00:00","submission_window_open":true,"can_submit":true,"can_submit_reason":null,"extension_closed_at":null,"extension_fractional_credit":null,"submissions":[]}`,
 			i, strings.Repeat("x", 120)))
 	}
 	fake := newFakePostgREST(t)
-	fake.respond("/assignments", "["+strings.Join(rows, ",")+"]")
+	fake.respond("/my_assignments", "["+strings.Join(rows, ",")+"]")
 	req, _ := readToolRequest(t, nil)
 
 	_, out, err := fake.deps(t).listAssignments(context.Background(), req, nil)
@@ -636,6 +662,7 @@ func TestGetAssignmentBoundsBodyText(t *testing.T) {
 	detail := strings.Replace(fixtureAssignmentDetail, `"body":"Do the thing"`, `"body":"`+longBody+`"`, 1)
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", detail)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_grade_distributions", "[]")
 	req, _ := readToolRequest(t, nil)
 
@@ -712,7 +739,7 @@ func TestPostgRESTErrorMapping(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fake := newFakePostgREST(t)
-			fake.respondStatus("/assignments", tt.status, tt.body)
+			fake.respondStatus("/my_assignments", tt.status, tt.body)
 			req, token := readToolRequest(t, nil)
 
 			_, _, err := fake.deps(t).listAssignments(context.Background(), req, nil)
@@ -857,7 +884,7 @@ func TestScopelessIdentityIsDeniedEveryTool(t *testing.T) {
 
 func TestReadToolsHonorScopeClaims(t *testing.T) {
 	fake := newFakePostgREST(t)
-	fake.respond("/assignments", fixtureAssignments)
+	fake.respond("/my_assignments", fixtureAssignments)
 
 	// A scope-bearing token without read is denied before any PostgREST call.
 	deniedReq, _ := readToolRequest(t, func(claims map[string]any) {

@@ -29,6 +29,11 @@ const (
 
 	fixtureClosedAssignment = `[{"slug":"proj1","title":"Project 1","is_team":false,"is_draft":false,"is_open":false,"closed_at":"2026-01-01T00:00:00+00:00","fields":[{"slug":"repo-url"}]}]`
 
+	// The api.my_assignments counterparts the resolver reads for eligibility
+	// (issue #381): fixtureClosedStatus is the closed assignment as the view
+	// reports it to a caller with no extension.
+	fixtureClosedStatus = `[{"slug":"proj1","effective_closed_at":"2026-01-01T00:00:00+00:00","submission_window_open":false,"can_submit":false,"can_submit_reason":"deadline_passed","extension_closed_at":null,"extension_fractional_credit":null,"submissions":[]}]`
+
 	fixtureExistingSubmission = `[{"id":7,"fields":[{"assignment_field_slug":"repo-url","body":"old-value","updated_at":"2026-08-02T00:00:00+00:00"}]}]`
 
 	fixtureSubmissionWithoutField = `[{"id":7,"fields":[]}]`
@@ -94,6 +99,8 @@ func TestPreviewSubmissionChangeNeedsOnlyReadScopeAndWritesNothing(t *testing.T)
 		t.Run(tt.name, func(t *testing.T) {
 			fake := newFakePostgREST(t)
 			fake.respond("/assignments", fixturePrepareAssignment)
+			fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
+			fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 			fake.respond("/assignment_submissions", fixtureExistingSubmission)
 			req, _ := readToolRequest(t, tt.mutate)
 
@@ -151,6 +158,7 @@ func TestSubmitSubmissionChangeRejectsOversizedBody(t *testing.T) {
 func TestSubmitSubmissionChangeRejectsBadInputs(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", "[]")
 	req, _ := writeToolRequest(t, nil)
 	deps := fake.deps(t)
@@ -201,6 +209,7 @@ func TestSubmitSubmissionChangeAssignmentNotFound(t *testing.T) {
 func TestSubmitSubmissionChangeStaleExpectedUpdatedAt(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	req, _ := writeToolRequest(t, nil)
 	_, _, err := fake.deps(t).submitSubmissionChange(context.Background(), req, submissionChangeInput{
@@ -218,6 +227,7 @@ func TestSubmitSubmissionChangeStaleExpectedUpdatedAt(t *testing.T) {
 func TestSubmitTeamAssignmentWithoutTeam(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareTeamAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/users", fixtureUserRowsNoTeam)
 	req, _ := writeToolRequest(t, nil)
 	_, _, err := fake.deps(t).submitSubmissionChange(context.Background(), req, submissionChangeInput{
@@ -234,6 +244,7 @@ func TestSubmitTeamAssignmentWithoutTeam(t *testing.T) {
 func TestPreviewTeamAssignmentLooksUpTheTeamSubmission(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareTeamAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/users", fixtureUserRows)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	req, _ := writeToolRequest(t, nil)
@@ -301,6 +312,8 @@ func TestPreviewSubmissionChangeCreateVsOverwrite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fake := newFakePostgREST(t)
 			fake.respond("/assignments", fixturePrepareAssignment)
+			fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
+			fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 			fake.respond("/assignment_submissions", tt.submissions)
 			req, _ := writeToolRequest(t, nil)
 
@@ -337,6 +350,7 @@ func TestPreviewSubmissionChangeCreateVsOverwrite(t *testing.T) {
 func TestPreviewSubmissionChangeUnchangedAndClosedWarnings(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixtureClosedAssignment)
+	fake.respond("/my_assignments", fixtureClosedStatus)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	req, _ := writeToolRequest(t, nil)
 	_, out, err := fake.deps(t).previewSubmissionChange(context.Background(), req, submissionChangeInput{
@@ -351,7 +365,10 @@ func TestPreviewSubmissionChangeUnchangedAndClosedWarnings(t *testing.T) {
 	if out.AssignmentIsOpen {
 		t.Fatal("a closed assignment must report assignment_is_open=false")
 	}
-	if !strings.Contains(out.Warning, "not currently open") || !strings.Contains(out.Warning, "identical") {
+	if out.CanSubmit || out.CanSubmitReason != "deadline_passed" || out.Extension != nil {
+		t.Fatalf("eligibility = %+v", out.assignmentEligibility)
+	}
+	if !strings.Contains(out.Warning, "deadline passed at 2026-01-01T00:00:00+00:00") || !strings.Contains(out.Warning, "identical") {
 		t.Fatalf("warning = %q", out.Warning)
 	}
 }
@@ -361,6 +378,7 @@ func TestPreviewSubmissionChangeUnchangedAndClosedWarnings(t *testing.T) {
 func TestSubmitHappyCreateIncludingSubmissionRow(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", "[]")
 	fake.respondMethod(http.MethodPost, "/assignment_submissions", http.StatusCreated,
 		`{"id":9,"assignment_slug":"proj1","is_team":false,"user_id":42}`)
@@ -432,6 +450,7 @@ func TestSubmitHappyCreateIncludingSubmissionRow(t *testing.T) {
 func TestSubmitHappyOverwriteSendsTheUpdatedAtItRead(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusOK, fixtureStoredOverwrite)
 	deps := fake.deps(t)
@@ -478,6 +497,7 @@ func TestSubmitHappyOverwriteSendsTheUpdatedAtItRead(t *testing.T) {
 func TestSubmitMapsPT409ToStaleWriteError(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	// The DB PT409 stale-write trigger surfaces as HTTP 409 from PostgREST.
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusConflict,
@@ -495,6 +515,7 @@ func TestSubmitMapsPT409ToStaleWriteError(t *testing.T) {
 func TestSubmitOverwriteFilteredByRLSReturnsClearError(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	// A 200 with an empty array means RLS filtered the row out of the UPDATE,
 	// e.g. the submission window closed between the read and the write.
@@ -512,6 +533,7 @@ func TestSubmitOverwriteFilteredByRLSReturnsClearError(t *testing.T) {
 func TestSubmitSurfacesUpstreamErrorStatus(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusBadRequest,
 		`{"message":"new row violates check constraint"}`)
@@ -532,6 +554,7 @@ func TestSubmitSurfacesUpstreamErrorStatus(t *testing.T) {
 func TestSubmitRollsBackTheSubmissionRowWhenTheFieldWriteFails(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", "[]")
 	fake.respondMethod(http.MethodPost, "/assignment_submissions", http.StatusCreated,
 		`{"id":9,"assignment_slug":"proj1"}`)
@@ -567,6 +590,7 @@ func TestSubmitRollsBackTheSubmissionRowWhenTheFieldWriteFails(t *testing.T) {
 func TestSubmitDoesNotRollBackAnExistingSubmissionRow(t *testing.T) {
 	fake := newFakePostgREST(t)
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusBadRequest,
 		`{"message":"nope"}`)
@@ -605,6 +629,7 @@ func TestMapWriteError(t *testing.T) {
 func TestSubmissionWriteOverStreamableHTTP(t *testing.T) {
 	server, fake, _, _ := newTestAppWithPostgREST(t, testAppConfig(t, 100))
 	fake.respond("/assignments", fixturePrepareAssignment)
+	fake.respond("/my_assignments", fixtureAssignmentsNoExtension)
 	fake.respond("/assignment_submissions", fixtureExistingSubmission)
 	fake.respondMethod(http.MethodPatch, "/assignment_field_submissions", http.StatusOK, fixtureStoredOverwrite)
 

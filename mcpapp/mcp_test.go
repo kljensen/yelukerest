@@ -266,7 +266,7 @@ func TestWhoamiOverStreamableHTTP(t *testing.T) {
 
 func TestListAssignmentsOverStreamableHTTP(t *testing.T) {
 	server, fake, minted, _ := newTestAppWithPostgREST(t, testAppConfig(t, 100))
-	fake.respond("/assignments", fixtureAssignments)
+	fake.respond("/my_assignments", fixtureAssignments)
 	token := accessToken(t, nil)
 
 	ctx := context.Background()
@@ -299,12 +299,12 @@ func TestListAssignmentsOverStreamableHTTP(t *testing.T) {
 	if output.TotalCount != 1 || output.Truncated || len(output.Assignments) != 1 {
 		t.Fatalf("output = %+v", output)
 	}
-	if output.Assignments[0].Slug != "proj1" || !output.Assignments[0].IsOpen {
+	if output.Assignments[0].Slug != "proj1" || !output.Assignments[0].CanSubmit {
 		t.Fatalf("assignment = %+v", output.Assignments[0])
 	}
 
 	recorded := fake.recorded()
-	if len(recorded) != 1 || recorded[0].path != "/assignments" {
+	if len(recorded) != 1 || recorded[0].path != "/my_assignments" {
 		t.Fatalf("PostgREST requests = %+v", recorded)
 	}
 	if recorded[0].auth != "Bearer "+minted {

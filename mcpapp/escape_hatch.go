@@ -293,6 +293,10 @@ ISO-8601 with timezone. Use postgrest_request with path=/view_name.
 
 assignments (read): slug, title, body, is_markdown, points_possible, is_team,
   is_draft, is_open, closed_at, created_at, updated_at.
+my_assignments (read): every assignments column but body, plus for YOU:
+  effective_closed_at, submission_window_open, can_submit, can_submit_reason,
+  extension_closed_at, extension_fractional_credit, submissions (jsonb array
+  of your submissions with grades). Extension-aware; prefer it to assignments.
 assignment_fields (read): slug, assignment_slug, label, help, placeholder,
   is_url, is_multiline, display_order, pattern, example.
 assignment_submissions (students: SELECT, INSERT): id, assignment_slug,

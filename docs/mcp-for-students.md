@@ -218,6 +218,14 @@ write runs as you, so it can never touch another student's work, and deadlines
 still apply — the database rejects a write to a closed assignment regardless of
 what the assistant intends.
 
+If you have been granted a deadline extension, the assistant sees it. The
+assignment tools report `effective_closed_at` (the deadline that applies to
+you), `can_submit` (whether you can submit right now), and an `extension`
+with its date and the fraction of credit available under it, so an assistant
+that reads them will not tell you an assignment is closed when it is still
+open for you. Any grade it shows is the stored grade, already reduced for the
+extension.
+
 Two honest cautions. Tool results contain text other people wrote — an
 assignment description, a teammate's submission — and an assistant that reads
 such text can be talked into doing something you never asked for. And an

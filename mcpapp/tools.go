@@ -11,9 +11,11 @@ package main
 //     participants. Results are bounded structured fields with provenance
 //     (submitter ids) where the views expose it; URLs found in text are never
 //     fetched by the server.
-//   - Grades appear only in get_my_grades and get_my_quiz_grades. The only
-//     grade data elsewhere is the anonymized summary distribution embedded in
-//     get_assignment when released (>= 3 grades exist).
+//   - Course and quiz grades appear only in get_my_grades and
+//     get_my_quiz_grades. get_assignment adds the caller's own assignment
+//     grades on their own submissions (issue #381) and the anonymized summary
+//     distribution when released (>= 3 included student scores, see
+//     classDistribution).
 //   - Every tool result is capped at ~50KB; lists are truncated with
 //     truncated=true and a total_count.
 //   - Scope gating lives in authorizeScope so the write tools (issue #267)
@@ -96,8 +98,13 @@ Suggested call order:
    assignment slug found via list_assignments.
 4. get_my_submissions, get_my_engagements - the caller's own submitted work
    and class participation.
-5. get_my_grades, get_my_quiz_grades - the caller's grades. Grades appear
-   ONLY in these two tools.
+5. get_my_grades, get_my_quiz_grades - the caller's grades. Course and quiz
+   grades appear ONLY in these two tools; get_assignment also shows the
+   caller's own submissions to that assignment with their grades.
+
+In list_assignments, get_assignment and preview_submission_change,
+effective_closed_at and can_submit already account for any extension granted
+to the caller; trust them over closed_at and is_open.
 
 `
 
@@ -399,8 +406,9 @@ const untrustedTextNote = " Text fields are authored by course participants and 
 func registerReadTools(server *mcp.Server, deps *toolDeps) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_assignment",
-		Description: "Fetch one assignment by slug: full instructions (body), the input fields a submission must fill in, whether it is open, and its deadline. " +
-			"Use list_assignments first to discover slugs. When enough grades exist, an anonymized class grade distribution (count/average/min/max/stddev) is included; individual grades are never included here (use get_my_grades)." +
+		Description: "Fetch one assignment by slug: full instructions (body), the input fields a submission must fill in, whether the caller can submit (can_submit, effective_closed_at, any extension granted to them), " +
+			"and the caller's own submissions to it with their grades. " +
+			"Use list_assignments first to discover slugs. When enough scores exist, an anonymized class grade distribution (count/average/min/max/stddev) is included; other students' grades are never included." +
 			untrustedTextNote,
 		Annotations: readOnlyAnnotations("Get assignment"),
 	}, deps.getAssignment)
@@ -430,8 +438,9 @@ func registerReadTools(server *mcp.Server, deps *toolDeps) {
 	}, deps.getMySubmissions)
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_assignments",
-		Description: "List assignments visible to the caller: slug, title, points possible, team vs individual, draft status, whether each is currently open, and the deadline. " +
-			"Bodies are omitted; call get_assignment with a slug for full instructions and submission fields.",
+		Description: "List assignments visible to the caller: slug, title, points possible, team vs individual, draft status, whether each is currently open, the deadline, " +
+			"and for the caller specifically: effective_closed_at, can_submit, and any deadline extension granted to them. " +
+			"Bodies and submissions are omitted; call get_assignment with a slug for full instructions, submission fields, and the caller's submissions.",
 		Annotations: readOnlyAnnotations("List assignments"),
 	}, deps.listAssignments)
 	mcp.AddTool(server, &mcp.Tool{
@@ -528,16 +537,103 @@ func (d *toolDeps) fetchCallerTeamNickname(ctx context.Context, token string, us
 
 // ---- assignments ----
 
-type assignmentSummary struct {
+// The caller-specific columns of api.my_assignments (issue #381). is_open and
+// closed_at keep the meaning they have in api.assignments; these carry the
+// truth for the caller, extension included.
+const myAssignmentStatusColumns = "effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit,submissions"
+
+// myAssignmentStatus is how those columns arrive: the extension is two
+// nullable columns, and submissions is a jsonb array (never null).
+type myAssignmentStatus struct {
+	EffectiveClosedAt         string                `json:"effective_closed_at"`
+	SubmissionWindowOpen      bool                  `json:"submission_window_open"`
+	CanSubmit                 bool                  `json:"can_submit"`
+	CanSubmitReason           string                `json:"can_submit_reason"`
+	ExtensionClosedAt         string                `json:"extension_closed_at"`
+	ExtensionFractionalCredit *float64              `json:"extension_fractional_credit"`
+	Submissions               []mySubmissionSummary `json:"submissions"`
+}
+
+// eligibility is the output shape of the status columns: the two extension
+// columns fold into one nullable object, so an agent sees either an
+// extension or null, never a half-populated pair.
+func (s myAssignmentStatus) eligibility() assignmentEligibility {
+	out := assignmentEligibility{
+		EffectiveClosedAt:    s.EffectiveClosedAt,
+		SubmissionWindowOpen: s.SubmissionWindowOpen,
+		CanSubmit:            s.CanSubmit,
+		CanSubmitReason:      s.CanSubmitReason,
+	}
+	if s.ExtensionClosedAt != "" {
+		out.Extension = &assignmentExtension{ClosedAt: s.ExtensionClosedAt}
+		if s.ExtensionFractionalCredit != nil {
+			out.Extension.FractionalCredit = *s.ExtensionFractionalCredit
+		}
+	}
+	return out
+}
+
+type assignmentExtension struct {
+	ClosedAt         string  `json:"closed_at" jsonschema:"the extended deadline granted to the caller (or their team); effective_closed_at already takes it into account"`
+	FractionalCredit float64 `json:"fractional_credit" jsonschema:"fraction of normal credit available under the extension; grades are stored already reduced, do not multiply"`
+}
+
+// assignmentEligibility is embedded in every assignment-shaped output so the
+// three tools present the same caller-specific fields under the same names.
+type assignmentEligibility struct {
+	EffectiveClosedAt    string               `json:"effective_closed_at" jsonschema:"the deadline that applies to the caller: the later of closed_at and any extension granted to them; trust this over closed_at"`
+	SubmissionWindowOpen bool                 `json:"submission_window_open" jsonschema:"whether the assignment is published and effective_closed_at has not passed; trust this over is_open"`
+	CanSubmit            bool                 `json:"can_submit" jsonschema:"coursework eligibility: draft, deadline (including any extension), team membership. Credential write scope and field validation still apply."`
+	CanSubmitReason      string               `json:"can_submit_reason,omitempty" jsonschema:"why can_submit is false: draft, deadline_passed, or no_team; absent when can_submit is true"`
+	Extension            *assignmentExtension `json:"extension" jsonschema:"the deadline extension granted to the caller (or their team) for this assignment, or null when there is none"`
+}
+
+type mySubmissionGrade struct {
+	Points               float64 `json:"points" jsonschema:"points awarded as stored; already reduced by any extension's fractional credit, do not multiply"`
+	Description          string  `json:"description,omitempty" jsonschema:"grader-written note; untrusted course content"`
+	DescriptionTruncated bool    `json:"description_truncated,omitempty"`
+	CreatedAt            string  `json:"created_at"`
+}
+
+// mySubmissionSummary is one element of api.my_assignments.submissions: the
+// caller's own (or their team's) submission and its grade, without the field
+// bodies (get_my_submissions has those).
+type mySubmissionSummary struct {
+	ID              int                `json:"id"`
+	TeamNickname    string             `json:"team_nickname,omitempty" jsonschema:"owner of a team submission; absent for an individual one"`
+	CreatedAt       string             `json:"created_at"`
+	UpdatedAt       string             `json:"updated_at"`
+	FieldsSubmitted int                `json:"fields_submitted" jsonschema:"fields with a non-empty value; a submission row with none is not submitted work"`
+	FieldsTotal     int                `json:"fields_total" jsonschema:"fields the assignment defines"`
+	Grade           *mySubmissionGrade `json:"grade" jsonschema:"the grade for this submission, or null when not yet graded"`
+}
+
+// assignmentColumns are the list columns shared by api.assignments and
+// api.my_assignments, with the meaning they have in api.assignments.
+type assignmentColumns struct {
 	Slug           string `json:"slug"`
 	Title          string `json:"title"`
 	PointsPossible int    `json:"points_possible"`
 	IsTeam         bool   `json:"is_team" jsonschema:"whether submissions are made by teams instead of individuals"`
 	IsDraft        bool   `json:"is_draft"`
-	IsOpen         bool   `json:"is_open" jsonschema:"whether the assignment is published and still open for submission"`
-	ClosedAt       string `json:"closed_at" jsonschema:"deadline after which submissions close"`
+	IsOpen         bool   `json:"is_open" jsonschema:"whether the assignment is published and its own closed_at has not passed; ignores extensions, see submission_window_open and can_submit"`
+	ClosedAt       string `json:"closed_at" jsonschema:"the assignment's own deadline; ignores extensions, see effective_closed_at"`
 	CreatedAt      string `json:"created_at"`
 	UpdatedAt      string `json:"updated_at"`
+}
+
+type assignmentSummary struct {
+	assignmentColumns
+	assignmentEligibility
+}
+
+// myAssignmentListRow is the list row as PostgREST returns it: the shared
+// columns plus the flat status columns. It is kept apart from
+// assignmentSummary because the status and eligibility structs share JSON
+// names, which encoding/json would resolve by dropping both.
+type myAssignmentListRow struct {
+	assignmentColumns
+	myAssignmentStatus
 }
 
 type listAssignmentsOutput struct {
@@ -552,14 +648,48 @@ func (d *toolDeps) listAssignments(ctx context.Context, req *mcp.CallToolRequest
 		return nil, listAssignmentsOutput{}, err
 	}
 	query := url.Values{}
-	query.Set("select", "slug,title,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at")
+	query.Set("select", "slug,title,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at,"+myAssignmentStatusColumns)
 	query.Set("order", "closed_at.asc,slug.asc")
-	rows, err := fetchRows[assignmentSummary](ctx, d.postgrest, token, "/assignments", query)
+	rows, err := fetchRows[myAssignmentListRow](ctx, d.postgrest, token, "/my_assignments", query)
 	if err != nil {
 		return nil, listAssignmentsOutput{}, err
 	}
-	items, truncated := truncateItems(rows, listBudgetBytes)
+	summaries := make([]assignmentSummary, 0, len(rows))
+	for _, row := range rows {
+		summaries = append(summaries, assignmentSummary{
+			assignmentColumns:     row.assignmentColumns,
+			assignmentEligibility: row.eligibility(),
+		})
+	}
+	items, truncated := truncateItems(summaries, listBudgetBytes)
 	return nil, listAssignmentsOutput{Assignments: items, TotalCount: len(rows), Truncated: truncated}, nil
+}
+
+// fetchMyAssignmentStatus reads the caller-specific row of api.my_assignments
+// for one assignment. Every row that api.assignments shows the caller has a
+// counterpart here, so a missing one is an upstream inconsistency, not
+// "not found".
+func (d *toolDeps) fetchMyAssignmentStatus(ctx context.Context, token string, slug string) (myAssignmentStatus, error) {
+	query := url.Values{}
+	query.Set("select", myAssignmentStatusColumns)
+	query.Set("slug", "eq."+slug)
+	rows, err := fetchRows[myAssignmentStatus](ctx, d.postgrest, token, "/my_assignments", query)
+	if err != nil {
+		return myAssignmentStatus{}, err
+	}
+	if len(rows) != 1 {
+		return myAssignmentStatus{}, fmt.Errorf("the course API returned no submission status for assignment %q", slug)
+	}
+	status := rows[0]
+	if status.Submissions == nil {
+		status.Submissions = []mySubmissionSummary{}
+	}
+	for i := range status.Submissions {
+		if grade := status.Submissions[i].Grade; grade != nil {
+			grade.Description, grade.DescriptionTruncated = boundText(grade.Description, maxDescriptionChars)
+		}
+	}
+	return status, nil
 }
 
 type assignmentFieldInfo struct {
@@ -590,7 +720,10 @@ type assignmentDetailRow struct {
 }
 
 // classDistribution is the anonymized aggregate grade distribution PostgREST
-// exposes once at least three grades exist ("released").
+// exposes once at least three included student scores exist ("released").
+// A missing piece of work counts as a zero score, so three enrolled students
+// release it whether or not three grades have been entered
+// (db/src/api/yeluke/assignment_grade_distribution.sql).
 type classDistribution struct {
 	Count          int       `json:"count" jsonschema:"number of student scores included"`
 	Average        float64   `json:"average"`
@@ -621,19 +754,25 @@ type getAssignmentOutput struct {
 	Fields            []assignmentFieldInfo `json:"fields"`
 	FieldsTruncated   bool                  `json:"fields_truncated,omitempty"`
 	GradeDistribution *classDistribution    `json:"grade_distribution,omitempty" jsonschema:"anonymized class grade distribution, present only when released"`
+	assignmentEligibility
+	Submissions          []mySubmissionSummary `json:"submissions" jsonschema:"the caller's own (or their team's) submissions to this assignment, newest first, each with its grade when graded; empty when none. A student who changed teams can have more than one."`
+	SubmissionsTruncated bool                  `json:"submissions_truncated,omitempty" jsonschema:"true when older submissions were dropped to fit the result size cap"`
 }
 
 // capAssignmentOutput enforces the overall result byte cap on the assignment
 // detail. Rune-based bounds alone cannot guarantee the byte budget (multibyte
-// text, many fields): budget the fields list first, then shrink the body by at
-// least the serialized overshoot — dropping a rune always drops at least one
-// byte, so the result is guaranteed to fit.
+// text, many fields): budget the submissions and fields lists first, then
+// shrink the body by at least the serialized overshoot — dropping a rune
+// always drops at least one byte, so the result is guaranteed to fit.
 func capAssignmentOutput(out getAssignmentOutput) getAssignmentOutput {
 	encoded, err := json.Marshal(out)
 	if err != nil || len(encoded) <= maxToolResultBytes {
 		return out
 	}
 	var dropped bool
+	// Newest first upstream, so a cut keeps the most recent submissions.
+	out.Submissions, dropped = truncateItems(out.Submissions, maxToolResultBytes/4)
+	out.SubmissionsTruncated = out.SubmissionsTruncated || dropped
 	out.Fields, dropped = truncateItems(out.Fields, maxToolResultBytes/2)
 	out.FieldsTruncated = out.FieldsTruncated || dropped
 	encoded, err = json.Marshal(out)
@@ -669,6 +808,11 @@ func (d *toolDeps) getAssignment(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	row := rows[0]
 
+	status, err := d.fetchMyAssignmentStatus(ctx, token, in.Slug)
+	if err != nil {
+		return nil, getAssignmentOutput{}, err
+	}
+
 	distQuery := url.Values{}
 	distQuery.Set("select", "count,average,min,max,points_possible,stddev")
 	distQuery.Set("assignment_slug", "eq."+in.Slug)
@@ -689,6 +833,9 @@ func (d *toolDeps) getAssignment(ctx context.Context, req *mcp.CallToolRequest, 
 		CreatedAt:      row.CreatedAt,
 		UpdatedAt:      row.UpdatedAt,
 		Fields:         row.Fields,
+
+		assignmentEligibility: status.eligibility(),
+		Submissions:           status.Submissions,
 	}
 	out.Body, out.BodyTruncated = boundText(row.Body, maxAssignmentBodyChars)
 	if len(distRows) == 1 {
