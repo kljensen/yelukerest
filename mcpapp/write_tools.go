@@ -148,7 +148,7 @@ func (d *toolDeps) resolveSubmissionChange(ctx context.Context, token string, id
 
 	// Eligibility comes from the me-scoped view, which knows about the
 	// caller's extension; is_open above does not (issue #381).
-	status, err := d.fetchMyAssignmentStatus(ctx, token, in.AssignmentSlug)
+	status, err := d.fetchMyAssignmentStatus(ctx, token, in.AssignmentSlug, false)
 	if err != nil {
 		return plan, err
 	}
@@ -164,8 +164,16 @@ func (d *toolDeps) resolveSubmissionChange(ctx context.Context, token string, id
 		if err != nil {
 			return plan, err
 		}
-		if plan.TeamNickname == "" || !teamNicknamePattern.MatchString(plan.TeamNickname) {
-			return plan, fmt.Errorf("assignment %q is a team assignment but you are not on a team", in.AssignmentSlug)
+		if plan.TeamNickname == "" {
+			// No team, so no team submission to look up. The plan still
+			// resolves so a preview can report can_submit_reason=no_team;
+			// submitSubmissionChange refuses it.
+			plan.CreateSubmission = true
+			plan.Action = "create"
+			return plan, nil
+		}
+		if !teamNicknamePattern.MatchString(plan.TeamNickname) {
+			return plan, fmt.Errorf("your team nickname %q cannot be used in a course API filter", plan.TeamNickname)
 		}
 		subQuery.Set("team_nickname", "eq."+plan.TeamNickname)
 	} else {
@@ -362,6 +370,9 @@ func (d *toolDeps) submitSubmissionChange(ctx context.Context, req *mcp.CallTool
 	plan, err := d.resolveSubmissionChange(ctx, token, id, in)
 	if err != nil {
 		return nil, zero, err
+	}
+	if plan.IsTeam && plan.TeamNickname == "" {
+		return nil, zero, fmt.Errorf("assignment %q is a team assignment but you are not on a team", in.AssignmentSlug)
 	}
 
 	submissionID := plan.SubmissionID

@@ -67,6 +67,21 @@ func TestAssignmentToolsAgreeOnEligibility(t *testing.T) {
 	if preview.Warning != "" {
 		t.Errorf("preview warning = %q, want none", preview.Warning)
 	}
+	// Only the detail asks for the submissions array; a list row and a
+	// write have no use for it and it carries every grade description.
+	statusReads, withSubmissions := 0, 0
+	for _, recorded := range fake.recorded() {
+		if recorded.path != "/my_assignments" {
+			continue
+		}
+		statusReads++
+		if strings.Contains(recorded.query.Get("select"), "submissions") {
+			withSubmissions++
+		}
+	}
+	if statusReads != 3 || withSubmissions != 1 {
+		t.Errorf("/my_assignments reads = %d, of which %d selected submissions; want 3 and 1", statusReads, withSubmissions)
+	}
 	// The detail carries the caller's submissions with grades, newest first.
 	if len(detail.Submissions) != 2 || detail.Submissions[0].ID != 9 || detail.Submissions[1].ID != 7 {
 		t.Fatalf("submissions = %+v", detail.Submissions)

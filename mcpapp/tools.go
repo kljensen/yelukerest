@@ -539,11 +539,17 @@ func (d *toolDeps) fetchCallerTeamNickname(ctx context.Context, token string, us
 
 // The caller-specific columns of api.my_assignments (issue #381). is_open and
 // closed_at keep the meaning they have in api.assignments; these carry the
-// truth for the caller, extension included.
-const myAssignmentStatusColumns = "effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit,submissions"
+// truth for the caller, extension included. The submissions array is
+// requested only where it is shown (get_assignment): a list row or a write
+// has no use for it, and it carries every grade description.
+const (
+	myAssignmentStatusColumns = "effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit"
+	myAssignmentDetailColumns = myAssignmentStatusColumns + ",submissions"
+)
 
 // myAssignmentStatus is how those columns arrive: the extension is two
-// nullable columns, and submissions is a jsonb array (never null).
+// nullable columns, and submissions is a jsonb array (never null) that is
+// left nil when it was not selected.
 type myAssignmentStatus struct {
 	EffectiveClosedAt         string                `json:"effective_closed_at"`
 	SubmissionWindowOpen      bool                  `json:"submission_window_open"`
@@ -666,12 +672,16 @@ func (d *toolDeps) listAssignments(ctx context.Context, req *mcp.CallToolRequest
 }
 
 // fetchMyAssignmentStatus reads the caller-specific row of api.my_assignments
-// for one assignment. Every row that api.assignments shows the caller has a
-// counterpart here, so a missing one is an upstream inconsistency, not
-// "not found".
-func (d *toolDeps) fetchMyAssignmentStatus(ctx context.Context, token string, slug string) (myAssignmentStatus, error) {
+// for one assignment, with the submissions array only when asked for. Every
+// row that api.assignments shows the caller has a counterpart here, so a
+// missing one is an upstream inconsistency, not "not found".
+func (d *toolDeps) fetchMyAssignmentStatus(ctx context.Context, token string, slug string, withSubmissions bool) (myAssignmentStatus, error) {
 	query := url.Values{}
-	query.Set("select", myAssignmentStatusColumns)
+	if withSubmissions {
+		query.Set("select", myAssignmentDetailColumns)
+	} else {
+		query.Set("select", myAssignmentStatusColumns)
+	}
 	query.Set("slug", "eq."+slug)
 	rows, err := fetchRows[myAssignmentStatus](ctx, d.postgrest, token, "/my_assignments", query)
 	if err != nil {
@@ -681,7 +691,7 @@ func (d *toolDeps) fetchMyAssignmentStatus(ctx context.Context, token string, sl
 		return myAssignmentStatus{}, fmt.Errorf("the course API returned no submission status for assignment %q", slug)
 	}
 	status := rows[0]
-	if status.Submissions == nil {
+	if withSubmissions && status.Submissions == nil {
 		status.Submissions = []mySubmissionSummary{}
 	}
 	for i := range status.Submissions {
@@ -808,7 +818,7 @@ func (d *toolDeps) getAssignment(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	row := rows[0]
 
-	status, err := d.fetchMyAssignmentStatus(ctx, token, in.Slug)
+	status, err := d.fetchMyAssignmentStatus(ctx, token, in.Slug, true)
 	if err != nil {
 		return nil, getAssignmentOutput{}, err
 	}

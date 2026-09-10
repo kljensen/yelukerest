@@ -15,6 +15,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
 	"testing"
@@ -32,7 +33,11 @@ const (
 	// The api.my_assignments counterparts the resolver reads for eligibility
 	// (issue #381): fixtureClosedStatus is the closed assignment as the view
 	// reports it to a caller with no extension.
-	fixtureClosedStatus = `[{"slug":"proj1","effective_closed_at":"2026-01-01T00:00:00+00:00","submission_window_open":false,"can_submit":false,"can_submit_reason":"deadline_passed","extension_closed_at":null,"extension_fractional_credit":null,"submissions":[]}]`
+	fixtureClosedStatus = `[{"slug":"proj1","effective_closed_at":"2026-01-01T00:00:00+00:00","submission_window_open":false,"can_submit":false,"can_submit_reason":"deadline_passed","extension_closed_at":null,"extension_fractional_credit":null}]`
+
+	// fixtureNoTeamStatus is the open team assignment as the view reports it
+	// to a caller who is not on a team.
+	fixtureNoTeamStatus = `[{"slug":"team-proj","effective_closed_at":"2026-09-01T00:00:00+00:00","submission_window_open":true,"can_submit":false,"can_submit_reason":"no_team","extension_closed_at":null,"extension_fractional_credit":null}]`
 
 	fixtureExistingSubmission = `[{"id":7,"fields":[{"assignment_field_slug":"repo-url","body":"old-value","updated_at":"2026-08-02T00:00:00+00:00"}]}]`
 
@@ -235,6 +240,35 @@ func TestSubmitTeamAssignmentWithoutTeam(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "not on a team") {
 		t.Fatalf("expected a team error, got %v", err)
+	}
+}
+
+// A preview for a caller with no team still answers, with the view's
+// can_submit_reason and a warning, and never looks for a team submission it
+// could not name; only the write itself is refused.
+func TestPreviewTeamAssignmentWithoutTeamReportsNoTeam(t *testing.T) {
+	fake := newFakePostgREST(t)
+	fake.respond("/assignments", fixturePrepareTeamAssignment)
+	fake.respond("/my_assignments", fixtureNoTeamStatus)
+	fake.respond("/users", fixtureUserRowsNoTeam)
+	req, _ := readToolRequest(t, nil)
+
+	_, out, err := fake.deps(t).previewSubmissionChange(context.Background(), req, submissionChangeInput{
+		AssignmentSlug: "team-proj", FieldSlug: "repo-url", Body: "x",
+	})
+	if err != nil {
+		t.Fatalf("preview: %v", err)
+	}
+	if !out.IsTeam || out.TeamNickname != "" || out.CanSubmit || out.CanSubmitReason != "no_team" {
+		t.Fatalf("output = %+v", out)
+	}
+	if !strings.Contains(out.Warning, "not on a team") {
+		t.Fatalf("warning = %q", out.Warning)
+	}
+	for _, recorded := range fake.recorded() {
+		if recorded.path == "/assignment_submissions" {
+			t.Fatalf("a caller with no team must not look up a team submission: %+v", recorded)
+		}
 	}
 }
 
@@ -718,9 +752,7 @@ func TestSubmissionWriteOverStreamableHTTP(t *testing.T) {
 // shared base map is not mutated between calls.
 func mergeArguments(base map[string]any, key string, value any) map[string]any {
 	merged := make(map[string]any, len(base)+1)
-	for k, v := range base {
-		merged[k] = v
-	}
+	maps.Copy(merged, base)
 	merged[key] = value
 	return merged
 }

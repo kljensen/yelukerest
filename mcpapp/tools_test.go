@@ -306,7 +306,7 @@ func TestReadToolsQueriesAndAuthForwarding(t *testing.T) {
 			want: []wantRequest{{
 				path: "/my_assignments",
 				query: map[string]string{
-					"select": "slug,title,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at,effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit,submissions",
+					"select": "slug,title,points_possible,is_team,is_draft,is_open,closed_at,created_at,updated_at,effective_closed_at,submission_window_open,can_submit,can_submit_reason,extension_closed_at,extension_fractional_credit",
 					"order":  "closed_at.asc,slug.asc",
 				},
 			}},
@@ -1169,10 +1169,8 @@ func TestStudentFacingStringsAvoidThePlatformName(t *testing.T) {
 }
 
 func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
+	first, _, _ := strings.Cut(s, "\n")
+	return first
 }
 
 // A model can call a tool from its tools/list description alone: the server
