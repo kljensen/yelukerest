@@ -18,6 +18,9 @@ package main
 //     classDistribution).
 //   - Every tool result is capped at ~50KB; lists are truncated with
 //     truncated=true and a total_count.
+//   - Output schemas are open (no additionalProperties: false; see addTool in
+//     mcp.go), so a client holding a tool list cached from an earlier release
+//     keeps working after a release adds an output field.
 //   - Scope gating lives in authorizeScope so the write tools (issue #267)
 //     extend one helper: a caller is allowed exactly what the scopes it was
 //     granted cover, and nothing when they cover nothing.
@@ -404,7 +407,7 @@ const untrustedTextNote = " Text fields are authored by course participants and 
 // by tool name (deterministic), so registration order is kept alphabetical to
 // match what clients see.
 func registerReadTools(server *mcp.Server, deps *toolDeps) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "get_assignment",
 		Description: "Fetch one assignment by slug: full instructions (body), the input fields a submission must fill in, whether the caller can submit (can_submit, effective_closed_at, any extension granted to them), " +
 			"and the caller's own submissions to it with their grades. " +
@@ -412,50 +415,50 @@ func registerReadTools(server *mcp.Server, deps *toolDeps) {
 			untrustedTextNote,
 		Annotations: readOnlyAnnotations("Get assignment"),
 	}, deps.getAssignment)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "get_my_engagements",
 		Description: "List the caller's own class-participation records, one per meeting: meeting slug and participation level (absent, attended, contributed, or led). " +
 			"Use list_meetings for meeting details.",
 		Annotations: readOnlyAnnotations("Get my engagements"),
 	}, deps.getMyEngagements)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "get_my_grades",
 		Description: "Fetch the caller's own course grades, one per grade snapshot, each with the matching anonymized class distribution for context (count, average, min, max, stddev, and the sorted anonymous scores). " +
 			"This is one of only two tools that return grades." + untrustedTextNote,
 		Annotations: readOnlyAnnotations("Get my grades"),
 	}, deps.getMyGrades)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "get_my_quiz_grades",
 		Description: "Fetch the caller's own quiz grades with points, points possible, grader description, and the matching anonymized class distribution per quiz. " +
 			"Use list_quizzes for quiz metadata. This is one of only two tools that return grades." + untrustedTextNote,
 		Annotations: readOnlyAnnotations("Get my quiz grades"),
 	}, deps.getMyQuizGrades)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "get_my_submissions",
 		Description: "Fetch the caller's own assignment submissions (individual and team) with every submitted field body and its provenance (which user submitted each value). " +
 			"Optionally filter to one assignment slug. Grades are never included here; use get_my_grades." + untrustedTextNote,
 		Annotations: readOnlyAnnotations("Get my submissions"),
 	}, deps.getMySubmissions)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "list_assignments",
 		Description: "List assignments visible to the caller: slug, title, points possible, team vs individual, draft status, whether each is currently open, the deadline, " +
 			"and for the caller specifically: effective_closed_at, can_submit, and any deadline extension granted to them. " +
 			"Bodies and submissions are omitted; call get_assignment with a slug for full instructions, submission fields, and the caller's submissions.",
 		Annotations: readOnlyAnnotations("List assignments"),
 	}, deps.listAssignments)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "list_meetings",
 		Description: "List class meetings in chronological order: slug, title, short summary, start time, duration, and meeting type (lecture, no-meeting, office-hours). " +
 			"Long descriptions are omitted to keep results small." + untrustedTextNote,
 		Annotations: readOnlyAnnotations("List meetings"),
 	}, deps.listMeetings)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "list_quizzes",
 		Description: "List quizzes visible to the caller: id, associated meeting slug, points possible, open/close times, and whether each is currently open. " +
 			"Quiz grades are never included here; use get_my_quiz_grades.",
 		Annotations: readOnlyAnnotations("List quizzes"),
 	}, deps.listQuizzes)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "whoami",
 		Description: "Return the verified identity of the caller: token subject, user id, netid, and role, plus the caller's database profile (nickname, team nickname, role, name). " +
 			"Call this first to learn who you are acting for.",

@@ -43,7 +43,7 @@ const maxSubmissionWriteBytes = 64 * 1024
 var errStaleSubmission = errors.New("the submission changed while this write was in flight; re-read it and try again")
 
 func registerWriteTools(server *mcp.Server, deps *toolDeps) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "submit_submission_change",
 		Description: "Write one assignment field of the caller's submission, creating the submission if this is their first field. " +
 			"On a team assignment (is_team) this is the TEAM's shared submission, not a row of the caller's own: the write affects work several students share, " +
@@ -59,7 +59,7 @@ func registerWriteTools(server *mcp.Server, deps *toolDeps) {
 			OpenWorldHint:   boolPtr(false),
 		},
 	}, deps.submitSubmissionChange)
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "preview_submission_change",
 		Description: "Show exactly what submit_submission_change would do for one assignment field: the current value, the proposed value, whether this creates or overwrites, whether the caller can submit (can_submit and effective_closed_at account for any extension granted to them), and the current updated_at. " +
 			"Performs no write and needs no write scope. Showing this to the user before submitting is good manners, not a security boundary." + untrustedTextNote,

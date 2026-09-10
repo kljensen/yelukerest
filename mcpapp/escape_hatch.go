@@ -79,13 +79,13 @@ func allowedAPIMethodsFor(writesEnabled bool) []string {
 }
 
 func registerEscapeHatchTools(server *mcp.Server, deps *toolDeps) {
-	mcp.AddTool(server, &mcp.Tool{
+	addTool(server, &mcp.Tool{
 		Name: "get_api_schema",
 		Description: "Return a curated schema of the course REST API for use with postgrest_request: the main views with their columns, which are writable by students, the PostgREST filter cheat-sheet, and side-effect warnings. " +
 			"Prefer the dedicated tools (list_assignments, get_my_grades, ...) when one fits.",
 		Annotations: readOnlyAnnotations("Get API schema"),
 	}, deps.getAPISchema)
-	mcp.AddTool(server, postgrestRequestTool(deps.escapeHatchWritesEnabled), deps.postgrestRequest)
+	addTool(server, postgrestRequestTool(deps.escapeHatchWritesEnabled), deps.postgrestRequest)
 }
 
 // postgrestRequestTool describes the escape hatch as it is actually

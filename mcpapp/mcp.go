@@ -3,12 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -90,6 +93,39 @@ func newMCPServer(deps *toolDeps) *mcp.Server {
 	registerWriteTools(server, deps)
 	registerEscapeHatchTools(server, deps)
 	return server
+}
+
+// addTool registers a typed tool with an open output schema (issue #383).
+// Left to itself the SDK infers the schema from Out and closes every object
+// with additionalProperties: false, so a client validating results against a
+// tool list it cached from an earlier release rejects every call once a field
+// is added. Handing the SDK the inferred schema with those closures removed
+// keeps the advertised schema and the server-side validator agreeing that
+// unknown properties are allowed; types and required fields are untouched.
+func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	schema, err := jsonschema.For[Out](nil)
+	if err != nil {
+		panic(fmt.Sprintf("addTool %q: output schema: %v", tool.Name, err))
+	}
+	openObjects(schema)
+	tool.OutputSchema = schema
+	mcp.AddTool(server, tool, handler)
+}
+
+// openObjects removes additionalProperties: false from every object in the
+// schema, root and nested, so unknown properties validate.
+func openObjects(s *jsonschema.Schema) {
+	if s == nil {
+		return
+	}
+	if ap := s.AdditionalProperties; ap != nil && ap.Not != nil && reflect.ValueOf(*ap.Not).IsZero() {
+		s.AdditionalProperties = nil
+	}
+	openObjects(s.AdditionalProperties)
+	openObjects(s.Items)
+	for _, property := range s.Properties {
+		openObjects(property)
+	}
 }
 
 // identityFromRequest extracts the verified caller identity that the bearer

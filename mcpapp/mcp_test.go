@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -542,5 +544,124 @@ func TestServerIdentityFallsBackWithoutEnvironment(t *testing.T) {
 		if strings.Contains(strings.ToLower(field), "yeluke") {
 			t.Fatalf("server identity still carries the platform name: %q", field)
 		}
+	}
+}
+
+// TestToolOutputSchemasAreOpen: no advertised output schema closes an object
+// (issue #383). A closed object turns the next added field into a validation
+// failure for every client still holding the old tool list.
+func TestToolOutputSchemasAreOpen(t *testing.T) {
+	server := newMCPServer(&toolDeps{
+		logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		postgrest: newPostgRESTClient("postgrest", "3000"),
+	})
+
+	ctx := context.Background()
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	if err != nil {
+		t.Fatalf("server connect: %v", err)
+	}
+	defer serverSession.Close()
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil).
+		Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("client connect: %v", err)
+	}
+	defer session.Close()
+
+	list, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	for _, tool := range list.Tools {
+		if tool.OutputSchema == nil {
+			t.Errorf("tool %q advertises no output schema", tool.Name)
+			continue
+		}
+		encoded, err := json.Marshal(tool.OutputSchema)
+		if err != nil {
+			t.Fatalf("marshal %q output schema: %v", tool.Name, err)
+		}
+		if strings.Contains(string(encoded), `"additionalProperties":false`) {
+			t.Errorf("tool %q output schema is closed: %s", tool.Name, encoded)
+		}
+	}
+}
+
+// TestStaleToolListToleratesNewOutputFields: a result carrying fields the
+// advertised schema does not know, at the root and inside a list row, still
+// validates against that schema (issue #383).
+func TestStaleToolListToleratesNewOutputFields(t *testing.T) {
+	server, fake, _, _ := newTestAppWithPostgREST(t, testAppConfig(t, 100))
+	fake.respond("/my_assignments", fixtureAssignments)
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{
+		Endpoint:   server.URL + mcpPath,
+		HTTPClient: &http.Client{Transport: authTransport{token: accessToken(t, nil)}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_assignments"})
+	if err != nil {
+		t.Fatalf("tools/call: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("list_assignments returned tool error: %+v", result.Content)
+	}
+
+	list, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("tools/list: %v", err)
+	}
+	var advertised *jsonschema.Schema
+	for _, tool := range list.Tools {
+		if tool.Name != "list_assignments" {
+			continue
+		}
+		encoded, err := json.Marshal(tool.OutputSchema)
+		if err != nil {
+			t.Fatalf("marshal output schema: %v", err)
+		}
+		if err := json.Unmarshal(encoded, &advertised); err != nil {
+			t.Fatalf("unmarshal output schema: %v", err)
+		}
+	}
+	if advertised == nil {
+		t.Fatal("list_assignments advertises no output schema")
+	}
+	resolved, err := advertised.Resolve(nil)
+	if err != nil {
+		t.Fatalf("resolve output schema: %v", err)
+	}
+
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal structured content: %v", err)
+	}
+	var output map[string]any
+	if err := json.Unmarshal(raw, &output); err != nil {
+		t.Fatalf("unmarshal structured content: %v", err)
+	}
+	if err := resolved.Validate(output); err != nil {
+		t.Fatalf("unmodified output does not validate: %v", err)
+	}
+	output["added_in_a_later_release"] = true
+	rows, ok := output["assignments"].([]any)
+	if !ok || len(rows) != 1 {
+		t.Fatalf("assignments = %v", output["assignments"])
+	}
+	row, ok := rows[0].(map[string]any)
+	if !ok {
+		t.Fatalf("assignments[0] = %v", rows[0])
+	}
+	row["also_added_later"] = "x"
+	if err := resolved.Validate(output); err != nil {
+		t.Fatalf("output with unknown fields does not validate against the advertised schema: %v", err)
 	}
 }
