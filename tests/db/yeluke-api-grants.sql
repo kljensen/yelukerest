@@ -684,6 +684,53 @@ RESET role
 ; RESET "request.jwt.claim.user_id"
 ; SET LOCAL role TO grant_consumer
 ; SELECT throws_like(' SELECT * FROM api.granted_submissions(''team-selection'') ', '%revoked or has expired%', 'an empty page is refused once the grant is revoked')
+; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 9002, "sub": "grant:9002", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
+; SELECT throws_like(' SELECT * FROM api.granted_submissions(''team-selection'') ', '%revoked or has expired%', 'an expired grant asking for an ungranted slug is refused, not answered with an empty page')
+; RESET role
+;
+-- ---------------------------------------------------------------
+-- Two assignments sharing a field slug, two grants (#386)
+-- ---------------------------------------------------------------
+-- The composite key is what keeps `url` on one assignment from meaning `url`
+-- on every assignment (ADR 0005). Each grant must see its own body and never
+-- the other's, whether the call names the assignment or not.
+INSERT INTO data.assignment (slug, points_possible, is_draft, is_team, title, body, closed_at)
+VALUES
+    ('zz-left', 10, false, false, 'Left', 'b', current_timestamp + '30 days'::interval),
+    ('zz-right', 10, false, false, 'Right', 'b', current_timestamp + '30 days'::interval)
+; INSERT INTO data.assignment_field (slug, assignment_slug, label, help, placeholder, is_url, is_multiline)
+VALUES
+    ('url', 'zz-left', 'l', 'h', 'p', false, false),
+    ('url', 'zz-right', 'l', 'h', 'p', false, false)
+; INSERT INTO data.assignment_submission (id, assignment_slug, is_team, user_id, submitter_user_id)
+VALUES (9201, 'zz-left', false, 1, 1), (9202, 'zz-right', false, 2, 2)
+; INSERT INTO data.assignment_field_submission (assignment_submission_id, assignment_field_slug, assignment_slug, body, origin)
+VALUES
+    (9201, 'url', 'zz-left', 'left-secret', 'staff'),
+    (9202, 'url', 'zz-right', 'right-secret', 'staff')
+; SELECT
+    ok((
+        SELECT data.create_api_grant_rows('left grant', '[{"assignment_slug": "zz-left", "identity": [], "field_slugs": ["url"]}]', current_timestamp + '30 days'::interval, 3) > 0
+    ), 'the left grant is created')
+; SELECT
+    ok((
+        SELECT data.create_api_grant_rows('right grant', '[{"assignment_slug": "zz-right", "identity": [], "field_slugs": ["url"]}]', current_timestamp + '30 days'::interval, 3) > 0
+    ), 'the right grant is created')
+; SELECT ok(set_config('request.jwt.claims', json_build_object('role', 'grant_consumer', 'grant_id', id, 'sub', 'grant:' || id, 'iss', 'yelukerest', 'aud', 'yelukerest-postgrest', 'exp', 4102444800)::text, false) <> '', 'present the left grant''s claims')
+FROM data.api_grant
+WHERE name = 'left grant'
+; SET LOCAL role TO grant_consumer
+; SELECT set_eq(' SELECT r -> ''fields'' -> ''url'' ->> ''body'' FROM api.granted_submissions() r ', ARRAY['left-secret'], 'the left grant sees only its own body when nothing is filtered')
+; SELECT set_eq(' SELECT r -> ''fields'' -> ''url'' ->> ''body'' FROM api.granted_submissions(''zz-left'') r ', ARRAY['left-secret'], 'the left grant sees its own body when it asks for its assignment')
+; SELECT is_empty(' SELECT * FROM api.granted_submissions(''zz-right'') ', 'the left grant sees nothing of the assignment that shares the slug')
+; RESET role
+; SELECT ok(set_config('request.jwt.claims', json_build_object('role', 'grant_consumer', 'grant_id', id, 'sub', 'grant:' || id, 'iss', 'yelukerest', 'aud', 'yelukerest-postgrest', 'exp', 4102444800)::text, false) <> '', 'present the right grant''s claims')
+FROM data.api_grant
+WHERE name = 'right grant'
+; SET LOCAL role TO grant_consumer
+; SELECT set_eq(' SELECT r -> ''fields'' -> ''url'' ->> ''body'' FROM api.granted_submissions() r ', ARRAY['right-secret'], 'the right grant sees only its own body when nothing is filtered')
+; SELECT set_eq(' SELECT r -> ''fields'' -> ''url'' ->> ''body'' FROM api.granted_submissions(''zz-right'') r ', ARRAY['right-secret'], 'the right grant sees its own body when it asks for its assignment')
+; SELECT is_empty(' SELECT * FROM api.granted_submissions(''zz-left'') ', 'the right grant sees nothing of the assignment that shares the slug')
 ; RESET role
 ; RESET "request.jwt.claims"
 ; SELECT *
