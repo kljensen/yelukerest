@@ -290,18 +290,38 @@ SELECT set_eq('
         )
         SELECT r.rolname::text FROM members JOIN pg_roles r ON r.oid = members.member
     ', ARRAY['yelukerest_migrator'], 'grant_reader is held by the migrator and nobody else, directly or transitively')
-; SELECT set_eq('
+;
+-- Somebody holds grant_consumer, and every holder is an authenticator: a
+-- login role directly holding anonymous. Not set-equality with every such
+-- login, since a cluster may have logins that hold anonymous alone.
+SELECT
+    ok((
         WITH RECURSIVE members AS (
-            SELECT m.member FROM pg_auth_members m WHERE m.roleid = ''grant_consumer''::regrole
+            SELECT m.member
+            FROM pg_auth_members m
+            WHERE m.roleid = 'grant_consumer'::regrole
             UNION
-            SELECT m.member FROM pg_auth_members m JOIN members ON m.roleid = members.member
+            SELECT m.member
+            FROM
+                pg_auth_members m
+                JOIN members ON m.roleid = members.member
         )
-        SELECT r.rolname::text FROM members JOIN pg_roles r ON r.oid = members.member
-    ', '
-        SELECT r.rolname::text FROM pg_roles r
-        WHERE r.rolcanlogin
-          AND EXISTS (SELECT FROM pg_auth_members am WHERE am.member = r.oid AND am.roleid = ''anonymous''::regrole)
-    ', 'grant_consumer is held by the authenticator and nobody else, directly or transitively')
+        SELECT
+            COALESCE(count(*) >= 1 AND bool_and(r.rolcanlogin
+            AND EXISTS (
+                SELECT
+                FROM pg_auth_members am
+                WHERE
+                    am.member = r.oid
+                    AND am.roleid = 'anonymous'::regrole
+            )), false)
+        FROM
+            members
+            JOIN pg_roles r ON r.oid = members.member
+    ), 'grant_consumer is held by at least one authenticator and by nothing else, directly or transitively')
+; SELECT is_empty(' SELECT held.rolname FROM pg_auth_members m
+        JOIN pg_roles held ON held.oid = m.roleid
+        WHERE m.member = ''grant_reader''::regrole ', 'grant_reader is a member of no role')
 ; SELECT
     "is"((
         SELECT rolcanlogin

@@ -52,14 +52,14 @@ WITH RECURSIVE members AS (
 SELECT
     1 / (
         SELECT
-            (count(*) >= 1 AND bool_and(r.rolcanlogin
+            COALESCE(count(*) >= 1 AND bool_and(r.rolcanlogin
             AND EXISTS (
                 SELECT
                 FROM pg_auth_members am
                 WHERE
                     am.member = r.oid
                     AND am.roleid = 'anonymous'::regrole
-            )))::int
+            )), false)::int
         FROM
             members
             JOIN pg_roles r ON r.oid = members.member
@@ -78,7 +78,7 @@ WITH RECURSIVE members AS (
 )
 SELECT
     1 / (
-        SELECT (array_agg(r.rolname::text) = ARRAY['yelukerest_migrator'])::int
+        SELECT COALESCE(array_agg(r.rolname::text) = ARRAY['yelukerest_migrator'], false)::int
         FROM
             members
             JOIN pg_roles r ON r.oid = members.member

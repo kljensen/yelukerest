@@ -52,10 +52,22 @@ BEGIN
     SELECT string_agg(rolname, ', ') INTO offending
     FROM pg_roles
     WHERE rolname IN ('grant_consumer', 'grant_reader')
-      AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole);
+      AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole OR rolcreatedb OR rolreplication);
     IF offending IS NOT NULL THEN
-        RAISE EXCEPTION 'role(s) % must be NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEROLE', offending
+        RAISE EXCEPTION 'role(s) % must be NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB NOREPLICATION', offending
             USING HINT = 'bin/provision-db.sh sets those attributes; re-run it';
+    END IF;
+
+    -- Neither role may hold any other role: everything either can do comes
+    -- from its own grants below, and `GRANT faculty TO grant_consumer` would
+    -- otherwise turn a grant credential into a faculty one.
+    SELECT string_agg(member.rolname || ' holds ' || held.rolname, ', ') INTO offending
+    FROM pg_auth_members m
+    JOIN pg_roles member ON member.oid = m.member
+    JOIN pg_roles held ON held.oid = m.roleid
+    WHERE member.rolname IN ('grant_consumer', 'grant_reader');
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'grant_consumer and grant_reader must be members of no role; found %', offending;
     END IF;
 
     -- Membership, direct or through another role. grant_reader may be held
