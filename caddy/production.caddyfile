@@ -60,3 +60,25 @@ editor.{$NAKED_FQDN} {
 		}
 	}
 }
+
+# The tacky-website voting app (yale-mgt-656-fall-2026/tacky-website-voting).
+# It runs as its own compose project on this host and joins this stack's
+# network under the alias tacky-voting; nothing here publishes a port for it.
+# Its own CAS session cookie is host-only to this name, and it checks the
+# Origin header on every vote write, because code.{$NAKED_FQDN} is the same
+# site and a student's page could otherwise form-post a vote
+# (admin issue #43). A single label under the naked domain, as for editor.
+vote.{$NAKED_FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	header X-Frame-Options "DENY"
+	reverse_proxy tacky-voting:8080 {
+		# The app derives its CAS callback from these two headers.
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+	tls {
+		dns route53 {
+			wait_for_propagation true
+		}
+	}
+}
