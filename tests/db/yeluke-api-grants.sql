@@ -391,7 +391,7 @@ RESET role
 ; SELECT ok(set_config('request.jwt.claims', json_build_object('role', 'grant_consumer', 'grant_id', id, 'sub', 'grant:' || id, 'iss', 'yelukerest', 'aud', 'yelukerest-postgrest', 'exp', 4102444800)::text, false) <> '', 'present the issued credential''s claims again')
 FROM issued
 ; SET LOCAL role TO grant_consumer
-; SELECT throws_ok(' SELECT * FROM api.granted_submissions() ', '0A000', NULL, 'a live grant reaches the not-yet-available refusal')
+; SELECT is_empty(' SELECT * FROM api.granted_submissions() ', 'a live grant over an assignment with no submissions yet reads an empty set')
 ; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 424242, "sub": "grant:424242", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
 ; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%revoked or has expired%', 'an unknown grant is refused')
 ; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 7, "sub": "grant:8", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
@@ -425,6 +425,174 @@ VALUES (9002, 'expired grant', 3, current_timestamp - '2 days'::interval, curren
 FROM issued
 ; SET LOCAL role TO grant_consumer
 ; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%revoked or has expired%', 'a revoked grant is refused, so revocation is live')
+; RESET role
+; RESET "request.jwt.claims"
+;
+-- ---------------------------------------------------------------
+-- The reader: granted values only, paged by submission id (#386)
+-- ---------------------------------------------------------------
+-- A grant over three assignments: exam-1 (individual; netid, name and a
+-- team_nickname that is always null there), project-update-1 (team;
+-- team_nickname and a nickname that is always null there), and zz-cap (no
+-- identity at all), which exists to hold enough rows to see the limit cap.
+INSERT INTO data.assignment (slug, points_possible, is_draft, is_team, title, body, closed_at)
+VALUES ('zz-cap', 10, false, false, 'Cap', 'b', current_timestamp + '30 days'::interval)
+; INSERT INTO data.assignment_field (slug, assignment_slug, label, help, placeholder, is_url, is_multiline)
+VALUES ('answer', 'zz-cap', 'l', 'h', 'p', false, false)
+; SELECT
+    ok((
+        SELECT data.create_api_grant_rows('reader grant', '[{"assignment_slug": "exam-1", "identity": ["netid", "name", "team_nickname"], "field_slugs": ["url", "profound"]},
+                  {"assignment_slug": "project-update-1", "identity": ["team_nickname", "nickname"], "field_slugs": ["repo-url"]},
+                  {"assignment_slug": "zz-cap", "identity": [], "field_slugs": ["answer"]}]', current_timestamp + '30 days'::interval, 3) > 0
+    ), 'the reader grant is created')
+;
+-- Four individual submissions on exam-1, with explicit ids so the paging
+-- assertions below are literal. 9101 (user 1) is complete; 9102 (user 2)
+-- lacks profound; 9103 (user 4) has an empty profound; 9104 (user 5) has a
+-- whitespace profound, which counts as content. Written with no request
+-- identity, so each field row states its origin.
+INSERT INTO data.assignment_submission (id, assignment_slug, is_team, user_id, submitter_user_id)
+VALUES
+    (9101, 'exam-1', false, 1, 1), (9102, 'exam-1', false, 2, 2),
+    (9103, 'exam-1', false, 4, 4), (9104, 'exam-1', false, 5, 5)
+; INSERT INTO data.assignment_field_submission (assignment_submission_id, assignment_field_slug, assignment_slug, body, origin)
+VALUES
+    (9101, 'url', 'exam-1', 'https://github.com/alice/exam', 'staff'),
+    (9101, 'profound', 'exam-1', 'something profound', 'staff'),
+    (9102, 'url', 'exam-1', 'https://github.com/bob/exam', 'staff'),
+    (9103, 'url', 'exam-1', 'https://github.com/jacob/exam', 'staff'),
+    (9103, 'profound', 'exam-1', '', 'staff'),
+    (9104, 'url', 'exam-1', 'https://github.com/charlotte/exam', 'staff'),
+    (9104, 'profound', 'exam-1', ' ', 'staff')
+;
+-- 510 complete submissions on zz-cap, each from its own observer account
+-- (observers get no engagement rows, so this stays cheap).
+INSERT INTO data."user" (id, netid, nickname, role)
+SELECT 10000 + i, 'zz' || i, 'cap-u' || i, 'observer'
+FROM generate_series(1, 510) i
+; INSERT INTO data.assignment_submission (id, assignment_slug, is_team, user_id, submitter_user_id)
+SELECT 20000 + i, 'zz-cap', false, 10000 + i, 10000 + i
+FROM generate_series(1, 510) i
+; INSERT INTO data.assignment_field_submission (assignment_submission_id, assignment_field_slug, assignment_slug, body, origin)
+SELECT 20000 + i, 'answer', 'zz-cap', 'answer ' || i, 'staff'
+FROM generate_series(1, 510) i
+; SELECT ok(set_config('request.jwt.claims', json_build_object('role', 'grant_consumer', 'grant_id', id, 'sub', 'grant:' || id, 'iss', 'yelukerest', 'aud', 'yelukerest-postgrest', 'exp', 4102444800)::text, false) <> '', 'present the reader grant''s claims')
+FROM data.api_grant
+WHERE name = 'reader grant'
+; SET LOCAL role TO grant_consumer
+;
+-- Exact shape of an individual row, timestamps aside: the contracted keys,
+-- the granted identity with its null team_nickname, and only the granted
+-- fields.
+SELECT
+    "is"((
+        SELECT (((r - 'created_at') - 'updated_at') #- '{fields,url,updated_at}') #- '{fields,profound,updated_at}'
+        FROM api.granted_submissions('exam-1') r
+        WHERE (r ->> 'submission_id')::int = 9101
+    ), '{"assignment_slug": "exam-1", "submission_id": 9101, "is_team": false,
+         "identity": {"netid": "abc123", "name": "Alice Miller", "team_nickname": null},
+         "fields": {"url": {"body": "https://github.com/alice/exam"}, "profound": {"body": "something profound"}}}'::jsonb, 'an individual row carries the granted identity, a null team_nickname, and the granted fields only')
+; SELECT set_eq(' SELECT jsonb_object_keys(r) FROM api.granted_submissions(''exam-1'') r WHERE (r ->> ''submission_id'')::int = 9101 ', ARRAY['assignment_slug', 'submission_id', 'is_team', 'created_at', 'updated_at', 'identity', 'fields'], 'a row has exactly the contracted keys')
+; SELECT
+    ok((
+        SELECT
+            (r ->> 'created_at')::timestamptz = current_timestamp
+            AND (r ->> 'updated_at')::timestamptz = current_timestamp
+            AND (((r -> 'fields') -> 'url') ->> 'updated_at')::timestamptz = current_timestamp
+        FROM api.granted_submissions('exam-1') r
+        WHERE (r ->> 'submission_id')::int = 9101
+    ), 'the timestamps are the submission''s and each field row''s own')
+;
+-- A team row: the team, a null nickname, and not the ungranted update-url.
+-- Submission 4 was edited by users 1 and 3; neither appears.
+SELECT
+    "is"((
+        SELECT ((r - 'created_at') - 'updated_at') #- '{fields,repo-url,updated_at}'
+        FROM api.granted_submissions('project-update-1') r
+    ), '{"assignment_slug": "project-update-1", "submission_id": 4, "is_team": true,
+         "identity": {"team_nickname": "bright-fog", "nickname": null},
+         "fields": {"repo-url": {"body": "http://github.com/kljensen/fakerepo"}}}'::jsonb, 'a team row carries the team, null person keys, no editor, and the granted field only')
+; SELECT
+    "is"((
+        SELECT r -> 'identity'
+        FROM api.granted_submissions('zz-cap', NULL, 1) r
+    ), '{}'::jsonb, 'an assignment granted without identity attributes yields an empty identity object')
+;
+-- Completeness: the submission missing a granted field and the one with an
+-- empty body are absent; whitespace counts as content.
+SELECT set_eq(' SELECT (r ->> ''submission_id'')::int FROM api.granted_submissions(''exam-1'') r ', ARRAY[9101, 9104], 'only submissions with every granted field non-empty are listed')
+;
+-- A slug the grant does not cover is an empty array, not an error.
+SELECT is_empty(' SELECT * FROM api.granted_submissions(''team-selection'') ', 'an ungranted assignment reads as empty')
+;
+-- Ordering and paging across every granted assignment, one row at a time.
+SELECT results_eq(' SELECT (r ->> ''submission_id'')::int FROM api.granted_submissions(NULL, NULL, 3) r ', ARRAY[4, 9101, 9104], 'rows come in submission id order across assignments')
+; SELECT results_eq(' SELECT (r ->> ''submission_id'')::int FROM api.granted_submissions(''exam-1'', NULL, 1) r ', ARRAY[9101], 'the first page holds the lowest id')
+; SELECT results_eq(' SELECT (r ->> ''submission_id'')::int FROM api.granted_submissions(''exam-1'', 9101, 1) r ', ARRAY[9104], 'p_after_id continues past the boundary')
+; SELECT is_empty(' SELECT * FROM api.granted_submissions(''exam-1'', 9104, 1) ', 'and the page after the last row is empty')
+;
+-- Limits: refused when null or non-positive, capped at 500 otherwise.
+SELECT throws_ok(' SELECT * FROM api.granted_submissions(''exam-1'', NULL, NULL) ', '22023', NULL, 'a null limit is refused')
+; SELECT throws_ok(' SELECT * FROM api.granted_submissions(''exam-1'', NULL, 0) ', '22023', NULL, 'a zero limit is refused')
+; SELECT throws_ok(' SELECT * FROM api.granted_submissions(''exam-1'', NULL, -1) ', '22023', NULL, 'a negative limit is refused')
+; SELECT
+    "is"((
+        SELECT count(*)::int
+        FROM api.granted_submissions('zz-cap', NULL, 10000)
+    ), 500, 'a limit above 500 returns 500 rows')
+; SELECT
+    "is"((
+        SELECT count(*)::int
+        FROM api.granted_submissions('zz-cap', 20500, 10000)
+    ), 10, 'the rows past the cap are reachable on the next page')
+; SELECT
+    "is"((
+        SELECT count(*)::int
+        FROM api.granted_submissions('zz-cap')
+    ), 200, 'the default limit is 200')
+;
+-- The listing is current state: an edit shows the new body, a filled-in
+-- field brings a submission in, and a cleared field takes one out.
+RESET role
+; UPDATE data.assignment_field_submission
+SET body = 'https://github.com/alice/exam-v2'
+WHERE
+    assignment_submission_id = 9101
+    AND assignment_field_slug = 'url'
+; INSERT INTO data.assignment_field_submission (assignment_submission_id, assignment_field_slug, assignment_slug, body, origin)
+VALUES (9102, 'profound', 'exam-1', 'late but profound', 'staff')
+; DELETE FROM data.assignment_field_submission
+WHERE
+    assignment_submission_id = 9104
+    AND assignment_field_slug = 'profound'
+; SET LOCAL role TO grant_consumer
+; SELECT
+    "is"((
+        SELECT ((r -> 'fields') -> 'url') ->> 'body'
+        FROM api.granted_submissions('exam-1') r
+        WHERE (r ->> 'submission_id')::int = 9101
+    ), 'https://github.com/alice/exam-v2', 'an edited field shows its new body')
+; SELECT set_eq(' SELECT (r ->> ''submission_id'')::int FROM api.granted_submissions(''exam-1'') r ', ARRAY[9101, 9102], 'a filled-in field brings a submission in and a cleared field takes one out')
+;
+-- An empty page still needs a live grant: the same ungranted slug that read
+-- as empty above is refused once the grant is revoked.
+RESET role
+; SET "request.jwt.claim.role" TO faculty
+; SET "request.jwt.claim.user_id" TO "3"
+; SELECT
+    ok((
+        SELECT count(*) = 1
+        FROM
+            api.revoke_api_grant((
+                SELECT id
+                FROM data.api_grant
+                WHERE name = 'reader grant'
+            ))
+    ), 'the reader grant can be revoked')
+; RESET "request.jwt.claim.role"
+; RESET "request.jwt.claim.user_id"
+; SET LOCAL role TO grant_consumer
+; SELECT throws_like(' SELECT * FROM api.granted_submissions(''team-selection'') ', '%revoked or has expired%', 'an empty page is refused once the grant is revoked')
 ; RESET role
 ; RESET "request.jwt.claims"
 ; SELECT *
