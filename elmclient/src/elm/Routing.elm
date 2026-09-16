@@ -20,6 +20,7 @@ matchers =
         , map EditEngagementsRoute (s "engagements" </> string)
         , map ConnectedAppsRoute (s "connected-apps")
         , map ApiTokensRoute (s "api-tokens")
+        , map DataGrantsRoute (s "data-grants")
         , map McpRoute (s "mcp")
         ]
 

@@ -38,6 +38,10 @@ tests =
             \_ ->
                 parseLocation (StringLocation "https://example.test/#connected-apps")
                     |> Expect.equal ConnectedAppsRoute
+        , test "parses the data-grants route" <|
+            \_ ->
+                parseLocation (StringLocation "https://example.test/#data-grants")
+                    |> Expect.equal DataGrantsRoute
         , test "parses the MCP instructions route" <|
             \_ ->
                 parseLocation (StringLocation "https://example.test/#mcp")

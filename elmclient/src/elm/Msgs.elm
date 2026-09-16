@@ -14,6 +14,7 @@ import Auth.Model exposing (CurrentUser)
 import Browser exposing (UrlRequest(..))
 import ApiTokens.Model exposing (ApiToken, CreatedToken)
 import ConnectedApps.Model exposing (ConnectedApps)
+import DataGrants.Model exposing (ApiGrant, CreatedGrant)
 import Http
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
@@ -47,6 +48,19 @@ type Msg
     | SetApiTokenDraftName String
     | SetApiTokenDraftScope String Bool
     | DismissCreatedApiToken
+    | OnFetchDataGrants (WebData (List ApiGrant))
+    | OnCreateDataGrant (Result String CreatedGrant)
+    | OnRevokeDataGrant Int (WebData ())
+    | CreateDataGrant
+    | RevokeDataGrant Int
+    | SetDataGrantDraftName String
+    | SetDataGrantDraftExpiry String
+    | AddDataGrantDraftAssignment
+    | RemoveDataGrantDraftAssignment Int
+    | SetDataGrantDraftAssignmentSlug Int String
+    | SetDataGrantDraftIdentity Int String Bool
+    | SetDataGrantDraftField Int String Bool
+    | DismissCreatedDataGrant
     | DisconnectApp String String
     | OnDisconnectApp String (Result Http.Error ())
     | OnFetchAssignments (WebData (List Assignment))

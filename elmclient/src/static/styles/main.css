@@ -447,6 +447,37 @@ table.api-token-table li {
     color: #777;
 }
 
+/* Data grants. The page reuses the api-token-* rules above; these cover only
+   what a grant form has and a token form does not: one fieldset per
+   assignment, rows of checkboxes for identity and fields, and a refusal
+   message from the server. */
+.data-grant-assignment {
+    margin-bottom: 1rem;
+}
+
+.data-grant-checks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.5rem;
+}
+
+.data-grant-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.data-grant-help {
+    color: #555;
+    font-size: 0.875rem;
+    margin: 0.25rem 0 0;
+}
+
+.data-grant-error {
+    color: #DD514C;
+    font-weight: bold;
+}
+
 /* The MCP page. The address, the command and the bridge configuration are all
    things to copy, so they share the row-with-a-button shape the API tokens
    page uses for a new token. */

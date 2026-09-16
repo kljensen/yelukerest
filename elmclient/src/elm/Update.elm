@@ -53,6 +53,8 @@ import RemoteData exposing (WebData)
 import ApiTokens.Commands exposing (createApiToken, fetchApiTokens, revokeApiToken)
 import ApiTokens.Model exposing (defaultScopes)
 import ConnectedApps.Commands exposing (disconnectApp, fetchConnectedApps)
+import DataGrants.Commands exposing (createDataGrant, fetchDataGrants, revokeDataGrant)
+import DataGrants.Model
 import Routing exposing (parseLocation)
 import Set
 import Time exposing (Posix)
@@ -124,9 +126,108 @@ update msg model =
                         _ ->
                             Cmd.none
 
+                DataGrantsRoute ->
+                    -- Fetched on entry, like the tokens: another faculty
+                    -- member may have revoked one since the last look.
+                    case model.currentUser of
+                        RemoteData.Success user ->
+                            fetchDataGrants user
+
+                        _ ->
+                            Cmd.none
+
                 _ ->
                     Cmd.none
             )
+
+        Msgs.OnFetchDataGrants response ->
+            ( { model | dataGrants = response, pendingDataGrantRevokes = Set.empty }, Cmd.none )
+
+        Msgs.SetDataGrantDraftName name ->
+            ( { model | dataGrantDraft = DataGrants.Model.setDraftName name model.dataGrantDraft }, Cmd.none )
+
+        Msgs.SetDataGrantDraftExpiry date ->
+            ( { model | dataGrantDraft = DataGrants.Model.setDraftExpiry date model.dataGrantDraft }, Cmd.none )
+
+        Msgs.AddDataGrantDraftAssignment ->
+            ( { model | dataGrantDraft = DataGrants.Model.addDraftAssignment model.dataGrantDraft }, Cmd.none )
+
+        Msgs.RemoveDataGrantDraftAssignment index ->
+            ( { model | dataGrantDraft = DataGrants.Model.removeDraftAssignment index model.dataGrantDraft }, Cmd.none )
+
+        Msgs.SetDataGrantDraftAssignmentSlug index slug ->
+            ( { model | dataGrantDraft = DataGrants.Model.setDraftAssignmentSlug index slug model.dataGrantDraft }, Cmd.none )
+
+        Msgs.SetDataGrantDraftIdentity index attribute isChecked ->
+            ( { model | dataGrantDraft = DataGrants.Model.setDraftIdentity index attribute isChecked model.dataGrantDraft }, Cmd.none )
+
+        Msgs.SetDataGrantDraftField index fieldSlug isChecked ->
+            ( { model | dataGrantDraft = DataGrants.Model.setDraftField index fieldSlug isChecked model.dataGrantDraft }, Cmd.none )
+
+        Msgs.CreateDataGrant ->
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( { model | dataGrantCreateError = Nothing, justCreatedDataGrant = Nothing }
+                    , createDataGrant user model.dataGrantDraft
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnCreateDataGrant result ->
+            case result of
+                Ok created ->
+                    -- Reset the form: a grant is immutable, so the next one is
+                    -- a fresh decision rather than an edit of this one.
+                    ( { model
+                        | justCreatedDataGrant = Just created
+                        , dataGrantCreateError = Nothing
+                        , dataGrantDraft = DataGrants.Model.emptyDraft
+                      }
+                    , case model.currentUser of
+                        RemoteData.Success user ->
+                            fetchDataGrants user
+
+                        _ ->
+                            Cmd.none
+                    )
+
+                Err message ->
+                    -- Keep the draft: the message says what to fix.
+                    ( { model | dataGrantCreateError = Just message }, Cmd.none )
+
+        Msgs.DismissCreatedDataGrant ->
+            -- Drop the credential from memory as soon as it has been copied.
+            ( { model | justCreatedDataGrant = Nothing }, Cmd.none )
+
+        Msgs.RevokeDataGrant grantId ->
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( { model | pendingDataGrantRevokes = Set.insert grantId model.pendingDataGrantRevokes }
+                    , revokeDataGrant user grantId
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnRevokeDataGrant grantId response ->
+            case response of
+                RemoteData.Success _ ->
+                    -- Refetch: the server records who revoked it and when,
+                    -- and a repeat revoke leaves the first record in place.
+                    ( model
+                    , case model.currentUser of
+                        RemoteData.Success user ->
+                            fetchDataGrants user
+
+                        _ ->
+                            Cmd.none
+                    )
+
+                _ ->
+                    ( { model | pendingDataGrantRevokes = Set.remove grantId model.pendingDataGrantRevokes }
+                    , Cmd.none
+                    )
 
         Msgs.OnFetchApiTokens response ->
             ( { model | apiTokens = response, pendingApiTokenRevokes = Set.empty }, Cmd.none )

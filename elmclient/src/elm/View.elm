@@ -8,6 +8,7 @@ import Common.Views exposing (piazzaLink, slackLink)
 import ApiTokens.Views
 import ConnectedApps.Views
 import Dashboard.Views
+import DataGrants.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
@@ -65,6 +66,9 @@ page model =
                 model.apiTokenDraftName
                 model.apiTokenDraftScopes
                 model.pendingApiTokenRevokes
+
+        Models.DataGrantsRoute ->
+            DataGrants.Views.page model.timeZone.zone model
 
         Models.McpRoute ->
             lazy Mcp.Views.page model.uiElements.mcpEndpoint

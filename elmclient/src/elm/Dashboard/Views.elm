@@ -166,7 +166,7 @@ dashboard webDataGradeData =
         RemoteData.Success gd ->
             Html.div []
                 [ userInfoTable gd.currentUser
-                , accountLinks
+                , accountLinks gd.currentUser
                 , userSecretTable gd.currentUser gd.userSecrets gd.userSecretsToShow
                 , showGradeTable gd
                 ]
@@ -190,24 +190,37 @@ Here they are behind the same guard as the rest of the dashboard -- this branch
 only renders for a signed-in user -- so the links appear exactly when they work.
 
 -}
-accountLinks : Html.Html Msg
-accountLinks =
+accountLinks : CurrentUser -> Html.Html Msg
+accountLinks currentUser =
     Html.div []
         [ Html.h2 [] [ Html.text "Your access" ]
         , Html.ul []
-            [ Html.li []
+            ([ Html.li []
                 [ Html.a [ Attrs.href "#/connected-apps" ] [ Html.text "Connected apps" ]
                 , Html.text " — applications you have allowed to read your course data"
                 ]
-            , Html.li []
+             , Html.li []
                 [ Html.a [ Attrs.href "#/api-tokens" ] [ Html.text "API tokens" ]
                 , Html.text " — tokens for your own scripts and notebooks"
                 ]
-            , Html.li []
+             , Html.li []
                 [ Html.a [ Attrs.href "#/mcp" ] [ Html.text "Connect an AI assistant" ]
                 , Html.text " — point Claude, ChatGPT or another assistant at your course data"
                 ]
-            ]
+             ]
+                ++ (if currentUser.role == "faculty" then
+                        -- The grants page and its RPCs are faculty only, so
+                        -- the link appears exactly when it works.
+                        [ Html.li []
+                            [ Html.a [ Attrs.href "#/data-grants" ] [ Html.text "Data grants" ]
+                            , Html.text " — credentials that let an app read chosen submissions"
+                            ]
+                        ]
+
+                    else
+                        []
+                   )
+            )
         ]
 
 

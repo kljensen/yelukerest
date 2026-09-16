@@ -16,6 +16,7 @@ import Auth.Model exposing (CurrentUser)
 import Browser.Navigation exposing (Key)
 import ApiTokens.Model exposing (ApiToken, CreatedToken, defaultScopes)
 import ConnectedApps.Model exposing (ConnectedApps)
+import DataGrants.Model exposing (ApiGrant, CreatedGrant, GrantDraft, emptyDraft)
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement, PendingSubmit)
 import Meetings.Model exposing (Meeting, MeetingSlug)
@@ -128,6 +129,17 @@ type alias Model =
     , apiTokenDraftScopes : Set String
     , pendingApiTokenRevokes : Set Int
 
+    -- Data grants for consuming apps (issue #388, ADR 0005), faculty only.
+    -- Same shape as the API tokens above: the listing, the draft form, the
+    -- one-time credential from the most recent create, and revokes in
+    -- flight. `dataGrantCreateError` is the server's reason for refusing the
+    -- last create, cleared on the next attempt.
+    , dataGrants : WebData (List ApiGrant)
+    , justCreatedDataGrant : Maybe CreatedGrant
+    , dataGrantCreateError : Maybe String
+    , dataGrantDraft : GrantDraft
+    , pendingDataGrantRevokes : Set Int
+
     -- A dictionary that tracks requests initiated to begin a
     -- particular assignment, that is, to create an assignment submission
     -- for the current user.
@@ -183,6 +195,11 @@ initialModel flags url route key =
     , apiTokenDraftName = ""
     , apiTokenDraftScopes = Set.fromList defaultScopes
     , pendingApiTokenRevokes = Set.empty
+    , dataGrants = RemoteData.NotAsked
+    , justCreatedDataGrant = Nothing
+    , dataGrantCreateError = Nothing
+    , dataGrantDraft = emptyDraft
+    , pendingDataGrantRevokes = Set.empty
     , pendingBeginAssignments = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
@@ -204,5 +221,6 @@ type Route
     | EditEngagementsRoute String
     | ConnectedAppsRoute
     | ApiTokensRoute
+    | DataGrantsRoute
     | McpRoute
     | NotFoundRoute
