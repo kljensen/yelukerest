@@ -2,6 +2,7 @@ module Auth.Model exposing
     ( CurrentUser
     , JWT
     , currentUserDecoder
+    , isFaculty
     , isFacultyOrTA
     , isLoggedInFacultyOrTA
     )
@@ -39,6 +40,14 @@ currentUserDecoder =
 isFacultyOrTA : String -> Bool
 isFacultyOrTA role =
     List.member role [ "ta", "faculty" ]
+
+
+{-| Faculty alone, not TAs: the data-grant RPCs and view (ADR 0005) accept
+no other role, so the page, its link and its requests all use this one test.
+-}
+isFaculty : String -> Bool
+isFaculty role =
+    role == "faculty"
 
 
 isLoggedInFacultyOrTA : WebData CurrentUser -> Result String CurrentUser

@@ -1,7 +1,7 @@
 module DataGrants.Views exposing (DataGrantsPage, page)
 
 import Assignments.Model exposing (Assignment)
-import Auth.Model exposing (CurrentUser)
+import Auth.Model exposing (CurrentUser, isFaculty)
 import Auth.Views exposing (loginLink)
 import DataGrants.Model
     exposing
@@ -48,7 +48,7 @@ page : Zone -> DataGrantsPage a -> Html Msg
 page zone model =
     case model.currentUser of
         RemoteData.Success user ->
-            if user.role == "faculty" then
+            if isFaculty user.role then
                 facultyPage zone model
 
             else

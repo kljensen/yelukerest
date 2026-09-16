@@ -8,7 +8,7 @@ import Assignments.Model
         , AssignmentSubmission
         , submissionBelongsToUser
         )
-import Auth.Model exposing (CurrentUser)
+import Auth.Model exposing (CurrentUser, isFaculty)
 import Auth.Views exposing (loginLink)
 import Common.Comparisons exposing (sortByDate)
 import Common.Views exposing (shortDateToString)
@@ -208,7 +208,7 @@ accountLinks currentUser =
                 , Html.text " — point Claude, ChatGPT or another assistant at your course data"
                 ]
              ]
-                ++ (if currentUser.role == "faculty" then
+                ++ (if isFaculty currentUser.role then
                         -- The grants page and its RPCs are faculty only, so
                         -- the link appears exactly when it works.
                         [ Html.li []

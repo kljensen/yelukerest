@@ -16,7 +16,7 @@ import Assignments.Updates
         ( onFetchAssignmentGradeDistributions
         , onFetchAssignmentGrades
         )
-import Auth.Model exposing (JWT, isFacultyOrTA)
+import Auth.Model exposing (CurrentUser, JWT, isFaculty, isFacultyOrTA)
 import Auth.Updates exposing (onFetchCurrentUser)
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation exposing (load, pushUrl)
@@ -86,6 +86,24 @@ sendPendingEngagement jwt meetingSlug userID ( newModel, toSend ) =
     ( newModel, maybeSubmitEngagement jwt meetingSlug userID toSend )
 
 
+{-| The signed-in user if they are faculty, else nothing. Every data-grant
+request goes through this: the RPCs and the view refuse other roles, so
+no other role should ask.
+-}
+facultyUser : Model -> Maybe CurrentUser
+facultyUser model =
+    case model.currentUser of
+        RemoteData.Success user ->
+            if isFaculty user.role then
+                Just user
+
+            else
+                Nothing
+
+        _ ->
+            Nothing
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -110,7 +128,18 @@ update msg model =
             -- The connected-apps listing is deliberately fetched on every
             -- entry rather than cached: it reflects what Hydra believes right
             -- now, and it carries the CSRF token a disconnect needs.
-            ( { model | route = newRoute }
+            ( { model
+                | route = newRoute
+
+                -- The one-time credential must not outlive the page it was
+                -- shown on: navigating away and back would show it again.
+                , justCreatedDataGrant =
+                    if newRoute == DataGrantsRoute then
+                        model.justCreatedDataGrant
+
+                    else
+                        Nothing
+              }
             , case newRoute of
                 ConnectedAppsRoute ->
                     fetchConnectedApps
@@ -129,11 +158,11 @@ update msg model =
                 DataGrantsRoute ->
                     -- Fetched on entry, like the tokens: another faculty
                     -- member may have revoked one since the last look.
-                    case model.currentUser of
-                        RemoteData.Success user ->
+                    case facultyUser model of
+                        Just user ->
                             fetchDataGrants user
 
-                        _ ->
+                        Nothing ->
                             Cmd.none
 
                 _ ->
@@ -165,18 +194,18 @@ update msg model =
             ( { model | dataGrantDraft = DataGrants.Model.setDraftField index fieldSlug isChecked model.dataGrantDraft }, Cmd.none )
 
         Msgs.CreateDataGrant ->
-            case model.currentUser of
-                RemoteData.Success user ->
+            case facultyUser model of
+                Just user ->
                     ( { model | dataGrantCreateError = Nothing, justCreatedDataGrant = Nothing }
                     , createDataGrant user model.dataGrantDraft
                     )
 
-                _ ->
+                Nothing ->
                     ( model, Cmd.none )
 
         Msgs.OnCreateDataGrant result ->
-            case result of
-                Ok created ->
+            case ( model.route, result ) of
+                ( DataGrantsRoute, Ok created ) ->
                     -- Reset the form: a grant is immutable, so the next one is
                     -- a fresh decision rather than an edit of this one.
                     ( { model
@@ -184,30 +213,37 @@ update msg model =
                         , dataGrantCreateError = Nothing
                         , dataGrantDraft = DataGrants.Model.emptyDraft
                       }
-                    , case model.currentUser of
-                        RemoteData.Success user ->
+                    , case facultyUser model of
+                        Just user ->
                             fetchDataGrants user
 
-                        _ ->
+                        Nothing ->
                             Cmd.none
                     )
 
-                Err message ->
+                ( DataGrantsRoute, Err message ) ->
                     -- Keep the draft: the message says what to fix.
                     ( { model | dataGrantCreateError = Just message }, Cmd.none )
+
+                _ ->
+                    -- The user left the page before the reply arrived. The
+                    -- credential is never shown anywhere but that page, so
+                    -- it is dropped here; the grant itself is in the listing
+                    -- and can be revoked.
+                    ( model, Cmd.none )
 
         Msgs.DismissCreatedDataGrant ->
             -- Drop the credential from memory as soon as it has been copied.
             ( { model | justCreatedDataGrant = Nothing }, Cmd.none )
 
         Msgs.RevokeDataGrant grantId ->
-            case model.currentUser of
-                RemoteData.Success user ->
+            case facultyUser model of
+                Just user ->
                     ( { model | pendingDataGrantRevokes = Set.insert grantId model.pendingDataGrantRevokes }
                     , revokeDataGrant user grantId
                     )
 
-                _ ->
+                Nothing ->
                     ( model, Cmd.none )
 
         Msgs.OnRevokeDataGrant grantId response ->
@@ -216,11 +252,11 @@ update msg model =
                     -- Refetch: the server records who revoked it and when,
                     -- and a repeat revoke leaves the first record in place.
                     ( model
-                    , case model.currentUser of
-                        RemoteData.Success user ->
+                    , case facultyUser model of
+                        Just user ->
                             fetchDataGrants user
 
-                        _ ->
+                        Nothing ->
                             Cmd.none
                     )
 
@@ -355,7 +391,21 @@ update msg model =
             ( { model | quizzes = response }, Cmd.none )
 
         Msgs.OnFetchCurrentUser response ->
-            onFetchCurrentUser response model
+            let
+                ( newModel, cmd ) =
+                    onFetchCurrentUser response model
+            in
+            -- A direct load or reload of #/data-grants sets the route in init,
+            -- before anyone is signed in, so the fetch on route change never
+            -- fires. Issue it here instead, once we know who this is.
+            ( newModel
+            , case ( newModel.route, facultyUser newModel ) of
+                ( DataGrantsRoute, Just user ) ->
+                    Cmd.batch [ cmd, fetchDataGrants user ]
+
+                _ ->
+                    cmd
+            )
 
         Msgs.OnBeginAssignment assignmentSlug ->
             let
