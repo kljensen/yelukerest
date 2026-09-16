@@ -45,7 +45,12 @@ DECLARE
   authenticator_password text := '$authenticator_password_sql';
   role_name text;
 BEGIN
-  FOREACH role_name IN ARRAY ARRAY['anonymous', 'api', 'app', 'faculty', 'observer', 'student', 'ta']
+  -- grant_consumer is the role a data-grant credential switches PostgREST into;
+  -- grant_reader owns the one function it may call (ADR 0005, issue #385).
+  -- Both are cluster-wide roles, so they are provisioned here like every other
+  -- role and the add-grant-consumer-role migration refuses to deploy without
+  -- them.
+  FOREACH role_name IN ARRAY ARRAY['anonymous', 'api', 'app', 'faculty', 'observer', 'student', 'ta', 'grant_consumer', 'grant_reader']
   LOOP
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = role_name) THEN
       EXECUTE format('CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', role_name);
@@ -69,7 +74,11 @@ BEGIN
   EXECUTE format('GRANT CREATE, CONNECT, TEMPORARY ON DATABASE %I TO %I', current_database(), migrator_role);
   EXECUTE format('GRANT CREATE ON SCHEMA public TO %I', migrator_role);
   EXECUTE format('GRANT %I TO %I', 'api', migrator_role);
-  FOREACH role_name IN ARRAY ARRAY['anonymous', 'app', 'faculty', 'observer', 'student', 'ta']
+  -- The migrator must be a member of grant_reader to hand it ownership of the
+  -- reader function. The authenticator must not be: nothing PostgREST serves
+  -- may switch into the role that can read every submission.
+  EXECUTE format('GRANT %I TO %I', 'grant_reader', migrator_role);
+  FOREACH role_name IN ARRAY ARRAY['anonymous', 'app', 'faculty', 'observer', 'student', 'ta', 'grant_consumer']
   LOOP
     EXECUTE format('GRANT %I TO %I', role_name, authenticator_role);
   END LOOP;
