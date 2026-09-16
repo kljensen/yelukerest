@@ -2,7 +2,8 @@
 
 ## Status
 
-Proposed, 2026-09-16. Plan reviewed with codex over two rounds. Records the
+Accepted, 2026-09-16. Plan reviewed with codex over two rounds; the
+implementation over three. Deployed to production the same day. Records the
 decision behind milestone "Roadmap 20: Data Grants For Consuming Apps"
 (issues #384–#388).
 
