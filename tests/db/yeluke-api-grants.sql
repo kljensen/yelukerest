@@ -202,17 +202,75 @@ SELECT set_eq('
         WHERE n.nspname = ''api''
           AND has_function_privilege(''grant_consumer'', p.oid, ''EXECUTE'')
     ', ARRAY['check_request_jwt()', 'granted_submissions(text, integer, integer)'], 'grant_consumer can execute exactly the reader and the pre-request hook, across every api function overload')
-; SELECT is_empty('
-        SELECT c.oid::regclass::text
+;
+-- Every table privilege PostgreSQL has, every column privilege (a column
+-- grant lives in pg_attribute, invisible to the table check), and every
+-- sequence privilege: none of them, on anything in api or data.
+SELECT is_empty('
+        SELECT c.oid::regclass::text || '' '' || priv
         FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY[''SELECT'', ''INSERT'', ''UPDATE'', ''DELETE'', ''TRUNCATE'', ''REFERENCES'', ''TRIGGER'', ''MAINTAIN'']) priv
         WHERE n.nspname IN (''api'', ''data'')
-          AND c.relkind IN (''r'', ''v'', ''m'', ''p'', ''f'', ''S'')
-          AND (has_table_privilege(''grant_consumer'', c.oid, ''SELECT'')
-               OR has_table_privilege(''grant_consumer'', c.oid, ''INSERT'')
-               OR has_table_privilege(''grant_consumer'', c.oid, ''UPDATE'')
-               OR has_table_privilege(''grant_consumer'', c.oid, ''DELETE''))
-    ', 'grant_consumer can select from, and write, no relation in api or data')
+          AND c.relkind IN (''r'', ''v'', ''m'', ''p'', ''f'')
+          AND has_table_privilege(''grant_consumer'', c.oid, priv)
+    ', 'grant_consumer holds no table privilege on any relation in api or data')
+; SELECT is_empty('
+        SELECT c.oid::regclass::text || ''.'' || a.attname || '' '' || priv
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY[''SELECT'', ''INSERT'', ''UPDATE'', ''REFERENCES'']) priv
+        WHERE n.nspname IN (''api'', ''data'')
+          AND c.relkind IN (''r'', ''v'', ''m'', ''p'', ''f'')
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND has_column_privilege(''grant_consumer'', c.oid, a.attnum, priv)
+    ', 'grant_consumer holds no column privilege on any column in api or data')
+; SELECT is_empty('
+        SELECT c.oid::regclass::text || '' '' || priv
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY[''USAGE'', ''SELECT'', ''UPDATE'']) priv
+        WHERE n.nspname IN (''api'', ''data'')
+          AND c.relkind = ''S''
+          AND has_sequence_privilege(''grant_consumer'', c.oid, priv)
+    ', 'grant_consumer holds no sequence privilege in api or data')
+;
+-- grant_reader: SELECT on the six tables the reader needs and nothing else,
+-- by the same three enumerations.
+SELECT set_eq('
+        SELECT n.nspname || ''.'' || c.relname || '' '' || priv
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY[''SELECT'', ''INSERT'', ''UPDATE'', ''DELETE'', ''TRUNCATE'', ''REFERENCES'', ''TRIGGER'', ''MAINTAIN'']) priv
+        WHERE n.nspname IN (''api'', ''data'')
+          AND c.relkind IN (''r'', ''v'', ''m'', ''p'', ''f'')
+          AND has_table_privilege(''grant_reader'', c.oid, priv)
+    ', ARRAY['data.user SELECT', 'data.api_grant SELECT', 'data.api_grant_assignment SELECT', 'data.api_grant_assignment_field SELECT', 'data.assignment_submission SELECT', 'data.assignment_field_submission SELECT'], 'grant_reader holds SELECT on exactly the six tables the reader needs and no other table privilege')
+; SELECT is_empty('
+        SELECT c.oid::regclass::text || ''.'' || a.attname || '' '' || priv
+        FROM pg_attribute a
+        JOIN pg_class c ON c.oid = a.attrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY[''SELECT'', ''INSERT'', ''UPDATE'', ''REFERENCES'']) priv
+        WHERE n.nspname IN (''api'', ''data'')
+          AND c.relkind IN (''r'', ''v'', ''m'', ''p'', ''f'')
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND has_column_privilege(''grant_reader'', c.oid, a.attnum, priv)
+          AND NOT (priv = ''SELECT'' AND c.oid IN (
+              ''data."user"''::regclass, ''data.api_grant''::regclass,
+              ''data.api_grant_assignment''::regclass, ''data.api_grant_assignment_field''::regclass,
+              ''data.assignment_submission''::regclass, ''data.assignment_field_submission''::regclass))
+    ', 'grant_reader holds no column privilege beyond that SELECT')
+; SELECT is_empty('
+        SELECT c.oid::regclass::text || '' '' || priv
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN unnest(ARRAY[''USAGE'', ''SELECT'', ''UPDATE'']) priv
+        WHERE n.nspname IN (''api'', ''data'')
+          AND c.relkind = ''S''
+          AND has_sequence_privilege(''grant_reader'', c.oid, priv)
+    ', 'grant_reader holds no sequence privilege in api or data')
 ; SELECT set_eq('
         SELECT s
         FROM unnest(ARRAY[''api'', ''auth'', ''data'', ''pgjwt'', ''request'', ''settings'', ''public'']) s
@@ -221,6 +279,29 @@ SELECT set_eq('
 ; SELECT is_empty(' SELECT member.rolname FROM pg_auth_members m
         JOIN pg_roles member ON member.oid = m.member
         WHERE member.rolname = ''grant_consumer'' ', 'grant_consumer is a member of no role')
+;
+-- Who holds each role, directly or through another role: a membership is
+-- the one route into the reader that no ACL enumeration above would see.
+SELECT set_eq('
+        WITH RECURSIVE members AS (
+            SELECT m.member FROM pg_auth_members m WHERE m.roleid = ''grant_reader''::regrole
+            UNION
+            SELECT m.member FROM pg_auth_members m JOIN members ON m.roleid = members.member
+        )
+        SELECT r.rolname::text FROM members JOIN pg_roles r ON r.oid = members.member
+    ', ARRAY['yelukerest_migrator'], 'grant_reader is held by the migrator and nobody else, directly or transitively')
+; SELECT set_eq('
+        WITH RECURSIVE members AS (
+            SELECT m.member FROM pg_auth_members m WHERE m.roleid = ''grant_consumer''::regrole
+            UNION
+            SELECT m.member FROM pg_auth_members m JOIN members ON m.roleid = members.member
+        )
+        SELECT r.rolname::text FROM members JOIN pg_roles r ON r.oid = members.member
+    ', '
+        SELECT r.rolname::text FROM pg_roles r
+        WHERE r.rolcanlogin
+          AND EXISTS (SELECT FROM pg_auth_members am WHERE am.member = r.oid AND am.roleid = ''anonymous''::regrole)
+    ', 'grant_consumer is held by the authenticator and nobody else, directly or transitively')
 ; SELECT
     "is"((
         SELECT rolcanlogin
@@ -362,6 +443,12 @@ SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 0, "sub": "g
 ; SELECT throws_like('SELECT api.check_request_jwt()', '%grant_id%', 'a non-numeric grant_id is refused')
 ; SET "request.jwt.claims" TO '{"role": "grant_consumer", "sub": "grant:7", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
 ; SELECT throws_like('SELECT api.check_request_jwt()', '%grant_id%', 'a missing grant_id is refused')
+; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": null, "sub": "grant:", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
+; SELECT throws_like('SELECT api.check_request_jwt()', '%grant_id%', 'a JSON-null grant_id is refused')
+; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 2147483648, "sub": "grant:2147483648", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
+; SELECT throws_like('SELECT api.check_request_jwt()', '%grant_id%', 'a grant_id past the int range is refused')
+; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 99999999999999999999, "sub": "grant:99999999999999999999", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
+; SELECT throws_like('SELECT api.check_request_jwt()', '%grant_id%', 'a huge grant_id is refused')
 ; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 7, "sub": "grant:8", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
 ; SELECT throws_like('SELECT api.check_request_jwt()', '%subject%', 'a subject naming a different grant is refused')
 ; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 7, "sub": "user:7", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
@@ -396,6 +483,10 @@ FROM issued
 ; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%revoked or has expired%', 'an unknown grant is refused')
 ; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 7, "sub": "grant:8", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
 ; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%invalid grant credential%', 'the reader checks the subject itself, not only in the hook')
+; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": 99999999999999999999, "sub": "grant:99999999999999999999", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
+; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%invalid grant credential%', 'the reader refuses a huge grant_id before casting it')
+; SET "request.jwt.claims" TO '{"role": "grant_consumer", "grant_id": null, "sub": "grant:", "iss": "yelukerest", "aud": "yelukerest-postgrest", "exp": 4102444800}'
+; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%invalid grant credential%', 'the reader refuses a JSON-null grant_id')
 ; SET "request.jwt.claims" TO '{"role": "student", "user_id": 1, "iss": "yelukerest", "aud": "yelukerest-postgrest", "sub": "user:1"}'
 ; SELECT throws_like(' SELECT * FROM api.granted_submissions() ', '%grant credential%', 'a person''s token is not a grant credential')
 ;

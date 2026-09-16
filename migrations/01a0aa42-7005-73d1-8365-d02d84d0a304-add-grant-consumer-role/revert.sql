@@ -106,5 +106,17 @@ END;
 $$
 ; ALTER FUNCTION api.check_request_jwt() OWNER TO yelukerest_migrator
 ; REVOKE ALL ON FUNCTION api.check_request_jwt() FROM public
+;
+-- CREATE OR REPLACE keeps the function's ACL, so the consumer's EXECUTE has
+-- to be taken back by name, or the role would stay on the hook after the
+-- reader it exists for is gone.
+REVOKE ALL ON FUNCTION api.check_request_jwt() FROM grant_consumer
 ; GRANT execute ON FUNCTION api.check_request_jwt() TO anonymous, student, ta, faculty, observer, app
+; DO $$
+BEGIN
+    IF has_function_privilege('grant_consumer', 'api.check_request_jwt()', 'EXECUTE') THEN
+        RAISE EXCEPTION 'grant_consumer still holds EXECUTE on api.check_request_jwt()';
+    END IF;
+END;
+$$
 ; NOTIFY pgrst, 'reload schema'

@@ -28,9 +28,18 @@
 -- (01a05285-add-authapp-session-store). Failing here rather than skipping the
 -- grants: a deploy that quietly produced a reader nobody can call would
 -- surface as a 401 in some app, hours later and nowhere near the cause.
+--
+-- Existence is not enough. The grants below are only as narrow as the roles
+-- they land on: a grant_consumer that can log in or bypass RLS, or a
+-- grant_reader held by faculty (directly, or through some role faculty is
+-- in), would hand out the reader's unrestricted SELECT the moment this
+-- commits -- and verify runs after the commit. So the attributes and the
+-- membership boundary are asserted here, before any GRANT, and a wrong
+-- provision fails the transaction.
 DO $$
 DECLARE
     missing text;
+    offending text;
 BEGIN
     SELECT string_agg(r, ', ') INTO missing
     FROM unnest(ARRAY['grant_consumer', 'grant_reader']) r
@@ -38,6 +47,52 @@ BEGIN
     IF missing IS NOT NULL THEN
         RAISE EXCEPTION 'role(s) % do not exist', missing
             USING HINT = 'run bin/provision-db.sh once per cluster before deploying this migration';
+    END IF;
+
+    SELECT string_agg(rolname, ', ') INTO offending
+    FROM pg_roles
+    WHERE rolname IN ('grant_consumer', 'grant_reader')
+      AND (rolcanlogin OR rolsuper OR rolbypassrls OR rolcreaterole);
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'role(s) % must be NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEROLE', offending
+            USING HINT = 'bin/provision-db.sh sets those attributes; re-run it';
+    END IF;
+
+    -- Membership, direct or through another role. grant_reader may be held
+    -- by the migrator and nobody else.
+    WITH RECURSIVE members AS (
+        SELECT m.member FROM pg_auth_members m WHERE m.roleid = 'grant_reader'::regrole
+        UNION
+        SELECT m.member FROM pg_auth_members m JOIN members ON m.roleid = members.member
+    )
+    SELECT string_agg(r.rolname, ', ') INTO offending
+    FROM members JOIN pg_roles r ON r.oid = members.member
+    WHERE r.rolname <> 'yelukerest_migrator';
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'grant_reader must be held by yelukerest_migrator and nobody else; found %', offending;
+    END IF;
+
+    -- grant_consumer may be held only by the authenticator: a login role
+    -- that directly holds anonymous, which is how bin/provision-db.sh
+    -- provisions it. And somebody must hold it, or PostgREST cannot switch
+    -- into it.
+    WITH RECURSIVE members AS (
+        SELECT m.member FROM pg_auth_members m WHERE m.roleid = 'grant_consumer'::regrole
+        UNION
+        SELECT m.member FROM pg_auth_members m JOIN members ON m.roleid = members.member
+    )
+    SELECT string_agg(r.rolname, ', ') INTO offending
+    FROM members JOIN pg_roles r ON r.oid = members.member
+    WHERE NOT (
+        r.rolcanlogin
+        AND EXISTS (SELECT FROM pg_auth_members am WHERE am.member = r.oid AND am.roleid = 'anonymous'::regrole)
+    );
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'grant_consumer must be held by the authenticator and nobody else; found %', offending;
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_auth_members WHERE roleid = 'grant_consumer'::regrole) THEN
+        RAISE EXCEPTION 'no login role holds grant_consumer'
+            USING HINT = 'bin/provision-db.sh grants it to the authenticator; re-run it';
     END IF;
 END;
 $$

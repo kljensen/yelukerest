@@ -34,33 +34,54 @@ SELECT
         WHERE member.rolname = 'grant_consumer'
     )
 ;
--- ...and the login role that holds student -- the authenticator -- holds it,
--- so PostgREST can switch into it.
+-- Who holds each role, directly or through another role. A membership is
+-- the one route into the reader's unrestricted SELECT that no ACL check
+-- below would see, so both sets are pinned transitively. grant_consumer:
+-- only the authenticator (a login role directly holding anonymous), and at
+-- least one such, or PostgREST cannot switch into it.
+WITH RECURSIVE members AS (
+    SELECT m.member
+    FROM pg_auth_members m
+    WHERE m.roleid = 'grant_consumer'::regrole
+    UNION
+    SELECT m.member
+    FROM
+        pg_auth_members m
+        JOIN members ON m.roleid = members.member
+)
 SELECT
     1 / (
-        SELECT (count(*) = 1)::int
+        SELECT
+            (count(*) >= 1 AND bool_and(r.rolcanlogin
+            AND EXISTS (
+                SELECT
+                FROM pg_auth_members am
+                WHERE
+                    am.member = r.oid
+                    AND am.roleid = 'anonymous'::regrole
+            )))::int
         FROM
-            pg_auth_members m
-            JOIN pg_roles granted ON granted.oid = m.roleid
-            JOIN pg_roles member ON member.oid = m.member
-        WHERE
-            granted.rolname = 'grant_consumer'
-            AND member.rolcanlogin
-            AND pg_has_role(member.oid, 'student', 'MEMBER')
+            members
+            JOIN pg_roles r ON r.oid = members.member
     )
 ;
--- Nothing PostgREST serves may switch into grant_reader.
+-- grant_reader: the migrator and nobody else, directly or transitively.
+WITH RECURSIVE members AS (
+    SELECT m.member
+    FROM pg_auth_members m
+    WHERE m.roleid = 'grant_reader'::regrole
+    UNION
+    SELECT m.member
+    FROM
+        pg_auth_members m
+        JOIN members ON m.roleid = members.member
+)
 SELECT
     1 / (
-        SELECT (count(*) = 0)::int
+        SELECT (array_agg(r.rolname::text) = ARRAY['yelukerest_migrator'])::int
         FROM
-            pg_auth_members m
-            JOIN pg_roles granted ON granted.oid = m.roleid
-            JOIN pg_roles member ON member.oid = m.member
-        WHERE
-            granted.rolname = 'grant_reader'
-            AND member.rolcanlogin
-            AND member.rolname <> 'yelukerest_migrator'
+            members
+            JOIN pg_roles r ON r.oid = members.member
     )
 ;
 -- grant_consumer's effective schema access among the application schemas is
@@ -88,18 +109,47 @@ SELECT
             AND has_function_privilege('grant_consumer', p.oid, 'EXECUTE')
     )
 ;
--- No relation privilege of any kind in api or data: not SELECT on a view, not
--- USAGE on a sequence.
+-- No relation privilege of any kind in api or data: every table-level
+-- privilege PostgreSQL has, every column-level one (a column grant lives in
+-- pg_attribute and is invisible to the table check), and every sequence one.
 SELECT
     1 / (
         SELECT (count(*) = 0)::int
         FROM
             pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN']) priv
         WHERE
             n.nspname IN ('api', 'data')
-            AND c.relkind IN ('r', 'v', 'm', 'p', 'f', 'S')
-            AND (has_table_privilege('grant_consumer', c.oid, 'SELECT') OR has_table_privilege('grant_consumer', c.oid, 'INSERT') OR has_table_privilege('grant_consumer', c.oid, 'UPDATE') OR has_table_privilege('grant_consumer', c.oid, 'DELETE'))
+            AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+            AND has_table_privilege('grant_consumer', c.oid, priv)
+    )
+; SELECT
+    1 / (
+        SELECT (count(*) = 0)::int
+        FROM
+            pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) priv
+        WHERE
+            n.nspname IN ('api', 'data')
+            AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+            AND a.attnum > 0
+            AND NOT a.attisdropped
+            AND has_column_privilege('grant_consumer', c.oid, a.attnum, priv)
+    )
+; SELECT
+    1 / (
+        SELECT (count(*) = 0)::int
+        FROM
+            pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) priv
+        WHERE
+            n.nspname IN ('api', 'data')
+            AND c.relkind = 'S'
+            AND has_sequence_privilege('grant_consumer', c.oid, priv)
     )
 ;
 -- grant_reader owns the reader, which is SECURITY DEFINER with a pinned
@@ -132,15 +182,52 @@ SELECT
             AND c.relkind IN ('r', 'v', 'm', 'p', 'f', 'S')
             AND (has_table_privilege('grant_reader', c.oid, 'SELECT') OR has_table_privilege('grant_reader', c.oid, 'INSERT') OR has_table_privilege('grant_reader', c.oid, 'UPDATE') OR has_table_privilege('grant_reader', c.oid, 'DELETE'))
     )
+;
+-- ...and beyond SELECT on those six, nothing: no other table privilege
+-- anywhere, no column privilege that is not that SELECT, no sequence
+-- privilege.
+SELECT
+    1 / (
+        SELECT (count(*) = 0)::int
+        FROM
+            pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN']) priv
+        WHERE
+            n.nspname IN ('api', 'data')
+            AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+            AND has_table_privilege('grant_reader', c.oid, priv)
+            AND NOT (priv = 'SELECT'
+            AND c.oid IN ('data."user"'::regclass, 'data.api_grant'::regclass, 'data.api_grant_assignment'::regclass, 'data.api_grant_assignment_field'::regclass, 'data.assignment_field_submission'::regclass, 'data.assignment_submission'::regclass))
+    )
+; SELECT
+    1 / (
+        SELECT (count(*) = 0)::int
+        FROM
+            pg_attribute a
+            JOIN pg_class c ON c.oid = a.attrelid
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']) priv
+        WHERE
+            n.nspname IN ('api', 'data')
+            AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
+            AND a.attnum > 0
+            AND NOT a.attisdropped
+            AND has_column_privilege('grant_reader', c.oid, a.attnum, priv)
+            AND NOT (priv = 'SELECT'
+            AND c.oid IN ('data."user"'::regclass, 'data.api_grant'::regclass, 'data.api_grant_assignment'::regclass, 'data.api_grant_assignment_field'::regclass, 'data.assignment_field_submission'::regclass, 'data.assignment_submission'::regclass))
+    )
 ; SELECT
     1 / (
         SELECT (count(*) = 0)::int
         FROM
             pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) priv
         WHERE
             n.nspname IN ('api', 'data')
-            AND (has_table_privilege('grant_reader', c.oid, 'INSERT') OR has_table_privilege('grant_reader', c.oid, 'UPDATE') OR has_table_privilege('grant_reader', c.oid, 'DELETE'))
+            AND c.relkind = 'S'
+            AND has_sequence_privilege('grant_reader', c.oid, priv)
     )
 ; SELECT
     1 / (
