@@ -59,6 +59,15 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- quiz_importer owns api.import_quiz_results, the one write TAs may run
+  -- (issue #389). NOINHERIT as well: it acts through its own grants alone,
+  -- and the add-ta-quiz-import migration refuses to deploy otherwise.
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'quiz_importer') THEN
+    EXECUTE 'CREATE ROLE quiz_importer NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS';
+  ELSE
+    EXECUTE 'ALTER ROLE quiz_importer NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS';
+  END IF;
+
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = migrator_role) THEN
     EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS', migrator_role, migrator_password);
   ELSE
@@ -78,6 +87,10 @@ BEGIN
   -- reader function. The authenticator must not be: nothing PostgREST serves
   -- may switch into the role that can read every submission.
   EXECUTE format('GRANT %I TO %I', 'grant_reader', migrator_role);
+  -- Likewise quiz_importer: the migrator hands it the import; the
+  -- authenticator must never be able to switch into the role that writes
+  -- grades.
+  EXECUTE format('GRANT %I TO %I', 'quiz_importer', migrator_role);
   FOREACH role_name IN ARRAY ARRAY['anonymous', 'app', 'faculty', 'observer', 'student', 'ta', 'grant_consumer']
   LOOP
     EXECUTE format('GRANT %I TO %I', role_name, authenticator_role);

@@ -289,6 +289,49 @@ attendance counts, without writing data.
 `api.platform_version.admin_api_version` is `7` or later for deployments that
 support quiz result import.
 
+### The TA path
+
+Paper quizzes are graded by a TA, so a TA JWT can call this one RPC. It is the
+only quiz-grade write a TA has: a TA still gets `403` on `POST`, `PATCH` and
+`DELETE` to `api.quiz_grades`, `api.quiz_submissions` and `api.quizzes`, and on
+any read of `api.quiz_grade_events`. The function runs `SECURITY DEFINER`
+under a dedicated owner role, `quiz_importer`, which holds only the table
+privileges the import needs, admitted by its own row policies on those tables.
+Those policies carry the TA rules below a second time -- under a TA claim a
+write must target a student on a published quiz, and a grade update is
+faculty-only -- so a regression in the function cannot write past them. The
+row policies that faculty and students go through are unchanged.
+`data.quiz_grade_event` still records the caller, so every row a TA imports is
+audited under the TA's user id.
+
+For a TA the import has four rules faculty do not have:
+
+- **`p_reason` is required** and must not be blank. It is stored on every
+  grade event the batch writes.
+- **Only students can be graded.** A batch naming a TA (themself included), a
+  faculty member, or an observer is refused with `403`.
+- **A draft quiz does not exist.** Drafts are hidden from TAs in `api.quizzes`,
+  and the import answers the same way: a batch naming a draft quiz's meeting
+  gets the same "does not know a quiz for meeting slug" refusal as a meeting
+  with no quiz.
+- **A TA import records grades once.** If any row in the batch would change an
+  existing grade -- higher, lower, or a description change -- the whole batch is
+  refused with `403` and a message naming every such `meeting_slug/netid`.
+  Nothing is written. An identical re-run is not a change and still reports
+  `unchanged_count`. Corrections stay with faculty: the same batch from a
+  faculty JWT applies as an update, as before.
+
+`p_mark_attended` works for a TA as it does for faculty; TAs can already write
+engagements. It stays inside the per-request row bound on `api.engagements`
+(64 rows, see the bound student row writes migration): a TA batch that would
+insert or promote more attendance rows than that is refused with `400` before
+anything is written. Send it in batches of that size with the same
+`p_import_id`, or record the grades without `p_mark_attended`. Grades carry no
+such bound.
+
+`api.platform_version.admin_api_version` is `11` or later for deployments that
+accept a TA credential on this RPC.
+
 ## Deadline Extensions
 
 One RPC moves one deadline for one student. It is non-destructive: it writes an

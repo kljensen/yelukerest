@@ -38,6 +38,6 @@ SELECT
     "is"((
         SELECT admin_api_version
         FROM api.platform_version
-    ), 10, 'api.platform_version should expose the expected admin API version')
+    ), 11, 'api.platform_version should expose the expected admin API version')
 ; SELECT *
 FROM finish()
