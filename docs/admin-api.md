@@ -348,15 +348,17 @@ about the submissions the import created or the attendance it promoted.
   id, the caller's `p_import_id` as a label, the actor's user id and role, the
   reason, the dry-run flag, when it ran, and the counts the call returned.
 - `data.quiz_grade_import_item` holds one row per result, keyed on
-  `(import_id, quiz_id, user_id)`: the mutation (`insert`, `update` or
-  `unchanged`), the grade's points, points possible and description before
-  and after (the before image is null for an insert; for an unchanged row the
-  two are equal), whether a quiz submission was created, and the
-  participation found and the participation after the call (equal unless
-  `p_mark_attended` promoted it). A dry run records what would have happened.
+  `(import_id, quiz_id, user_id)`: the mutation (`insert`, `update`,
+  `unchanged` or, for a reversal, `delete`), the grade's points, points
+  possible and description before and after (the before image is null for an
+  insert, the after image for a delete; for an unchanged row the two are
+  equal), whether a quiz submission was created, and the participation found
+  and the participation after the call (equal unless `p_mark_attended`
+  promoted it, or a reversal put it back, to `absent` or to no row). A dry
+  run records what would have happened.
 
 Both tables are append-only: no role but the migrator can update or delete a
-row, and only the import can insert one.
+row, and only the import and the reversal can insert one.
 
 **Two ids.** The `import_id` the call returns is the execution id: a UUID
 generated per call, the header's primary key, and the value stamped on every
@@ -369,16 +371,102 @@ what changed is only that the reply no longer echoes it.
 
 **`GET /rest/quiz_grade_imports`** lists the headers to faculty, newest first;
 a TA gets `403`. Each row carries the header's `id`, `label`, `actor_user_id`,
-`actor_role`, `reason`, `dry_run`, `created_at` and `reverts_import_id` (for a
-reversal, the import it undid; null until reversals exist), the attendance
-counts, and `inserted_count`, `updated_count`, `unchanged_count` and
+`actor_role`, `reason`, `dry_run`, `created_at`, `reverts_import_id` (for a
+reversal, the import it undid) and `reverted_by_import_id` (the most recent
+reversal of this header, if any), the attendance counts (`attendance_inserted`,
+`attendance_updated`, `attendance_deleted`, `attendance_unchanged`), and
+`inserted_count`, `updated_count`, `deleted_count`, `unchanged_count` and
 `submission_created_count` counted from the items. It is driven by the header,
 so an import whose every row was unchanged is listed with its actor and
 reason. Filter it as any PostgREST view: `?label=eq.quiz-3`,
-`?actor_role=eq.ta`, `?dry_run=is.false`.
+`?actor_role=eq.ta`, `?dry_run=is.false`, `?reverts_import_id=not.is.null`.
 
 `api.platform_version.admin_api_version` is `12` or later for deployments that
 keep the ledger and return the execution id as `import_id`.
+
+### Reverting an import
+
+`POST /rest/rpc/revert_quiz_import`
+
+```json
+{
+  "p_import_id": "3f2b6c1e-9a4d-4c1b-8e2f-5d7a9b0c1e2f",
+  "p_reason": "Wrong answer key on question 4",
+  "p_force": false
+}
+```
+
+Response:
+
+```json
+[
+  {
+    "inserted_count": 0,
+    "updated_count": 2,
+    "deleted_count": 38,
+    "unchanged_count": 0,
+    "attendance_restored": 31,
+    "attendance_skipped": 1,
+    "import_id": "9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f",
+    "reverts_import_id": "3f2b6c1e-9a4d-4c1b-8e2f-5d7a9b0c1e2f"
+  }
+]
+```
+
+Faculty only; a TA gets `403`. `p_import_id` is the execution id the import
+returned and `api.quiz_grade_imports` lists as `id`, never the label.
+`p_reason` is required. A dry-run header has nothing to revert and is
+refused with `400`.
+
+The reversal puts back every before image the ledger recorded: a grade the
+import inserted is deleted (`deleted_count`), a grade it changed returns to
+its prior points and description (`updated_count`), and attendance the import
+changed goes back (`attendance_restored`): a row it promoted returns to
+`absent`, and a row it created, for a meeting added after the student
+enrolled, is deleted, since the prior state was no row and a student can see
+their own rows. The header counts those as `attendance_updated` and
+`attendance_deleted`. The quiz submissions the import created stay: they hold
+no score and a later grade needs them. Someone marked `contributed` or `led`
+since the import keeps that judgement, forced or not, and is counted under
+`attendance_skipped`.
+
+**A later change blocks the reversal.** Before writing anything the function
+checks every grade the import changed: its current points, points possible
+and description must equal the item's after image, and no grade event may
+have been appended for it since the import's own. If any grade fails, the
+whole reversal is refused with `409`, naming each moved grade as
+`meeting_slug/netid`, and nothing is written, no header included. An import
+already undone by a reversal that stands is refused the same way, naming the
+reversal. Grades the import found unchanged are not checked and not touched,
+forced or not: they were never the import's to undo.
+
+**`p_force`** restores the before images regardless, overwriting the later
+work. It is faculty-only like the rest, and it leaves the same linked audit
+row; the reversal's items then record the state it actually found as their
+before image, which may differ from what the import left. `points_possible`
+is the exception in both directions: a grade's `points_possible` follows its
+quiz by foreign key, so a change to the quiz counts as a move for every grade
+on it, and a forced reversal restores points and description while the grade
+keeps the quiz's current `points_possible`.
+
+**The reversal is an import.** It writes a header with `reverts_import_id`
+set and the reverted import's label, one item per item of the import it
+undid (the state found before, the state restored after), and stamps its own
+execution id on the `voided`, `corrected` and `recorded` events it writes, so
+`api.quiz_grade_events?import_id=eq.<reversal id>` shows exactly what it did.
+The original header shows the reversal as `reverted_by_import_id`. A reversal
+can itself be reverted, which restores the state it found, re-creating an
+engagement row it deleted; after that, the original import reads as moved
+(its grades were re-recorded after it) and a second reversal of it needs
+`p_force`.
+
+The import and the reversal lock the grade and engagement rows they touch in
+key order before reading them, so two of them over the same rows wait for
+each other rather than deadlock.
+
+`api.platform_version.admin_api_version` is `13` or later for deployments that
+accept `revert_quiz_import`, record the `delete` mutation, and list
+`deleted_count`, `attendance_deleted` and `reverted_by_import_id`.
 
 ## Deadline Extensions
 
@@ -935,6 +1023,7 @@ nothing is an error naming it, rather than a silently empty export.
 | Roster import | Planned | Needs a boundary between Yelukerest user rows and course-specific registration, LDAP, and nickname enrichment. |
 | Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
 | Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and a ledger of before and after images per import, listed to faculty by `api.quiz_grade_imports`. |
+| Quiz import reversal | Supported by `api.revert_quiz_import` | Restores every before image an import's ledger recorded, refuses if a grade moved since unless forced, and is itself an audited import. Faculty only. |
 | Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
 | Secret distribution | Supported by `api.upsert_user_secrets` / `api.upsert_team_secrets` | Partial-index upsert keyed on `netid`/`team_nickname` + `slug`, with dry-run. Returns counts only; no response or error ever carries a secret body. |
 | Repository mapping | Supported by `api.assignment_repositories` | Which forge repository belongs to which student or team for which assignment. Plain faculty CRUD, keyed on ids rather than names. Students read their own row only. |

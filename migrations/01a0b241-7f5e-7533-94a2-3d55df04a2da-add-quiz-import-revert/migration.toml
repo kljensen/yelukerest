@@ -1,0 +1,17 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a0b241-7f5e-7533-94a2-3d55df04a2da"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a0b208-95c5-7552-b1bf-1e237bcf13bc"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+reversibility = "reversible"
+
+[[allow]]
+lint = "lint.constraint_scans_table"
+reason = "The three CHECKs restate rules every existing item already satisfies, with a fourth mutation and a demotion added, so the validating scan cannot fail. The ledger holds one course's quiz imports -- at most a few thousand items, not millions -- so the scan is bounded by that. ADD CONSTRAINT takes the same ACCESS EXCLUSIVE lock with or without NOT VALID, and this migration runs inside the transaction Zapadka owns, so VALIDATE could not be separated from it anyway."

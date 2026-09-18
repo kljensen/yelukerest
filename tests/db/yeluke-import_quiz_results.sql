@@ -1,4 +1,4 @@
-SELECT plan(177)
+SELECT plan(179)
 ; SELECT function_privs_are('api', 'import_quiz_results', ARRAY['jsonb', 'boolean', 'boolean', 'text', 'text'], 'anonymous', ARRAY[]::text[], 'anonymous should not be able to execute api.import_quiz_results')
 ; SELECT function_privs_are('api', 'import_quiz_results', ARRAY['jsonb', 'boolean', 'boolean', 'text', 'text'], 'student', ARRAY[]::text[], 'students should not be able to execute api.import_quiz_results')
 ; SELECT function_privs_are('api', 'import_quiz_results', ARRAY['jsonb', 'boolean', 'boolean', 'text', 'text'], 'ta', ARRAY['EXECUTE'], 'tas should be able to execute api.import_quiz_results (#389)')
@@ -43,7 +43,7 @@ SELECT
         WHERE n.nspname IN (''api'', ''data'')
           AND c.relkind IN (''r'', ''v'', ''m'', ''p'', ''f'')
           AND has_table_privilege(''quiz_importer'', c.oid, priv)
-    ', ARRAY['data.quiz SELECT', 'data.user SELECT', 'data.quiz_submission SELECT', 'data.quiz_submission INSERT', 'data.quiz_grade SELECT', 'data.quiz_grade INSERT', 'data.quiz_grade UPDATE', 'data.engagement SELECT', 'data.engagement INSERT', 'data.engagement UPDATE', 'data.quiz_grade_import INSERT', 'data.quiz_grade_import_item INSERT'], 'quiz_importer holds exactly the table privileges the import needs and no other')
+    ', ARRAY['data.quiz SELECT', 'data.user SELECT', 'data.quiz_submission SELECT', 'data.quiz_submission INSERT', 'data.quiz_grade SELECT', 'data.quiz_grade INSERT', 'data.quiz_grade UPDATE', 'data.quiz_grade DELETE', 'data.engagement SELECT', 'data.engagement INSERT', 'data.engagement UPDATE', 'data.engagement DELETE', 'data.quiz_grade_import INSERT', 'data.quiz_grade_import SELECT', 'data.quiz_grade_import_item INSERT', 'data.quiz_grade_import_item SELECT', 'data.quiz_grade_event SELECT'], 'quiz_importer holds exactly the table privileges the import and the reversal (#391) need and no other')
 ; SELECT is_empty('
         SELECT c.oid::regclass::text || '' '' || priv
         FROM pg_class c
@@ -57,7 +57,7 @@ SELECT
         SELECT tablename || '' '' || cmd
         FROM pg_policies
         WHERE ''quiz_importer'' = ANY (roles)
-    ', ARRAY['user SELECT', 'quiz_submission SELECT', 'quiz_submission INSERT', 'quiz_grade SELECT', 'quiz_grade INSERT', 'quiz_grade UPDATE', 'engagement SELECT', 'engagement INSERT', 'engagement UPDATE', 'quiz_grade_import INSERT', 'quiz_grade_import_item INSERT'], 'quiz_importer is admitted by one policy per command it needs, and by no policy for api')
+    ', ARRAY['user SELECT', 'quiz_submission SELECT', 'quiz_submission INSERT', 'quiz_grade SELECT', 'quiz_grade INSERT', 'quiz_grade UPDATE', 'quiz_grade DELETE', 'engagement SELECT', 'engagement INSERT', 'engagement UPDATE', 'engagement DELETE', 'quiz_grade_import INSERT', 'quiz_grade_import SELECT', 'quiz_grade_import_item INSERT', 'quiz_grade_import_item SELECT', 'quiz_grade_event SELECT'], 'quiz_importer is admitted by one policy per command it needs, and by no policy for api')
 ;
 -- The ledger (#390): two append-only tables the import writes and a
 -- faculty-only view over them. Privileges here; behaviour further down.
@@ -652,7 +652,7 @@ SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901
 ; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''update'', NULL, NULL, NULL, 5, 13, NULL, false, NULL, NULL FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an updated item must carry a before image')
 ; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''unchanged'', NULL, 13, NULL, 5, 13, NULL, false, NULL, NULL FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an unchanged item cannot hide a differing after image behind a null before points')
 ; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''unchanged'', 5, NULL, NULL, 5, 13, NULL, false, NULL, NULL FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an unchanged item must carry its before points_possible')
-; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''insert'', NULL, NULL, NULL, 5, 13, NULL, true, ''attended'', ''absent'' FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an item cannot record attendance demoted')
+; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''insert'', NULL, NULL, NULL, 5, 13, NULL, true, ''absent'', NULL FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an item cannot record an absence going to no row')
 ; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''insert'', NULL, NULL, NULL, 5, 13, NULL, true, ''absent'', ''led'' FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an item cannot record attendance promoted to anything but attended')
 ; SELECT throws_ok(' INSERT INTO data.quiz_grade_import_item SELECT h.id, 99, 9901, ''insert'', NULL, NULL, NULL, 5, 13, NULL, true, ''contributed'', ''attended'' FROM data.quiz_grade_import h WHERE h.label = ''sql-quiz-rerun'' ', '23514', NULL, 'an item cannot record a judgement downgraded to attended')
 ;
@@ -1013,11 +1013,37 @@ VALUES (1, 3), (1, 4)
 ; SET "request.jwt.claim.user_id" TO "3"
 ; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (1, 3, 13, 13)'') ', 'the policies leave a faculty claim unrestricted, as through the api views')
 ;
--- The ledger through the same definer: the owner role can append and
--- nothing else, and only under a faculty or TA claim.
+-- The ledger through the same definer: the owner role can append, and only
+-- under a faculty or TA claim; can read, for the reversal (#391), and only
+-- under a faculty claim; and nothing else.
 SELECT throws_ok(' SELECT pg_temp.write_as_importer(''UPDATE data.quiz_grade_import SET reason = ''''edited'''''') ', '42501', NULL, 'quiz_importer cannot update a header, even through a definer it owns')
 ; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''DELETE FROM data.quiz_grade_import_item'') ', '42501', NULL, 'quiz_importer cannot delete an item, even through a definer it owns')
-; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''SELECT id FROM data.quiz_grade_import'') ', '42501', NULL, 'quiz_importer cannot read the ledger')
+; RESET role
+; CREATE FUNCTION pg_temp.count_as_importer(p_statement text) RETURNS bigint SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
+DECLARE
+    seen bigint;
+BEGIN
+    EXECUTE 'SELECT count(*) FROM (' || p_statement || ') AS rows_seen' INTO seen;
+    RETURN seen;
+END;
+$$
+; ALTER FUNCTION pg_temp.count_as_importer(text) OWNER TO quiz_importer
+; SET LOCAL role TO faculty
+; SELECT
+    isnt((
+        SELECT pg_temp.count_as_importer('SELECT id FROM data.quiz_grade_import')
+    ), 0::bigint, 'quiz_importer reads the ledger under a faculty claim')
+; SET LOCAL role TO ta
+; SET "request.jwt.claim.role" TO ta
+; SET "request.jwt.claim.user_id" TO "4"
+; SELECT
+    "is"((
+        SELECT pg_temp.count_as_importer('SELECT id FROM data.quiz_grade_import')
+    ), 0::bigint, 'quiz_importer reads no ledger row under a TA claim')
+; SELECT
+    "is"((
+        SELECT pg_temp.count_as_importer('SELECT id FROM data.quiz_grade_event')
+    ), 0::bigint, 'quiz_importer reads no grade event under a TA claim')
 ; SET LOCAL role TO student
 ; SET "request.jwt.claim.role" TO student
 ; SET "request.jwt.claim.user_id" TO "1"

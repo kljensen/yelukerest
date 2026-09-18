@@ -3,8 +3,9 @@
 -- These are invariants, not a snapshot: they re-run against every later state
 -- of the schema. What must stay true is that the ledger is append-only and
 -- faculty-only: the two tables exist under the migrator with row-level
--- security on; quiz_importer may insert and nothing more, under a policy
--- that requires a faculty or TA claim; api may select, for faculty; no role
+-- security on; quiz_importer may insert under a policy that requires a
+-- faculty or TA claim, may read under a faculty claim once 01a0b241 gives
+-- its reversal that, and nothing more; api may select, for faculty; no role
 -- but the migrator can update or delete; and the summary view is owned by
 -- api, is a security barrier, and is readable by faculty alone. What the
 -- import records is asserted behaviourally in
@@ -45,9 +46,11 @@ SELECT
             AND con.confrelid = 'data.quiz_grade_import'::regclass
     )
 ;
--- Exact grants, read off each ACL: api SELECT and quiz_importer INSERT,
--- nothing else, nothing grantable, and no other grantee. The owner's implicit
--- entry is left out of the comparison; who the owner is was checked above.
+-- Grants, read off each ACL: api SELECT and quiz_importer INSERT, plus at
+-- most the quiz_importer SELECT the reversal (01a0b241) adds, so this holds
+-- with that migration deployed or reverted; nothing else, nothing grantable,
+-- and no other grantee. The owner's implicit entry is left out of the
+-- comparison; who the owner is was checked above.
 SELECT
     1 / (
         SELECT (count(*) = 2)::int
@@ -64,7 +67,8 @@ SELECT
             ) acl
         WHERE
             c.oid IN ('data.quiz_grade_import'::regclass, 'data.quiz_grade_import_item'::regclass)
-            AND acl.grants = ARRAY['api SELECT', 'quiz_importer INSERT']
+            AND acl.grants @> ARRAY['api SELECT', 'quiz_importer INSERT']
+            AND acl.grants <@ ARRAY['api SELECT', 'quiz_importer INSERT', 'quiz_importer SELECT']
     )
 ;
 -- Append-only, effectively: no role but the migrator and superusers holds
@@ -85,11 +89,17 @@ SELECT
             AND has_table_privilege(r.oid, t.rel, priv)
     )
 ;
--- The policies: exactly four on the two tables, each for one command and one
--- role, with these predicates (whitespace-normalized from pg_policies).
+-- The policies on the two tables, each for one command and one role, with
+-- these predicates (whitespace-normalized from pg_policies): the four this
+-- migration made must all be present, and nothing beyond them and the two
+-- faculty-only quiz_importer SELECTs the reversal (01a0b241) adds, so this
+-- holds with that migration deployed or reverted.
 SELECT
     1 / (
-        SELECT COALESCE(array_agg((((((((tablename || ' ') || cmd) || ' ') || roles::text) || ' USING ') || COALESCE(regexp_replace(qual, E'\\s+', ' ', 'g'), '-')) || ' CHECK ') || COALESCE(regexp_replace(with_check, E'\\s+', ' ', 'g'), '-') ORDER BY (tablename || ' ') || cmd COLLATE "C") = ARRAY['quiz_grade_import INSERT {quiz_importer} USING - CHECK (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text]))', 'quiz_grade_import SELECT {api} USING (request.user_role() = ''faculty''::text) CHECK -', 'quiz_grade_import_item INSERT {quiz_importer} USING - CHECK (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text]))', 'quiz_grade_import_item SELECT {api} USING (request.user_role() = ''faculty''::text) CHECK -'], false)::int
+        SELECT
+            COALESCE(array_agg((((((((tablename || ' ') || cmd) || ' ') || roles::text) || ' USING ') || COALESCE(regexp_replace(qual, E'\\s+', ' ', 'g'), '-')) || ' CHECK ') || COALESCE(regexp_replace(with_check, E'\\s+', ' ', 'g'), '-')) @> ARRAY['quiz_grade_import INSERT {quiz_importer} USING - CHECK (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text]))', 'quiz_grade_import SELECT {api} USING (request.user_role() = ''faculty''::text) CHECK -', 'quiz_grade_import_item INSERT {quiz_importer} USING - CHECK (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text]))', 'quiz_grade_import_item SELECT {api} USING (request.user_role() = ''faculty''::text) CHECK -']
+            AND array_agg((((((((tablename || ' ') || cmd) || ' ') || roles::text) || ' USING ') || COALESCE(regexp_replace(qual, E'\\s+', ' ', 'g'), '-')) || ' CHECK ') || COALESCE(regexp_replace(with_check, E'\\s+', ' ', 'g'), '-')) <@ ARRAY['quiz_grade_import INSERT {quiz_importer} USING - CHECK (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text]))', 'quiz_grade_import SELECT {api} USING (request.user_role() = ''faculty''::text) CHECK -', 'quiz_grade_import SELECT {quiz_importer} USING (request.user_role() = ''faculty''::text) CHECK -', 'quiz_grade_import_item INSERT {quiz_importer} USING - CHECK (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text]))', 'quiz_grade_import_item SELECT {api} USING (request.user_role() = ''faculty''::text) CHECK -', 'quiz_grade_import_item SELECT {quiz_importer} USING (request.user_role() = ''faculty''::text) CHECK -']
+            AND count(*) = count(DISTINCT (((tablename || ' ') || cmd) || ' ') || roles::text), false)::int
         FROM pg_policies
         WHERE
             schemaname = 'data'
