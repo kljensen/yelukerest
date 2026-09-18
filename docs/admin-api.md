@@ -229,11 +229,14 @@ Response:
     "attendance_inserted": 0,
     "attendance_updated": 1,
     "attendance_unchanged": 0,
-    "import_id": "quiz-3-2026-09-22",
+    "import_id": "3f2b6c1e-9a4d-4c1b-8e2f-5d7a9b0c1e2f",
     "dry_run": false
   }
 ]
 ```
+
+`import_id` in the reply is a generated execution id, not the `p_import_id`
+sent; see [the import ledger](#the-import-ledger).
 
 `points` is final, absolute points, exactly as for assignment grades. An OMR
 sheet's `correct / total * points_possible` is computed client-side, over the
@@ -279,12 +282,12 @@ row always existed and the insert always did nothing.
 Repeating the same payload writes nothing and reports every row under
 `unchanged_count`, so no redundant `corrected` rows land in
 `api.quiz_grade_events`. Rows the import does write carry
-`source = 'api.import_quiz_results'` plus the `reason` and `import_id` from the
-call. `import_id` is generated when the caller does not supply one and is
-returned so the client can log it.
+`source = 'api.import_quiz_results'` plus the `reason` from the call and the
+execution id the call returned as `import_id`.
 
 Set `p_dry_run` to `true` to get the same summary shape, including the
-attendance counts, without writing data.
+attendance counts, without writing data. A dry run still leaves a ledger
+entry saying what it would have done.
 
 `api.platform_version.admin_api_version` is `7` or later for deployments that
 support quiz result import.
@@ -331,6 +334,51 @@ such bound.
 
 `api.platform_version.admin_api_version` is `11` or later for deployments that
 accept a TA credential on this RPC.
+
+### The import ledger
+
+Every call of `api.import_quiz_results` that gets past its checks writes a
+ledger in the same transaction as the grades, dry runs included; a refused
+batch leaves nothing. It exists so faculty can see what each import did and,
+later, undo one: the grade event stream records the state after each write,
+so a `corrected` event does not carry the prior points, and it says nothing
+about the submissions the import created or the attendance it promoted.
+
+- `data.quiz_grade_import` holds one header per call: a generated execution
+  id, the caller's `p_import_id` as a label, the actor's user id and role, the
+  reason, the dry-run flag, when it ran, and the counts the call returned.
+- `data.quiz_grade_import_item` holds one row per result, keyed on
+  `(import_id, quiz_id, user_id)`: the mutation (`insert`, `update` or
+  `unchanged`), the grade's points, points possible and description before
+  and after (the before image is null for an insert; for an unchanged row the
+  two are equal), whether a quiz submission was created, and the
+  participation found and the participation after the call (equal unless
+  `p_mark_attended` promoted it). A dry run records what would have happened.
+
+Both tables are append-only: no role but the migrator can update or delete a
+row, and only the import can insert one.
+
+**Two ids.** The `import_id` the call returns is the execution id: a UUID
+generated per call, the header's primary key, and the value stamped on every
+row the call writes in `api.quiz_grade_events`, so events join to their header
+on it. The `p_import_id` the caller sends is kept on the header as `label` and
+is never used as identity: two calls that send the same label are two headers
+with two ids, which is what lets a section be sent in several batches under
+one label and each batch still be undone on its own. The label is optional;
+what changed is only that the reply no longer echoes it.
+
+**`GET /rest/quiz_grade_imports`** lists the headers to faculty, newest first;
+a TA gets `403`. Each row carries the header's `id`, `label`, `actor_user_id`,
+`actor_role`, `reason`, `dry_run`, `created_at` and `reverts_import_id` (for a
+reversal, the import it undid; null until reversals exist), the attendance
+counts, and `inserted_count`, `updated_count`, `unchanged_count` and
+`submission_created_count` counted from the items. It is driven by the header,
+so an import whose every row was unchanged is listed with its actor and
+reason. Filter it as any PostgREST view: `?label=eq.quiz-3`,
+`?actor_role=eq.ta`, `?dry_run=is.false`.
+
+`api.platform_version.admin_api_version` is `12` or later for deployments that
+keep the ledger and return the execution id as `import_id`.
 
 ## Deadline Extensions
 
@@ -886,7 +934,7 @@ nothing is an error naming it, rather than a silently empty export.
 | Submission export | Supported by `api_client.py export-submissions` | One row per submitted field; a team submission appears once. |
 | Roster import | Planned | Needs a boundary between Yelukerest user rows and course-specific registration, LDAP, and nickname enrichment. |
 | Assignment grade import | Supported by `api.import_assignment_grades` | Final points keyed on `assignment_slug` + `netid`, with dry-run, an audited `import_id`, and no silently skipped rows. |
-| Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and an audited `import_id`. |
+| Quiz result import | Supported by `api.import_quiz_results` | Final points keyed on `meeting_slug` + `netid`, with opt-in attendance marking, dry-run, and a ledger of before and after images per import, listed to faculty by `api.quiz_grade_imports`. |
 | Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
 | Secret distribution | Supported by `api.upsert_user_secrets` / `api.upsert_team_secrets` | Partial-index upsert keyed on `netid`/`team_nickname` + `slug`, with dry-run. Returns counts only; no response or error ever carries a secret body. |
 | Repository mapping | Supported by `api.assignment_repositories` | Which forge repository belongs to which student or team for which assignment. Plain faculty CRUD, keyed on ids rather than names. Students read their own row only. |

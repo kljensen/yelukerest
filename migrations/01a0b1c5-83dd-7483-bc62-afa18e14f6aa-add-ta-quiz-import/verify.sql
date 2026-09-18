@@ -4,9 +4,10 @@
 -- of the schema. What must stay true is the boundary around the import: it
 -- runs as quiz_importer and nothing else does; quiz_importer can neither log
 -- in, bypass row-level security, nor act as any application role; it holds
--- exactly the table privileges the import needs and every one of them is
--- gated by its own policies; and faculty and TAs are exactly who may call
--- the import. What the function refuses is asserted behaviourally in
+-- exactly the table privileges the import needs on the tables this migration
+-- gave it, never more than SELECT, INSERT and UPDATE anywhere, and every one
+-- of them is gated by its own policies; and faculty and TAs are exactly who
+-- may call the import. What the function refuses is asserted behaviourally in
 -- tests/db/yeluke-import_quiz_results.sql.
 -- The owner role, provisioned outside the migration graph, NOLOGIN NOINHERIT
 -- and without any cluster attribute that would let it act outside its grants.
@@ -132,11 +133,29 @@ SELECT
         WHERE has_schema_privilege('quiz_importer', s, 'CREATE')
     )
 ;
--- Effective table privileges in api and data: exactly the ten the import
--- needs. Effective, so PUBLIC and default privileges count.
+-- Effective table privileges on the five tables the import writes grades
+-- through: exactly the ten it needs. Effective, so PUBLIC and default
+-- privileges count. Other tables are not enumerated here, since a later
+-- migration may give the import more to write (01a0b208 adds its ledger) and
+-- pins those itself; what holds for every table is asserted below.
 SELECT
     1 / (
-        SELECT (array_agg((c.oid::regclass::text || ' ') || priv ORDER BY (c.oid::regclass::text || ' ') || priv COLLATE "C") = ARRAY['data."user" SELECT', 'data.engagement INSERT', 'data.engagement SELECT', 'data.engagement UPDATE', 'data.quiz SELECT', 'data.quiz_grade INSERT', 'data.quiz_grade SELECT', 'data.quiz_grade UPDATE', 'data.quiz_submission INSERT', 'data.quiz_submission SELECT'])::int
+        SELECT COALESCE(array_agg((c.oid::regclass::text || ' ') || priv ORDER BY (c.oid::regclass::text || ' ') || priv COLLATE "C") = ARRAY['data."user" SELECT', 'data.engagement INSERT', 'data.engagement SELECT', 'data.engagement UPDATE', 'data.quiz SELECT', 'data.quiz_grade INSERT', 'data.quiz_grade SELECT', 'data.quiz_grade UPDATE', 'data.quiz_submission INSERT', 'data.quiz_submission SELECT'], false)::int
+        FROM
+            pg_class c
+            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN']) priv
+        WHERE
+            c.oid IN ('data."user"'::regclass, 'data.quiz'::regclass, 'data.quiz_submission'::regclass, 'data.quiz_grade'::regclass, 'data.engagement'::regclass)
+            AND has_table_privilege('quiz_importer', c.oid, priv)
+    )
+;
+-- On every relation in api and data: nothing in api at all, nothing on
+-- anything but a plain table in data (a view would run with its owner's
+-- policies, not the role's), and never a privilege that is not one of
+-- SELECT, INSERT or UPDATE.
+SELECT
+    1 / (
+        SELECT (count(*) = 0)::int
         FROM
             pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -145,6 +164,37 @@ SELECT
             n.nspname IN ('api', 'data')
             AND c.relkind IN ('r', 'v', 'm', 'p', 'f')
             AND has_table_privilege('quiz_importer', c.oid, priv)
+            AND (n.nspname = 'api' OR c.relkind <> 'r' OR priv NOT IN ('SELECT', 'INSERT', 'UPDATE'))
+    )
+;
+-- ...and every table privilege it does hold is on a table with row-level
+-- security on, and is admitted by a quiz_importer_% policy for that command
+-- and that role alone. So a grant to the role is never unconditional. The
+-- one exception is SELECT on data.quiz, which has no row-level security and
+-- holds nothing a faculty member or TA cannot already read.
+SELECT
+    1 / (
+        SELECT (count(*) = 0)::int
+        FROM
+            pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            CROSS JOIN unnest(ARRAY['SELECT', 'INSERT', 'UPDATE']) priv
+        WHERE
+            n.nspname = 'data'
+            AND c.relkind = 'r'
+            AND c.oid <> 'data.quiz'::regclass
+            AND has_table_privilege('quiz_importer', c.oid, priv)
+            AND NOT (c.relrowsecurity
+            AND EXISTS (
+                SELECT 1
+                FROM pg_policies p
+                WHERE
+                    p.schemaname = n.nspname
+                    AND p.tablename = c.relname
+                    AND p.cmd = priv
+                    AND p.policyname LIKE 'quiz_importer_%'
+                    AND p.roles = ARRAY['quiz_importer']::name[]
+            ))
     )
 ;
 -- No column privilege beyond those table privileges, and no sequence
@@ -178,15 +228,18 @@ SELECT
             AND has_sequence_privilege('quiz_importer', c.oid, priv)
     )
 ;
--- Every table privilege the role holds on a row-secured table is admitted by
--- a policy for that role and that command, and by nothing wider: nine
--- policies, each FOR one command, each TO quiz_importer alone.
+-- Every table privilege the role holds on the four row-secured tables it
+-- writes grades through is admitted by a policy for that role and that
+-- command, and by nothing wider: nine policies, each FOR one command, each TO
+-- quiz_importer alone. Policies on tables a later migration added for the
+-- role are that migration's to pin.
 SELECT
     1 / (
-        SELECT (array_agg((tablename || ' ') || cmd ORDER BY (tablename || ' ') || cmd COLLATE "C") = ARRAY['engagement INSERT', 'engagement SELECT', 'engagement UPDATE', 'quiz_grade INSERT', 'quiz_grade SELECT', 'quiz_grade UPDATE', 'quiz_submission INSERT', 'quiz_submission SELECT', 'user SELECT'])::int
+        SELECT COALESCE(array_agg((tablename || ' ') || cmd ORDER BY (tablename || ' ') || cmd COLLATE "C") = ARRAY['engagement INSERT', 'engagement SELECT', 'engagement UPDATE', 'quiz_grade INSERT', 'quiz_grade SELECT', 'quiz_grade UPDATE', 'quiz_submission INSERT', 'quiz_submission SELECT', 'user SELECT'], false)::int
         FROM pg_policies
         WHERE
             schemaname = 'data'
+            AND tablename IN ('user', 'quiz_submission', 'quiz_grade', 'engagement')
             AND policyname LIKE 'quiz_importer_%'
             AND roles = ARRAY['quiz_importer']::name[]
     )
@@ -224,16 +277,20 @@ SELECT
     )
 ;
 -- The predicates themselves, whitespace-normalized from pg_policies, so a
--- deployment that widened one fails here. Every quiz_importer_% policy is in
--- this set by the check above, so none can hide by changing its roles. Under a TA claim every write is
+-- deployment that widened one fails here. Every quiz_importer_% policy on
+-- these four tables is in this set by the check above, so none can hide by
+-- changing its roles. Under a TA claim every write is
 -- confined to a student on a quiz that is not a draft; a grade update is
 -- faculty-only; an engagement write is attendance only; faculty are
 -- otherwise unrestricted, as through the api views.
 SELECT
     1 / (
-        SELECT (array_agg((((((tablename || ' ') || cmd) || ' USING ') || COALESCE(regexp_replace(qual, E'\\s+', ' ', 'g'), '-')) || ' CHECK ') || COALESCE(regexp_replace(with_check, E'\\s+', ' ', 'g'), '-') ORDER BY (tablename || ' ') || cmd COLLATE "C") = ARRAY['engagement INSERT USING - CHECK ((participation = ''attended''::data.participation_enum) AND ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = engagement.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.meeting_slug = engagement.meeting_slug) AND (NOT q.is_draft)))))))', 'engagement SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -', 'engagement UPDATE USING ((request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) AND (participation = ''absent''::data.participation_enum)) CHECK ((participation = ''attended''::data.participation_enum) AND ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = engagement.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.meeting_slug = engagement.meeting_slug) AND (NOT q.is_draft)))))))', 'quiz_grade INSERT USING - CHECK ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = quiz_grade.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.id = quiz_grade.quiz_id) AND (NOT q.is_draft))))))', 'quiz_grade SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -', 'quiz_grade UPDATE USING (request.user_role() = ''faculty''::text) CHECK (request.user_role() = ''faculty''::text)', 'quiz_submission INSERT USING - CHECK ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = quiz_submission.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.id = quiz_submission.quiz_id) AND (NOT q.is_draft))))))', 'quiz_submission SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -', 'user SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -'])::int
+        SELECT COALESCE(array_agg((((((tablename || ' ') || cmd) || ' USING ') || COALESCE(regexp_replace(qual, E'\\s+', ' ', 'g'), '-')) || ' CHECK ') || COALESCE(regexp_replace(with_check, E'\\s+', ' ', 'g'), '-') ORDER BY (tablename || ' ') || cmd COLLATE "C") = ARRAY['engagement INSERT USING - CHECK ((participation = ''attended''::data.participation_enum) AND ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = engagement.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.meeting_slug = engagement.meeting_slug) AND (NOT q.is_draft)))))))', 'engagement SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -', 'engagement UPDATE USING ((request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) AND (participation = ''absent''::data.participation_enum)) CHECK ((participation = ''attended''::data.participation_enum) AND ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = engagement.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.meeting_slug = engagement.meeting_slug) AND (NOT q.is_draft)))))))', 'quiz_grade INSERT USING - CHECK ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = quiz_grade.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.id = quiz_grade.quiz_id) AND (NOT q.is_draft))))))', 'quiz_grade SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -', 'quiz_grade UPDATE USING (request.user_role() = ''faculty''::text) CHECK (request.user_role() = ''faculty''::text)', 'quiz_submission INSERT USING - CHECK ((request.user_role() = ''faculty''::text) OR ((request.user_role() = ''ta''::text) AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = quiz_submission.user_id) AND (u.role = ''student''::data.user_role)))) AND (EXISTS ( SELECT 1 FROM data.quiz q WHERE ((q.id = quiz_submission.quiz_id) AND (NOT q.is_draft))))))', 'quiz_submission SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -', 'user SELECT USING (request.user_role() = ANY (ARRAY[''faculty''::text, ''ta''::text])) CHECK -'], false)::int
         FROM pg_policies
-        WHERE policyname LIKE 'quiz_importer_%'
+        WHERE
+            schemaname = 'data'
+            AND tablename IN ('user', 'quiz_submission', 'quiz_grade', 'engagement')
+            AND policyname LIKE 'quiz_importer_%'
     )
 ;
 -- Row-level security is on, and not forced, on every table the role has a

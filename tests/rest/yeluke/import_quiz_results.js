@@ -88,6 +88,11 @@ describe('quiz result import as a TA over HTTP', () => {
         we.expect(replies[0]).to.not.contain('draft');
     });
 
+    // The generated execution id the import returns (issue #390); the
+    // p_import_id sent is kept on the ledger as a label.
+    let executionId;
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
     it('records a new grade for a TA, and the student sees it', async () => {
         const response = await postRequestWithJWT(IMPORT, batch(9, { p_reason: 'Quiz 2 from quiz.som.chat', p_import_id: 'ta-q2' }), await taJWTPromise)
             .expect(200);
@@ -96,9 +101,10 @@ describe('quiz result import as a TA over HTTP', () => {
             updated_count: 0,
             unchanged_count: 0,
             submission_created_count: 1,
-            import_id: 'ta-q2',
             dry_run: false,
         });
+        we.expect(response.body.import_id).to.match(UUID);
+        executionId = response.body.import_id;
 
         const grades = await restService()
             .get('/quiz_grades?quiz_id=eq.2')
@@ -106,6 +112,37 @@ describe('quiz result import as a TA over HTTP', () => {
             .expect(200);
         we.expect(grades.body).to.have.lengthOf(1);
         we.expect(grades.body[0]).to.include({ quiz_id: 2, user_id: 1, points: 9 });
+    });
+
+    it('lists that import to faculty under its execution id, and not to the TA', async () => {
+        const listing = await restService()
+            .get('/quiz_grade_imports?label=eq.ta-q2')
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
+            .expect(200);
+        we.expect(listing.body).to.have.lengthOf(1);
+        we.expect(listing.body[0]).to.include({
+            id: executionId,
+            label: 'ta-q2',
+            actor_role: 'ta',
+            reason: 'Quiz 2 from quiz.som.chat',
+            dry_run: false,
+            inserted_count: 1,
+            updated_count: 0,
+            unchanged_count: 0,
+            submission_created_count: 1,
+        });
+
+        const events = await restService()
+            .get(`/quiz_grade_events?import_id=eq.${executionId}`)
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
+            .expect(200);
+        we.expect(events.body).to.have.lengthOf(1);
+        we.expect(events.body[0]).to.include({ quiz_id: 2, user_id: 1, points: 9 });
+
+        await restService()
+            .get('/quiz_grade_imports')
+            .set('Authorization', `Bearer ${await taJWTPromise}`)
+            .expect(403);
     });
 
     it('refuses a TA batch that would change an existing grade', async () => {
@@ -150,6 +187,8 @@ describe('quiz result import as a TA over HTTP', () => {
             .expect(403);
 
         await asTA(restService().get('/quiz_grade_events'))
+            .expect(403);
+        await asTA(restService().get('/quiz_grade_imports'))
             .expect(403);
 
         // And the grade is still there.
