@@ -9,6 +9,11 @@ volumes:
     # volume for persistence. 
     # See https://docs.docker.com/engine/admin/volumes/volumes/
     external: true
+  # Tailscale node identity for db-tailscale. External so that `down -v`,
+  # a project rename, or a prune cannot destroy the node; created once by
+  # bin/bootstrap-db-tailscale.sh, which is also the recovery procedure.
+  db-tailscale-state:
+    external: true
   postgres-run:
 services:
 
@@ -27,6 +32,8 @@ services:
       - "127.0.0.1:5432:${DB_PORT}"
     command:
       - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
       - -c
       - archive_mode=on
       - -c
@@ -72,6 +79,49 @@ services:
       # automatically in production (initdb.d only runs on an empty data
       # dir); see the header of the script and docs/hydra.md.
       - "./hydra/sql/create-hydra-db.sh:/opt/hydra/create-hydra-db.sh:ro"
+      # Client auth rules in git, not in the data volume. See db/pg_hba.conf.
+      - "./db/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro"
+
+  # Puts this Postgres on the tailnet as its own node, `mgt656-db`, so the
+  # course admin tooling on Kyle's laptops reaches it directly instead of
+  # through an SSH tunnel. The sidecar joins the db container's network
+  # namespace (not the reverse) so every other service keeps addressing
+  # Postgres as `db`; inbound tailnet TCP on 5432 lands on the listener
+  # Postgres already has on `*`.
+  #
+  # Kernel mode on purpose: tailnet clients then reach Postgres with their
+  # real 100.x address and are authenticated by db/pg_hba.conf. Userspace
+  # mode would proxy them from 127.0.0.1, which pg_hba trusts. Do not add
+  # TS_USERSPACE=true.
+  #
+  # No TS_AUTHKEY here. The node is enrolled once by
+  # bin/bootstrap-db-tailscale.sh into the external state volume; with
+  # TS_AUTH_ONCE=true the container reuses that identity and never needs a
+  # key again. Enrolment needs `tag:mgt656-db` to exist in the tailnet
+  # policy (kljensen/home-provisioning, infra/tailscale-policy.hujson).
+  #
+  # Pinned by digest (index; contains linux/arm64). To bump:
+  #   docker buildx imagetools inspect tailscale/tailscale:stable
+  db-tailscale:
+    image: tailscale/tailscale:v1.102.4@sha256:2667499ed87ae29218f292556ba062918402dd5e92e93637af14867e4df12dd3
+    restart: unless-stopped
+    network_mode: service:db
+    environment:
+      - TS_HOSTNAME=mgt656-db
+      - TS_ACCEPT_DNS=false
+      - TS_AUTH_ONCE=true
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+      - TS_EXTRA_ARGS=--advertise-tags=tag:mgt656-db --netfilter-mode=off
+    devices:
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - db-tailscale-state:/var/lib/tailscale
+    depends_on:
+      db:
+        condition: service_healthy
 
   # One-shot Hydra schema migration job (issue #270). Runs
   # `hydra migrate sql up` against the dedicated hydra database and

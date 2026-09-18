@@ -351,6 +351,61 @@ check_pending_migrations() {
     fi
 }
 
+check_db_tailscale() {
+    # The db-tailscale sidecar (docker-compose.prod.yaml) puts Postgres on
+    # the tailnet as mgt656-db. Production only; needs the stack running.
+    if [ "${DEVELOPMENT:-}" = "1" ]; then
+        return
+    fi
+    compose='docker compose -f docker-compose.base.yaml -f docker-compose.prod.yaml'
+
+    db_id=$($compose ps -q db 2>/dev/null || true)
+    ts_id=$($compose ps -q db-tailscale 2>/dev/null || true)
+    if [ -z "$db_id" ] || [ -z "$ts_id" ]; then
+        warn "db or db-tailscale is not running; skipping tailnet checks"
+        return
+    fi
+
+    # The sidecar must share the CURRENT db container's namespace. After a
+    # db recreate without a sidecar recreate it would still point at the old
+    # one and the tailnet endpoint would be dead while looking healthy.
+    mode=$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$ts_id")
+    if [ "$mode" = "container:$db_id" ]; then
+        ok "db-tailscale shares the running db container's network namespace"
+    else
+        fail "db-tailscale network mode is '$mode', not container:$db_id -- recreate it"
+    fi
+
+    status=$(docker exec "$ts_id" tailscale status --json 2>/dev/null || true)
+    if [ -z "$status" ]; then
+        fail "db-tailscale: tailscale status unavailable"
+        return
+    fi
+    if printf '%s' "$status" | grep -q '"BackendState": *"Running"'; then
+        ok "db-tailscale is connected to the tailnet"
+    else
+        fail "db-tailscale is not Running (not enrolled? see bin/bootstrap-db-tailscale.sh)"
+    fi
+    dns=$(printf '%s' "$status" | awk -F'"' '/"Self"/{f=1} f && /"DNSName"/{print $4; exit}')
+    case "$dns" in
+        mgt656-db.*) ok "db-tailscale node name is $dns" ;;
+        *)           fail "db-tailscale node name is '$dns', expected mgt656-db.* (stale machine in the console?)" ;;
+    esac
+    if printf '%s' "$status" | awk '/"Self"/{f=1} f' | grep -q '"tag:mgt656-db"'; then
+        ok "db-tailscale carries tag:mgt656-db"
+    else
+        fail "db-tailscale does not carry tag:mgt656-db"
+    fi
+
+    # Postgres must be published only on loopback; the tailnet path is the
+    # sidecar, not a host port.
+    if docker port "$db_id" 2>/dev/null | grep -q '^5432/tcp -> 127.0.0.1:'; then
+        ok "Postgres host port is bound to 127.0.0.1 only"
+    else
+        fail "Postgres host port binding is not 127.0.0.1: $(docker port "$db_id" 2>/dev/null | tr '\n' ' ')"
+    fi
+}
+
 check_checkout_freshness() {
     # The layer above check_pending_migrations: a host that never pulled has a
     # graph as old as its database, so migration status looks clean while the
@@ -448,6 +503,7 @@ check_hydra_client_count
 check_backup_fulls
 check_pending_migrations
 check_checkout_freshness
+check_db_tailscale
 
 if [ "$failures" -ne 0 ]; then
     printf 'doctor failed: %d failure(s), %d warning(s)\n' "$failures" "$warnings" >&2
