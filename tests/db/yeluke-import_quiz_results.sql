@@ -1,4 +1,4 @@
-SELECT plan(179)
+SELECT plan(194)
 ; SELECT function_privs_are('api', 'import_quiz_results', ARRAY['jsonb', 'boolean', 'boolean', 'text', 'text'], 'anonymous', ARRAY[]::text[], 'anonymous should not be able to execute api.import_quiz_results')
 ; SELECT function_privs_are('api', 'import_quiz_results', ARRAY['jsonb', 'boolean', 'boolean', 'text', 'text'], 'student', ARRAY[]::text[], 'students should not be able to execute api.import_quiz_results')
 ; SELECT function_privs_are('api', 'import_quiz_results', ARRAY['jsonb', 'boolean', 'boolean', 'text', 'text'], 'ta', ARRAY['EXECUTE'], 'tas should be able to execute api.import_quiz_results (#389)')
@@ -734,21 +734,52 @@ SELECT throws_ok('
         )
     ', '23503', 'import_quiz_results does not know a quiz for meeting slug: server-side-apps', 'a meeting with no quiz gets the same reply for a TA')
 ;
--- Only students. jlb325 is the TA themself, klj39 is faculty, crt43 an
--- observer.
+-- Any student, TA or faculty netid (#392), but not an observer: crt43 is
+-- one, and the refusal names them and writes nothing.
 SELECT throws_like('
         SELECT * FROM api.import_quiz_results(
             ''[{"meeting_slug":"intro","netid":"nk77","points":10},
               {"meeting_slug":"intro","netid":"jlb325","points":13},
-              {"meeting_slug":"intro","netid":"klj39","points":13},
               {"meeting_slug":"intro","netid":"crt43","points":13}]''::jsonb,
             p_reason => ''Quiz 1''
         )
-    ', '%a TA can only record grades for students, not for: crt43, jlb325, klj39%', 'a TA should not be able to grade themself, faculty, or an observer, and the batch names them')
+    ', '%a TA can only record grades for students, TAs and faculty, not for: crt43%', 'a TA should not be able to grade an observer, and the batch names them')
 ; RESET role
-; SELECT is_empty(' SELECT quiz_id FROM data.quiz_grade WHERE user_id IN (3, 4, 5, 9002) AND quiz_id = 1 ', 'a TA batch naming a non-student should write no grade at all')
-; SELECT is_empty(' SELECT quiz_id FROM data.quiz_submission WHERE user_id IN (3, 4, 5, 9002) AND quiz_id = 1 ', 'a TA batch naming a non-student should create no submission')
-; SELECT is_empty(' SELECT id FROM data.quiz_grade_event WHERE user_id IN (3, 4, 5, 9002) AND quiz_id = 1 ', 'a TA batch naming a non-student should append no event')
+; SELECT is_empty(' SELECT quiz_id FROM data.quiz_grade WHERE user_id IN (4, 5, 9002) AND quiz_id = 1 ', 'a TA batch naming an observer should write no grade at all')
+; SELECT is_empty(' SELECT quiz_id FROM data.quiz_submission WHERE user_id IN (4, 5, 9002) AND quiz_id = 1 ', 'a TA batch naming an observer should create no submission')
+; SELECT is_empty(' SELECT id FROM data.quiz_grade_import WHERE reason = ''Quiz 1'' ', 'a TA batch naming an observer should leave no header')
+; SET LOCAL role TO ta
+;
+-- jlb325 is the TA themself, klj39 is faculty; both sit the quiz and come
+-- through the same scan. jlb325 has no engagement row on intro, klj39 is
+-- already marked contributed there.
+INSERT INTO pg_temp.import_reply
+SELECT 'ta-quiz-1-staff', *
+FROM api.import_quiz_results('[{"meeting_slug":"intro","netid":"jlb325","points":13},
+      {"meeting_slug":"intro","netid":"klj39","points":12}]'::jsonb, p_mark_attended := true, p_import_id := 'ta-quiz-1-staff', p_reason := 'Quiz 1, staff pages')
+; SELECT results_eq('
+        SELECT inserted_count, updated_count, unchanged_count, submission_created_count,
+            attendance_inserted, attendance_updated, attendance_unchanged, dry_run
+        FROM pg_temp.import_reply
+        WHERE label = ''ta-quiz-1-staff''
+    ', ' VALUES (2, 0, 0, 2, 1, 0, 1, false) ', 'a TA batch naming the TA themself and a faculty member should import, with their submissions and attendance')
+; SELECT results_eq('
+        SELECT quiz_id, user_id, points, points_possible
+        FROM api.quiz_grades
+        WHERE quiz_id = 1 AND user_id IN (3, 4)
+    ', ' VALUES (1, 4, 13::real, 13::smallint) ', 'the TA should see the grade they recorded for themself')
+; RESET role
+; SELECT results_eq(' SELECT user_id, points FROM data.quiz_grade WHERE quiz_id = 1 AND user_id IN (3, 4) ORDER BY user_id ', ' VALUES (3, 12::real), (4, 13::real) ', 'both staff grades should be recorded')
+; SELECT results_eq(' SELECT participation::text FROM data.engagement WHERE user_id = 4 AND meeting_slug = ''intro'' ', ' VALUES (''attended''::text) ', 'the TA should be marked attended at the meeting whose quiz they sat')
+; SELECT results_eq(' SELECT participation::text FROM data.engagement WHERE user_id = 3 AND meeting_slug = ''intro'' ', ' VALUES (''contributed''::text) ', 'a faculty judgement should be left alone')
+; SELECT results_eq('
+        SELECT h.actor_user_id, h.actor_role, h.reason, array_agg(i.user_id ORDER BY i.user_id)
+        FROM data.quiz_grade_import h
+        JOIN data.quiz_grade_import_item i ON i.import_id = h.id
+        WHERE h.label = ''ta-quiz-1-staff''
+        GROUP BY h.id
+    ', ' VALUES (4, ''ta''::text, ''Quiz 1, staff pages''::text, ARRAY[3, 4]) ', 'the ledger should name the TA as the actor of the batch that graded the TA')
+; SELECT results_eq(' SELECT created_by_user_id, count(*)::int FROM data.quiz_grade_event WHERE quiz_id = 1 AND user_id IN (3, 4) GROUP BY 1 ', ' VALUES (4, 2) ', 'both grade events should name the TA')
 ; SET LOCAL role TO ta
 ; SELECT results_eq('
         SELECT inserted_count, updated_count, unchanged_count, submission_created_count,
@@ -863,6 +894,13 @@ SELECT throws_like('
     ', '%would change an existing grade for: intro/nk77;%', 'a TA batch that would change only a description should be refused')
 ; SELECT throws_like('
         SELECT * FROM api.import_quiz_results(
+            ''[{"meeting_slug":"intro","netid":"jlb325","points":12},
+              {"meeting_slug":"intro","netid":"klj39","points":13}]''::jsonb,
+            p_reason => ''Quiz 1 corrections''
+        )
+    ', '%would change an existing grade for: intro/jlb325, intro/klj39;%', 'a TA batch that would change the TA''s own grade, or a faculty member''s, should be refused like any other')
+; SELECT throws_like('
+        SELECT * FROM api.import_quiz_results(
             ''[{"meeting_slug":"intro","netid":"abc123","points":13},
               {"meeting_slug":"intro","netid":"bde456","points":1}]''::jsonb,
             p_dry_run => true,
@@ -871,14 +909,14 @@ SELECT throws_like('
     ', '%would change an existing grade for: intro/abc123, intro/bde456;%', 'a TA dry run should refuse the same batch and name every row')
 ; RESET role
 ; SELECT is_empty(' SELECT quiz_id FROM data.quiz_grade WHERE user_id = 9002 AND quiz_id = 2 ', 'a refused TA batch should write none of its rows, the new grade included')
-; SELECT results_eq(' SELECT points, description FROM data.quiz_grade WHERE quiz_id = 1 AND user_id IN (1, 9002) ORDER BY user_id ', ' VALUES (12::real, NULL::text), (10::real, NULL::text) ', 'a refused TA batch should leave the existing grades as they were')
+; SELECT results_eq(' SELECT points, description FROM data.quiz_grade WHERE quiz_id = 1 AND user_id IN (1, 3, 4, 9002) ORDER BY user_id ', ' VALUES (12::real, NULL::text), (12::real, NULL::text), (13::real, NULL::text), (10::real, NULL::text) ', 'a refused TA batch should leave the existing grades as they were')
 ; SELECT
     "is"((
         SELECT count(*)::int
         FROM data.quiz_grade_event
         WHERE user_id = 9002
     ), 1, 'a refused TA batch and an identical re-run should append no events')
-; SELECT is_empty(' SELECT id FROM data.quiz_grade_import WHERE reason IN (''Quiz 3'', ''Quiz 1'', ''Quiz 1 corrections'') ', 'a refused TA batch should leave no header, whether refused for a draft, a non-student, or a changed grade')
+; SELECT is_empty(' SELECT id FROM data.quiz_grade_import WHERE reason IN (''Quiz 3'', ''Quiz 1 corrections'') ', 'a refused TA batch should leave no header, whether refused for a draft or a changed grade')
 ;
 -- The same batch from faculty is a correction, with no reason required.
 SET LOCAL role TO faculty
@@ -968,14 +1006,18 @@ FROM generate_series(1, 65) i
 -- The policies are the backstop. A throwaway definer owned by quiz_importer,
 -- with none of the import's checks, stands in for a regression in them or
 -- for a later function owned by the same role. Under a TA claim the row
--- policies alone must refuse a non-student target, a draft quiz, and a
--- change to an existing grade, and still admit what the import writes.
--- Faculty stay unrestricted. Rolled back with the rest of the file.
+-- policies alone must refuse an observer target, a draft quiz and a change
+-- to an existing grade, the TA's own included, and admit what the import
+-- writes: since #392 that is a grade for a student, a TA or a faculty member
+-- on a published quiz. Faculty stay unrestricted. Rolled back with the rest
+-- of the file.
 --
 -- User 9003 is a fresh student with no submission anywhere and an absent
--- engagement row at every meeting; the faculty member (3) and the TA (4) get
--- a submission on quiz 1 from the superuser, so that a grade insert for
--- either reaches the grade policy rather than failing on the foreign key.
+-- engagement row at every meeting; 9004 is a second TA and 9005 a second
+-- faculty member, each with no submission, grade or engagement anywhere;
+-- crt43 (5) is the observer, graded on quiz 2 by faculty above, who gets a
+-- submission on quiz 1 from the superuser so that a grade insert there
+-- reaches the grade policy rather than failing on the foreign key.
 --
 RESET role
 ; CREATE FUNCTION pg_temp.write_as_importer(p_statement text) RETURNS void SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
@@ -985,33 +1027,43 @@ END;
 $$
 ; ALTER FUNCTION pg_temp.write_as_importer(text) OWNER TO quiz_importer
 ; INSERT INTO data."user" (id, netid, name, nickname, role)
-VALUES (9003, 'nk78', 'Newer Kid', 'fresh-owl', 'student')
+VALUES
+    (9003, 'nk78', 'Newer Kid', 'fresh-owl', 'student'),
+    (9004, 'ta99', 'Other TA', 'other-ta', 'ta'),
+    (9005, 'fac99', 'Other Faculty', 'other-fac', 'faculty')
 ; INSERT INTO data.quiz_submission (quiz_id, user_id)
-VALUES (1, 3), (1, 4)
+VALUES (1, 5)
 ; SET LOCAL role TO ta
 ; SET "request.jwt.claim.role" TO ta
 ; SET "request.jwt.claim.user_id" TO "4"
-; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (1, 3, 13, 13)'') ', '42501', NULL, 'the quiz_grade INSERT policy alone refuses a TA-claimed definer writing a grade for a faculty member')
-; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (1, 4, 13, 13)'') ', '42501', NULL, 'the quiz_grade INSERT policy alone refuses a TA grading themself')
-; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (2, 3)'') ', '42501', NULL, 'the quiz_submission INSERT policy alone refuses a TA-claimed definer creating a submission for a faculty member')
 ; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (3, 9003)'') ', '42501', NULL, 'the quiz_submission INSERT policy alone refuses a TA-claimed definer creating a submission on a draft quiz')
+; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (3, 9004)'') ', '42501', NULL, 'the quiz_submission INSERT policy alone refuses a draft quiz for a TA target too')
+; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (1, 5, 13, 13)'') ', '42501', NULL, 'the quiz_grade INSERT policy alone refuses a TA-claimed definer writing a grade for an observer')
+; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.engagement (user_id, meeting_slug, participation) VALUES (5, ''''intro'''', ''''attended'''')'') ', '42501', NULL, 'the engagement INSERT policy alone refuses a TA-claimed definer marking an observer attended')
 ; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (3, 9003, 13, 13)'') ', '42501', NULL, 'the quiz_grade INSERT policy alone refuses a TA-claimed definer writing a grade on a draft quiz')
-; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.engagement (user_id, meeting_slug, participation) VALUES (3, ''''server-side-apps'''', ''''attended'''')'') ', '42501', NULL, 'the engagement INSERT policy alone refuses a TA-claimed definer marking a faculty member attended')
+; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.engagement (user_id, meeting_slug, participation) VALUES (9005, ''''entrepreneurship-woot'''', ''''attended'''')'') ', '42501', NULL, 'the engagement INSERT policy alone refuses a TA-claimed definer marking anyone attended at a draft quiz''s meeting')
+; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.engagement (user_id, meeting_slug, participation) VALUES (9004, ''''server-side-apps'''', ''''attended'''')'') ', '42501', NULL, 'the engagement INSERT policy alone refuses a TA-claimed definer marking anyone attended at a meeting with no quiz')
 ; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''UPDATE data.engagement SET participation = ''''attended'''' WHERE user_id = 9003 AND meeting_slug = ''''entrepreneurship-woot'''''') ', '42501', NULL, 'the engagement UPDATE policy alone refuses a TA-claimed definer marking attendance at a draft quiz''s meeting')
 ; SELECT throws_ok(' SELECT pg_temp.write_as_importer(''UPDATE data.engagement SET participation = ''''led'''' WHERE user_id = 9003 AND meeting_slug = ''''structuredquerylang'''''') ', '42501', NULL, 'the engagement UPDATE policy alone refuses a TA-claimed definer writing anything but attended')
-; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''UPDATE data.quiz_grade SET points = 0 WHERE quiz_id = 1 AND user_id = 1'') ', 'a TA-claimed definer updating an existing grade runs without error...')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''UPDATE data.quiz_grade SET points = 0 WHERE quiz_id = 1 AND user_id IN (1, 4)'') ', 'a TA-claimed definer updating an existing grade, its own included, runs without error...')
 ; RESET role
-; SELECT results_eq(' SELECT points FROM data.quiz_grade WHERE quiz_id = 1 AND user_id = 1 ', ' VALUES (13::real) ', '...but the quiz_grade UPDATE policy alone lets it change nothing')
+; SELECT results_eq(' SELECT points FROM data.quiz_grade WHERE quiz_id = 1 AND user_id IN (1, 4) ORDER BY user_id ', ' VALUES (13::real), (13::real) ', '...but the quiz_grade UPDATE policy alone lets it change nothing')
 ; SET LOCAL role TO ta
 ; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (2, 9003)'') ', 'the policies alone admit a submission for a student on a published quiz')
 ; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (2, 9003, 13, 13)'') ', 'the policies alone admit a grade for a student on a published quiz')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (2, 9004)'') ', 'the policies alone admit a submission for a TA on a published quiz')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (2, 9004, 13, 13)'') ', 'the policies alone admit a grade for a TA on a published quiz')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (2, 9005)'') ', 'the policies alone admit a submission for a faculty member on a published quiz')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (2, 9005, 13, 13)'') ', 'the policies alone admit a grade for a faculty member on a published quiz')
 ; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''UPDATE data.engagement SET participation = ''''attended'''' WHERE user_id = 9003 AND meeting_slug = ''''structuredquerylang'''''') ', 'the policies alone admit promoting a student to attended at a published quiz''s meeting')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.engagement (user_id, meeting_slug, participation) VALUES (9004, ''''structuredquerylang'''', ''''attended'''')'') ', 'the policies alone admit marking a TA attended at a published quiz''s meeting')
 ; RESET role
-; SELECT results_eq(' SELECT participation::text FROM data.engagement WHERE user_id = 9003 AND meeting_slug = ''structuredquerylang'' ', ' VALUES (''attended''::text) ', 'and that promotion took effect')
+; SELECT results_eq(' SELECT participation::text FROM data.engagement WHERE user_id IN (9003, 9004) AND meeting_slug = ''structuredquerylang'' ORDER BY user_id ', ' VALUES (''attended''::text), (''attended''::text) ', 'and those attendance writes took effect')
 ; SET LOCAL role TO faculty
 ; SET "request.jwt.claim.role" TO faculty
 ; SET "request.jwt.claim.user_id" TO "3"
-; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (1, 3, 13, 13)'') ', 'the policies leave a faculty claim unrestricted, as through the api views')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_submission (quiz_id, user_id) VALUES (1, 9005)'') ', 'the policies leave a faculty claim unrestricted, as through the api views...')
+; SELECT lives_ok(' SELECT pg_temp.write_as_importer(''INSERT INTO data.quiz_grade (quiz_id, user_id, points_possible, points) VALUES (1, 9005, 13, 13)'') ', '...for grades as for submissions')
 ;
 -- The ledger through the same definer: the owner role can append, and only
 -- under a faculty or TA claim; can read, for the reversal (#391), and only

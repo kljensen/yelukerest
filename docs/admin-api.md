@@ -301,18 +301,19 @@ any read of `api.quiz_grade_events`. The function runs `SECURITY DEFINER`
 under a dedicated owner role, `quiz_importer`, which holds only the table
 privileges the import needs, admitted by its own row policies on those tables.
 Those policies carry the TA rules below a second time -- under a TA claim a
-write must target a student on a published quiz, and a grade update is
-faculty-only -- so a regression in the function cannot write past them. The
-row policies that faculty and students go through are unchanged.
-`data.quiz_grade_event` still records the caller, so every row a TA imports is
-audited under the TA's user id.
+write must target a student, TA or faculty member on a published quiz, and a
+grade update is faculty-only -- so a regression in the function cannot write
+past them. The row policies that faculty and students go through are
+unchanged. `data.quiz_grade_event` still records the caller, so every row a
+TA imports is audited under the TA's user id. A TA may import any student, TA
+or faculty netid, their own included; the ledger records the actor.
 
 For a TA the import has four rules faculty do not have:
 
 - **`p_reason` is required** and must not be blank. It is stored on every
   grade event the batch writes.
-- **Only students can be graded.** A batch naming a TA (themself included), a
-  faculty member, or an observer is refused with `403`.
+- **Observers cannot be graded.** A batch naming an observer is refused with
+  `403`. Students, TAs (the caller included) and faculty can be.
 - **A draft quiz does not exist.** Drafts are hidden from TAs in `api.quizzes`,
   and the import answers the same way: a batch naming a draft quiz's meeting
   gets the same "does not know a quiz for meeting slug" refusal as a meeting
@@ -333,7 +334,9 @@ anything is written. Send it in batches of that size with the same
 such bound.
 
 `api.platform_version.admin_api_version` is `11` or later for deployments that
-accept a TA credential on this RPC.
+accept a TA credential on this RPC, and `14` or later for deployments that
+let a TA batch name a TA or faculty netid (earlier ones refuse any
+non-student netid with `403`).
 
 ### The import ledger
 

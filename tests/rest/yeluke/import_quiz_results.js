@@ -56,20 +56,79 @@ describe('quiz result import as a TA over HTTP', () => {
         we.expect(JSON.stringify(response.body)).to.contain('non-blank p_reason');
     });
 
-    it('refuses a TA batch that grades the TA or a faculty member', async () => {
-        const taJWT = await taJWTPromise;
-        for (const netid of ['jlb325', 'klj39']) {
-            const response = await postRequestWithJWT(IMPORT, {
-                p_results: [{ meeting_slug: 'structuredquerylang', netid, points: 13 }],
-                p_reason: 'Quiz 2',
-            }, taJWT).expect(403);
-            we.expect(JSON.stringify(response.body)).to.contain(`only record grades for students, not for: ${netid}`);
-        }
+    // Issue #392: TAs sit the quizzes too, so a TA batch may name the TA
+    // themself and faculty. Observers never do; crt43 is one. The ledger
+    // records the actor.
+    it('refuses a TA batch that grades an observer', async () => {
+        const response = await postRequestWithJWT(IMPORT, {
+            p_results: [
+                { meeting_slug: 'structuredquerylang', netid: 'jlb325', points: 13 },
+                { meeting_slug: 'structuredquerylang', netid: 'crt43', points: 13 },
+            ],
+            p_reason: 'Quiz 2',
+        }, await taJWTPromise).expect(403);
+        we.expect(JSON.stringify(response.body)).to.contain('only record grades for students, TAs and faculty, not for: crt43');
+
         const grades = await restService()
             .get('/quiz_grades?quiz_id=eq.2')
             .set('Authorization', `Bearer ${await facultyJWTPromise}`)
             .expect(200);
         we.expect(grades.body).to.have.lengthOf(0);
+    });
+
+    it('imports a TA batch that grades the TA and a faculty member', async () => {
+        const response = await postRequestWithJWT(IMPORT, {
+            p_results: [
+                { meeting_slug: 'structuredquerylang', netid: 'jlb325', points: 13 },
+                { meeting_slug: 'structuredquerylang', netid: 'klj39', points: 12 },
+            ],
+            p_reason: 'Quiz 2, staff pages',
+            p_import_id: 'ta-q2-staff',
+        }, await taJWTPromise).expect(200);
+        we.expect(response.body).to.include({
+            inserted_count: 2,
+            updated_count: 0,
+            unchanged_count: 0,
+            submission_created_count: 2,
+        });
+
+        const ownGrades = await restService()
+            .get('/quiz_grades?quiz_id=eq.2')
+            .set('Authorization', `Bearer ${await taJWTPromise}`)
+            .expect(200);
+        we.expect(ownGrades.body).to.have.lengthOf(1);
+        we.expect(ownGrades.body[0]).to.include({ quiz_id: 2, user_id: 4, points: 13 });
+
+        const grades = await restService()
+            .get('/quiz_grades?quiz_id=eq.2&order=user_id')
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
+            .expect(200);
+        we.expect(grades.body.map(g => [g.user_id, g.points])).to.deep.equal([[3, 12], [4, 13]]);
+
+        const listing = await restService()
+            .get('/quiz_grade_imports?label=eq.ta-q2-staff')
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
+            .expect(200);
+        we.expect(listing.body).to.have.lengthOf(1);
+        we.expect(listing.body[0]).to.include({ actor_user_id: 4, actor_role: 'ta', inserted_count: 2 });
+    });
+
+    it('refuses a second TA batch that would change the TA\'s own or the faculty grade', async () => {
+        const response = await postRequestWithJWT(IMPORT, {
+            p_results: [
+                { meeting_slug: 'structuredquerylang', netid: 'jlb325', points: 12 },
+                { meeting_slug: 'structuredquerylang', netid: 'klj39', points: 13 },
+            ],
+            p_reason: 'Quiz 2, staff corrections',
+        }, await taJWTPromise).expect(403);
+        we.expect(JSON.stringify(response.body)).to.contain('records grades once');
+        we.expect(JSON.stringify(response.body)).to.contain('structuredquerylang/jlb325, structuredquerylang/klj39');
+
+        const grades = await restService()
+            .get('/quiz_grades?quiz_id=eq.2&order=user_id')
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
+            .expect(200);
+        we.expect(grades.body.map(g => [g.user_id, g.points])).to.deep.equal([[3, 12], [4, 13]]);
     });
 
     it('tells a TA nothing about a draft quiz', async () => {
