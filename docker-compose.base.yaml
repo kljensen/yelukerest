@@ -217,6 +217,13 @@ services:
             - GITHUB_PROVISIONER_INSTALLATION_ID=${GITHUB_PROVISIONER_INSTALLATION_ID:-}
             - GITHUB_PROVISIONER_PRIVATE_KEY_FILE=${GITHUB_PROVISIONER_PRIVATE_KEY_FILE:-}
             - GITHUB_PROVISIONER_TOKEN=${GITHUB_PROVISIONER_TOKEN:-}
+            # The student-authorized join App (issue #399): client id and
+            # secret only, no key; see docs/github-join.md. Optional together.
+            - GITHUB_JOIN_APP_CLIENT_ID=${GITHUB_JOIN_APP_CLIENT_ID:-}
+            - GITHUB_JOIN_APP_CLIENT_SECRET=${GITHUB_JOIN_APP_CLIENT_SECRET:-}
+            - GITHUB_JOIN_APP_AUTHORIZE_URL=${GITHUB_JOIN_APP_AUTHORIZE_URL:-}
+            - GITHUB_JOIN_APP_TOKEN_URL=${GITHUB_JOIN_APP_TOKEN_URL:-}
+            - GITHUB_JOIN_APP_API_BASE_URL=${GITHUB_JOIN_APP_API_BASE_URL:-}
 
     mcpapp:
         restart: unless-stopped

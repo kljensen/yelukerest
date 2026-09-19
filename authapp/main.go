@@ -104,6 +104,18 @@ func main() {
 	} else {
 		log.Printf("GitHub provisioning enabled for organization %q", provisioner.org)
 	}
+	// The student-authorized join App (issue #399). Optional on top of
+	// provisioning, refused half-configured for the same reason.
+	joinApp, joinDisabledReason, err := githubJoinAppFromEnv(os.Getenv, provisioner, casConfig.IsDevelopment)
+	if err != nil {
+		log.Panicf("GitHub join is misconfigured: %v", err)
+	}
+	if joinApp != nil {
+		provisioner.join = joinApp
+		log.Println("GitHub join enabled: students can join the organization from the assignment page")
+	} else if joinDisabledReason != "" {
+		log.Println(joinDisabledReason)
+	}
 
 	// Set up the routes
 	mux := http.NewServeMux()
@@ -148,6 +160,7 @@ func main() {
 	// only when provisioning is configured; otherwise the routes do not
 	// exist and the mux answers 404.
 	registerProvisioningRoutes(mux, provisioner, fetchJWTConfig, sessionManager)
+	registerGitHubJoinRoutes(mux, provisioner, fetchJWTConfig, sessionManager)
 
 	// Proxy Hydra's Dynamic Client Registration endpoints, cleaning
 	// null/empty optional fields out of responses that break strict

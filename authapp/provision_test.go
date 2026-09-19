@@ -67,7 +67,10 @@ type fakePostgREST struct {
 	repositories []*fakeRepositoryRow
 	// submissions is the URL field's body per owner ("slug|user|team"),
 	// which finalize writes and refuses to overwrite.
-	submissions   map[string]string
+	submissions map[string]string
+	// verified records p_verified from the last set_user_github_identity
+	// per user, standing in for github_verified_at.
+	verified      map[int]bool
 	nextAttemptID int
 	nextRepoID    int
 	finalizeCalls int
@@ -87,6 +90,7 @@ func newFakePostgREST(t *testing.T, clock *fakeClock) *fakePostgREST {
 		assignments:   map[string]fakeAssignment{},
 		attempts:      map[int]*provisioningAttempt{},
 		submissions:   map[string]string{},
+		verified:      map[int]bool{},
 		nextAttemptID: 1,
 		nextRepoID:    1,
 		rpcCalls:      map[string]int{},
@@ -189,8 +193,26 @@ func (f *fakePostgREST) serveRPC(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// Locked, as the RPC is: a change of account once a repository
+		// exists for the user, or an attempt of theirs finalized.
+		if user.GitHubUserID != 0 && user.GitHubUserID != id {
+			for _, repo := range f.repositories {
+				if repo.UserID == user.ID {
+					f.raise(w, "github_identity_locked")
+					return
+				}
+			}
+			for _, attempt := range f.attempts {
+				if attempt.Stage == provisioningStageFinalized && (attempt.UserID == user.ID || attempt.InitiatedByUserID == user.ID) {
+					f.raise(w, "github_identity_locked")
+					return
+				}
+			}
+		}
 		user.GitHubUserID = id
 		user.GitHubLogin = argString("p_github_login")
+		verified, _ := args["p_verified"].(bool)
+		f.verified[user.ID] = verified
 		writeJSON(w, http.StatusOK, user)
 	default:
 		f.t.Errorf("unexpected rpc %s", name)
