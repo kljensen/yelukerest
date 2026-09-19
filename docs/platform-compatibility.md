@@ -120,3 +120,20 @@ migration can make about the database in front of it.
   because the two uniqueness rules are two different partial indexes and a
   single entry point would pick one of them from which field happened to be
   null. See [Admin API](admin-api.md#secret-distribution).
+- `schema_compatibility_version` **8** added `api.assignment_repository_provisionings`
+  (the self-serve repository attempt, read-only) and appended columns to three
+  existing views: `repository_template_provider`, `repository_template_full_name`
+  and `repository_url_field_slug` on `api.assignments` and `api.my_assignments`,
+  and `github_user_id`, `github_login` and `github_verified_at` on `api.users`.
+  It removes nothing, so a client that reads none of them extends its set to
+  `{..., 8}`; a client that configures templates declares `{8}`. Faculty write
+  the template columns through `api.assignments` as before; the GitHub columns
+  are read-only through the view and written only by the RPCs below.
+- `admin_api_version` **15** added the provisioning RPCs of issue #394:
+  `api.claim_repository_provisioning`, `api.record_repository_provisioning`,
+  `api.finalize_repository_provisioning`,
+  `api.touch_repository_provisioning_readiness` and
+  `api.set_user_github_identity`, callable only by the authapp service
+  credential, and `api.import_github_logins`, the faculty bootstrap that copies
+  logins out of a submitted field. See
+  [GitHub provisioning](github-provisioning.md).

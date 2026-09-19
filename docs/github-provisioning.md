@@ -1,0 +1,496 @@
+# GitHub provisioning: the App, its installation, and the environment
+
+Operator notes for the credential behind self-serve assignment repositories.
+The decision and its reasoning are in
+[ADR 0006](adr/0006-self-serve-assignment-repositories.md); this page is
+what to click and what to set.
+
+Provisioning is optional. With none of the variables below set, authapp
+starts, logs one line saying provisioning is disabled, and everything else
+works as before.
+
+## Create the App
+
+One App per organization that runs the platform, owned by the organization
+(not by a faculty member's account, so it survives them). GitHub: the
+organization's *Settings → Developer settings → GitHub Apps → New GitHub
+App*.
+
+- **Name**: something a student will recognise on a repository's
+  collaborator list, such as "MGT 656 Provisioner".
+- **Homepage URL**: the course site.
+- **Webhook**: untick *Active*. The platform polls; it does not receive
+  events.
+- **Permissions**, and nothing beyond these:
+  - Repository → *Administration*: **Read and write**. Template generation
+    and the collaborator grant.
+  - Repository → *Contents*: **Read**. Template generation reads the
+    template; the readiness check reads the generated repository's first
+    commit. GitHub documents *read* as sufficient for generation; if a
+    generate is refused with a permissions message, raise this to *Read and
+    write* and record why here.
+  - Repository → *Metadata*: **Read**. Every App has this; it is what
+    `GET /repos/{org}/{name}` uses.
+  - Organization → *Members*: **Read and write**. Reading a student's
+    membership state, inviting them, and adding them to the students team.
+- **Where can this GitHub App be installed?**: *Only on this account*.
+
+After creation, note the **App ID** shown at the top of the App's settings
+page, then under *Private keys* choose *Generate a private key*. GitHub
+downloads a `.pem` file once and does not keep a copy. That file is the
+secret.
+
+The later student-authorized "join" App (issue #399) is a **separate App**
+with *Organization → Members: Read and write* only. Do not add OAuth
+callbacks or user authorization to the provisioner; a student is never
+asked to authorize it.
+
+## Install it on the organization
+
+From the App's settings, *Install App → your organization*. Choose **Only
+select repositories** and select the template repositories. GitHub grants
+an installation access to every repository the App itself creates, so the
+repositories generated for students are covered automatically; see
+[Installing your own GitHub App](https://docs.github.com/en/apps/using-github-apps/installing-your-own-github-app)
+("If the app creates any repositories, the app will automatically be granted
+access to those repositories as well"). *All repositories* also works and
+needs no upkeep when templates are added, at the cost of the App being able
+to administer every repository in the organization.
+
+The installation id is in the URL after installing:
+`https://github.com/organizations/<org>/settings/installations/<id>`. That
+number is `GITHUB_PROVISIONER_INSTALLATION_ID`.
+
+Every template the platform is allowed to generate from must be a repository
+in this organization marked as a template (*Settings → Template repository*)
+**and** in the installation's repository list. When a new assignment gets a
+new template, add it to the installation (*Settings → GitHub Apps → the App
+→ Configure → Repository access*); forgetting to shows up as `not_found` on
+generate.
+
+## Environment
+
+Authapp reads these; `docker-compose.base.yaml` passes them through from
+`.env`. All of them are optional together and refused half-set.
+
+| Variable | Meaning |
+| --- | --- |
+| `GITHUB_PROVISIONER_ORG` | The organization repositories are created in. Required to enable provisioning. |
+| `GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG` | The team every student is added to after joining, by slug (the last path segment of the team's URL). Optional; leave unset for no team. |
+| `GITHUB_PROVISIONER_API_BASE_URL` | Defaults to `https://api.github.com`. Set only for GitHub Enterprise Server (`https://<host>/api/v3`) or a test double. |
+| `GITHUB_PROVISIONER_APP_ID` | The App ID from the App's settings page. |
+| `GITHUB_PROVISIONER_INSTALLATION_ID` | The installation id from the installation URL. |
+| `GITHUB_PROVISIONER_PRIVATE_KEY_FILE` | Path, **inside the authapp container**, to the downloaded `.pem`. |
+| `GITHUB_PROVISIONER_TOKEN` | A static token instead of the App. For development, tests, and small deployments only; see below. |
+
+Rules, enforced at startup so a mistake stops the container rather than a
+student:
+
+- Provisioning is **enabled** when `GITHUB_PROVISIONER_ORG` and one credential are set,
+  and **disabled** (one log line, authapp runs) when either is missing.
+- The three App variables (`GITHUB_PROVISIONER_APP_ID`,
+  `GITHUB_PROVISIONER_INSTALLATION_ID`, `GITHUB_PROVISIONER_PRIVATE_KEY_FILE`)
+  are all-or-nothing. One or two of them is a panic naming the missing ones.
+- `GITHUB_PROVISIONER_TOKEN` together with the App variables is a panic. Pick one.
+- A key file that cannot be read or is not an RSA private key is a panic.
+
+The private key is mounted read-only, not pasted into an environment
+variable: environment variables show up in `docker inspect`, in crash
+reports, and in the output of anyone who runs `env` in the container. Put
+the `.pem` next to the other production secrets and add a volume to the
+`authapp` service in `docker-compose.prod.yaml`:
+
+```yaml
+services:
+  authapp:
+    volumes:
+      - '/path/on/host/provisioner.pem:/run/secrets/github-app.pem:ro'
+```
+
+with `GITHUB_PROVISIONER_PRIVATE_KEY_FILE=/run/secrets/github-app.pem` in `.env`.
+The file should be owned by root and mode `0400`; the container runs as
+root, so it can read it.
+
+Production `.env` entries, then, look like:
+
+```sh
+GITHUB_PROVISIONER_ORG=yale-mgt-656-fall-2026
+GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG=students
+GITHUB_PROVISIONER_APP_ID=123456
+GITHUB_PROVISIONER_INSTALLATION_ID=78901234
+GITHUB_PROVISIONER_PRIVATE_KEY_FILE=/run/secrets/github-app.pem
+```
+
+Authapp mints an installation token from the key on first use, caches it in
+memory, and mints another five minutes before it expires. Tokens are never
+written anywhere and never appear in errors or logs. The names are
+deliberately prefixed: a `.env` shared with other tooling that holds a bare
+`GITHUB_TOKEN` or `GITHUB_ORG` does not enable provisioning.
+
+## The static token alternative
+
+`GITHUB_PROVISIONER_TOKEN` accepts a fine-grained personal access token with the same
+repository and organization permissions as the App, scoped to the
+organization's repositories. It exists so the dev stack and a very small
+deployment do not have to register an App. Its costs are the ones ADR 0006
+lists: it belongs to a person, its lifetime is whatever that person chose,
+and rotating it is a manual paste. Do not use one in production for a course
+with an enrolment.
+
+## Rotation
+
+To rotate the App's key: in the App's settings, *Generate a private key*
+(GitHub allows more than one active key), replace the mounted file with the
+new one, restart authapp (`./bin/prod.sh up -d authapp`), confirm the log
+line `GitHub provisioning enabled for organization ...` and that a
+repository can be created, then delete the old key in GitHub. Installation
+tokens already minted from the old key stay valid for up to an hour after
+the key is deleted; that is GitHub's behaviour and there is nothing to do
+about it except rotate before, not after, a compromise is public.
+
+To rotate a static token: generate a new one, set `GITHUB_PROVISIONER_TOKEN`, restart
+authapp, revoke the old one.
+
+To revoke everything at once, uninstall the App from the organization.
+Every installation token dies immediately; provisioning fails with
+`unauthorized` until it is reinstalled (with a new installation id).
+
+## What to check when it does not work
+
+- `authapp` log at startup says `GitHub provisioning disabled: ...` — one
+  of `GITHUB_PROVISIONER_ORG` or the credential is not reaching the container. Check
+  `.env` and the compose environment block.
+- The container exits at startup with `GitHub provisioning is
+  misconfigured` — the message names the variable.
+- Errors of kind `unauthorized` on every call — the installation was
+  removed, the key was deleted, or the App lacks a permission it needs.
+  Re-read *Permissions* above against the App's settings page.
+- `not_found` on generate — the template repository is not in the
+  installation's repository list, or is not marked as a template.
+- `not_found` reading a repository the platform created — GitHub answers
+  404 for a private repository the credential cannot see as well as for one
+  that does not exist. Check the installation is still on the organization
+  and that the repository was not transferred out of it; briefly after
+  generation it can also mean the repository has not appeared yet, which the
+  readiness handler waits out for a bounded time.
+- `rate_limited` — the App's installation has 5,000 requests an hour on a
+  paid organization; the error carries the wait GitHub asked for. A class
+  clicking at once does not reach that; a loop does.
+
+## HTTP contract
+
+The assignment page talks to two session-authenticated routes in authapp
+(issues #395 and #396). They exist only when provisioning is enabled; with
+it disabled they are absent and answer 404 like any unknown path. Every
+response carries `Cache-Control: no-store`.
+
+### `POST /auth/assignments/{slug}/repository`
+
+Creates the caller's repository for the assignment, or resumes creating it.
+The body is `{}` and is ignored: the owner (the student, or their team for a
+team assignment), the template, the repository name and the GitHub login all
+come from the session and the database. The request must be same-origin
+(`Sec-Fetch-Site: same-origin`, or an `Origin` matching the host); anything
+else is refused with 403 `cross_site_request`. Six clicks a minute per
+student are admitted; more get 429 `too_many_requests` with `Retry-After`.
+
+Repeating the POST is safe and is how every interruption is recovered: the
+attempt row records the stage reached (`claimed`, `generated`, `granted`,
+`finalized`, `failed`), and a click continues from there. Every click on an
+unfinished attempt re-validates every owner first (login on record, the
+account it resolves to, organization membership) and re-grants push to the
+current roster before finalizing, so a change between clicks is seen.
+Before a generate the destination name is always looked up: a repository
+already there that was generated from the assignment's template after the
+attempt began is adopted, which is how a generate that timed out after it
+landed converges on one repository. Two clicks at once share one attempt
+and produce one repository.
+
+### `GET /auth/assignments/{slug}/repository`
+
+Reads. It never creates a repository and never writes a submission; the one
+thing it records is when readiness was last checked. It runs as the student,
+so row-level security decides which attempt and repository they may see: a
+former teammate sees nothing.
+
+### States
+
+Both routes answer `{"state": ..., "repo_url": ..., "join_url": ...}` on
+success. `repo_url` and `join_url` are `null` when not applicable.
+
+| Status | `state` | Meaning |
+| --- | --- | --- |
+| 200 | `ready` | The mapping is recorded, every owner has push, and the default branch has a commit. `repo_url` is set. |
+| 202 | `copying` | The repository exists and is recorded, but GitHub is still copying the template into it (or it has not become visible yet). `repo_url` is set. Poll. |
+| 200 | `needs_github_link` | The caller has no GitHub login on record, or the login on record no longer names the linked account. Nothing was created. |
+| 200 | `needs_org_join` | The caller's GitHub account is not an active member of the course organization. Nothing was created. `join_url` is `null` until the join flow (issue #399) exists, which means: ask to be invited. |
+
+### Errors
+
+Anything else is `{"error": {"code": ..., "retryable": bool}}`. `retryable`
+means "the same request may succeed later"; a POST is the request to
+repeat, including after a `GET` that reported an interruption.
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 401 | `unauthenticated` | No session. |
+| 403 | `cross_site_request` | The POST did not come from the site. |
+| 403 | `not_a_student`, `not_enrolled`, `no_team`, `assignment_closed` | The caller is not eligible, as the database decided. |
+| 404 | `repository_not_configured` | The assignment does not exist, is a draft, or has no template. |
+| 404 | `repository_not_started` | GET only: nothing has been asked for yet; show the button. |
+| 409 | `provisioning_interrupted` | GET only, retryable: a POST stopped between checkpoints. Repeat the POST. |
+| 409 | `team_prerequisites_incomplete` | Retryable: a teammate has no login on record or is not in the organization. The caller cannot fix it for them. |
+| 409 | `name_taken` | A repository with the destination name exists and was not generated from our template after this attempt began. Staff resolve it; nothing is renamed or deleted. |
+| 409 | `collaborator_not_member`, `repository_conflict`, `submission_conflict`, `url_pattern_mismatch`, `repo_url_mismatch`, `destination_name_too_long` | Conflicts for staff, named by the database or GitHub. A GET after one of these returns the code that was recorded, with `retryable: true`, because a POST resets the attempt and tries again. |
+| 200 | `needs_github_link` (after `github_identity_mismatch`) | The database found the account the grant went to is no longer the one linked to the student; the attempt is recorded failed with that code and the student is asked to relink. |
+| 429 | `too_many_requests` | The per-student admission limit. `Retry-After` is set. |
+| 429 | `github_rate_limited` | GitHub is rate limiting the course credential. `Retry-After` carries GitHub's wait, and every GitHub call is refused for that long; work that needs none (a recorded `ready`) still answers. |
+| 502 | `github_unavailable` | Retryable: GitHub timed out or failed. After an ambiguous generate the next POST looks the name up before posting again. |
+| 502 | `github_credential_rejected` | GitHub refused the course credential; an operator must fix the installation. |
+| 502 | `template_not_found`, `template_empty` | The template is not in the installation, is not a template, or has no contents. |
+| 502 | `generate_rejected` | Retryable: GitHub refused the generate although the name was free a moment earlier -- a race, which the next click's lookup settles, or a request GitHub will not honour, which repeats. |
+| 502 | `repository_not_visible`, `template_copy_timed_out` | Ten minutes after the attempt began the repository still answers 404, or still has no commits. |
+| 502 | `platform_unavailable` | Retryable: PostgREST did not answer. |
+
+### Polling
+
+After a `copying`, GET every three seconds. Never overlap requests: wait for
+one to answer before sending the next. Honour a `Retry-After` header when
+it is longer than three seconds. Stop automatic polling two minutes after
+the click and leave a manual retry (a fresh POST) available; the server
+keeps answering `copying` for up to ten minutes before it reports an error.
+A poll within three seconds of the last check is answered from the recorded
+result without asking GitHub, so several tabs, or several teammates, cost
+one GitHub call per interval.
+
+## Verifying the lifecycle
+
+`bun run test_provisioning` (`bin/test-provisioning.sh`) runs
+`tests/provisioning/lifecycle.js` against the dev stack with a scripted fake
+GitHub, `tests/fake-github/server.js`, standing in for `api.github.com`. It
+is not part of `bun run test` because it rebuilds and restarts the `authapp`
+container twice: once with provisioning enabled, every other
+`GITHUB_PROVISIONER_*` and `GITHUB_JOIN_APP_*` variable blanked whatever
+`.env` says, and `GITHUB_PROVISIONER_API_BASE_URL` pointed at the fake
+through `host.docker.internal`; once afterwards with `.env`'s own values
+back. Like `test_db` and `test_rest`, it resets the shared dev database's
+sample data. The token it uses, `fake-token`, is a placeholder the fake
+insists on and is set in the script's environment, never in `.env`; every
+response the suite receives is checked for it.
+
+The fake implements exactly the endpoints `authapp/github.go` calls and is
+scripted per scenario through `POST /__fake/state`: accounts, membership
+states, existing repositories with their template and creation time, how
+many `HEAD` reads a new repository answers 409 to before its contents
+exist, whether a collaborator grant is a 204 or a 201 invitation, how long a
+generate takes, and one-shot failures on the next generate or grant (500,
+secondary rate limit with `Retry-After`, a reply held past the client's
+deadline, a reply cut off after the repository was created). `GET
+/__fake/calls` is the call log the assertions read: method, path, sanitized
+request body, status, and start and finish times. Repository ids are never
+reused, across resets included, because the platform refuses one id for two
+owners.
+
+What the nine scenarios establish, taken together:
+
+- **One repository per owner, however the clicks arrive.** A repeat click
+  after success, a click during another click's generate (the fake holds
+  the generate for 1.5 s and the second request is sent while it is in
+  flight), and a click after each kind of interruption all end with one
+  generate in the call log, one attempt row, one mapping row, one
+  submission, one URL field and one event.
+- **Every checkpoint resumes.** An attempt interrupted after generate (the
+  first grant fails with a 500) resumes from `generated` with one more grant
+  and no generate; a generate whose reply was cut off after the repository
+  landed leaves an attempt with no repository id, and the retry's name
+  lookup adopts what landed; a 201 invitation on grant is recorded as
+  `collaborator_not_member` and the retry adopts the repository once the
+  grant is a 204; a rate-limited generate leaves the attempt at `claimed`,
+  the wait is passed on as `Retry-After`, a click inside the wait is refused
+  without a GitHub call, and the same attempt id finalizes afterwards with
+  the repository id the mapping holds.
+- **Refusals create nothing.** A pending membership answers
+  `needs_org_join`; a destination name held by a repository from another
+  template answers `name_taken`; neither generates, grants, or writes a
+  mapping or submission.
+- **What is recorded is consistent and correctly scoped.** After every
+  success the mapping's `provider_repo_id` equals the attempt's, the
+  submission's URL field holds `https://github.com/<provider_full_name>`
+  with `origin = 'provisioning'`, and the event ledger has exactly one
+  entry. On a team assignment each teammate's grant carries
+  `permission: push` against the same repository path, either teammate's
+  GET answers `ready`, and a student on another team sees none of it
+  through the routes or through PostgREST.
+
+It does not exercise the join flow (`docs/github-join.md`), a template
+that is missing or empty, or the ten-minute readiness grace; the Go tests
+in `authapp/` cover those branches against an in-process fake. Live-GitHub
+smoke runs are operational work done by hand against a scratch
+organization, not part of any suite here.
+
+## Enablement order
+
+Each step can be left in place before the next. The one that changes what a
+student sees is putting a template on an assignment (step 5): the button
+appears on that assignment's page the moment the template is there, so the
+pilot is done on one assignment in a short, announced window, or on an
+assignment created for the purpose.
+
+1. **Deploy the code.** `./bin/deploy-prod.sh --deploy --services "authapp
+   elmclient"` applies the pending migrations through
+   `01a0bb0d-…-add-assignment-repository-provisioning` and rebuilds and
+   restarts the two services whose source changed. `api.platform_version`
+   then reports `schema_compatibility_version` 8 and `admin_api_version`
+   15. A plain `./bin/prod.sh up -d authapp` without `--build` restarts the
+   **old** image and the routes stay absent. Nothing is enabled yet:
+   authapp without a credential logs `GitHub provisioning disabled`.
+2. **Credential.** Create and install the App (above), set the
+   `GITHUB_PROVISIONER_*` variables, restart authapp, and confirm the log line
+   `GitHub provisioning enabled for organization "…"`. Still nothing for a
+   student: no assignment has a template.
+3. **Import logins.** For a course that already collected GitHub usernames
+   through an assignment field, faculty run
+   `POST /rest/rpc/import_github_logins` with `p_assignment_slug` and
+   `p_field_slug`. It fills `github_login` for every student who has none,
+   skipping malformed and contested values, and returns the count. Students
+   it skipped will be told `needs_github_link` on their first click, which
+   is the correct answer for them. The RPC is idempotent; run it again after
+   more usernames come in.
+4. **Stop every other writer.** A course migrating from an external
+   provisioner (the cutover checklist below) disables its cron here, before
+   any assignment carries a template.
+5. **Pilot on one assignment.** Faculty
+   `PATCH /rest/assignments?slug=eq.<slug>` with
+   `repository_template_provider`, `repository_template_full_name` and
+   `repository_url_field_slug` (an existing `is_url` field of that
+   assignment; the database refuses any other). From that moment the
+   assignment's page shows the button to every student who can see the
+   assignment. Have two people click in the window: one student who
+   **already has** a mapping row (the click must answer `ready` for the
+   existing repository and generate nothing) and one who does not (expect
+   `copying` then `ready`, the repository in the organization with push
+   for that account, and the URL in the field with
+   `origin = 'provisioning'`). Then each clicks again and confirms nothing
+   new was created. Roll back (below) if anything is off; it costs nothing.
+6. **Roll out.** Put templates on the remaining assignments. There is no
+   separate UI switch; the template is the switch.
+
+## Consumer cutover checklist for `yale-mgt-656-fall-2026/admin`
+
+Editing the course repository is consumer work and stays there; this is
+the order it has to happen in, from the platform's side. Everything below
+refers to that repository's `admin provision-repos` command and the cron
+`scripts/install-provision-cron-on-server.sh` installs.
+
+- [ ] **Preflight the version.** `GET /rest/platform_version` must report
+      `schema_compatibility_version` in the consumer's supported set, which
+      has to include `8`, and `admin_api_version >= 15`. Membership for the
+      shape, a floor for the RPCs; `docs/platform-compatibility.md` says why.
+- [ ] **Keep the existing mappings.** Rows `admin provision-repos` wrote to
+      `api.assignment_repositories` are reused as they are:
+      `claim_repository_provisioning` finds the row for the owner and answers
+      `finalized` without creating an attempt, and the GET route reports the
+      recorded repository. Do not delete or rewrite them, and do not run a
+      "re-provision"; a row with the wrong `provider_repo_id` is fixed by
+      hand (see *Staff recovery*).
+- [ ] **Validate the URL pattern.** The platform submits
+      `https://github.com/<org>/<slug>-<login>` (or `-<team nickname>` for a
+      team assignment) through the URL field, and `finalize` refuses with
+      `url_pattern_mismatch` if the field's `pattern` does not accept it.
+      Check each field's pattern against a real login before anyone
+      clicks. A pattern written for Classroom-style names is the usual
+      culprit.
+- [ ] **Replace Classroom links.** Assignment text that pointed at a GitHub
+      Classroom invitation points at the assignment page instead; the button
+      will be there.
+- [ ] **Disable the cron BEFORE any assignment gets a template.** Remove
+      the crontab entry (the `UNTIL` mechanism in the install script, or
+      `crontab -e` on the server) and confirm no run is in flight. The cron
+      and a student click both create `<slug>-<login>`; a cron run that
+      lands between a student's lookup and generate produces `name_taken`
+      for the student and a duplicate row for the cron, and the row has to
+      be sorted out by hand. Once a template is on an assignment the
+      platform must be the only writer for it.
+- [ ] **Set the templates in the fixtures**, one assignment first (the
+      pilot above), then the rest. Each assignment that gets a repository
+      carries `repository_template_provider = 'github'`,
+      `repository_template_full_name = '<org>/<template>'` and
+      `repository_url_field_slug = '<its URL field>'` in the course's
+      assignment fixtures. The template must be marked as a template on
+      GitHub and be in the App installation's repository list. Applying the
+      fixture is what exposes the button.
+- [ ] **Keep the CLI as the staff fallback.** `admin provision-repos`
+      stays installed for a staff member to run **by hand, once, for one
+      assignment** when GitHub is refusing the platform's credential or a
+      student cannot be unblocked any other way. It is never put back on a
+      cron.
+
+Production GitHub smoke runs (a real template, a real student account, a
+scratch organization) are separate operational work done before the first
+assignment goes live, not something this repository automates.
+
+## Rollback
+
+To stop new provisioning: faculty `PATCH /rest/assignments?slug=eq.<slug>`
+setting all three template columns to `null` (the database keeps them
+all-or-nothing, so one alone is refused). The button disappears from the
+assignment page on its next load,
+the POST answers `repository_not_configured`, and the GET does the same for
+anyone without a repository. **Nothing else changes**: every
+`assignment_repositories` row, every submission, and every URL field stays,
+and a student whose repository was already made keeps it. To stop it for
+every assignment at once, unset the credential and restart authapp; the
+routes are then absent altogether.
+
+Do **not** restart the old cron after a rollback without reconciling first:
+the platform will have made repositories the cron does not know about, and
+the cron keys on names. Reconcile by reading `api.assignment_repositories`
+for the assignment and confirming the cron's own record (or its dry run)
+agrees with every `provider_repo_id` before it is allowed to write again.
+
+## Staff recovery
+
+Recovery always starts from what was recorded -- the attempt's
+`provider_repo_id` in `api.assignment_repository_provisionings`, the
+mapping's in `api.assignment_repositories` -- never from a repository's
+name. Names are guessable and reattach to whatever holds them next; the ids
+do not.
+
+- **Interrupted attempt** (GET says `provisioning_interrupted`, or the
+  attempt is at `claimed`, `generated` or `granted`): the student clicks
+  again. The POST resumes from the recorded stage, re-validates every owner,
+  re-grants push, and finalizes; a generate that landed without a recorded
+  id is found by the name lookup and adopted when it was made from our
+  template after the attempt began. Staff do nothing unless the second
+  click also fails, in which case the recorded `error_code` names what to
+  fix.
+- **Unrelated repository holds the name** (`name_taken`): a repository
+  called `<slug>-<login>` exists in the organization and was not generated
+  from the assignment's template after the attempt began. The simple fix
+  is to rename the stray repository on GitHub; the student's next click
+  then generates. If it is in fact the student's repository and should be
+  kept, record it by hand, and record **both** halves: the mapping row in
+  `api.assignment_repositories` with the repository's numeric id from
+  `GET /repos/<org>/<name>` as `provider_repo_id`, **and** the URL field
+  submission (`api.assignment_submissions` for the owner if there is none,
+  then `api.assignment_field_submissions` with the repository's URL; the
+  trigger records `origin = 'staff'` for a faculty write). A mapping row
+  alone is not enough: once it exists
+  the claim reports the repository as finalized and the finalize step, which
+  is what writes the submission, never runs, so the student would see
+  `ready` with nothing handed in. Never delete the stray repository from
+  here; it may be somebody's work.
+- **Mismatched submission URL** (`submission_conflict`, or a student who
+  pasted a different URL into the field before clicking): faculty edit
+  the field submission through `api.assignment_field_submissions` to the
+  recorded repository's URL, `https://github.com/<provider_full_name>`,
+  then the student clicks again and `finalize` finds the values equal. The
+  edit is recorded in the event ledger with the faculty member as
+  submitter, which is the audit trail.
+- **Credential failure** (`github_credential_rejected` to the student; the
+  one line authapp logs as `provisioning: ERROR GitHub refused the course
+  credential`): the installation was removed, the key deleted, or a
+  permission dropped. Follow *What to check when it does not work* above;
+  `bun run doctor` confirms the rest of the stack is healthy while you do.
+  Attempts that failed with it are resumed by the student's next click
+  once the credential works; nothing needs resetting.

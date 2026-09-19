@@ -1,0 +1,25 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a0bb0d-6906-7a43-ba37-dc6bef112939"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a0b2a1-bc58-7b90-92cf-0b27118b0cfb"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+# The schema goes back exactly; the rows do not. revert.sql says what is lost
+# (every provisioning attempt, every template configuration, every GitHub
+# identity) and what survives (repositories, submissions and field
+# submissions, which are ordinary course records).
+reversibility = "reversible"
+
+[[allow]]
+lint = "lint.index_without_concurrently"
+reason = "The provisioning indexes are built on a table created a few statements earlier in this same transaction, with no rows and no concurrent writer. The two indexes on existing tables (the assignment field foreign key, the GitHub account id) are on small tables that this deployment locks anyway for ALTER TABLE ... ADD COLUMN. CONCURRENTLY cannot run inside the transaction Zapadka owns."
+
+[[allow]]
+lint = "lint.constraint_scans_table"
+reason = "The new CHECK and foreign key constraints on data.assignment and data.\"user\" are over columns this same statement adds, so every existing row holds NULL and satisfies them; the validating scan cannot fail and the tables hold one course's assignments and people, not millions of rows. ADD COLUMN takes the ACCESS EXCLUSIVE lock regardless, and NOT VALID followed by a later VALIDATE could not be separated from the transaction Zapadka owns."

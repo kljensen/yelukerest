@@ -1,9 +1,11 @@
 module Routing exposing (matchers, parseLocation)
 
+import Assignments.Model exposing (githubJoinResult)
 import Models exposing (Route(..))
 import Msgs exposing (BrowserLocation(..))
 import Url exposing (Url)
-import Url.Parser exposing ((</>), Parser, map, oneOf, parse, s, string, top)
+import Url.Parser exposing ((</>), (<?>), Parser, map, oneOf, parse, s, string, top)
+import Url.Parser.Query as Query
 import Assignments.Views exposing (gradeView)
 
 
@@ -15,7 +17,7 @@ matchers =
         , map MeetingListRoute (s "meetings")
         , map MeetingDetailRoute (s "meetings" </> string)
         , map AssignmentListRoute (s "assignments")
-        , map AssignmentDetailRoute (s "assignments" </> string)
+        , map assignmentRoute (s "assignments" </> string <?> Query.string "github_join")
         , map AssignmentGradeDetailRoute (s "assignments" </> string </> s "grade" )
         , map EditEngagementsRoute (s "engagements" </> string)
         , map ConnectedAppsRoute (s "connected-apps")
@@ -25,13 +27,35 @@ matchers =
         ]
 
 
+{-| The assignment page, or the same page as the GitHub join sends the
+student back to it (`#/assignments/<slug>?github_join=<marker>`).
+-}
+assignmentRoute : String -> Maybe String -> Route
+assignmentRoute slug marker =
+    case Maybe.andThen githubJoinResult marker of
+        Just result ->
+            AssignmentJoinReturnRoute slug result
+
+        Nothing ->
+            AssignmentDetailRoute slug
+
+
 parseHash : Url -> Maybe Route
 parseHash url =
     let
-        -- Overwrite the URL's path with the fragment component, solely
-        -- for the purposes of parsing.
+        fragment =
+            Maybe.withDefault "" url.fragment
+
+        -- Overwrite the URL's path (and query) with the fragment component,
+        -- solely for the purposes of parsing. A query inside the fragment
+        -- is the fragment's own, not the page's.
         fakeURL =
-            { url | path = Maybe.withDefault "" url.fragment, fragment = Nothing }
+            case String.split "?" fragment of
+                path :: query :: _ ->
+                    { url | path = path, query = Just query, fragment = Nothing }
+
+                _ ->
+                    { url | path = fragment, query = Nothing, fragment = Nothing }
 
         route =
             parse matchers fakeURL

@@ -84,6 +84,13 @@ suite drives the real authorization flow against `/mcp`; REST tests use
 individually with `bun run test_db`, `bun run test_oauth`, and `bun run
 test_rest`. See the `tests` directory and `docs/hydra.md` for OAuth coverage.
 
+The GitHub provisioning lifecycle has its own suite, `bun run
+test_provisioning`, which is not part of `bun run test` because it rebuilds
+and restarts the `authapp` container pointed at a fake GitHub
+(`tests/fake-github/server.js`) and restores it afterwards. Like the
+database and REST suites it resets the dev database's sample data. See
+*Verifying the lifecycle* in `docs/github-provisioning.md`.
+
 To run the Elm client tests:
 
 ```

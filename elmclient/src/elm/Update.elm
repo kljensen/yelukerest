@@ -3,23 +3,33 @@ module Update exposing (listToDict, update, valuesFromDict)
 import Assignments.Commands
     exposing
         ( createAssignmentSubmission
+        , createRepository
         , fetchAssignmentGradeDistributions
         , fetchAssignmentGradeExceptions
         , fetchAssignmentGrades
         , fetchAssignmentSubmissions
         , fetchAssignments
+        , loadRepository
         , sendAssignmentFieldSubmissions
         )
 import Assignments.Model exposing (valuesForSubmissionID)
 import Assignments.Updates
     exposing
-        ( onFetchAssignmentGradeDistributions
+        ( RepositoryRequest(..)
+        , onCreateRepository
+        , onCreateRepositoryResponse
+        , onEnterAssignment
+        , onFetchAssignmentGradeDistributions
         , onFetchAssignmentGrades
+        , onGithubJoinReturn
+        , onLoadRepository
+        , onLoadRepositoryResponse
+        , onRepositoryPollTick
         )
 import Auth.Model exposing (CurrentUser, JWT, isFaculty, isFacultyOrTA)
 import Auth.Updates exposing (onFetchCurrentUser)
 import Browser exposing (UrlRequest(..))
-import Browser.Navigation exposing (load, pushUrl)
+import Browser.Navigation exposing (load, pushUrl, replaceUrl)
 import Common.TimeZones
 import Dict exposing (Dict)
 import Engagements.Commands
@@ -104,6 +114,31 @@ facultyUser model =
             Nothing
 
 
+{-| Turn what `Assignments.Updates` decided about a repository into commands.
+The submissions refetch is the one that needs the signed-in user.
+-}
+sendRepositoryRequests : ( Model, List RepositoryRequest ) -> ( Model, Cmd Msg )
+sendRepositoryRequests ( newModel, requests ) =
+    let
+        toCmd request =
+            case request of
+                CreateRequest slug generation ->
+                    createRepository slug generation
+
+                LoadRequest slug generation ->
+                    loadRepository slug generation
+
+                RefetchSubmissions ->
+                    case newModel.currentUser of
+                        RemoteData.Success user ->
+                            fetchAssignmentSubmissions user
+
+                        _ ->
+                            Cmd.none
+    in
+    ( newModel, Cmd.batch (List.map toCmd requests) )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -124,6 +159,18 @@ update msg model =
             let
                 newRoute =
                     parseLocation location
+
+                -- Only a change of route is an entry to an assignment's
+                -- page. The one way the URL changes to the route already
+                -- shown is the replaceUrl that strips a GitHub join marker,
+                -- and re-checking the repository then would overwrite what
+                -- the marker just said.
+                enterAssignment =
+                    if newRoute == model.route then
+                        identity
+
+                    else
+                        enterAssignmentIfDetailRoute
             in
             -- The connected-apps listing is deliberately fetched on every
             -- entry rather than cached: it reflects what Hydra believes right
@@ -168,6 +215,7 @@ update msg model =
                 _ ->
                     Cmd.none
             )
+                |> enterAssignment
 
         Msgs.OnFetchDataGrants response ->
             ( { model | dataGrants = response, pendingDataGrantRevokes = Set.empty }, Cmd.none )
@@ -382,7 +430,26 @@ update msg model =
             ( { model | meetings = response }, Cmd.none )
 
         Msgs.OnFetchAssignments response ->
+            -- A reload of #/assignments/<slug> sets the route before the
+            -- assignments arrive, so the repository check on route change
+            -- had nothing to go on; do it now.
             ( { model | assignments = response }, Cmd.none )
+                |> enterAssignmentIfDetailRoute
+
+        Msgs.OnCreateRepository slug ->
+            onCreateRepository slug model |> sendRepositoryRequests
+
+        Msgs.OnCreateRepositoryResponse slug generation now result ->
+            onCreateRepositoryResponse slug generation now result model |> sendRepositoryRequests
+
+        Msgs.OnLoadRepository slug ->
+            onLoadRepository slug model |> sendRepositoryRequests
+
+        Msgs.OnLoadRepositoryResponse slug generation now result ->
+            onLoadRepositoryResponse slug generation now result model |> sendRepositoryRequests
+
+        Msgs.OnRepositoryPollTick now ->
+            onRepositoryPollTick now model |> sendRepositoryRequests
 
         Msgs.OnFetchAssignmentSubmissions response ->
             ( { model | assignmentSubmissions = response }, Cmd.none )
@@ -572,3 +639,38 @@ update msg model =
 
         Msgs.OnChangeEngagementUserQuery userQuery ->
             ( { model | engagementUserQuery = Just userQuery }, Cmd.none )
+
+
+{-| If the page is an assignment's, ask where its repository stands (see
+`Assignments.Updates.onEnterAssignment`), on top of whatever else the
+transition already asked for.
+
+If it is an assignment's as the GitHub join sends the student back to it,
+act on the join's result instead and drop the marker from the URL, so a
+reload or a copied link does not act on it again. Both wait for the
+assignments to be loaded, since a direct load of the page sets the route
+before they are.
+
+-}
+enterAssignmentIfDetailRoute : ( Model, Cmd Msg ) -> ( Model, Cmd Msg )
+enterAssignmentIfDetailRoute ( model, cmd ) =
+    case ( model.route, model.assignments ) of
+        ( AssignmentDetailRoute slug, RemoteData.Success _ ) ->
+            let
+                ( newModel, repositoryCmd ) =
+                    onEnterAssignment slug model |> sendRepositoryRequests
+            in
+            ( newModel, Cmd.batch [ cmd, repositoryCmd ] )
+
+        ( AssignmentJoinReturnRoute slug result, RemoteData.Success _ ) ->
+            let
+                ( newModel, repositoryCmd ) =
+                    onGithubJoinReturn slug result { model | route = AssignmentDetailRoute slug }
+                        |> sendRepositoryRequests
+            in
+            ( newModel
+            , Cmd.batch [ cmd, repositoryCmd, replaceUrl model.navKey ("#/assignments/" ++ slug) ]
+            )
+
+        _ ->
+            ( model, cmd )

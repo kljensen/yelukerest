@@ -7,13 +7,20 @@ import Assignments.Model
         , AssignmentFieldSubmission
         , AssignmentGradeException
         , AssignmentGrade
+        , AssignmentRepositories
         , AssignmentSlug
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
+        , BlockedRepository
         , PendingBeginAssignments
+        , RepositoryError
+        , RepositoryProgress(..)
+        , RepositoryState(..)
+        , RepositoryStatus
         , assignmentSubmissionAction
         , notSubmissibleMessage
         , submissionBelongsToUser
+        , usesRepositoryFlow
         )
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
@@ -252,8 +259,8 @@ exceptionMatches slug user_id maybeNickname exception =
         False
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments slug _ =
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentRepositories -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments repositories slug _ =
     case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
         Just data ->
             let
@@ -267,10 +274,13 @@ detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions 
 
                 maybePendingBegin =
                     Dict.get slug pendingBeginAssignments
+
+                maybeRepository =
+                    Dict.get slug repositories
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin
+                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin maybeRepository
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -305,8 +315,8 @@ showDueDate dueDate timeZone maybeException _ _ =
             dueString
 
 
-detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment =
+detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Maybe RepositoryProgress -> Html.Html Msg
+detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment maybeRepository =
     let
         maybeException =
             wdExceptions
@@ -330,13 +340,30 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
                     , renderAssignmentSubmissionAction maybeBeginAssignment
+                        (repositoryFlow user currentDate maybeRepository)
                         (assignmentSubmissionAction currentDate maybeException assignment user (Just submission))
                     ]
 
             Nothing ->
                 renderAssignmentSubmissionAction maybeBeginAssignment
+                    (repositoryFlow user currentDate maybeRepository)
                     (assignmentSubmissionAction currentDate maybeException assignment user Nothing)
         ]
+
+
+{-| What the repository flow needs to draw itself, when the assignment and
+person get it (see `Assignments.Model.usesRepositoryFlow`).
+-}
+type alias RepositoryFlow =
+    { user : CurrentUser
+    , now : Posix
+    , progress : Maybe RepositoryProgress
+    }
+
+
+repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> RepositoryFlow
+repositoryFlow user now progress =
+    { user = user, now = now, progress = progress }
 
 
 showPreviousAssignment : Assignment -> AssignmentSubmission -> Html.Html Msg
@@ -351,17 +378,262 @@ showPreviousAssignment assignment submission =
         )
 
 
-renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> AssignmentSubmissionAction -> Html.Html Msg
-renderAssignmentSubmissionAction maybeBeginAssignment action =
+{-| A student's assignment with a repository template gets the create/poll
+flow in place of "Begin assignment": creating the repository begins the
+submission on the server. The flow stays above the form once a submission
+exists, so a student whose repository was never made (or is still being
+made) can see that from the same page they submit on. Everything else,
+including staff looking at such an assignment, is as before.
+-}
+renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> RepositoryFlow -> AssignmentSubmissionAction -> Html.Html Msg
+renderAssignmentSubmissionAction maybeBeginAssignment flow action =
     case action of
         CanBeginAssignment assignment2 ->
-            showBeginAssignmentButton assignment2 maybeBeginAssignment
+            if usesRepositoryFlow flow.user assignment2 then
+                showRepositoryProgress assignment2 flow
+
+            else
+                showBeginAssignmentButton assignment2 maybeBeginAssignment
 
         CanUpdateAssignment assignment2 submission ->
-            showSubmissionForm submission assignment2
+            if usesRepositoryFlow flow.user assignment2 then
+                Html.div []
+                    [ showRepositoryProgress assignment2 flow
+                    , showSubmissionForm submission assignment2
+                    ]
+
+            else
+                showSubmissionForm submission assignment2
 
         CannotSubmitAssignment reason ->
             Common.Views.divWithText (notSubmissibleMessage reason)
+
+
+showRepositoryProgress : Assignment -> RepositoryFlow -> Html.Html Msg
+showRepositoryProgress assignment flow =
+    let
+        createLabel =
+            if assignment.is_team then
+                "Create our team repository"
+
+            else
+                "Create my repository"
+    in
+    Html.div [ Attrs.class "mb2" ]
+        (case flow.progress of
+            Nothing ->
+                [ Html.text "Checking your repository…" ]
+
+            Just Checking ->
+                [ Html.text "Checking your repository…" ]
+
+            Just NotStarted ->
+                [ Html.button
+                    [ Attrs.class "btn btn-primary"
+                    , Events.onClick (Msgs.OnCreateRepository assignment.slug)
+                    ]
+                    [ Html.text createLabel ]
+                ]
+
+            Just Creating ->
+                [ Html.button
+                    [ Attrs.class "btn btn-primary black bg-silver"
+                    , Attrs.disabled True
+                    ]
+                    [ Html.text "Creating your private repository…" ]
+                ]
+
+            Just (Polling polling) ->
+                [ repositoryLink polling.last
+                , Html.div [] [ Html.text "Starter files are being copied — usually under a minute." ]
+                ]
+
+            Just (PollTimedOut status) ->
+                [ repositoryLink status
+                , Html.div []
+                    [ Html.text "Still copying. "
+                    , actionButton (Msgs.OnLoadRepository assignment.slug) "Check again" Nothing
+                    ]
+                ]
+
+            Just (Done status) ->
+                [ case status.repoUrl of
+                    Just url ->
+                        Html.a [ Attrs.class "btn btn-primary", Attrs.href url ] [ Html.text "Open your repository" ]
+
+                    Nothing ->
+                        Html.text "Your repository is ready."
+                ]
+
+            Just (Blocked blocked) ->
+                showRepositoryBlocked assignment.slug (secondsOfHold flow.now blocked.notBefore) blocked
+
+            Just (Failed failed) ->
+                showRepositoryFailed assignment.slug (secondsOfHold flow.now failed.notBefore) failed.error
+        )
+
+
+repositoryLink : RepositoryStatus -> Html.Html Msg
+repositoryLink status =
+    case status.repoUrl of
+        Just url ->
+            Html.div [] [ Html.a [ Attrs.href url ] [ Html.text url ] ]
+
+        Nothing ->
+            Html.text ""
+
+
+{-| How much of a rate limit's hold is left, if any. The clock is the
+model's five-second `Tick`, so the count shown moves in steps of five.
+-}
+secondsOfHold : Posix -> Maybe Posix -> Maybe Int
+secondsOfHold now maybeNotBefore =
+    maybeNotBefore
+        |> Maybe.map (\notBefore -> (Time.posixToMillis notBefore - Time.posixToMillis now + 999) // 1000)
+        |> Maybe.andThen
+            (\seconds ->
+                if seconds > 0 then
+                    Just seconds
+
+                else
+                    Nothing
+            )
+
+
+{-| A button that a rate limit's hold turns off, saying for how long.
+-}
+actionButton : Msg -> String -> Maybe Int -> Html.Html Msg
+actionButton msg label holdSeconds =
+    case holdSeconds of
+        Just seconds ->
+            Html.span []
+                [ Html.button
+                    [ Attrs.class "btn btn-primary black bg-silver"
+                    , Attrs.disabled True
+                    ]
+                    [ Html.text label ]
+                , Html.text (" You can try again in " ++ String.fromInt seconds ++ " s.")
+                ]
+
+        Nothing ->
+            Html.button
+                [ Attrs.class "btn btn-primary"
+                , Events.onClick msg
+                ]
+                [ Html.text label ]
+
+
+{-| A prerequisite the student has to meet first. Both end with "Try
+again", which asks the server to create once more: that is what re-checks
+the prerequisite.
+-}
+showRepositoryBlocked : AssignmentSlug -> Maybe Int -> BlockedRepository -> List (Html.Html Msg)
+showRepositoryBlocked slug holdSeconds blocked =
+    let
+        tryAgain =
+            actionButton (Msgs.OnCreateRepository slug) "Try again" holdSeconds
+
+        cancelled =
+            if blocked.joinCancelled then
+                [ Html.div [] [ Html.text "You cancelled the GitHub authorization. Try again when ready." ] ]
+
+            else
+                []
+    in
+    case ( blocked.status.state, blocked.status.joinUrl ) of
+        ( NeedsOrgJoin, Just joinUrl ) ->
+            cancelled
+                ++ [ Html.div [] [ Html.text "You need to join the course GitHub organization before a repository can be created for you." ]
+                   , Html.a [ Attrs.class "btn btn-primary mr1", Attrs.href joinUrl ] [ Html.text "Join the course GitHub organization" ]
+                   , tryAgain
+                   ]
+
+        ( NeedsOrgJoin, Nothing ) ->
+            cancelled
+                ++ [ Html.div [] [ Html.text "You need to accept the GitHub organization invitation first (check your email), then try again." ]
+                   , tryAgain
+                   ]
+
+        _ ->
+            [ Html.div [] [ Html.text "We don't have a working GitHub username for you; tell the teaching staff." ]
+            , tryAgain
+            ]
+
+
+{-| A request that failed. `provisioning_interrupted` is the one failure
+with a next step of its own: an earlier create was cut off, and posting
+again picks it up. Anything else retryable gets "Try again", which asks the
+server where things stand rather than creating blindly, since after a
+failed create the server may well hold a repository already. The rest are
+explained where the client can, and otherwise name their code so the
+teaching staff can find the attempt.
+-}
+showRepositoryFailed : AssignmentSlug -> Maybe Int -> RepositoryError -> List (Html.Html Msg)
+showRepositoryFailed slug holdSeconds error =
+    if error.code == "provisioning_interrupted" then
+        [ Html.div [] [ Html.text "An earlier attempt to create your repository was interrupted before it finished." ]
+        , actionButton (Msgs.OnCreateRepository slug) "Resume" holdSeconds
+        ]
+
+    else if error.retryable then
+        [ Html.div [ Attrs.class "red" ] [ Html.text (repositoryErrorMessage error) ]
+        , actionButton (Msgs.OnLoadRepository slug) "Try again" holdSeconds
+        ]
+
+    else
+        [ Html.div [ Attrs.class "red" ] [ Html.text (repositoryErrorMessage error) ] ]
+
+
+repositoryErrorMessage : RepositoryError -> String
+repositoryErrorMessage error =
+    if error.httpStatus == 429 then
+        -- The button beneath says how long the wait is.
+        "Too many requests. Please wait before trying again."
+
+    else
+        case error.code of
+            "assignment_closed" ->
+                "This assignment is closed, so a repository can no longer be created for it."
+
+            "not_a_student" ->
+                "Only students can create assignment repositories."
+
+            "no_team" ->
+                "You need to be on a team before a team repository can be created."
+
+            "session_expired" ->
+                "Your session has expired. Reload the page and sign in again."
+
+            "github_unavailable" ->
+                "GitHub did not respond. Try again in a moment."
+
+            "github_rate_limited" ->
+                "GitHub is rate-limiting the course's requests. Try again in a few minutes."
+
+            "platform_unavailable" ->
+                "The course platform did not respond. Try again in a moment."
+
+            "membership_not_active" ->
+                "GitHub has not activated your organization membership yet. Try again in a moment."
+
+            "repository_not_visible" ->
+                "The repository was created, but GitHub has not made it visible yet. Try again in a moment."
+
+            "timeout" ->
+                "The request took too long. Try again in a moment."
+
+            "network_error" ->
+                "We could not reach the server. Check your connection and try again."
+
+            _ ->
+                if error.retryable then
+                    "Something went wrong (" ++ error.code ++ "). Try again in a moment."
+
+                else
+                    -- name_taken, repository_conflict, submission_conflict and
+                    -- anything else the server refuses outright: nothing the
+                    -- student can do alone, so the code goes to whoever can.
+                    "We could not create your repository. Please tell the teaching staff and mention the code \"" ++ error.code ++ "\"."
 
 
 showBeginAssignmentButton : Assignment -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg

@@ -9,12 +9,15 @@ import Assignments.Model
         , NotSubmissibleReason(..)
         , SubmissibleState(..)
         , assignmentSubmissionAction
+        , assignmentsDecoder
+        , hasRepositoryTemplate
         , isSubmissible
         , notSubmissibleMessage
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
 import Expect
+import Json.Decode as Decode
 import Test exposing (Test, describe, test)
 import Time
 
@@ -111,7 +114,45 @@ tests =
                         |> submissionBelongsToUser { currentUser | team_nickname = Nothing }
                         |> Expect.equal False
             ]
+        , describe "repository template configuration"
+            [ test "is read when the API sends it" <|
+                \_ ->
+                    Decode.decodeString assignmentsDecoder (assignmentJson templateFields)
+                        |> Result.map (List.map hasRepositoryTemplate)
+                        |> Expect.equal (Ok [ True ])
+            , test "is absent when the API sends nulls" <|
+                \_ ->
+                    Decode.decodeString assignmentsDecoder (assignmentJson nullTemplateFields)
+                        |> Result.map (List.map hasRepositoryTemplate)
+                        |> Expect.equal (Ok [ False ])
+            , test "is absent when the API does not send the fields at all" <|
+                \_ ->
+                    Decode.decodeString assignmentsDecoder (assignmentJson "")
+                        |> Result.map (List.map hasRepositoryTemplate)
+                        |> Expect.equal (Ok [ False ])
+            , test "needs all three fields, not just some" <|
+                \_ ->
+                    hasRepositoryTemplate { baseAssignment | repository_template_provider = Just "github" }
+                        |> Expect.equal False
+            ]
         ]
+
+
+assignmentJson : String -> String
+assignmentJson extraFields =
+    """[{"slug":"project-1","points_possible":10,"is_draft":false,"is_markdown":true,"is_team":false,"is_open":true,"title":"Project 1","body":"","closed_at":"2026-10-01T00:00:00Z","fields":[]"""
+        ++ extraFields
+        ++ "}]"
+
+
+templateFields : String
+templateFields =
+    ""","repository_template_provider":"github","repository_template_full_name":"org/project-1-template","repository_url_field_slug":"repository_url" """
+
+
+nullTemplateFields : String
+nullTemplateFields =
+    ""","repository_template_provider":null,"repository_template_full_name":null,"repository_url_field_slug":null"""
 
 
 currentUser : CurrentUser
@@ -137,6 +178,9 @@ baseAssignment =
     , body = "Body"
     , closed_at = millis 2000
     , fields = []
+    , repository_template_provider = Nothing
+    , repository_template_full_name = Nothing
+    , repository_url_field_slug = Nothing
     }
 
 

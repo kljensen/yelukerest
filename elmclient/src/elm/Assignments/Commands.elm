@@ -1,10 +1,15 @@
 module Assignments.Commands exposing
     ( createAssignmentSubmission
+    , createRepository
     , fetchAssignmentGradeDistributions
     , fetchAssignmentGradeExceptions
     , fetchAssignmentGrades
     , fetchAssignmentSubmissions
     , fetchAssignments
+    , githubJoinUrl
+    , loadRepository
+    , repositoryResponse
+    , repositoryUrl
     , sendAssignmentFieldSubmissions
     )
 
@@ -13,6 +18,8 @@ import Assignments.Model
         ( AssignmentGrade
         , AssignmentGradeDistribution
         , AssignmentSlug
+        , RepositoryError
+        , RepositoryStatus
         , assignmentFieldSubmissionsDecoder
         , assignmentGradeDistributionsDecoder
         , assignmentGradeExceptionsDecoder
@@ -20,14 +27,20 @@ import Assignments.Model
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
+        , repositoryErrorDecoder
+        , repositoryStatusDecoder
         )
 import Auth.Commands exposing (fetchForCurrentUser, sendRequestWithJWT)
 import Auth.Model exposing (CurrentUser, JWT)
+import Dict
 import Http
+import Json.Decode as Decode
 import Json.Encode as Encode
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 import String
+import Task
+import Time exposing (Posix)
 import Tuple
 
 
@@ -149,6 +162,156 @@ sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
                 }
     in
     request
+
+
+{-| Like the connected-apps requests, these ride the browser session cookie:
+the endpoint is authapp's, which does the GitHub work on the student's
+behalf, and it is not PostgREST, so no JWT header is set.
+-}
+repositoryUrl : AssignmentSlug -> String
+repositoryUrl slug =
+    "/auth/assignments/" ++ slug ++ "/repository"
+
+
+{-| Where the student goes to join the course GitHub organization for this
+assignment (issue #399). The server sends it as `join_url` with a
+`needs_org_join` status; this is for the one case the client has to draw
+that page without a status, when the student comes back from it without
+finishing.
+-}
+githubJoinUrl : AssignmentSlug -> String
+githubJoinUrl slug =
+    "/auth/github/join?assignment_slug=" ++ slug
+
+
+{-| Ask authapp to create (or resume creating) the student's repository for
+this assignment. The server also begins the assignment submission, which is
+why the client does not call `createAssignmentSubmission` first.
+
+`generation` is the request number the reply will carry back (see
+`Assignments.Model.RepositoryGenerations`).
+
+Generating from a template can take GitHub a while, so this waits longer
+than the status check before giving up.
+
+-}
+createRepository : AssignmentSlug -> Int -> Cmd Msg
+createRepository slug generation =
+    repositoryRequest "POST" (Http.jsonBody (Encode.object [])) 60000 slug
+        |> Task.perform (\( now, result ) -> Msgs.OnCreateRepositoryResponse slug generation now result)
+
+
+loadRepository : AssignmentSlug -> Int -> Cmd Msg
+loadRepository slug generation =
+    repositoryRequest "GET" Http.emptyBody 15000 slug
+        |> Task.perform (\( now, result ) -> Msgs.OnLoadRepositoryResponse slug generation now result)
+
+
+{-| The request, paired with the time its answer arrived. The poll window
+and a `Retry-After` hold are both measured from that moment, and the
+five-second `Tick` in the model is too coarse to stand in for it.
+-}
+repositoryRequest : String -> Http.Body -> Float -> AssignmentSlug -> Task.Task Never ( Posix, Result RepositoryError RepositoryStatus )
+repositoryRequest method body timeout slug =
+    Http.task
+        { method = method
+        , headers = [ Http.header "Accept" "application/json" ]
+        , url = repositoryUrl slug
+        , body = body
+        , resolver = Http.stringResolver repositoryResponse
+        , timeout = Just timeout
+        }
+        |> Task.map Ok
+        |> Task.onError (Err >> Task.succeed)
+        |> Task.andThen (\result -> Time.now |> Task.map (\now -> ( now, result )))
+
+
+{-| Turn the HTTP reply into the contract's terms.
+
+A 2xx carries a status body; the state in it, not the status code (200 or
+202 for `copying`), is what the client acts on. Any other status carries
+`{"error": {"code", "retryable"}}` when authapp produced it. A reply from
+in front of authapp (a proxy's 429 or 502, say) has no such body, so those
+are classified by status alone: worth retrying only for a timeout (408), a
+rate limit (429) or a server-side failure (5xx). A 401 means the session
+is gone, whatever the body says, and no retry will bring it back.
+
+Every non-2xx also picks up the `Retry-After` header, which a rate limit
+sets in seconds; a 429 without one is treated as asking for 30 seconds.
+
+-}
+repositoryResponse : Http.Response String -> Result RepositoryError RepositoryStatus
+repositoryResponse response =
+    case response of
+        Http.BadUrl_ _ ->
+            Err (noResponse "bad_url" False)
+
+        Http.Timeout_ ->
+            Err (noResponse "timeout" True)
+
+        Http.NetworkError_ ->
+            Err (noResponse "network_error" True)
+
+        Http.BadStatus_ metadata body ->
+            let
+                status =
+                    metadata.statusCode
+
+                fromStatus =
+                    { code =
+                        if status == 429 then
+                            "rate_limited"
+
+                        else
+                            "http_" ++ String.fromInt status
+                    , retryable = status == 408 || status == 429 || status >= 500
+                    , httpStatus = status
+                    , retryAfterSeconds = Nothing
+                    }
+
+                error =
+                    if status == 401 then
+                        { fromStatus | code = "session_expired", retryable = False }
+
+                    else
+                        Decode.decodeString repositoryErrorDecoder body
+                            |> Result.withDefault fromStatus
+
+                retryAfter =
+                    case ( retryAfterSeconds metadata.headers, status == 429 ) of
+                        ( Nothing, True ) ->
+                            Just 30
+
+                        ( header, _ ) ->
+                            header
+            in
+            Err { error | httpStatus = status, retryAfterSeconds = retryAfter }
+
+        Http.GoodStatus_ metadata body ->
+            case Decode.decodeString repositoryStatusDecoder body of
+                Ok status ->
+                    Ok status
+
+                Err _ ->
+                    Err { code = "unexpected_response", retryable = True, httpStatus = metadata.statusCode, retryAfterSeconds = Nothing }
+
+
+noResponse : String -> Bool -> RepositoryError
+noResponse code retryable =
+    { code = code, retryable = retryable, httpStatus = 0, retryAfterSeconds = Nothing }
+
+
+{-| Browsers hand header names over in lower case, but nothing promises it,
+so the lookup does not depend on it. Only the delay-seconds form is read;
+the HTTP-date form is treated as absent.
+-}
+retryAfterSeconds : Dict.Dict String String -> Maybe Int
+retryAfterSeconds headers =
+    headers
+        |> Dict.toList
+        |> List.filter (\( name, _ ) -> String.toLower name == "retry-after")
+        |> List.head
+        |> Maybe.andThen (\( _, value ) -> String.toInt (String.trim value))
 
 
 {-| Notice that there is no way to restrict this

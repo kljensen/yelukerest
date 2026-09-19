@@ -9,9 +9,19 @@ module Assignments.Model exposing
     , AssignmentSlug
     , AssignmentSubmission
     , AssignmentSubmissionAction(..)
+    , AssignmentRepositories
+    , BlockedRepository
+    , FailedRepository
+    , GithubJoinResult(..)
     , NotSubmissibleReason(..)
     , PendingAssignmentFieldSubmissionRequests
     , PendingBeginAssignments
+    , PollingRepository
+    , RepositoryError
+    , RepositoryGenerations
+    , RepositoryProgress(..)
+    , RepositoryState(..)
+    , RepositoryStatus
     , SubmissibleState(..)
     , assignmentFieldSubmissionsDecoder
     , assignmentGradeDistributionsDecoder
@@ -21,10 +31,15 @@ module Assignments.Model exposing
     , assignmentSubmissionsDecoder
     , assignmentsDecoder
     , assignmentSubmissionAction
+    , hasRepositoryTemplate
     , isSubmissible
     , notSubmissibleMessage
+    , repositoryErrorDecoder
+    , repositoryStatusDecoder
     , submissionBelongsToUser
+    , usesRepositoryFlow
     , valuesForSubmissionID
+    , githubJoinResult
     )
 
 import Auth.Model exposing (CurrentUser)
@@ -32,7 +47,7 @@ import Common.Comparisons exposing (dateIsLessThan)
 import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Decode.Extra
-import Json.Decode.Pipeline exposing (optional, required)
+import Json.Decode.Pipeline exposing (hardcoded, optional, required)
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
 
@@ -52,7 +67,38 @@ type alias Assignment =
     , body : String
     , closed_at : Posix
     , fields : List AssignmentField
+
+    -- Set together or not at all: the GitHub template this assignment's
+    -- repositories are generated from, and the submission field the
+    -- resulting repository URL is recorded in. An assignment without them
+    -- keeps the plain "Begin assignment" flow.
+    , repository_template_provider : Maybe String
+    , repository_template_full_name : Maybe String
+    , repository_url_field_slug : Maybe String
     }
+
+
+{-| Whether this assignment hands out repositories from a template, and so
+gets the create/poll flow instead of the "Begin assignment" button.
+-}
+hasRepositoryTemplate : Assignment -> Bool
+hasRepositoryTemplate assignment =
+    case ( assignment.repository_template_provider, assignment.repository_template_full_name, assignment.repository_url_field_slug ) of
+        ( Just _, Just _, Just _ ) ->
+            True
+
+        _ ->
+            False
+
+
+{-| Whether this person gets the create/poll flow for this assignment.
+Only students do: the server refuses anyone else, and staff looking at an
+assignment want the page as students who have not started see it, not a
+refusal aimed at themselves.
+-}
+usesRepositoryFlow : CurrentUser -> Assignment -> Bool
+usesRepositoryFlow user assignment =
+    user.role == "student" && hasRepositoryTemplate assignment
 
 
 type alias AssignmentField =
@@ -140,6 +186,9 @@ assignmentDecoder =
         |> required "body" Decode.string
         |> required "closed_at" Json.Decode.Extra.datetime
         |> required "fields" assignmentFieldsDecoder
+        |> optional "repository_template_provider" (Decode.nullable Decode.string) Nothing
+        |> optional "repository_template_full_name" (Decode.nullable Decode.string) Nothing
+        |> optional "repository_url_field_slug" (Decode.nullable Decode.string) Nothing
 
 
 assignmentFieldsDecoder : Decode.Decoder (List AssignmentField)
@@ -216,6 +265,177 @@ assignmentFieldSubmissionDecoder =
         |> required "submitter_user_id" Decode.int
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
+
+
+{-| What authapp reports about a student's repository for one assignment,
+from `GET`/`POST /auth/assignments/{slug}/repository`. `Copying` means the
+repository exists but GitHub is still filling it from the template, which
+the client waits out by polling. The two `Needs*` states are prerequisites
+the student has to sort out first; `joinUrl` is where to do that when the
+server knows.
+-}
+type RepositoryState
+    = Ready
+    | Copying
+    | NeedsGithubLink
+    | NeedsOrgJoin
+
+
+type alias RepositoryStatus =
+    { state : RepositoryState
+    , repoUrl : Maybe String
+    , joinUrl : Maybe String
+    }
+
+
+{-| A refused or failed repository request. `code` is the server's error
+code when it sent one, or a client-side stand-in (`network_error`,
+`timeout`, `session_expired`, `http_503`, ...) when it did not.
+`httpStatus` is 0 when no response arrived at all. `retryAfterSeconds` is
+the `Retry-After` header, or the 30 seconds assumed for a 429 that came
+without one.
+-}
+type alias RepositoryError =
+    { code : String
+    , retryable : Bool
+    , httpStatus : Int
+    , retryAfterSeconds : Maybe Int
+    }
+
+
+{-| Where the client is with one assignment's repository.
+
+`Checking` is a status request out with nothing known yet, so the view
+shows neither a create button nor a stale answer. `Polling` is the wait
+for GitHub's copy: `since` bounds it (see `Assignments.Updates`), `inFlight`
+keeps one status request out at a time, and `notBefore` holds off the next
+one when the server asked for that with `Retry-After`. `PollTimedOut` keeps
+the last status so the view can still link to the repository. `Blocked` and
+`Failed` carry a `notBefore` of their own: a rate limit on the request that
+put them there keeps their buttons off until it is over.
+
+-}
+type RepositoryProgress
+    = Checking
+    | NotStarted
+    | Creating
+    | Polling PollingRepository
+    | Done RepositoryStatus
+    | Blocked BlockedRepository
+    | Failed FailedRepository
+    | PollTimedOut RepositoryStatus
+
+
+type alias PollingRepository =
+    { since : Posix
+    , last : RepositoryStatus
+    , inFlight : Bool
+    , notBefore : Maybe Posix
+    }
+
+
+{-| `joinCancelled` is set when the student came back from the GitHub
+authorization page without finishing it (issue #399), so the page can say
+so rather than just show the join button again.
+-}
+type alias BlockedRepository =
+    { status : RepositoryStatus
+    , notBefore : Maybe Posix
+    , joinCancelled : Bool
+    }
+
+
+{-| How the GitHub organization join (issue #399) ended, as authapp
+reports it in the `github_join` marker it sends the student back with.
+-}
+type GithubJoinResult
+    = JoinOk
+    | JoinDenied
+    | JoinError String
+
+
+{-| The marker is `ok`, `denied` or `error:<code>`. Anything else is
+nobody's, and is treated as no marker at all.
+-}
+githubJoinResult : String -> Maybe GithubJoinResult
+githubJoinResult marker =
+    if marker == "ok" then
+        Just JoinOk
+
+    else if marker == "denied" then
+        Just JoinDenied
+
+    else if String.startsWith "error:" marker && String.length marker > 6 then
+        Just (JoinError (String.dropLeft 6 marker))
+
+    else
+        Nothing
+
+
+type alias FailedRepository =
+    { error : RepositoryError
+    , notBefore : Maybe Posix
+    }
+
+
+type alias AssignmentRepositories =
+    Dict AssignmentSlug RepositoryProgress
+
+
+{-| The number of the latest request sent for each assignment's repository.
+Every request carries the number it was sent under, and a reply whose
+number is no longer current is dropped: a status check that was out when
+the student clicked "Create" must not land after the create and put the
+page back to "not started".
+-}
+type alias RepositoryGenerations =
+    Dict AssignmentSlug Int
+
+
+repositoryStatusDecoder : Decode.Decoder RepositoryStatus
+repositoryStatusDecoder =
+    Decode.succeed RepositoryStatus
+        |> required "state" repositoryStateDecoder
+        |> optional "repo_url" (Decode.nullable Decode.string) Nothing
+        |> optional "join_url" (Decode.nullable Decode.string) Nothing
+
+
+repositoryStateDecoder : Decode.Decoder RepositoryState
+repositoryStateDecoder =
+    Decode.string
+        |> Decode.andThen
+            (\state ->
+                case state of
+                    "ready" ->
+                        Decode.succeed Ready
+
+                    "copying" ->
+                        Decode.succeed Copying
+
+                    "needs_github_link" ->
+                        Decode.succeed NeedsGithubLink
+
+                    "needs_org_join" ->
+                        Decode.succeed NeedsOrgJoin
+
+                    _ ->
+                        Decode.fail ("Unknown repository state: " ++ state)
+            )
+
+
+{-| The `{"error": {"code", "retryable"}}` body. The status and the
+`Retry-After` header are not in the body, so the request code fills them in
+afterwards.
+-}
+repositoryErrorDecoder : Decode.Decoder RepositoryError
+repositoryErrorDecoder =
+    Decode.field "error"
+        (Decode.succeed RepositoryError
+            |> required "code" Decode.string
+            |> required "retryable" Decode.bool
+            |> hardcoded 0
+            |> hardcoded Nothing
+        )
 
 
 type NotSubmissibleReason
