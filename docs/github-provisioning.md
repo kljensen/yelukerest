@@ -100,14 +100,13 @@ reports, and in the output of anyone who runs `env` in the container. Put
 the `.pem` next to the other production secrets and add a volume to the
 `authapp` service in `docker-compose.prod.yaml`:
 
-```yaml
-services:
-  authapp:
-    volumes:
-      - '/path/on/host/provisioner.pem:/run/secrets/github-app.pem:ro'
-```
-
-with `GITHUB_PROVISIONER_PRIVATE_KEY_FILE=/run/secrets/github-app.pem` in `.env`.
+`docker-compose.prod.yaml` mounts the key read-only at
+`/run/secrets/github-provisioner.pem` from whatever
+`GITHUB_PROVISIONER_PRIVATE_KEY_HOST_FILE` names on the host (say
+`/home/alpine/secrets/github-provisioner.pem`, mode 0600); leave it unset and an
+empty placeholder is mounted instead. So `.env` carries
+`GITHUB_PROVISIONER_PRIVATE_KEY_HOST_FILE=<host path>` and
+`GITHUB_PROVISIONER_PRIVATE_KEY_FILE=/run/secrets/github-provisioner.pem`.
 The file should be owned by root and mode `0400`; the container runs as
 root, so it can read it.
 
@@ -118,7 +117,7 @@ GITHUB_PROVISIONER_ORG=yale-mgt-656-fall-2026
 GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG=students
 GITHUB_PROVISIONER_APP_ID=123456
 GITHUB_PROVISIONER_INSTALLATION_ID=78901234
-GITHUB_PROVISIONER_PRIVATE_KEY_FILE=/run/secrets/github-app.pem
+GITHUB_PROVISIONER_PRIVATE_KEY_FILE=/run/secrets/github-provisioner.pem
 ```
 
 Authapp mints an installation token from the key on first use, caches it in
