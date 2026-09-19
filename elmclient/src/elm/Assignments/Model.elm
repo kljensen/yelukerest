@@ -12,6 +12,7 @@ module Assignments.Model exposing
     , AssignmentRepositories
     , BlockedRepository
     , FailedRepository
+    , GithubJoinResult(..)
     , NotSubmissibleReason(..)
     , PendingAssignmentFieldSubmissionRequests
     , PendingBeginAssignments
@@ -38,6 +39,7 @@ module Assignments.Model exposing
     , submissionBelongsToUser
     , usesRepositoryFlow
     , valuesForSubmissionID
+    , githubJoinResult
     )
 
 import Auth.Model exposing (CurrentUser)
@@ -332,10 +334,42 @@ type alias PollingRepository =
     }
 
 
+{-| `joinCancelled` is set when the student came back from the GitHub
+authorization page without finishing it (issue #399), so the page can say
+so rather than just show the join button again.
+-}
 type alias BlockedRepository =
     { status : RepositoryStatus
     , notBefore : Maybe Posix
+    , joinCancelled : Bool
     }
+
+
+{-| How the GitHub organization join (issue #399) ended, as authapp
+reports it in the `github_join` marker it sends the student back with.
+-}
+type GithubJoinResult
+    = JoinOk
+    | JoinDenied
+    | JoinError String
+
+
+{-| The marker is `ok`, `denied` or `error:<code>`. Anything else is
+nobody's, and is treated as no marker at all.
+-}
+githubJoinResult : String -> Maybe GithubJoinResult
+githubJoinResult marker =
+    if marker == "ok" then
+        Just JoinOk
+
+    else if marker == "denied" then
+        Just JoinDenied
+
+    else if String.startsWith "error:" marker && String.length marker > 6 then
+        Just (JoinError (String.dropLeft 6 marker))
+
+    else
+        Nothing
 
 
 type alias FailedRepository =

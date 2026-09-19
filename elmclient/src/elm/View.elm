@@ -49,6 +49,9 @@ page model =
 
         Models.AssignmentDetailRoute slug ->
             Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.assignmentGradeExceptions model.pendingBeginAssignments model.assignmentRepositories slug model.current_date
+
+        Models.AssignmentJoinReturnRoute slug _ ->
+            Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.assignmentGradeExceptions model.pendingBeginAssignments model.assignmentRepositories slug model.current_date
         
         Models.AssignmentGradeDetailRoute slug ->
             Assignments.Views.gradeView model.assignmentGrades model.assignmentSubmissions slug model.currentUser

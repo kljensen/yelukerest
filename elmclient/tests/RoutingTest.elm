@@ -1,5 +1,6 @@
 module RoutingTest exposing (tests)
 
+import Assignments.Model exposing (GithubJoinResult(..))
 import Expect
 import Models exposing (Route(..))
 import Msgs exposing (BrowserLocation(..))
@@ -56,6 +57,32 @@ tests =
                 urlLocation "https://www.656.mba/#/assignments/homework-1"
                     |> parseLocation
                     |> Expect.equal (AssignmentDetailRoute "homework-1")
+        , describe "the return from the GitHub join (issue #399)"
+            [ test "ok" <|
+                \_ ->
+                    parseLocation (StringLocation "https://example.test/#/assignments/project-1?github_join=ok")
+                        |> Expect.equal (AssignmentJoinReturnRoute "project-1" JoinOk)
+            , test "denied" <|
+                \_ ->
+                    parseLocation (StringLocation "https://example.test/#/assignments/project-1?github_join=denied")
+                        |> Expect.equal (AssignmentJoinReturnRoute "project-1" JoinDenied)
+            , test "an error, with its code" <|
+                \_ ->
+                    parseLocation (StringLocation "https://example.test/#/assignments/project-1?github_join=error:github_identity_taken")
+                        |> Expect.equal (AssignmentJoinReturnRoute "project-1" (JoinError "github_identity_taken"))
+            , test "a marker nobody sends is ignored" <|
+                \_ ->
+                    parseLocation (StringLocation "https://example.test/#/assignments/project-1?github_join=maybe")
+                        |> Expect.equal (AssignmentDetailRoute "project-1")
+            , test "an unrelated query leaves the plain route" <|
+                \_ ->
+                    parseLocation (StringLocation "https://example.test/#/assignments/project-1?utm=x")
+                        |> Expect.equal (AssignmentDetailRoute "project-1")
+            , test "the marker is not part of the slug" <|
+                \_ ->
+                    parseLocation (StringLocation "https://example.test/#assignments/project-1?github_join=ok")
+                        |> Expect.equal (AssignmentJoinReturnRoute "project-1" JoinOk)
+            ]
         , test "online quiz-taking route is no longer available" <|
             \_ ->
                 parseLocation (StringLocation "https://example.test/#quiz-submissions/123")

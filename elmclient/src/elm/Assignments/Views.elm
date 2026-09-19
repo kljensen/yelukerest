@@ -11,6 +11,7 @@ import Assignments.Model
         , AssignmentSlug
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
+        , BlockedRepository
         , PendingBeginAssignments
         , RepositoryError
         , RepositoryProgress(..)
@@ -465,7 +466,7 @@ showRepositoryProgress assignment flow =
                 ]
 
             Just (Blocked blocked) ->
-                showRepositoryBlocked assignment.slug (secondsOfHold flow.now blocked.notBefore) blocked.status
+                showRepositoryBlocked assignment.slug (secondsOfHold flow.now blocked.notBefore) blocked
 
             Just (Failed failed) ->
                 showRepositoryFailed assignment.slug (secondsOfHold flow.now failed.notBefore) failed.error
@@ -526,23 +527,32 @@ actionButton msg label holdSeconds =
 again", which asks the server to create once more: that is what re-checks
 the prerequisite.
 -}
-showRepositoryBlocked : AssignmentSlug -> Maybe Int -> RepositoryStatus -> List (Html.Html Msg)
-showRepositoryBlocked slug holdSeconds status =
+showRepositoryBlocked : AssignmentSlug -> Maybe Int -> BlockedRepository -> List (Html.Html Msg)
+showRepositoryBlocked slug holdSeconds blocked =
     let
         tryAgain =
             actionButton (Msgs.OnCreateRepository slug) "Try again" holdSeconds
+
+        cancelled =
+            if blocked.joinCancelled then
+                [ Html.div [] [ Html.text "You cancelled the GitHub authorization. Try again when ready." ] ]
+
+            else
+                []
     in
-    case ( status.state, status.joinUrl ) of
+    case ( blocked.status.state, blocked.status.joinUrl ) of
         ( NeedsOrgJoin, Just joinUrl ) ->
-            [ Html.div [] [ Html.text "You need to join the course GitHub organization before a repository can be created for you." ]
-            , Html.a [ Attrs.class "btn btn-primary mr1", Attrs.href joinUrl ] [ Html.text "Join the course GitHub organization" ]
-            , tryAgain
-            ]
+            cancelled
+                ++ [ Html.div [] [ Html.text "You need to join the course GitHub organization before a repository can be created for you." ]
+                   , Html.a [ Attrs.class "btn btn-primary mr1", Attrs.href joinUrl ] [ Html.text "Join the course GitHub organization" ]
+                   , tryAgain
+                   ]
 
         ( NeedsOrgJoin, Nothing ) ->
-            [ Html.div [] [ Html.text "You need to accept the GitHub organization invitation first (check your email), then try again." ]
-            , tryAgain
-            ]
+            cancelled
+                ++ [ Html.div [] [ Html.text "You need to accept the GitHub organization invitation first (check your email), then try again." ]
+                   , tryAgain
+                   ]
 
         _ ->
             [ Html.div [] [ Html.text "We don't have a working GitHub username for you; tell the teaching staff." ]
@@ -596,6 +606,15 @@ repositoryErrorMessage error =
 
             "github_unavailable" ->
                 "GitHub did not respond. Try again in a moment."
+
+            "github_rate_limited" ->
+                "GitHub is rate-limiting the course's requests. Try again in a few minutes."
+
+            "platform_unavailable" ->
+                "The course platform did not respond. Try again in a moment."
+
+            "membership_not_active" ->
+                "GitHub has not activated your organization membership yet. Try again in a moment."
 
             "repository_not_visible" ->
                 "The repository was created, but GitHub has not made it visible yet. Try again in a moment."

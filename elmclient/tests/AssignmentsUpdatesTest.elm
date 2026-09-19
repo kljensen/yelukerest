@@ -4,6 +4,7 @@ import Assignments.Model
     exposing
         ( Assignment
         , AssignmentRepositories
+        , GithubJoinResult(..)
         , RepositoryError
         , RepositoryGenerations
         , RepositoryProgress(..)
@@ -17,6 +18,7 @@ import Assignments.Updates
         , onCreateRepository
         , onCreateRepositoryResponse
         , onEnterAssignment
+        , onGithubJoinReturn
         , onLoadRepository
         , onLoadRepositoryResponse
         , onRepositoryPollTick
@@ -269,6 +271,51 @@ tests =
                     loadedAt 9000 (Ok ready) (withProgress (Done ready))
                         |> Expect.equal ( withProgress (Done ready), [ RefetchSubmissions ] )
             ]
+
+        -- Back from the GitHub organization join (issue #399), with the
+        -- marker authapp put in the URL.
+        , describe "returning from the GitHub join"
+            [ test "ok goes straight into creating the repository" <|
+                \_ ->
+                    onGithubJoinReturn slug JoinOk (withProgress (blocked needsOrgJoin))
+                        |> Expect.equal ( withProgressGen 2 Creating, [ CreateRequest slug 2 ] )
+            , test "ok on a first visit this session creates too" <|
+                \_ ->
+                    onGithubJoinReturn slug JoinOk initial
+                        |> Expect.equal ( withProgressGen 1 Creating, [ CreateRequest slug 1 ] )
+            , test "ok while a create is already out does not send another" <|
+                \_ ->
+                    onGithubJoinReturn slug JoinOk (withProgress Creating)
+                        |> Expect.equal ( withProgress Creating, [] )
+            , test "denied shows the join again, saying it was cancelled" <|
+                \_ ->
+                    onGithubJoinReturn slug JoinDenied initial
+                        |> Expect.equal
+                            ( { initial
+                                | assignmentRepositories =
+                                    Dict.singleton slug
+                                        (Blocked
+                                            { status = { state = NeedsOrgJoin, repoUrl = Nothing, joinUrl = Just "/auth/github/join?assignment_slug=project-1" }
+                                            , notBefore = Nothing
+                                            , joinCancelled = True
+                                            }
+                                        )
+                              }
+                            , []
+                            )
+            , test "a passing error is a retryable failure" <|
+                \_ ->
+                    onGithubJoinReturn slug (JoinError "github_rate_limited") initial
+                        |> Expect.equal ( { initial | assignmentRepositories = Dict.singleton slug (failed (joinError "github_rate_limited" True)) }, [] )
+            , test "one for the teaching staff is not" <|
+                \_ ->
+                    onGithubJoinReturn slug (JoinError "github_identity_taken") initial
+                        |> Expect.equal ( { initial | assignmentRepositories = Dict.singleton slug (failed (joinError "github_identity_taken" False)) }, [] )
+            , test "staff are not sent anywhere by a marker" <|
+                \_ ->
+                    onGithubJoinReturn slug JoinOk { initial | currentUser = RemoteData.Success faculty }
+                        |> Expect.equal ( { initial | currentUser = RemoteData.Success faculty }, [] )
+            ]
         , describe "a failed create"
             [ test "\"Try again\" asks where things stand rather than creating blindly" <|
                 \_ ->
@@ -404,7 +451,7 @@ pollingNotBefore sinceMillis notBeforeMillis =
 
 blocked : RepositoryStatus -> RepositoryProgress
 blocked status =
-    Blocked { status = status, notBefore = Nothing }
+    Blocked { status = status, notBefore = Nothing, joinCancelled = False }
 
 
 failed : RepositoryError -> RepositoryProgress
@@ -419,7 +466,7 @@ heldFailure notBeforeMillis =
 
 heldBlock : Int -> RepositoryProgress
 heldBlock notBeforeMillis =
-    Blocked { status = needsOrgJoin, notBefore = Just (at notBeforeMillis) }
+    Blocked { status = needsOrgJoin, notBefore = Just (at notBeforeMillis), joinCancelled = False }
 
 
 loaded : Result RepositoryError RepositoryStatus -> State -> ( State, List RepositoryRequest )
@@ -485,6 +532,11 @@ githubUnavailable =
 rateLimited : RepositoryError
 rateLimited =
     { code = "rate_limited", retryable = True, httpStatus = 429, retryAfterSeconds = Just 17 }
+
+
+joinError : String -> Bool -> RepositoryError
+joinError code retryable =
+    { code = code, retryable = retryable, httpStatus = 0, retryAfterSeconds = Nothing }
 
 
 sessionExpired : RepositoryError

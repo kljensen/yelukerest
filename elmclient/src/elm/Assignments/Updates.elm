@@ -7,12 +7,14 @@ module Assignments.Updates exposing
     , onEnterAssignment
     , onFetchAssignmentGradeDistributions
     , onFetchAssignmentGrades
+    , onGithubJoinReturn
     , onLoadRepository
     , onLoadRepositoryResponse
     , onRepositoryPollTick
     , pollTimeoutMillis
     )
 
+import Assignments.Commands exposing (githubJoinUrl)
 import Assignments.Model
     exposing
         ( Assignment
@@ -20,6 +22,7 @@ import Assignments.Model
         , AssignmentGradeDistribution
         , AssignmentRepositories
         , AssignmentSlug
+        , GithubJoinResult(..)
         , PollingRepository
         , RepositoryError
         , RepositoryGenerations
@@ -338,10 +341,66 @@ settle slug now status state =
                     ( setProgress slug (Polling { since = now, last = status, inFlight = False, notBefore = Nothing }) state, [] )
 
         NeedsGithubLink ->
-            ( setProgress slug (Blocked { status = status, notBefore = Nothing }) state, [] )
+            ( setProgress slug (Blocked { status = status, notBefore = Nothing, joinCancelled = False }) state, [] )
 
         NeedsOrgJoin ->
-            ( setProgress slug (Blocked { status = status, notBefore = Nothing }) state, [] )
+            ( setProgress slug (Blocked { status = status, notBefore = Nothing, joinCancelled = False }) state, [] )
+
+
+{-| The student is back from the GitHub organization join (issue #399),
+and the marker says how it went. Nothing is asked of the server for
+`denied` or an error: the join page already knows, and the student needs
+to read the outcome before anything else happens. `ok` goes straight into
+creating the repository, which is what they were trying to do before the
+join got in the way; a second click would only be the same request.
+-}
+onGithubJoinReturn : AssignmentSlug -> GithubJoinResult -> RepositoryFlowState a -> ( RepositoryFlowState a, List RepositoryRequest )
+onGithubJoinReturn slug result state =
+    if not (usesFlow slug state) then
+        ( state, [] )
+
+    else
+        case result of
+            JoinOk ->
+                onCreateRepository slug state
+
+            JoinDenied ->
+                ( setProgress slug
+                    (Blocked
+                        { status = { state = NeedsOrgJoin, repoUrl = Nothing, joinUrl = Just (githubJoinUrl slug) }
+                        , notBefore = Nothing
+                        , joinCancelled = True
+                        }
+                    )
+                    state
+                , []
+                )
+
+            JoinError code ->
+                ( setProgress slug
+                    (Failed
+                        { error =
+                            { code = code
+                            , retryable = List.member code retryableJoinErrors
+                            , httpStatus = 0
+                            , retryAfterSeconds = Nothing
+                            }
+                        , notBefore = Nothing
+                        }
+                    )
+                    state
+                , []
+                )
+
+
+{-| The join can fail in ways that pass (GitHub or the platform down, a
+rate limit, a membership GitHub has not activated yet) and in ways that do
+not (the authorization refused, the GitHub account already claimed or
+locked, the app misconfigured), which the teaching staff have to look at.
+-}
+retryableJoinErrors : List String
+retryableJoinErrors =
+    [ "github_unavailable", "github_rate_limited", "platform_unavailable", "membership_not_active" ]
 
 
 {-| Record a failure. A rate limit (429) is the one failure with a clock on

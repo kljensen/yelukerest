@@ -6,6 +6,7 @@ module Assignments.Commands exposing
     , fetchAssignmentGrades
     , fetchAssignmentSubmissions
     , fetchAssignments
+    , githubJoinUrl
     , loadRepository
     , repositoryResponse
     , repositoryUrl
@@ -170,6 +171,17 @@ behalf, and it is not PostgREST, so no JWT header is set.
 repositoryUrl : AssignmentSlug -> String
 repositoryUrl slug =
     "/auth/assignments/" ++ slug ++ "/repository"
+
+
+{-| Where the student goes to join the course GitHub organization for this
+assignment (issue #399). The server sends it as `join_url` with a
+`needs_org_join` status; this is for the one case the client has to draw
+that page without a status, when the student comes back from it without
+finishing.
+-}
+githubJoinUrl : AssignmentSlug -> String
+githubJoinUrl slug =
+    "/auth/github/join?assignment_slug=" ++ slug
 
 
 {-| Ask authapp to create (or resume creating) the student's repository for

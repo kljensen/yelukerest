@@ -8,6 +8,7 @@ import Assignments.Model
         , AssignmentGradeDistribution
         , AssignmentGradeException
         , AssignmentRepositories
+        , GithubJoinResult
         , RepositoryGenerations
         , AssignmentSlug
         , AssignmentSubmission
@@ -228,6 +229,11 @@ type Route
     | MeetingDetailRoute MeetingSlug
     | AssignmentListRoute
     | AssignmentDetailRoute AssignmentSlug
+      -- The assignment page as authapp sends the student back to it after
+      -- the GitHub organization join (issue #399), with how that went.
+      -- `Update` acts on the result and replaces the URL with the plain
+      -- assignment route, so this is only ever the route for a moment.
+    | AssignmentJoinReturnRoute AssignmentSlug GithubJoinResult
     | AssignmentGradeDetailRoute AssignmentSlug
     | EditEngagementsRoute String
     | ConnectedAppsRoute

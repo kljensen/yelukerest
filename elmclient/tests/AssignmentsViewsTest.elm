@@ -141,6 +141,13 @@ tests =
                     detail templateAssignment Nothing (Just (blocked needsOrgJoin))
                         |> Query.find [ Selector.tag "a", Selector.containing [ Selector.text "Join the course GitHub organization" ] ]
                         |> Query.has [ Selector.attribute (Html.Attributes.href "https://github.com/orgs/org/invitation") ]
+            , test "says so when the student cancelled the join" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just (Blocked { status = needsOrgJoin, notBefore = Nothing, joinCancelled = True }))
+                        |> Expect.all
+                            [ Query.has [ Selector.text "You cancelled the GitHub authorization. Try again when ready." ]
+                            , Query.has [ Selector.text "Join the course GitHub organization" ]
+                            ]
             , test "or explains the invitation when it does not" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (blocked { needsOrgJoin | joinUrl = Nothing }))
@@ -171,7 +178,7 @@ tests =
                             ]
             , test "a rate limit under a prerequisite turns its \"Try again\" off too" <|
                 \_ ->
-                    detail templateAssignment Nothing (Just (Blocked { status = needsOrgJoin, notBefore = Just (millis 18000) }))
+                    detail templateAssignment Nothing (Just (Blocked { status = needsOrgJoin, notBefore = Just (millis 18000), joinCancelled = False }))
                         |> Expect.all
                             [ Query.has [ Selector.text "You need to join the course GitHub organization before a repository can be created for you." ]
                             , Query.find [ Selector.tag "button" ] >> Query.has [ Selector.disabled True ]
@@ -303,7 +310,7 @@ rateLimited =
 
 blocked : RepositoryStatus -> RepositoryProgress
 blocked status =
-    Blocked { status = status, notBefore = Nothing }
+    Blocked { status = status, notBefore = Nothing, joinCancelled = False }
 
 
 failed : RepositoryError -> RepositoryProgress
