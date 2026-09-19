@@ -205,6 +205,18 @@ services:
             - DCR_RATE_LIMIT_PER_MINUTE=${DCR_RATE_LIMIT_PER_MINUTE:-300}
             - DCR_RATE_LIMIT_PER_HOUR=${DCR_RATE_LIMIT_PER_HOUR:-1200}
             - OAUTH_RATE_LIMIT_PER_MINUTE=${OAUTH_RATE_LIMIT_PER_MINUTE:-600}
+            # GitHub provisioning (ADR 0006). All optional: unset, authapp
+            # runs with provisioning disabled. The App's private key is a
+            # file mounted read-only, never an environment variable; see
+            # docs/github-provisioning.md for the volume to add in the
+            # production overlay and for the static-token alternative.
+            - GITHUB_PROVISIONER_ORG=${GITHUB_PROVISIONER_ORG:-}
+            - GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG=${GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG:-}
+            - GITHUB_PROVISIONER_API_BASE_URL=${GITHUB_PROVISIONER_API_BASE_URL:-}
+            - GITHUB_PROVISIONER_APP_ID=${GITHUB_PROVISIONER_APP_ID:-}
+            - GITHUB_PROVISIONER_INSTALLATION_ID=${GITHUB_PROVISIONER_INSTALLATION_ID:-}
+            - GITHUB_PROVISIONER_PRIVATE_KEY_FILE=${GITHUB_PROVISIONER_PRIVATE_KEY_FILE:-}
+            - GITHUB_PROVISIONER_TOKEN=${GITHUB_PROVISIONER_TOKEN:-}
 
     mcpapp:
         restart: unless-stopped

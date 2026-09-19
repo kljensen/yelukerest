@@ -91,6 +91,23 @@ func main() {
 		AuthappJWT:    os.Getenv("AUTHAPP_JWT"),
 	}
 
+	// GitHub provisioning (ADR 0006, issue #393). Optional: a deployment
+	// without GITHUB_PROVISIONER_ORG and a credential runs without it and says so once.
+	// A half-configured deployment is refused here, at startup, because the
+	// alternative is discovering it when a student clicks. No route uses the
+	// value yet; issues #395 and #396 add the handlers that receive it. The
+	// blank assignment keeps the compiler honest until then.
+	provisioner, provisioningDisabledReason, err := githubProvisionerFromEnv(os.Getenv, os.ReadFile)
+	if err != nil {
+		log.Panicf("GitHub provisioning is misconfigured: %v", err)
+	}
+	if provisioner == nil {
+		log.Println(provisioningDisabledReason)
+	} else {
+		log.Printf("GitHub provisioning enabled for organization %q", provisioner.org)
+	}
+	_ = provisioner
+
 	// Set up the routes
 	mux := http.NewServeMux()
 
