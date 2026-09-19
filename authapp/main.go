@@ -94,9 +94,7 @@ func main() {
 	// GitHub provisioning (ADR 0006, issue #393). Optional: a deployment
 	// without GITHUB_PROVISIONER_ORG and a credential runs without it and says so once.
 	// A half-configured deployment is refused here, at startup, because the
-	// alternative is discovering it when a student clicks. No route uses the
-	// value yet; issues #395 and #396 add the handlers that receive it. The
-	// blank assignment keeps the compiler honest until then.
+	// alternative is discovering it when a student clicks.
 	provisioner, provisioningDisabledReason, err := githubProvisionerFromEnv(os.Getenv, os.ReadFile)
 	if err != nil {
 		log.Panicf("GitHub provisioning is misconfigured: %v", err)
@@ -106,7 +104,6 @@ func main() {
 	} else {
 		log.Printf("GitHub provisioning enabled for organization %q", provisioner.org)
 	}
-	_ = provisioner
 
 	// Set up the routes
 	mux := http.NewServeMux()
@@ -146,6 +143,11 @@ func main() {
 	mux.Handle("/auth/jwt", getJWT)
 	mux.Handle("/auth/token", exchangeAPIToken)
 	mux.Handle("/auth/api.json", getOpenAPI)
+
+	// Self-serve assignment repositories (issues #395, #396). Registered
+	// only when provisioning is configured; otherwise the routes do not
+	// exist and the mux answers 404.
+	registerProvisioningRoutes(mux, provisioner, fetchJWTConfig, sessionManager)
 
 	// Proxy Hydra's Dynamic Client Registration endpoints, cleaning
 	// null/empty optional fields out of responses that break strict
