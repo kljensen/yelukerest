@@ -33,11 +33,11 @@ SELECT
     "is"((
         SELECT schema_compatibility_version
         FROM api.platform_version
-    ), 7, 'api.platform_version should expose the expected schema compatibility version')
+    ), 8, 'api.platform_version should expose the expected schema compatibility version')
 ; SELECT
     "is"((
         SELECT admin_api_version
         FROM api.platform_version
-    ), 14, 'api.platform_version should expose the expected admin API version')
+    ), 15, 'api.platform_version should expose the expected admin API version')
 ; SELECT *
 FROM finish()

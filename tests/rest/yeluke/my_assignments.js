@@ -39,6 +39,8 @@ describe('my_assignments API endpoint', () => {
             'submission_window_open',
             'can_submit', 'can_submit_reason', 'extension_closed_at',
             'extension_fractional_credit', 'submissions',
+            'repository_template_provider', 'repository_template_full_name',
+            'repository_url_field_slug',
         );
         we.expect(row).to.include({
             slug: 'team-selection',
