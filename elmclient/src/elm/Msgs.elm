@@ -9,6 +9,8 @@ import Assignments.Model
         , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
+        , RepositoryError
+        , RepositoryStatus
         )
 import Auth.Model exposing (CurrentUser)
 import Browser exposing (UrlRequest(..))
@@ -71,6 +73,16 @@ type Msg
     | OnBeginAssignment AssignmentSlug
     | OnFetchAssignmentSubmissions (WebData (List AssignmentSubmission))
     | OnBeginAssignmentComplete AssignmentSlug (WebData AssignmentSubmission)
+      -- Self-serve assignment repositories (issue #397). The responses carry
+      -- the request number they answer (see
+      -- Assignments.Model.RepositoryGenerations) and the time they arrived,
+      -- so the poll window and any Retry-After hold are measured from a real
+      -- clock rather than the five-second Tick.
+    | OnCreateRepository AssignmentSlug
+    | OnCreateRepositoryResponse AssignmentSlug Int Posix (Result RepositoryError RepositoryStatus)
+    | OnLoadRepository AssignmentSlug
+    | OnLoadRepositoryResponse AssignmentSlug Int Posix (Result RepositoryError RepositoryStatus)
+    | OnRepositoryPollTick Posix
     | OnFetchCurrentUser (WebData CurrentUser)
     | OnFetchQuizzes (WebData (List Quiz))
     | OnFetchQuizArtifacts (WebData (List QuizArtifact))

@@ -7,6 +7,8 @@ import Assignments.Model
         , AssignmentGrade
         , AssignmentGradeDistribution
         , AssignmentGradeException
+        , AssignmentRepositories
+        , RepositoryGenerations
         , AssignmentSlug
         , AssignmentSubmission
         , PendingAssignmentFieldSubmissionRequests
@@ -145,6 +147,13 @@ type alias Model =
     -- for the current user.
     , pendingBeginAssignments : PendingBeginAssignments
 
+    -- Where each template-backed assignment's repository stands, keyed by
+    -- assignment slug (issue #397). Kept apart from pendingBeginAssignments:
+    -- creating the repository also begins the submission on the server, so
+    -- the two never apply to the same assignment.
+    , assignmentRepositories : AssignmentRepositories
+    , repositoryGenerations : RepositoryGenerations
+
     -- A dictionary tracking the current value of <input> elements
     -- that the user has edited for particular assignment field submissions.
     , assignmentFieldSubmissionInputs : AssignmentFieldSubmissionInputs
@@ -201,6 +210,8 @@ initialModel flags url route key =
     , dataGrantDraft = emptyDraft
     , pendingDataGrantRevokes = Set.empty
     , pendingBeginAssignments = Dict.empty
+    , assignmentRepositories = Dict.empty
+    , repositoryGenerations = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
     , engagements = RemoteData.NotAsked
