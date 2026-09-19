@@ -166,6 +166,7 @@ type provisioningReply struct {
 	status     int
 	state      string
 	repoURL    string
+	joinURL    string
 	code       string
 	retryable  bool
 	retryAfter time.Duration
@@ -191,17 +192,21 @@ func writeProvisioningReply(w http.ResponseWriter, reply *provisioningReply) {
 	w.WriteHeader(reply.status)
 	var body any
 	if reply.state != "" {
-		var repoURL *string
+		var repoURL, joinURL *string
 		if reply.repoURL != "" {
 			repoURL = &reply.repoURL
 		}
+		if reply.joinURL != "" {
+			joinURL = &reply.joinURL
+		}
+		// join_url is set on needs_org_join when the student-authorized
+		// join flow (issue #399, join.go) is configured and the blocker is
+		// the caller's own membership; null on needs_org_join means the
+		// student has to be invited by hand.
 		body = map[string]any{
 			"state":    reply.state,
 			"repo_url": repoURL,
-			// join_url is null until the student-authorized join flow
-			// (issue #399) exists; a null on needs_org_join means the
-			// student has to be invited by hand.
-			"join_url": nil,
+			"join_url": joinURL,
 		}
 	} else {
 		body = map[string]any{
@@ -365,17 +370,14 @@ func platformReply(operation string, err error) *provisioningReply {
 }
 
 func (h *provisioningHandler) lookupUser(ctx context.Context, netID string) (provisioningUser, *provisioningReply) {
-	query := url.Values{}
-	query.Set("netid", "eq."+netID)
-	query.Set("select", provisioningUserColumns)
-	var users []provisioningUser
-	if err := postgrestSelect(ctx, h.db, h.db.AuthappJWT, "users", query, &users); err != nil {
+	user, found, err := selectUserByNetID(ctx, h.db, netID)
+	if err != nil {
 		return provisioningUser{}, platformReply("looking up the user", err)
 	}
-	if len(users) != 1 {
+	if !found {
 		return provisioningUser{}, errorReply(http.StatusForbidden, "not_enrolled", false)
 	}
-	return users[0], nil
+	return user, nil
 }
 
 func (h *provisioningHandler) teamMembers(ctx context.Context, teamNickname string) ([]provisioningUser, *provisioningReply) {
@@ -600,7 +602,7 @@ func (h *provisioningHandler) advance(ctx context.Context, caller provisioningUs
 	if reply != nil {
 		return attempt, reply
 	}
-	if reply := h.validateOwners(ctx, caller, owners); reply != nil {
+	if reply := h.validateOwners(ctx, caller, attempt.AssignmentSlug, owners); reply != nil {
 		return attempt, reply
 	}
 	if attempt.Stage == provisioningStageClaimed {
@@ -661,8 +663,10 @@ func blockedReply(caller provisioningUser, owner provisioningUser, state string)
 // at GitHub to the account already linked (or, if none is linked yet, links
 // it, unverified), and that the account is an active member of the
 // organization. It creates nothing. The linked id is written back into the
-// owner so finalize can name the account the grant went to.
-func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisioningUser, owners []provisioningUser) *provisioningReply {
+// owner so finalize can name the account the grant went to. When the
+// caller's own membership is the blocker and the join flow is configured,
+// the reply carries the join URL for the assignment.
+func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisioningUser, slug string, owners []provisioningUser) *provisioningReply {
 	for i := range owners {
 		owner := &owners[i]
 		if owner.GitHubLogin == "" {
@@ -711,7 +715,11 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 			return h.githubReply(err)
 		}
 		if membership != githubMembershipActive {
-			return blockedReply(caller, *owner, repositoryStateNeedsOrgJoin)
+			reply := blockedReply(caller, *owner, repositoryStateNeedsOrgJoin)
+			if reply.state != "" && h.github.join != nil {
+				reply.joinURL = githubJoinURL(slug)
+			}
+			return reply
 		}
 	}
 	return nil

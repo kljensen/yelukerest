@@ -655,6 +655,40 @@ func (c *githubClient) AddTeamMembership(ctx context.Context, org, teamSlug, log
 	return parseGitHubMembershipState(membership.State), nil
 }
 
+// GetAuthenticatedUser resolves the account behind the client's own
+// credential. It exists for the join flow (issue #399), where the client is
+// built around a student's transient user token and this is how the
+// platform learns which GitHub account authorized it; the id, not the
+// login, is what gets linked.
+func (c *githubClient) GetAuthenticatedUser(ctx context.Context) (githubUser, error) {
+	var user githubUser
+	_, err := c.do(ctx, "get authenticated user", http.MethodGet, "/user", nil, &user, http.StatusOK)
+	return user, err
+}
+
+// AcceptOrgMembership accepts the caller's own pending invitation to org.
+// This is the one call that must be made with the student's token rather
+// than the course credential: only the invitee can accept, so the client
+// this runs on is built around their token (issue #399). GitHub documents
+// two successes: 200 with the membership as it now stands, and 202 with
+// nothing, meaning the acceptance was queued. confirmed reports which; on
+// a 202 the caller re-reads the membership rather than assuming.
+func (c *githubClient) AcceptOrgMembership(ctx context.Context, org string) (state githubMembershipState, confirmed bool, err error) {
+	var membership struct {
+		State string `json:"state"`
+	}
+	status, err := c.do(ctx, "accept org membership", http.MethodPatch,
+		"/user/memberships/orgs/"+url.PathEscape(org),
+		map[string]string{"state": "active"}, &membership, http.StatusOK, http.StatusAccepted)
+	if err != nil {
+		return "", false, err
+	}
+	if status != http.StatusOK {
+		return githubMembershipPending, false, nil
+	}
+	return parseGitHubMembershipState(membership.State), true, nil
+}
+
 func parseGitHubMembershipState(state string) githubMembershipState {
 	switch state {
 	case "active":
@@ -750,6 +784,12 @@ type githubProvisioner struct {
 	client           *githubClient
 	org              string
 	studentsTeamSlug string
+	// join is the student-authorized join App (issue #399), nil when it is
+	// not configured. It rides on the provisioner because it is meaningless
+	// without one: joining the organization only matters on the way to a
+	// repository, and the invitation and team add are made with the
+	// provisioner's credential.
+	join *githubJoinApp
 }
 
 // githubProvisionerFromEnv reads the provisioning configuration. It returns
