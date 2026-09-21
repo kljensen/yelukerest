@@ -15,7 +15,7 @@ import Assignments.Model
         , PendingBeginAssignments
         , assignmentSubmissionAction
         , notSubmissibleMessage
-        , repositoryUrlForAssignment
+        , repositoryUrlForField
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
@@ -459,9 +459,8 @@ showFormField submission inputs repositories assignmentField =
 
 
 {-| Offer the student's repository for this assignment as the value of an
-empty URL field. The student still presses Submit, where the browser checks
-the field's pattern as for a typed value. Nothing is shown once the field
-has a recorded body or the student has typed.
+empty URL field that accepts it. The student still presses Submit. Nothing
+is shown once the field has a recorded body or the student has typed.
 -}
 repositoryHint : AssignmentSubmission -> List MyRepository -> AssignmentField -> Html.Html Msg
 repositoryHint submission repositories field =
@@ -475,7 +474,7 @@ repositoryHint submission repositories field =
 
         maybeUrl =
             if field.is_url && recordedBody == "" then
-                repositoryUrlForAssignment submission.assignment_slug repositories
+                repositoryUrlForField submission.assignment_slug field repositories
 
             else
                 Nothing

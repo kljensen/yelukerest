@@ -3,6 +3,7 @@ module AssignmentsModelTest exposing (tests)
 import Assignments.Model
     exposing
         ( Assignment
+        , AssignmentField
         , AssignmentGradeException
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
@@ -13,7 +14,8 @@ import Assignments.Model
         , isSubmissible
         , myRepositoriesDecoder
         , notSubmissibleMessage
-        , repositoryUrlForAssignment
+        , fieldAcceptsRepositoryUrl
+        , repositoryUrlForField
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
@@ -141,25 +143,90 @@ tests =
                                 ]
                             )
             ]
-        , describe "repositoryUrlForAssignment"
+        , describe "repositoryUrlForField"
             [ test "offers the repository created for this assignment" <|
                 \_ ->
-                    repositoryUrlForAssignment baseAssignment.slug [ baseRepository ]
+                    repositoryUrlForField baseAssignment.slug repoField [ baseRepository ]
                         |> Expect.equal baseRepository.repo_url
             , test "ignores repositories for other assignments or none" <|
                 \_ ->
-                    repositoryUrlForAssignment baseAssignment.slug [ { baseRepository | assignment_slug = Just "other" }, { baseRepository | assignment_slug = Nothing } ]
+                    repositoryUrlForField baseAssignment.slug repoField [ { baseRepository | assignment_slug = Just "other" }, { baseRepository | assignment_slug = Nothing } ]
                         |> Expect.equal Nothing
             , test "ignores a repository without a browser URL" <|
                 \_ ->
-                    repositoryUrlForAssignment baseAssignment.slug [ { baseRepository | repo_url = Nothing } ]
+                    repositoryUrlForField baseAssignment.slug repoField [ { baseRepository | repo_url = Nothing } ]
                         |> Expect.equal Nothing
             , test "takes the first, which the fetch orders oldest first" <|
                 \_ ->
-                    repositoryUrlForAssignment baseAssignment.slug [ baseRepository, { baseRepository | repo_url = Just "https://github.com/org/second" } ]
+                    repositoryUrlForField baseAssignment.slug repoField [ baseRepository, { baseRepository | repo_url = Just "https://github.com/org/second" } ]
                         |> Expect.equal baseRepository.repo_url
             ]
+
+        -- An assignment can have a repository field, a Google Doc field and
+        -- a deployed-app field, all URLs; the hint belongs under the first
+        -- only. Patterns are often permissive, so the field's name decides
+        -- and the pattern can only veto.
+        , describe "fieldAcceptsRepositoryUrl"
+            [ test "a repo field whose pattern matches the URL accepts it" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl repoField repoUrl
+                        |> Expect.equal True
+            , test "a repo field with a permissive pattern accepts it" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = ".*" } repoUrl
+                        |> Expect.equal True
+            , test "a repo field with no pattern accepts it" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = "" } repoUrl
+                        |> Expect.equal True
+            , test "a repo field with a pattern that does not compile accepts it" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = "(" } repoUrl
+                        |> Expect.equal True
+            , test "a repo field whose pattern rejects the URL does not" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = "https://docs\\.google\\.com/.*" } repoUrl
+                        |> Expect.equal False
+            , test "the pattern must match the whole URL, as the browser requires" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = "github\\.com/.*" } repoUrl
+                        |> Expect.equal False
+            , test "a label that says repo is enough to name a repo field" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | slug = "url", label = "Team repo" } repoUrl
+                        |> Expect.equal True
+            , test "sprint-report with .* is not a repo field, and report is not repo" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = ".*", slug = "sprint-report", label = "Sprint report" } repoUrl
+                        |> Expect.equal False
+            , test "app-url with https?://.* is not a repo field" <|
+                \_ ->
+                    fieldAcceptsRepositoryUrl { repoField | pattern = "https?://.*", slug = "app-url", label = "Deployed app" } repoUrl
+                        |> Expect.equal False
+            ]
         ]
+
+
+repoUrl : String
+repoUrl =
+    "https://github.com/org/starter-abc123"
+
+
+repoField : AssignmentField
+repoField =
+    { slug = "repo-url"
+    , assignment_slug = baseAssignment.slug
+    , label = "Repository URL"
+    , help = ""
+    , placeholder = ""
+    , example = ""
+    , pattern = "https://github\\.com/.*"
+    , is_url = True
+    , is_multiline = False
+    , display_order = 1
+    , created_at = millis 0
+    , updated_at = millis 0
+    }
 
 
 repositoryJson : String
@@ -177,7 +244,7 @@ baseRepository =
     , label = "Starter"
     , assignment_slug = Just "assignment-1"
     , template_full_name = "org/starter"
-    , repo_url = Just "https://github.com/org/starter-abc123"
+    , repo_url = Just repoUrl
     , is_team = False
     , user_id = Just 42
     , team_nickname = Nothing

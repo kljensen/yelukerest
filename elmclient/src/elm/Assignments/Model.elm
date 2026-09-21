@@ -25,7 +25,8 @@ module Assignments.Model exposing
     , isSubmissible
     , myRepositoriesDecoder
     , notSubmissibleMessage
-    , repositoryUrlForAssignment
+    , fieldAcceptsRepositoryUrl
+    , repositoryUrlForField
     , submissionBelongsToUser
     , valuesForSubmissionID
     )
@@ -36,6 +37,7 @@ import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Decode.Extra
 import Json.Decode.Pipeline exposing (optional, required)
+import Regex
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
 
@@ -259,15 +261,59 @@ myRepositoriesDecoder =
     Decode.list myRepositoryDecoder
 
 
-{-| The browser URL of the first repository created for this assignment, in
-the order the rows were fetched. Whether a URL field accepts it is the
-browser's call, through the field's pattern attribute, on submit.
+{-| Whether a repository URL belongs in this field. An assignment can have
+several URL fields (a repository, a Google Doc, a deployed app), and the
+hint must not land under the wrong one.
+
+The field's slug or label has to say "repo" or "repository" -- as a word,
+since "report" contains "repo" and a sprint-report field is not one. A
+pattern cannot stand in for that: patterns like `.*` or `https?://.*` accept
+a GitHub URL under any field. What a pattern can do is rule the URL out:
+when the field has one that compiles, the URL must match it, anchored as the
+browser anchors the pattern attribute on submit. One that does not compile
+is ignored.
+
 -}
-repositoryUrlForAssignment : AssignmentSlug -> List MyRepository -> Maybe String
-repositoryUrlForAssignment assignmentSlug repositories =
+fieldAcceptsRepositoryUrl : AssignmentField -> String -> Bool
+fieldAcceptsRepositoryUrl field url =
+    let
+        patternAccepts =
+            if field.pattern == "" then
+                True
+
+            else
+                Regex.fromString ("^(?:" ++ field.pattern ++ ")$")
+                    |> Maybe.map (\regex -> Regex.contains regex url)
+                    |> Maybe.withDefault True
+
+        isRepoWord w =
+            w == "repo" || w == "repos" || String.startsWith "reposit" w
+
+        mentionsRepo s =
+            String.toLower s
+                |> String.map
+                    (\c ->
+                        if Char.isAlphaNum c then
+                            c
+
+                        else
+                            ' '
+                    )
+                |> String.words
+                |> List.any isRepoWord
+    in
+    (mentionsRepo field.slug || mentionsRepo field.label) && patternAccepts
+
+
+{-| The browser URL of the first repository created for this assignment that
+the field accepts, in the order the rows were fetched.
+-}
+repositoryUrlForField : AssignmentSlug -> AssignmentField -> List MyRepository -> Maybe String
+repositoryUrlForField assignmentSlug field repositories =
     repositories
         |> List.filter (\r -> r.assignment_slug == Just assignmentSlug)
         |> List.filterMap .repo_url
+        |> List.filter (fieldAcceptsRepositoryUrl field)
         |> List.head
 
 

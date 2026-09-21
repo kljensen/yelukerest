@@ -93,6 +93,10 @@ tests =
                 \_ ->
                     detailWith { submission | fields = [ recordedField ] } Dict.empty (RemoteData.Success [ repository ])
                         |> Query.hasNot [ Selector.class "repository-hint" ]
+            , test "shows nothing under a URL field that is not a repository, however permissive its pattern" <|
+                \_ ->
+                    detailWithUser currentUser { urlField | slug = "sprint-report", label = "Sprint report", pattern = ".*" } submission Dict.empty (RemoteData.Success [ repository ])
+                        |> Query.hasNot [ Selector.class "repository-hint" ]
             , test "shows nothing for a repository created for another assignment" <|
                 \_ ->
                     formView Dict.empty (RemoteData.Success [ { repository | assignment_slug = Just "other" } ])
