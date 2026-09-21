@@ -31,7 +31,7 @@ DROP FUNCTION IF EXISTS api.import_github_logins(text, text)
 ; DROP VIEW IF EXISTS api.assignments
 ; DROP VIEW IF EXISTS api.users
 ; DROP TRIGGER IF EXISTS tg_assignment_field_designated_url ON data.assignment_field
-; DROP FUNCTION IF EXISTS data.keep_designated_repository_url_field_is_url()
+; DROP FUNCTION IF EXISTS data.keep_designated_repository_url_field()
 ; DROP TRIGGER IF EXISTS tg_assignment_repository_url_field ON data.assignment
 ; DROP FUNCTION IF EXISTS data.check_assignment_repository_url_field()
 ; ALTER TABLE data.assignment

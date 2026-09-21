@@ -59,11 +59,10 @@ BEGIN
     END IF;
 
     -- The constraints that carry the contract: all-or-nothing template, the
-    -- field foreign key, the owner XOR, one GitHub account per person.
+    -- owner XOR, generated knows its repository.
     SELECT string_agg(expected.conname, ', ' ORDER BY expected.conname) INTO missing
     FROM (VALUES
         ('data.assignment'::regclass, 'repository_template_all_or_nothing'),
-        ('data.assignment'::regclass, 'assignment_repository_url_field_fkey'),
         ('data.assignment_repository_provisioning'::regclass, 'matches_assignment_is_team'),
         ('data.assignment_repository_provisioning'::regclass, 'generated_knows_repository')
     ) AS expected(conrelid, conname)
@@ -78,6 +77,20 @@ BEGIN
     -- Unique, and with the predicate that makes one-per-owner true: NULLs are
     -- distinct in a unique index, so without the WHERE every team row would
     -- pass the per-user key and the reverse.
+    -- Exactly one foreign key between assignment and assignment_field, the
+    -- one the bootstrap made. A second one, in either direction, gives
+    -- PostgREST two relationships between the views and turns
+    -- `assignments?select=*,assignment_fields(*)` into a 300.
+    SELECT string_agg(c.conname, ', ' ORDER BY c.conname) INTO missing
+    FROM pg_constraint c
+    WHERE c.contype = 'f'
+      AND ((c.conrelid = 'data.assignment'::regclass AND c.confrelid = 'data.assignment_field'::regclass)
+        OR (c.conrelid = 'data.assignment_field'::regclass AND c.confrelid = 'data.assignment'::regclass))
+      AND c.conname <> 'assignment_field_assignment_slug_fkey';
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'unexpected foreign keys between assignment and assignment_field, which break PostgREST embedding: %', missing;
+    END IF;
+
     SELECT string_agg(expected.indexname, ', ' ORDER BY expected.indexname) INTO missing
     FROM (VALUES
         ('user_unique_github_user_id', 'WHERE (github_user_id IS NOT NULL)'),
@@ -100,7 +113,7 @@ BEGIN
     SELECT string_agg(expected.tgname, ', ' ORDER BY expected.tgname) INTO missing
     FROM (VALUES
         ('data.assignment'::regclass, 'tg_assignment_repository_url_field', 'data.check_assignment_repository_url_field()'::regprocedure),
-        ('data.assignment_field'::regclass, 'tg_assignment_field_designated_url', 'data.keep_designated_repository_url_field_is_url()'::regprocedure),
+        ('data.assignment_field'::regclass, 'tg_assignment_field_designated_url', 'data.keep_designated_repository_url_field()'::regprocedure),
         ('data.assignment_repository_provisioning'::regclass, 'tg_assignment_repository_provisioning_update_timestamps', 'data.update_updated_at_column()'::regprocedure)
     ) AS expected(tgrelid, tgname, tgfoid)
     WHERE NOT EXISTS (

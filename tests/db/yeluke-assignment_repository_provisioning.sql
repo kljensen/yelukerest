@@ -51,14 +51,14 @@ SELECT lives_ok('
             repository_template_full_name = ''yale-mgt-656/exam-1-template'',
             repository_url_field_slug = ''repo-url''
         WHERE slug = ''exam-1''
-    ', '23503', NULL, 'the URL field must belong to the assignment itself')
+    ', 'P0001', 'repository_url_field_missing', 'the URL field must belong to the assignment itself')
 ; SELECT throws_ok('
         UPDATE data.assignment
         SET repository_template_provider = ''github'',
             repository_template_full_name = ''yale-mgt-656/exam-1-template'',
             repository_url_field_slug = ''profound''
         WHERE slug = ''exam-1''
-    ', '23514', NULL, 'the designated field must be a URL field')
+    ', 'P0001', 'repository_url_field_not_url', 'the designated field must be a URL field')
 ; SELECT throws_ok('
         UPDATE data.assignment
         SET repository_template_full_name = ''not a repo''
@@ -67,11 +67,34 @@ SELECT lives_ok('
 ; SELECT throws_ok('
         UPDATE data.assignment_field SET is_url = false
         WHERE assignment_slug = ''exam-1'' AND slug = ''url''
-    ', '23514', NULL, 'a designated field cannot stop being a URL field')
+    ', 'P0001', 'repository_url_field_in_use', 'a designated field cannot stop being a URL field')
 ; SELECT throws_ok('
         DELETE FROM data.assignment_field
         WHERE assignment_slug = ''exam-1'' AND slug = ''url''
-    ', '23503', NULL, 'a designated field cannot be deleted from under the configuration')
+    ', 'P0001', 'repository_url_field_in_use', 'a designated field cannot be deleted from under the configuration')
+; SELECT throws_ok('
+        UPDATE data.assignment_field SET slug = ''repo''
+        WHERE assignment_slug = ''exam-1'' AND slug = ''url''
+    ', 'P0001', 'repository_url_field_in_use', 'nor renamed')
+; SELECT lives_ok('
+        UPDATE data.assignment_field SET label = ''Your repository''
+        WHERE assignment_slug = ''exam-1'' AND slug = ''url''
+    ', 'every other edit to a designated field is free')
+; SELECT lives_ok('
+        DELETE FROM data.assignment_field
+        WHERE assignment_slug = ''exam-1'' AND slug = ''fooword''
+    ', 'a field that is not designated can still be deleted')
+;
+-- No foreign key between the two tables but the bootstrap one: a second one
+-- gives PostgREST two relationships between api.assignments and
+-- api.assignment_fields and breaks the embed the web client makes on every
+-- page load with a 300.
+SELECT set_eq('
+        SELECT conname::text FROM pg_constraint
+        WHERE contype = ''f''
+          AND ((conrelid = ''data.assignment''::regclass AND confrelid = ''data.assignment_field''::regclass)
+            OR (conrelid = ''data.assignment_field''::regclass AND confrelid = ''data.assignment''::regclass))
+    ', ARRAY['assignment_field_assignment_slug_fkey'], 'assignment and assignment_field are joined by exactly one foreign key')
 ; SELECT lives_ok('
         UPDATE data.assignment
         SET repository_template_provider = ''github'',
