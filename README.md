@@ -88,8 +88,11 @@ The GitHub provisioning lifecycle has its own suite, `bun run
 test_provisioning`, which is not part of `bun run test` because it rebuilds
 and restarts the `authapp` container pointed at a fake GitHub
 (`tests/fake-github/server.js`) and restores it afterwards. Like the
-database and REST suites it resets the dev database's sample data. See
-*Verifying the lifecycle* in `docs/github-provisioning.md`.
+database and REST suites it resets the dev database's sample data. It ends
+by running `bun run test_authapp_static`, the Bun unit test of the
+repositories page's script (`authapp/static/`), which can also be run on
+its own and needs no stack. See *Verifying the lifecycle* in
+`docs/github-provisioning.md`.
 
 To run the Elm client tests:
 

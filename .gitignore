@@ -17,3 +17,6 @@ mcpapp/mcpapp
 
 # Browser automation scratch output (snapshots, console logs, traces)
 .playwright-cli/
+
+# The fake GitHub's pid, written by bin/test-provisioning.sh
+tests/provisioning/.fake.pid

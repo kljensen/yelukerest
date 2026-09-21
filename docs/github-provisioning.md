@@ -318,16 +318,29 @@ GitHub call per interval. The page's script does all of this.
 
 `bun run test_provisioning` (`bin/test-provisioning.sh`) runs
 `tests/provisioning/lifecycle.js` against the dev stack with a scripted fake
-GitHub, `tests/fake-github/server.js`, standing in for `api.github.com`. It
-is not part of `bun run test` because it rebuilds and restarts the `authapp`
-container twice: once with provisioning enabled, every other
-`GITHUB_PROVISIONER_*` and `GITHUB_JOIN_APP_*` variable blanked whatever
-`.env` says, and `GITHUB_PROVISIONER_API_BASE_URL` pointed at the fake
-through `host.docker.internal`; once afterwards with `.env`'s own values
-back. Like `test_db` and `test_rest`, it resets the shared dev database's
-sample data. The token it uses, `fake-token`, is a placeholder the fake
-insists on and is set in the script's environment, never in `.env`; every
-response the suite receives is checked for it.
+GitHub, `tests/fake-github/server.js`, standing in for `api.github.com`,
+then `bun run test_authapp_static`, the Bun unit test of the page script's
+poll arithmetic (`authapp/static/repositories.test.js`). Neither is part of
+`bun run test`: the first rebuilds and restarts the `authapp` container
+twice -- once with provisioning enabled, every other `GITHUB_PROVISIONER_*`
+and `GITHUB_JOIN_APP_*` variable blanked whatever `.env` says, and
+`GITHUB_PROVISIONER_API_BASE_URL` pointed at the fake through
+`host.docker.internal`; once afterwards with `.env`'s own values back --
+and the second belongs with it rather than with the database suites. Like
+`test_db` and `test_rest`, the run resets the shared dev database's sample
+data. The token it uses, `fake-token`, is a placeholder the fake insists on
+and is set in the script's environment, never in `.env`; every response the
+suite receives, page included, is checked for it.
+
+The seed is what faculty would do: four rows of `api.repository_templates`
+posted through PostgREST -- `exam-1-starter` (individual, tied to `exam-1`),
+`project-starter` (team, tied to `project-update-1`), `scratch` (tied to no
+assignment) and `retired` (`is_active = false`) -- plus a GitHub login for
+every student and a submission the first student had already made to
+`exam-1` by hand. `tests/provisioning/demo.js` applies the same seed for a
+look at the page by hand; run it after
+`YELUKEREST_TEST_KEEP_FAKE=1 bun run test_provisioning` has left the fake
+and authapp configured, and sign in as one of the netids it prints.
 
 The fake implements exactly the endpoints `authapp/github.go` calls and is
 scripted per scenario through `POST /__fake/state`: accounts, membership
@@ -342,48 +355,73 @@ request body, status, and start and finish times. Repository ids are never
 reused, across resets included, because the platform refuses one id for two
 owners.
 
-What the nine scenarios establish, taken together:
+What the twelve scenarios establish, taken together:
 
-- **One repository per owner, however the clicks arrive.** A repeat click
-  after success, a click during another click's generate (the fake holds
-  the generate for 1.5 s and the second request is sent while it is in
-  flight), and a click after each kind of interruption all end with one
-  generate in the call log, one attempt row and one mapping row.
+- **One repository per owner per template, however the clicks arrive.** A
+  repeat click after success, a click during another click's generate (the
+  fake holds the generate for 1.5 s and the second request is sent while it
+  is in flight), and a click after each kind of interruption all end with
+  one generate in the call log, one attempt row and one mapping row.
 - **Every checkpoint resumes.** An attempt interrupted after generate (the
-  first grant fails with a 500) resumes from `generated` with one more grant
-  and no generate; a generate whose reply was cut off after the repository
-  landed leaves an attempt with no repository id, and the retry's name
-  lookup adopts what landed; a 201 invitation on grant is recorded as
+  first grant fails with a 500) answers `provisioning_interrupted` to a GET
+  and resumes from `generated` on the next POST with one more grant and no
+  generate; a generate whose reply was cut off after the repository landed
+  leaves an attempt with no repository id, and the retry's name lookup
+  adopts what landed; a 201 invitation on grant is recorded as
   `collaborator_not_member` and the retry adopts the repository once the
   grant is a 204; a rate-limited generate leaves the attempt at `claimed`,
   the wait is passed on as `Retry-After`, a click inside the wait is refused
   without a GitHub call, and the same attempt id finalizes afterwards with
   the repository id the mapping holds.
-- **Refusals create nothing.** A pending membership answers
-  `needs_org_join`; a destination name held by a repository from another
-  template answers `name_taken`; neither generates, grants, or writes a
-  mapping or submission.
-- **What is recorded is consistent and correctly scoped.** After every
-  success the mapping's `provider_repo_id` equals the attempt's, the
-  mapping carries the template's `assignment_slug`, and no submission or
-  field submission was written. On a team template each teammate's grant
-  carries `permission: push` against the same repository path, either
-  teammate's GET answers `ready`, and a student on another team sees none
-  of it through the routes or through PostgREST.
+- **Refusals generate nothing, grant nothing, and finalize nothing.** A
+  deactivated template is refused before anything is claimed: 404 from
+  both routes (`template_inactive` to the POST, `template_not_found` to
+  the GET), no attempt row, no GitHub call. Every other refusal comes
+  after the claim, because the attempt is the checkpoint the checks are
+  recorded on: a pending membership answers `needs_org_join` with the
+  attempt left at `claimed`, and a destination name held by a repository
+  from another template answers `name_taken`, recorded on the attempt as
+  its `error_code` so the GET can report it. In every case the call log
+  shows no generate and no grant, and no mapping row exists afterwards.
+- **What is recorded is the mapping and nothing else.** After every success
+  the mapping's `provider_repo_id` equals the attempt's, the mapping and
+  the attempt carry the template's `assignment_slug` (NULL for `scratch`),
+  and `api.my_repositories` lists the row with its label and `repo_url`.
+  The submission the first student had made to `exam-1` before clicking is
+  byte-for-byte what it was afterwards -- same rows, same `origin`, same
+  event ledger -- and no team submission appears for a team repository. On
+  a team template each teammate's grant carries `permission: push` against
+  the same repository path, either teammate's GET answers `ready`, and a
+  student on another team sees none of it through the routes, through
+  `api.assignment_repositories`, `api.repository_provisionings` or
+  `api.my_repositories`.
+- **The page is the database, rendered.** Signed out, `GET
+  /auth/repositories` is a redirect through login. A student on a team sees
+  every active template's label with a Create form, not the retired one,
+  their connected login, and *None yet*; rendering it makes no GitHub call
+  and claims no attempt. A native form post (no JSON `Accept`) answers 303
+  to `/auth/repositories?result=ready&template=<slug>`, and the page then
+  shows the notice, the row as *Ready* with the link and no Create form,
+  the repository under *Your repositories*, and Create still offered for
+  the other templates. `/auth/repositories.js` is served as JavaScript.
+  Faculty get the students-only page with no template on it.
 
 It does not exercise the join flow (`docs/github-join.md`), a template
-that is missing or empty, or the ten-minute readiness grace; the Go tests
-in `authapp/` cover those branches against an in-process fake. Live-GitHub
+that is missing or empty on GitHub, a closed assignment, or the ten-minute
+readiness grace; the Go tests in `authapp/` cover those branches against an
+in-process fake, and `tests/db` covers `assignment_closed`. Live-GitHub
 smoke runs are operational work done by hand against a scratch
 organization, not part of any suite here.
 
 ## Enablement order
 
 Each step can be left in place before the next. The one that changes what a
-student sees is adding a template (step 5): it appears on every student's
-repositories page the moment the row is there, so the pilot is done with
-one template in a short, announced window, or with a template made for the
-purpose and deactivated afterwards.
+student sees is activating a template (step 5): a template row is staged
+with `is_active = false`, which nobody but faculty can see, and the `PATCH`
+that sets it `true` is the only switch that puts it on students'
+repositories pages. The pilot is therefore one template activated in a
+short, announced window, or a template made for the purpose and
+deactivated afterwards.
 
 1. **Deploy the code.** `./bin/deploy-prod.sh --deploy --services "authapp
    elmclient"` applies the pending migrations through
@@ -408,13 +446,40 @@ purpose and deactivated afterwards.
 4. **Stop every other writer.** A course migrating from an external
    provisioner (the cutover checklist below) disables its cron here, before
    any template is added.
-5. **Pilot with one template.** Faculty
-   `POST /rest/repository_templates` with `slug`, `label`,
-   `template_full_name` (`<org>/<template>`), `is_team`, and optionally
-   `description` and `assignment_slug` (the assignment whose deadline
-   closes the template; a team template can only name a team assignment).
-   From that moment the template is on every student's repositories page
-   (team templates only for students on a team). Have two people click in
+5. **Pilot with one template: stage it, then activate it.** Faculty
+   `POST /rest/repository_templates` with a faculty bearer token and a
+   body like
+
+   ```json
+   {
+     "slug": "exam-1-starter",
+     "label": "Exam 1 starter",
+     "description": "Starter code for the first exam.",
+     "template_full_name": "yale-mgt-656-fall-2026/exam-1-starter",
+     "is_team": false,
+     "assignment_slug": "exam-1",
+     "is_active": false
+   }
+   ```
+
+   `slug` is the key and the first half of every repository name made from
+   the template; `template_full_name` is `<org>/<template>` on GitHub;
+   `description` and `assignment_slug` are optional (the assignment's
+   deadline, extensions included, is what closes the template; a team
+   template can only name a team assignment); `provider` defaults to
+   `github`. `is_active` defaults to `true`, so it is stated as `false`
+   here on purpose: the staged row is invisible to students, and can be
+   checked (the template is marked as a template on GitHub and is in the
+   installation's repository list) before anyone can click. Then
+
+   ```
+   PATCH /rest/repository_templates?slug=eq.exam-1-starter
+   {"is_active": true}
+   ```
+
+   is the only exposure switch. From that moment the template is on every
+   student's repositories page (team templates only for students on a
+   team). Have two people click in
    the window: one student who **already has** a mapping row for the
    template (the click must answer `ready` for the existing repository and
    generate nothing) and one who does not (expect `copying` then `ready`,
@@ -422,8 +487,10 @@ purpose and deactivated afterwards.
    row in `api.my_repositories`). Then each clicks again and confirms
    nothing new was created. Roll back (below) if anything is off; it costs
    nothing.
-6. **Roll out.** Add the remaining templates. There is no separate UI
-   switch; the row is the switch, and `is_active = false` hides it.
+6. **Roll out.** Stage the remaining templates the same way, with
+   `"is_active": false`, and activate each with the same `PATCH` when its
+   assignment is ready for students. There is no separate UI switch;
+   `is_active` is the switch, in both directions.
 
 ## Consumer cutover checklist for `yale-mgt-656-fall-2026/admin`
 
@@ -462,15 +529,18 @@ refers to that repository's `admin provision-repos` command and the cron
       for the student and a duplicate row for the cron, and the row has to
       be sorted out by hand. Once a template exists the platform must be
       the only writer for it.
-- [ ] **Add the templates**, one first (the pilot above), then the rest,
-      as rows of `api.repository_templates` in the course's fixtures: a
-      `slug` (which is the prefix of every repository name), `label`,
-      `template_full_name = '<org>/<template>'`, `is_team`, and the
-      `assignment_slug` whose deadline should close it. The migration
+- [ ] **Stage the templates, then activate them**, one first (the pilot
+      above), then the rest, as rows of `api.repository_templates` in the
+      course's fixtures: a `slug` (which is the prefix of every repository
+      name), `label`, `template_full_name = '<org>/<template>'`, `is_team`,
+      the `assignment_slug` whose deadline should close it, and
+      `is_active = false` until the row has been checked. The migration
       backfilled a template per assignment that already had mapping rows,
-      with `template_full_name = 'unknown/<slug>'`; fix those up. The
-      template must be marked as a template on GitHub and be in the App
-      installation's repository list. The row is what exposes the button.
+      inactive, with `template_full_name = 'unknown/<slug>'`; fix those up
+      before activating them. The template must be marked as a template on
+      GitHub and be in the App installation's repository list. The `PATCH`
+      to `is_active = true` is what exposes the button, and nothing else
+      does.
 - [ ] **Keep the CLI as the staff fallback.** `admin provision-repos`
       stays installed for a staff member to run **by hand, once, for one
       assignment** when GitHub is refusing the platform's credential or a
@@ -484,8 +554,9 @@ assignment goes live, not something this repository automates.
 ## Rollback
 
 To stop new provisioning from a template: faculty
-`PATCH /rest/repository_templates?slug=eq.<slug>` with `is_active = false`.
-The row disappears from the repositories page on its next load, the POST
+`PATCH /rest/repository_templates?slug=eq.<slug>` with `{"is_active":
+false}`, the same switch as activation, the other way. The row disappears
+from the repositories page on its next load, the POST
 answers `template_inactive`, and the GET answers `template_not_found` for
 anyone without a repository. **Nothing else changes**: every
 `assignment_repositories` row stays, and a student whose repository was

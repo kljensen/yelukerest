@@ -120,15 +120,21 @@ migration can make about the database in front of it.
   because the two uniqueness rules are two different partial indexes and a
   single entry point would pick one of them from which field happened to be
   null. See [Admin API](admin-api.md#secret-distribution).
-- `schema_compatibility_version` **8** added `api.assignment_repository_provisionings`
-  (the self-serve repository attempt, read-only) and appended columns to three
-  existing views: `repository_template_provider`, `repository_template_full_name`
-  and `repository_url_field_slug` on `api.assignments` and `api.my_assignments`,
-  and `github_user_id`, `github_login` and `github_verified_at` on `api.users`.
-  It removes nothing, so a client that reads none of them extends its set to
-  `{..., 8}`; a client that configures templates declares `{8}`. Faculty write
-  the template columns through `api.assignments` as before; the GitHub columns
-  are read-only through the view and written only by the RPCs below.
+- `schema_compatibility_version` **8** added three views for self-serve
+  repositories: `api.repository_templates` (what a student may create a
+  repository from; faculty CRUD, students read the active ones),
+  `api.repository_provisionings` (the attempt, read-only) and
+  `api.my_repositories` (the caller's own and current team's repositories
+  with the template's label and the browser URL, read-only). It appended
+  `template_slug` to `api.assignment_repositories` and made its
+  `assignment_slug` nullable -- a repository belongs to a template, and the
+  assignment is the template's, copied onto the row -- and appended
+  `github_user_id`, `github_login` and `github_verified_at` to `api.users`.
+  A client that reads none of the new views and never inserts into
+  `api.assignment_repositories` extends its set to `{..., 8}`; one that
+  writes mapping rows must now name a `template_slug` and declares `{8}`, as
+  does one that configures templates. The GitHub columns on `api.users` are
+  read-only through the view and written only by the RPCs below.
 - `admin_api_version` **15** added the provisioning RPCs of issue #394:
   `api.claim_repository_provisioning`, `api.record_repository_provisioning`,
   `api.finalize_repository_provisioning`,
