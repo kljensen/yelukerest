@@ -12,6 +12,7 @@ import Assignments.Model
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
         , BlockedRepository
+        , PendingAssignmentFieldSubmissionRequests
         , PendingBeginAssignments
         , RepositoryError
         , RepositoryProgress(..)
@@ -19,7 +20,6 @@ import Assignments.Model
         , RepositoryStatus
         , assignmentSubmissionAction
         , answerFields
-        , newSubmissionId
         , notSubmissibleMessage
         , repositoryUrlField
         , submissionBelongsToUser
@@ -262,8 +262,8 @@ exceptionMatches slug user_id maybeNickname exception =
         False
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentRepositories -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments repositories slug _ =
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> PendingAssignmentFieldSubmissionRequests -> AssignmentRepositories -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments pendingAnswers repositories slug _ =
     case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
         Just data ->
             let
@@ -280,10 +280,13 @@ detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions 
 
                 maybeRepository =
                     Dict.get slug repositories
+
+                maybePendingAnswers =
+                    Dict.get slug pendingAnswers
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin maybeRepository
+                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin maybePendingAnswers maybeRepository
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -318,8 +321,8 @@ showDueDate dueDate timeZone maybeException _ _ =
             dueString
 
 
-detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Maybe RepositoryProgress -> Html.Html Msg
-detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment maybeRepository =
+detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Maybe (WebData (List AssignmentSubmission)) -> Maybe RepositoryProgress -> Html.Html Msg
+detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment maybePendingAnswers maybeRepository =
     let
         maybeException =
             wdExceptions
@@ -328,7 +331,7 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                 |> Maybe.andThen List.head
 
         flow =
-            repositoryFlow user currentDate maybeRepository assignment maybeSubmission
+            repositoryFlow user currentDate maybeRepository maybePendingAnswers assignment maybeSubmission
     in
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
@@ -368,17 +371,21 @@ made that repository some other way. They keep the old page, URL field and
 all. Once the server does have one on record, the page is the new one
 whatever the field held before.
 
+`pendingAnswers` is the answers request out, or lately failed, for this
+assignment; it rides along because the form is drawn from the same place.
+
 -}
 type alias RepositoryFlow =
     { user : CurrentUser
     , now : Posix
     , progress : Maybe RepositoryProgress
     , active : Bool
+    , pendingAnswers : Maybe (WebData (List AssignmentSubmission))
     }
 
 
-repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> Assignment -> Maybe AssignmentSubmission -> RepositoryFlow
-repositoryFlow user now progress assignment maybeSubmission =
+repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> Maybe (WebData (List AssignmentSubmission)) -> Assignment -> Maybe AssignmentSubmission -> RepositoryFlow
+repositoryFlow user now progress pendingAnswers assignment maybeSubmission =
     let
         legacy =
             maybeSubmission
@@ -390,6 +397,7 @@ repositoryFlow user now progress assignment maybeSubmission =
     , now = now
     , progress = progress
     , active = usesRepositoryFlow user assignment && not legacy
+    , pendingAnswers = pendingAnswers
     }
 
 
@@ -463,7 +471,7 @@ renderAssignmentSubmissionAction maybeBeginAssignment flow action =
                     ]
 
             else
-                showSubmissionForm submission.id (Msgs.OnSubmitAssignmentFieldSubmissions submission) assignment2.fields
+                showSubmissionForm (existingSubmissionForm submission flow) assignment2.fields
 
         CannotSubmitAssignment reason ->
             Common.Views.divWithText (notSubmissibleMessage reason)
@@ -485,10 +493,18 @@ showAnswers assignment maybeSubmission flow =
                     Html.text ""
 
         ( fields, Just submission ) ->
-            showSubmissionForm submission.id (Msgs.OnSubmitAssignmentFieldSubmissions submission) fields
+            showSubmissionForm (existingSubmissionForm submission flow) fields
 
         ( fields, Nothing ) ->
-            showSubmissionForm newSubmissionId (Msgs.OnBeginAndSubmitAssignmentFieldSubmissions assignment.slug) fields
+            -- Nothing to hold the answers under yet: they are drafts,
+            -- keyed by the assignment, and the submit begins the
+            -- assignment and sends them as one.
+            showSubmissionForm
+                { onInput = Msgs.OnUpdateAssignmentDraftInput assignment.slug
+                , onSubmit = Msgs.OnBeginAndSubmitAssignmentFieldSubmissions assignment.slug
+                , pending = flow.pendingAnswers
+                }
+                fields
 
 
 showRepositoryProgress : Assignment -> RepositoryFlow -> Html.Html Msg
@@ -764,26 +780,61 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
             Html.text "other error"
 
 
-{-| The form for `fields`, whose inputs are held under `submissionId`
-(`newSubmissionId` when no submission exists yet) and sent by `submitMsg`.
+{-| Where a form's keystrokes and its submit go, and the request already
+out (or lately failed) for it.
 -}
-showSubmissionForm : Int -> Msg -> List AssignmentField -> Html.Html Msg
-showSubmissionForm submissionId submitMsg fields =
+type alias AnswersForm =
+    { onInput : String -> String -> Msg
+    , onSubmit : Msg
+    , pending : Maybe (WebData (List AssignmentSubmission))
+    }
+
+
+existingSubmissionForm : AssignmentSubmission -> RepositoryFlow -> AnswersForm
+existingSubmissionForm submission flow =
+    { onInput = Msgs.OnUpdateAssignmentFieldSubmissionInput submission.id
+    , onSubmit = Msgs.OnSubmitAssignmentFieldSubmissions submission
+    , pending = flow.pendingAnswers
+    }
+
+
+{-| The form for `fields`. Submit is off while a request is out, so a
+second click cannot start a second one, and a failure is said so the
+student knows to click again.
+-}
+showSubmissionForm : AnswersForm -> List AssignmentField -> Html.Html Msg
+showSubmissionForm form fields =
+    let
+        submitButton =
+            if form.pending == Just RemoteData.Loading then
+                Html.button [ Attrs.class "btn btn-primary black bg-silver", Attrs.disabled True ] [ Html.text "Submit" ]
+
+            else
+                Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ]
+
+        failure =
+            case form.pending of
+                Just (RemoteData.Failure _) ->
+                    [ Html.div [ Attrs.class "red" ] [ Html.text "Could not save your answers. Try again." ] ]
+
+                _ ->
+                    []
+    in
     Html.form
         [ Events.custom
             "submit"
             (Decode.succeed
                 { preventDefault = True
                 , stopPropagation = False
-                , message = submitMsg
+                , message = form.onSubmit
                 }
             )
         ]
-        (List.map (showFormField submissionId) fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
+        (List.map (showFormField form.onInput) fields ++ failure ++ [ submitButton ])
 
 
-showFormField : Int -> AssignmentField -> Html.Html Msg
-showFormField submissionId assignmentField =
+showFormField : (String -> String -> Msg) -> AssignmentField -> Html.Html Msg
+showFormField onInput assignmentField =
     let
         fieldType =
             if assignmentField.is_url then
@@ -796,11 +847,8 @@ showFormField submissionId assignmentField =
             , Attrs.title assignmentField.help
             , Attrs.name assignmentField.slug
             , Attrs.pattern assignmentField.pattern
-            , Events.onInput
-            (Msgs.OnUpdateAssignmentFieldSubmissionInput
-                submissionId
-                assignmentField.slug
-            )]
+            , Events.onInput (onInput assignmentField.slug)
+            ]
     in
     Html.div []
         [ Html.label [] [ Html.text assignmentField.label ]

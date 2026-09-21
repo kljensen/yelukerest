@@ -9,7 +9,9 @@ module Assignments.Model exposing
     , AssignmentSlug
     , AssignmentSubmission
     , AssignmentSubmissionAction(..)
+    , AssignmentDrafts
     , AssignmentRepositories
+    , BeginAndSubmitFailure(..)
     , BlockedRepository
     , FailedRepository
     , GithubJoinResult(..)
@@ -37,7 +39,6 @@ module Assignments.Model exposing
     , repositoryErrorDecoder
     , repositoryStatusDecoder
     , answerFields
-    , newSubmissionId
     , repositoryUrlField
     , submissionBelongsToUser
     , usesRepositoryFlow
@@ -48,6 +49,7 @@ module Assignments.Model exposing
 import Auth.Model exposing (CurrentUser)
 import Common.Comparisons exposing (dateIsLessThan)
 import Dict exposing (Dict)
+import Http
 import Json.Decode as Decode
 import Json.Decode.Extra
 import Json.Decode.Pipeline exposing (hardcoded, optional, required)
@@ -110,15 +112,6 @@ fills in.
 answerFields : Assignment -> List AssignmentField
 answerFields assignment =
     List.filter (\field -> Just field.slug /= assignment.repository_url_field_slug) assignment.fields
-
-
-{-| The submission id under which a student's answers are held before any
-submission row exists (see `AssignmentFieldSubmissionInputs`); real ids
-start at 1.
--}
-newSubmissionId : Int
-newSubmissionId =
-    0
 
 
 {-| The submission's entry for the assignment's repository URL field, when
@@ -187,6 +180,25 @@ valuesForSubmissionID submissionID afsi =
 
 type alias AssignmentFieldSubmissionInputs =
     Dict ( Int, String ) String
+
+
+{-| Answers typed for an assignment the student has not begun, so there is
+no submission id to hold them under: field slug to value, per assignment
+slug. They move into `AssignmentFieldSubmissionInputs` under the real id
+as soon as a submission for that assignment turns up (see
+`Assignments.Updates.adoptDrafts`).
+-}
+type alias AssignmentDrafts =
+    Dict AssignmentSlug (Dict String String)
+
+
+{-| How a begin-then-submit (`Assignments.Commands.beginAndSendAssignmentFieldSubmissions`)
+failed: before the submission row was created, or after it was, in which
+case the row now exists and the answers are what is missing.
+-}
+type BeginAndSubmitFailure
+    = BeginFailed Http.Error
+    | SendFailed Http.Error
 
 
 type alias PendingAssignmentFieldSubmissionRequests =

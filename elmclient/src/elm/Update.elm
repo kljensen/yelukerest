@@ -13,10 +13,12 @@ import Assignments.Commands
         , loadRepository
         , sendAssignmentFieldSubmissions
         )
-import Assignments.Model exposing (newSubmissionId, valuesForSubmissionID)
+import Assignments.Model
 import Assignments.Updates
     exposing
         ( RepositoryRequest(..)
+        , adoptDrafts
+        , onBeginAndSubmitResponse
         , onCreateRepository
         , onCreateRepositoryResponse
         , onEnterAssignment
@@ -26,6 +28,9 @@ import Assignments.Updates
         , onLoadRepository
         , onLoadRepositoryResponse
         , onRepositoryPollTick
+        , onSubmitAnswers
+        , onSubmitResponse
+        , onUpdateDraftInput
         )
 import Auth.Model exposing (CurrentUser, JWT, isFaculty, isFacultyOrTA)
 import Auth.Updates exposing (onFetchCurrentUser)
@@ -453,7 +458,16 @@ update msg model =
             onRepositoryPollTick now model |> sendRepositoryRequests
 
         Msgs.OnFetchAssignmentSubmissions response ->
-            ( { model | assignmentSubmissions = response }, Cmd.none )
+            -- Answers typed before a submission existed move under its id
+            -- as soon as it shows up; see `Assignments.Updates.adoptDrafts`.
+            ( case ( model.currentUser, response ) of
+                ( RemoteData.Success user, RemoteData.Success submissions ) ->
+                    adoptDrafts user submissions { model | assignmentSubmissions = response }
+
+                _ ->
+                    { model | assignmentSubmissions = response }
+            , Cmd.none
+            )
 
         Msgs.OnFetchQuizzes response ->
             ( { model | quizzes = response }, Cmd.none )
@@ -501,39 +515,17 @@ update msg model =
                     ( model, Cmd.none )
 
         Msgs.OnSubmitAssignmentFieldSubmissions assignmentSubmission ->
-            let
-                -- Have the submission id. Need to submit the assignmentSubmissionField tuples
-                values =
-                    valuesForSubmissionID assignmentSubmission.id model.assignmentFieldSubmissionInputs
-
-                pendingRequest =
-                    Dict.insert assignmentSubmission.assignment_slug RemoteData.Loading model.pendingAssignmentFieldSubmissionRequests
-            in
-            case model.currentUser of
-                RemoteData.Success user ->
-                    ( { model | pendingAssignmentFieldSubmissionRequests = pendingRequest }
-                    , Cmd.batch
-                        [ sendAssignmentFieldSubmissions user.jwt assignmentSubmission.assignment_slug values
-                        ]
-                    )
+            case ( model.currentUser, onSubmitAnswers assignmentSubmission.assignment_slug (Just assignmentSubmission.id) model ) of
+                ( RemoteData.Success user, ( newModel, Just values ) ) ->
+                    ( newModel, sendAssignmentFieldSubmissions user.jwt assignmentSubmission.assignment_slug values )
 
                 _ ->
                     ( model, Cmd.none )
 
         Msgs.OnBeginAndSubmitAssignmentFieldSubmissions assignmentSlug ->
-            -- Answers typed before any submission exists are held under
-            -- `newSubmissionId`; the reply is handled by the ordinary
-            -- submit's handler, which refetches and clears the inputs.
-            case model.currentUser of
-                RemoteData.Success user ->
-                    ( { model
-                        | pendingAssignmentFieldSubmissionRequests =
-                            Dict.insert assignmentSlug RemoteData.Loading model.pendingAssignmentFieldSubmissionRequests
-                      }
-                    , beginAndSendAssignmentFieldSubmissions user.jwt
-                        assignmentSlug
-                        (valuesForSubmissionID newSubmissionId model.assignmentFieldSubmissionInputs)
-                    )
+            case ( model.currentUser, onSubmitAnswers assignmentSlug Nothing model ) of
+                ( RemoteData.Success user, ( newModel, Just values ) ) ->
+                    ( newModel, beginAndSendAssignmentFieldSubmissions user.jwt assignmentSlug values )
 
                 _ ->
                     ( model, Cmd.none )
@@ -548,30 +540,17 @@ update msg model =
             in
             ( { model | assignmentFieldSubmissionInputs = newAfsi }, Cmd.none )
 
+        Msgs.OnUpdateAssignmentDraftInput assignmentSlug assignmentFieldSlug assignmentFieldValue ->
+            ( onUpdateDraftInput assignmentSlug assignmentFieldSlug assignmentFieldValue model, Cmd.none )
+
         Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug response ->
-            -- todo, update the model.assignmentSubmissions
-            case ( model.currentUser, model.assignmentSubmissions ) of
-                ( RemoteData.Success user, RemoteData.Success submissions ) ->
-                    case response of
-                        RemoteData.Success newSubmissions ->
-                            let
-                                pfsrs =
-                                    Dict.remove assignmentSlug model.pendingAssignmentFieldSubmissionRequests
+            -- Lazy for right now - just re-fetch all assignment field submissions
+            onSubmitResponse assignmentSlug response model
+                |> refetchSubmissionsIf
 
-                                cmd =
-                                    Cmd.batch [ fetchAssignmentSubmissions user ]
-
-                                newModel =
-                                    { model | pendingAssignmentFieldSubmissionRequests = pfsrs, assignmentFieldSubmissionInputs = Dict.empty }
-                            in
-                            -- Lazy for right now - just re-fetch all assignment fiend submissions
-                            ( newModel, cmd )
-
-                        _ ->
-                            ( model, Cmd.none )
-
-                ( _, _ ) ->
-                    ( model, Cmd.none )
+        Msgs.OnBeginAndSubmitAssignmentFieldSubmissionsResponse assignmentSlug result ->
+            onBeginAndSubmitResponse assignmentSlug result model
+                |> refetchSubmissionsIf
 
         Msgs.OnFetchQuizSubmissions response ->
             onFetchQuizSubmissions model response
@@ -658,6 +637,18 @@ update msg model =
 
         Msgs.OnChangeEngagementUserQuery userQuery ->
             ( { model | engagementUserQuery = Just userQuery }, Cmd.none )
+
+
+{-| Turn what the answers handlers decided into the refetch they asked for.
+-}
+refetchSubmissionsIf : ( Model, Bool ) -> ( Model, Cmd Msg )
+refetchSubmissionsIf ( model, refetch ) =
+    case ( refetch, model.currentUser ) of
+        ( True, RemoteData.Success user ) ->
+            ( model, fetchAssignmentSubmissions user )
+
+        _ ->
+            ( model, Cmd.none )
 
 
 {-| If the page is an assignment's, ask where its repository stands (see

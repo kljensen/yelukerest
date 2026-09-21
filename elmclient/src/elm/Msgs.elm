@@ -9,6 +9,7 @@ import Assignments.Model
         , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
+        , BeginAndSubmitFailure
         , RepositoryError
         , RepositoryStatus
         )
@@ -96,6 +97,8 @@ type Msg
       -- Submit on a template assignment nobody has begun: the submission
       -- row is created and the answers sent as one action (issue #397).
     | OnBeginAndSubmitAssignmentFieldSubmissions AssignmentSlug
+    | OnBeginAndSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (Result BeginAndSubmitFailure (List AssignmentFieldSubmission))
+    | OnUpdateAssignmentDraftInput AssignmentSlug String String
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String String
     | OnFetchEngagements (WebData (List Engagement))

@@ -3,8 +3,13 @@ module AssignmentsUpdatesTest exposing (tests)
 import Assignments.Model
     exposing
         ( Assignment
+        , AssignmentDrafts
+        , AssignmentFieldSubmissionInputs
         , AssignmentRepositories
+        , AssignmentSubmission
+        , BeginAndSubmitFailure(..)
         , GithubJoinResult(..)
+        , PendingAssignmentFieldSubmissionRequests
         , RepositoryError
         , RepositoryGenerations
         , RepositoryProgress(..)
@@ -14,7 +19,9 @@ import Assignments.Model
 import Assignments.Updates
     exposing
         ( RepositoryRequest(..)
+        , adoptDrafts
         , isPollingActiveRoute
+        , onBeginAndSubmitResponse
         , onCreateRepository
         , onCreateRepositoryResponse
         , onEnterAssignment
@@ -22,11 +29,15 @@ import Assignments.Updates
         , onLoadRepository
         , onLoadRepositoryResponse
         , onRepositoryPollTick
+        , onSubmitAnswers
+        , onSubmitResponse
+        , onUpdateDraftInput
         , pollTimeoutMillis
         )
 import Auth.Model exposing (CurrentUser)
 import Dict
 import Expect
+import Http
 import Models exposing (Route(..))
 import RemoteData exposing (WebData)
 import Test exposing (Test, describe, test)
@@ -44,7 +55,15 @@ the number to 2.
 -}
 tests : Test
 tests =
-    describe "Assignments.Updates (repositories)"
+    describe "Assignments.Updates"
+        [ repositoryTests
+        , answersTests
+        ]
+
+
+repositoryTests : Test
+repositoryTests =
+    describe "repositories"
         [ describe "arriving at an assignment"
             [ test "a template assignment seen for the first time is checked" <|
                 \_ ->
@@ -372,8 +391,211 @@ tests =
         ]
 
 
+{-| Answers typed for an assignment nobody has begun are drafts, keyed by
+the assignment. A submission can appear without the student submitting
+(creating the repository begins the assignment), and the drafts must
+follow it or the next Submit sends nothing.
+-}
+answersTests : Test
+answersTests =
+    describe "answers"
+        [ describe "drafts"
+            [ test "a keystroke is held under the assignment" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> .assignmentDrafts
+                        |> Expect.equal (Dict.singleton slug (Dict.singleton "notes" "hello"))
+            , test "two unbegun assignments keep separate drafts" <|
+                \_ ->
+                    noAnswers
+                        |> typed slug "notes" "hello"
+                        |> typed plainSlug "notes" "other"
+                        |> .assignmentDrafts
+                        |> Expect.equal (Dict.fromList [ ( slug, Dict.singleton "notes" "hello" ), ( plainSlug, Dict.singleton "notes" "other" ) ])
+            , test "Submit before any submission sends the draft" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.second
+                        |> Expect.equal (Just [ ( "notes", "hello" ) ])
+            , test "the draft moves under the submission once it turns up" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> adoptDrafts student [ submissionRow ]
+                        |> Expect.all
+                            [ .assignmentFieldSubmissionInputs >> Expect.equal (Dict.singleton ( submissionRow.id, "notes" ) "hello")
+                            , .assignmentDrafts >> Expect.equal Dict.empty
+                            ]
+            , test "so that Submit then sends what was typed" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> adoptDrafts student [ submissionRow ]
+                        |> onSubmitAnswers slug (Just submissionRow.id)
+                        |> Tuple.second
+                        |> Expect.equal (Just [ ( "notes", "hello" ) ])
+            , test "a draft for an assignment still unbegun stays where it is" <|
+                \_ ->
+                    noAnswers
+                        |> typed slug "notes" "hello"
+                        |> typed plainSlug "notes" "other"
+                        |> adoptDrafts student [ submissionRow ]
+                        |> .assignmentDrafts
+                        |> Expect.equal (Dict.singleton plainSlug (Dict.singleton "notes" "other"))
+            , test "someone else's submission adopts nothing" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> adoptDrafts student [ { submissionRow | user_id = Just 99 } ]
+                        |> .assignmentDrafts
+                        |> Expect.equal (Dict.singleton slug (Dict.singleton "notes" "hello"))
+            , test "what was typed since under the real id wins" <|
+                \_ ->
+                    { noAnswers | assignmentFieldSubmissionInputs = Dict.singleton ( submissionRow.id, "notes" ) "newer" }
+                        |> typed slug "notes" "older"
+                        |> adoptDrafts student [ submissionRow ]
+                        |> .assignmentFieldSubmissionInputs
+                        |> Expect.equal (Dict.singleton ( submissionRow.id, "notes" ) "newer")
+            ]
+        , describe "begin-then-submit"
+            [ test "success drops the draft and refetches" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.first
+                        |> onBeginAndSubmitResponse slug (Ok [])
+                        |> Expect.all
+                            [ Tuple.second >> Expect.equal True
+                            , Tuple.first >> .assignmentDrafts >> Expect.equal Dict.empty
+                            , Tuple.first >> pendingFor slug >> Expect.equal Nothing
+                            ]
+            , test "a row created but answers not saved: refetch, keep the draft, say so" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.first
+                        |> onBeginAndSubmitResponse slug (Err (SendFailed Http.NetworkError))
+                        |> Expect.all
+                            [ Tuple.second >> Expect.equal True
+                            , Tuple.first >> .assignmentDrafts >> Expect.equal (Dict.singleton slug (Dict.singleton "notes" "hello"))
+                            , Tuple.first >> pendingFor slug >> Expect.equal (Just (RemoteData.Failure Http.NetworkError))
+                            ]
+            , test "and once the row is on the page the draft is under its id for the ordinary path" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.first
+                        |> onBeginAndSubmitResponse slug (Err (SendFailed Http.NetworkError))
+                        |> Tuple.first
+                        |> adoptDrafts student [ submissionRow ]
+                        |> onSubmitAnswers slug (Just submissionRow.id)
+                        |> Tuple.second
+                        |> Expect.equal (Just [ ( "notes", "hello" ) ])
+            , test "no row created: keep the draft, say so, nothing to refetch" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.first
+                        |> onBeginAndSubmitResponse slug (Err (BeginFailed (Http.BadStatus 500)))
+                        |> Expect.all
+                            [ Tuple.second >> Expect.equal False
+                            , Tuple.first >> .assignmentDrafts >> Expect.equal (Dict.singleton slug (Dict.singleton "notes" "hello"))
+                            , Tuple.first >> pendingFor slug >> Expect.equal (Just (RemoteData.Failure (Http.BadStatus 500)))
+                            ]
+            , test "a second Submit while the first is out sends nothing" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.first
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.second
+                        |> Expect.equal Nothing
+            , test "a Submit after a failure goes out again" <|
+                \_ ->
+                    typed slug "notes" "hello" noAnswers
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.first
+                        |> onBeginAndSubmitResponse slug (Err (BeginFailed Http.NetworkError))
+                        |> Tuple.first
+                        |> onSubmitAnswers slug Nothing
+                        |> Tuple.second
+                        |> Expect.equal (Just [ ( "notes", "hello" ) ])
+            ]
+        , describe "an ordinary submit"
+            [ test "a second Submit while the first is out sends nothing" <|
+                \_ ->
+                    { noAnswers | assignmentFieldSubmissionInputs = Dict.singleton ( submissionRow.id, "notes" ) "hello" }
+                        |> onSubmitAnswers slug (Just submissionRow.id)
+                        |> Tuple.first
+                        |> onSubmitAnswers slug (Just submissionRow.id)
+                        |> Tuple.second
+                        |> Expect.equal Nothing
+            , test "a failure is recorded so the form can say so" <|
+                \_ ->
+                    { noAnswers | assignmentFieldSubmissionInputs = Dict.singleton ( submissionRow.id, "notes" ) "hello" }
+                        |> onSubmitAnswers slug (Just submissionRow.id)
+                        |> Tuple.first
+                        |> onSubmitResponse slug (RemoteData.Failure Http.NetworkError)
+                        |> Expect.all
+                            [ Tuple.second >> Expect.equal False
+                            , Tuple.first >> pendingFor slug >> Expect.equal (Just (RemoteData.Failure Http.NetworkError))
+                            ]
+            , test "success clears the pending entry and refetches" <|
+                \_ ->
+                    { noAnswers | assignmentFieldSubmissionInputs = Dict.singleton ( submissionRow.id, "notes" ) "hello" }
+                        |> onSubmitAnswers slug (Just submissionRow.id)
+                        |> Tuple.first
+                        |> onSubmitResponse slug (RemoteData.Success [])
+                        |> Expect.all
+                            [ Tuple.second >> Expect.equal True
+                            , Tuple.first >> pendingFor slug >> Expect.equal Nothing
+                            ]
+            ]
+        ]
+
+
 
 -- Fixtures and helpers
+
+
+type alias Answers =
+    { assignmentFieldSubmissionInputs : AssignmentFieldSubmissionInputs
+    , assignmentDrafts : AssignmentDrafts
+    , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
+    }
+
+
+noAnswers : Answers
+noAnswers =
+    { assignmentFieldSubmissionInputs = Dict.empty
+    , assignmentDrafts = Dict.empty
+    , pendingAssignmentFieldSubmissionRequests = Dict.empty
+    }
+
+
+typed : String -> String -> String -> Answers -> Answers
+typed assignmentSlug fieldSlug value answers =
+    onUpdateDraftInput assignmentSlug fieldSlug value answers
+
+
+pendingFor : String -> Answers -> Maybe (WebData (List AssignmentSubmission))
+pendingFor assignmentSlug answers =
+    Dict.get assignmentSlug answers.pendingAssignmentFieldSubmissionRequests
+
+
+{-| The student's submission to the template assignment, as the refetch
+after `ready` brings it back.
+-}
+submissionRow : AssignmentSubmission
+submissionRow =
+    { id = 7
+    , assignment_slug = slug
+    , is_team = False
+    , user_id = Just student.id
+    , team_nickname = Nothing
+    , submitter_user_id = student.id
+    , created_at = at 0
+    , updated_at = at 0
+    , fields = []
+    }
 
 
 type alias State =

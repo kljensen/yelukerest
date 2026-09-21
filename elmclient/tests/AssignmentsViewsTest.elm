@@ -10,16 +10,16 @@ import Assignments.Model
         , RepositoryProgress(..)
         , RepositoryState(..)
         , RepositoryStatus
-        , newSubmissionId
         )
 import Assignments.Views
 import Auth.Model exposing (CurrentUser)
 import Dict
 import Expect
 import Html.Attributes
+import Http
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
-import RemoteData
+import RemoteData exposing (WebData)
 import Test exposing (Test, describe, test)
 import Test.Html.Event as Event
 import Test.Html.Query as Query
@@ -44,6 +44,7 @@ tests =
                     (RemoteData.Success [ baseAssignment ])
                     (RemoteData.Success [])
                     (RemoteData.Success [])
+                    Dict.empty
                     Dict.empty
                     Dict.empty
                     baseAssignment.slug
@@ -122,12 +123,39 @@ tests =
                         |> Query.find [ Selector.tag "form" ]
                         |> Event.simulate Event.submit
                         |> Event.expect (Msgs.OnBeginAndSubmitAssignmentFieldSubmissions templateAssignment.slug)
-            , test "and its inputs are held under the placeholder submission id" <|
+            , test "and what is typed there is a draft for the assignment" <|
                 \_ ->
                     detail templateAssignment Nothing (Just NotStarted)
                         |> Query.find [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
                         |> Event.simulate (Event.input "hello")
-                        |> Event.expect (Msgs.OnUpdateAssignmentFieldSubmissionInput newSubmissionId "notes" "hello")
+                        |> Event.expect (Msgs.OnUpdateAssignmentDraftInput templateAssignment.slug "notes" "hello")
+            , test "with a submission, what is typed is held under its id" <|
+                \_ ->
+                    detail templateAssignment (Just submission) (Just NotStarted)
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Query.find [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
+                        |> Event.simulate (Event.input "hello")
+                        |> Event.expect (Msgs.OnUpdateAssignmentFieldSubmissionInput submission.id "notes" "hello")
+            , test "Submit is off while the answers are being sent" <|
+                \_ ->
+                    detailWithPending (Just RemoteData.Loading) templateAssignment Nothing (Just NotStarted)
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Query.find [ Selector.tag "button" ]
+                        |> Query.has [ Selector.disabled True ]
+            , test "and says so when they could not be saved" <|
+                \_ ->
+                    detailWithPending (Just (RemoteData.Failure Http.NetworkError)) templateAssignment (Just submission) (Just NotStarted)
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Expect.all
+                            [ Query.has [ Selector.text "Could not save your answers. Try again." ]
+                            , Query.find [ Selector.tag "button" ] >> Query.hasNot [ Selector.disabled True ]
+                            ]
+            , test "the old page's Submit is off while sending too" <|
+                \_ ->
+                    detailWithPending (Just RemoteData.Loading) baseAssignment (Just submission) Nothing
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Query.find [ Selector.tag "button" ]
+                        |> Query.has [ Selector.disabled True ]
             , test "a submit on an existing submission updates it as before" <|
                 \_ ->
                     detail templateAssignment (Just submission) (Just NotStarted)
@@ -332,7 +360,19 @@ detail =
 
 
 detailAs : CurrentUser -> Assignment -> Maybe AssignmentSubmission -> Maybe RepositoryProgress -> Query.Single Msg
-detailAs user assignment maybeSubmission maybeProgress =
+detailAs user =
+    detailFor user Nothing
+
+
+{-| The page with an answers request out (or failed) for the assignment.
+-}
+detailWithPending : Maybe (WebData (List AssignmentSubmission)) -> Assignment -> Maybe AssignmentSubmission -> Maybe RepositoryProgress -> Query.Single Msg
+detailWithPending =
+    detailFor currentUser
+
+
+detailFor : CurrentUser -> Maybe (WebData (List AssignmentSubmission)) -> Assignment -> Maybe AssignmentSubmission -> Maybe RepositoryProgress -> Query.Single Msg
+detailFor user pending assignment maybeSubmission maybeProgress =
     Assignments.Views.detailView
         (RemoteData.Success user)
         (Just (millis 1000))
@@ -346,6 +386,7 @@ detailAs user assignment maybeSubmission maybeProgress =
         )
         (RemoteData.Success [])
         Dict.empty
+        (pending |> Maybe.map (Dict.singleton assignment.slug) |> Maybe.withDefault Dict.empty)
         (maybeProgress |> Maybe.map (Dict.singleton assignment.slug) |> Maybe.withDefault Dict.empty)
         assignment.slug
         Nothing

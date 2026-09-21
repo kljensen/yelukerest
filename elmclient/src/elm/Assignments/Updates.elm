@@ -1,7 +1,10 @@
 module Assignments.Updates exposing
-    ( RepositoryFlowState
+    ( AnswersState
+    , RepositoryFlowState
     , RepositoryRequest(..)
+    , adoptDrafts
     , isPollingActiveRoute
+    , onBeginAndSubmitResponse
     , onCreateRepository
     , onCreateRepositoryResponse
     , onEnterAssignment
@@ -11,6 +14,9 @@ module Assignments.Updates exposing
     , onLoadRepository
     , onLoadRepositoryResponse
     , onRepositoryPollTick
+    , onSubmitAnswers
+    , onSubmitResponse
+    , onUpdateDraftInput
     , pollTimeoutMillis
     )
 
@@ -18,18 +24,26 @@ import Assignments.Commands exposing (githubJoinUrl)
 import Assignments.Model
     exposing
         ( Assignment
+        , AssignmentDrafts
+        , AssignmentFieldSubmission
+        , AssignmentFieldSubmissionInputs
         , AssignmentGrade
         , AssignmentGradeDistribution
         , AssignmentRepositories
         , AssignmentSlug
+        , AssignmentSubmission
+        , BeginAndSubmitFailure(..)
         , GithubJoinResult(..)
+        , PendingAssignmentFieldSubmissionRequests
         , PollingRepository
         , RepositoryError
         , RepositoryGenerations
         , RepositoryProgress(..)
         , RepositoryState(..)
         , RepositoryStatus
+        , submissionBelongsToUser
         , usesRepositoryFlow
+        , valuesForSubmissionID
         )
 import Auth.Model exposing (CurrentUser)
 import Dict
@@ -47,6 +61,151 @@ onFetchAssignmentGrades model response =
 onFetchAssignmentGradeDistributions : Model -> WebData (List AssignmentGradeDistribution) -> ( Model, Cmd Msg )
 onFetchAssignmentGradeDistributions model response =
     ( { model | assignmentGradeDistributions = response }, Cmd.none )
+
+
+
+-- Answers to an assignment's fields
+
+
+{-| The slice of the model the answers form touches: what the student has
+typed, held under the submission id (`assignmentFieldSubmissionInputs`)
+or, before a submission exists, under the assignment slug
+(`assignmentDrafts`); and the request in flight or lately failed for each
+assignment.
+-}
+type alias AnswersState a =
+    { a
+        | assignmentFieldSubmissionInputs : AssignmentFieldSubmissionInputs
+        , assignmentDrafts : AssignmentDrafts
+        , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
+    }
+
+
+{-| A keystroke in the form of an assignment the student has not begun.
+-}
+onUpdateDraftInput : AssignmentSlug -> String -> String -> AnswersState a -> AnswersState a
+onUpdateDraftInput slug fieldSlug value state =
+    { state
+        | assignmentDrafts =
+            Dict.update slug
+                (Maybe.withDefault Dict.empty >> Dict.insert fieldSlug value >> Just)
+                state.assignmentDrafts
+    }
+
+
+{-| Move drafts under the id of the submission that now exists for them.
+
+A submission can turn up without the student submitting: creating the
+repository begins the assignment on the server, and the refetch after
+`ready` brings the row back. From then on the form is keyed by the real
+id, and anything typed before must be there too or it is silently not
+sent. What the student typed since under the real id wins.
+
+-}
+adoptDrafts : CurrentUser -> List AssignmentSubmission -> AnswersState a -> AnswersState a
+adoptDrafts user submissions state =
+    let
+        adopt slug draft ( inputs, drafts ) =
+            case ownSubmission user slug submissions of
+                Just submission ->
+                    ( Dict.foldl
+                        (\fieldSlug value -> Dict.update ( submission.id, fieldSlug ) (Maybe.withDefault value >> Just))
+                        inputs
+                        draft
+                    , Dict.remove slug drafts
+                    )
+
+                Nothing ->
+                    ( inputs, drafts )
+
+        ( newInputs, newDrafts ) =
+            Dict.foldl adopt ( state.assignmentFieldSubmissionInputs, state.assignmentDrafts ) state.assignmentDrafts
+    in
+    { state | assignmentFieldSubmissionInputs = newInputs, assignmentDrafts = newDrafts }
+
+
+{-| A click on Submit, for an assignment with a submission (`Just id`) or
+without. Returns the answers to send, or nothing while a request for this
+assignment is already out: a second click cannot start a second one.
+-}
+onSubmitAnswers : AssignmentSlug -> Maybe Int -> AnswersState a -> ( AnswersState a, Maybe (List ( String, String )) )
+onSubmitAnswers slug maybeSubmissionId state =
+    if Dict.get slug state.pendingAssignmentFieldSubmissionRequests == Just RemoteData.Loading then
+        ( state, Nothing )
+
+    else
+        ( { state | pendingAssignmentFieldSubmissionRequests = Dict.insert slug RemoteData.Loading state.pendingAssignmentFieldSubmissionRequests }
+        , Just
+            (case maybeSubmissionId of
+                Just submissionId ->
+                    valuesForSubmissionID submissionId state.assignmentFieldSubmissionInputs
+
+                Nothing ->
+                    Dict.get slug state.assignmentDrafts
+                        |> Maybe.withDefault Dict.empty
+                        |> Dict.toList
+            )
+        )
+
+
+{-| The reply to an ordinary submit. Success clears what was typed and asks
+for a refetch, as it always has; a failure is now recorded rather than
+dropped, so the form can say so and take another click.
+-}
+onSubmitResponse : AssignmentSlug -> WebData (List AssignmentFieldSubmission) -> AnswersState a -> ( AnswersState a, Bool )
+onSubmitResponse slug response state =
+    case response of
+        RemoteData.Success _ ->
+            ( { state
+                | pendingAssignmentFieldSubmissionRequests = Dict.remove slug state.pendingAssignmentFieldSubmissionRequests
+                , assignmentFieldSubmissionInputs = Dict.empty
+              }
+            , True
+            )
+
+        RemoteData.Failure error ->
+            ( { state | pendingAssignmentFieldSubmissionRequests = Dict.insert slug (RemoteData.Failure error) state.pendingAssignmentFieldSubmissionRequests }
+            , False
+            )
+
+        _ ->
+            ( state, False )
+
+
+{-| The reply to a begin-then-submit. Success drops the draft and asks for
+a refetch. A failure keeps the draft, so the next click sends it again,
+and is shown like any other. If the row was created before the failure, a
+refetch is asked for too: once the row is on the page the draft moves
+under its id (`adoptDrafts`) and the next click takes the ordinary path,
+rather than trying to create the row a second time.
+-}
+onBeginAndSubmitResponse : AssignmentSlug -> Result BeginAndSubmitFailure (List AssignmentFieldSubmission) -> AnswersState a -> ( AnswersState a, Bool )
+onBeginAndSubmitResponse slug result state =
+    case result of
+        Ok _ ->
+            ( { state
+                | pendingAssignmentFieldSubmissionRequests = Dict.remove slug state.pendingAssignmentFieldSubmissionRequests
+                , assignmentDrafts = Dict.remove slug state.assignmentDrafts
+              }
+            , True
+            )
+
+        Err (BeginFailed error) ->
+            ( { state | pendingAssignmentFieldSubmissionRequests = Dict.insert slug (RemoteData.Failure error) state.pendingAssignmentFieldSubmissionRequests }
+            , False
+            )
+
+        Err (SendFailed error) ->
+            ( { state | pendingAssignmentFieldSubmissionRequests = Dict.insert slug (RemoteData.Failure error) state.pendingAssignmentFieldSubmissionRequests }
+            , True
+            )
+
+
+ownSubmission : CurrentUser -> AssignmentSlug -> List AssignmentSubmission -> Maybe AssignmentSubmission
+ownSubmission user slug submissions =
+    submissions
+        |> List.filter (\submission -> submission.assignment_slug == slug && submissionBelongsToUser user submission)
+        |> List.head
 
 
 

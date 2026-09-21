@@ -19,6 +19,7 @@ import Assignments.Model
         ( AssignmentGrade
         , AssignmentGradeDistribution
         , AssignmentSlug
+        , BeginAndSubmitFailure(..)
         , RepositoryError
         , RepositoryStatus
         , assignmentFieldSubmissionsDecoder
@@ -319,8 +320,9 @@ retryAfterSeconds headers =
 assignment the student has not begun (there the page has no "Begin
 assignment" button: the repository or the first submit begins it). The
 submission row must exist before the field submissions can, so the two
-requests run in sequence; the reply is the field submissions', so the page
-handles it exactly as an ordinary submit.
+requests run in sequence. A failure says which of the two it was: after
+the first succeeded, the row exists whatever happened to the answers, and
+the page has to know that or it would try to create the row again.
 -}
 beginAndSendAssignmentFieldSubmissions : JWT -> AssignmentSlug -> List ( String, String ) -> Cmd Msg
 beginAndSendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
@@ -351,8 +353,9 @@ beginAndSendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
                 }
     in
     begin
-        |> Task.andThen (\_ -> send)
-        |> Task.attempt (RemoteData.fromResult >> Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug)
+        |> Task.mapError BeginFailed
+        |> Task.andThen (\_ -> Task.mapError SendFailed send)
+        |> Task.attempt (Msgs.OnBeginAndSubmitAssignmentFieldSubmissionsResponse assignmentSlug)
 
 
 {-| Notice that there is no way to restrict this

@@ -6,6 +6,7 @@ import Assignments.Model
         , AssignmentFieldSubmissionInputs
         , AssignmentGrade
         , AssignmentGradeDistribution
+        , AssignmentDrafts
         , AssignmentGradeException
         , AssignmentRepositories
         , GithubJoinResult
@@ -159,6 +160,10 @@ type alias Model =
     -- that the user has edited for particular assignment field submissions.
     , assignmentFieldSubmissionInputs : AssignmentFieldSubmissionInputs
 
+    -- The same for assignments the student has not begun, keyed by
+    -- assignment slug since there is no submission id yet.
+    , assignmentDrafts : AssignmentDrafts
+
     -- A dictionary tracking POST requests to the server to save
     -- assigment field submissions.
     , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
@@ -214,6 +219,7 @@ initialModel flags url route key =
     , assignmentRepositories = Dict.empty
     , repositoryGenerations = Dict.empty
     , assignmentFieldSubmissionInputs = Dict.empty
+    , assignmentDrafts = Dict.empty
     , pendingAssignmentFieldSubmissionRequests = Dict.empty
     , engagements = RemoteData.NotAsked
     , users = RemoteData.NotAsked
