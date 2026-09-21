@@ -29,6 +29,9 @@ const (
 	joinTestClientID     = "Iv1.joinapp"
 	joinTestClientSecret = "join-app-secret-do-not-leak"
 	joinTestCode         = "authorization-code-1"
+	// joinTestNext is where most tests start the join from: the
+	// repositories page, which is also the default.
+	joinTestNext = repositoriesPagePath
 )
 
 // ---------------------------------------------------------------------------
@@ -275,7 +278,7 @@ func newJoinStack(t *testing.T) *joinStack {
 	t.Helper()
 	clock := &fakeClock{now: time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)}
 	db := newFakePostgREST(t, clock)
-	db.assignments["hw1"] = fakeAssignment{template: "course/hw1-starter"}
+	db.templates["hw1"] = fakeTemplate{label: "Homework 1 starter", template: "course/hw1-starter", assignmentSlug: "hw1"}
 	db.users[1] = &provisioningUser{ID: 1, NetID: "alice", Role: "student", TeamNickname: "alpha", GitHubLogin: "alice", GitHubUserID: 101}
 	db.users[3] = &provisioningUser{ID: 3, NetID: "carol", Role: "student"}
 
@@ -386,11 +389,12 @@ func (s *joinStack) secrets() []string {
 	return out
 }
 
-// start posts to the start route as the netid and returns the parsed
-// authorization URL.
-func (s *joinStack) start(netID string, slug string) (joinResponse, *url.URL) {
+// start posts to the start route as the netid, to return to next, and
+// returns the parsed authorization URL.
+func (s *joinStack) start(netID string, next string) (joinResponse, *url.URL) {
 	s.t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, s.server.URL+githubJoinStartPath, strings.NewReader(`{"assignment_slug":"`+slug+`"}`))
+	body, _ := json.Marshal(map[string]string{"next": next})
+	req, _ := http.NewRequest(http.MethodPost, s.server.URL+githubJoinStartPath, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	reply := s.do(req, netID)
@@ -419,9 +423,9 @@ func (s *joinStack) callback(netID string, query url.Values) joinResponse {
 
 // startAndCallback runs the round trip for the netid with the state GitHub
 // would echo back, plus the given extra query.
-func (s *joinStack) startAndCallback(netID string, slug string, extra url.Values) joinResponse {
+func (s *joinStack) startAndCallback(netID string, next string, extra url.Values) joinResponse {
 	s.t.Helper()
-	reply, authorization := s.start(netID, slug)
+	reply, authorization := s.start(netID, next)
 	if authorization == nil {
 		s.t.Fatalf("start = %d %s", reply.status, reply.body)
 	}
@@ -438,9 +442,12 @@ func (s *joinStack) startAndCallback(netID string, slug string, extra url.Values
 	return s.callback(netID, query)
 }
 
-func (r joinResponse) expectRedirect(t *testing.T, slug string, marker string) {
+// expectRedirect wants the callback's 303 to next with the marker: in the
+// query for a page, in the fragment's query for a client route. next here
+// carries no query of its own; the one that does is checked by name.
+func (r joinResponse) expectRedirect(t *testing.T, next string, marker string) {
 	t.Helper()
-	want := "/#/assignments/" + slug + "?github_join=" + url.QueryEscape(marker)
+	want := next + "?github_join=" + url.QueryEscape(marker)
 	if r.status != http.StatusSeeOther || r.location != want {
 		t.Fatalf("got %d Location %q (%s), want 303 to %q", r.status, r.location, strings.TrimSpace(r.body), want)
 	}
@@ -480,7 +487,7 @@ func (s *joinStack) assertNothingLeaked() {
 
 func TestJoinStartBuildsTheAuthorizationRequest(t *testing.T) {
 	s := newJoinStack(t)
-	_, authorization := s.start("carol", "hw1")
+	_, authorization := s.start("carol", joinTestNext)
 	if authorization == nil {
 		t.Fatal("start failed")
 	}
@@ -508,7 +515,7 @@ func TestJoinStartBuildsTheAuthorizationRequest(t *testing.T) {
 		t.Fatalf("code_challenge = %q, want a base64url SHA-256", challenge)
 	}
 	// Two starts never share a state or a challenge.
-	_, again := s.start("carol", "hw1")
+	_, again := s.start("carol", joinTestNext)
 	if again.Query().Get("state") == state || again.Query().Get("code_challenge") == query.Get("code_challenge") {
 		t.Fatal("state or code_challenge repeated across starts")
 	}
@@ -516,7 +523,7 @@ func TestJoinStartBuildsTheAuthorizationRequest(t *testing.T) {
 		t.Fatal("the client secret is in the authorization URL")
 	}
 	// The redirect_uri honours the scheme and host the proxy forwarded.
-	req, _ := http.NewRequest(http.MethodPost, s.server.URL+githubJoinStartPath, strings.NewReader(`{"assignment_slug":"hw1"}`))
+	req, _ := http.NewRequest(http.MethodPost, s.server.URL+githubJoinStartPath, strings.NewReader(`{"next":"/auth/repositories"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
 	req.Header.Set("X-Forwarded-Proto", "https")
@@ -543,13 +550,15 @@ func TestJoinStartRefusals(t *testing.T) {
 		}
 		return s.do(req, netID)
 	}
-	post("", `{"assignment_slug":"hw1"}`, nil).expectStatus(t, http.StatusUnauthorized)
-	post("carol", `{"assignment_slug":"hw1"}`, map[string]string{"Sec-Fetch-Site": "cross-site"}).expectStatus(t, http.StatusForbidden)
-	post("carol", `{"assignment_slug":"hw1"}`, map[string]string{"Sec-Fetch-Site": ""}).expectStatus(t, http.StatusForbidden)
-	post("carol", `{"assignment_slug":"../etc"}`, nil).expectStatus(t, http.StatusBadRequest)
-	post("carol", `{"assignment_slug":"HW1"}`, nil).expectStatus(t, http.StatusBadRequest)
+	post("", `{"next":"/auth/repositories"}`, nil).expectStatus(t, http.StatusUnauthorized)
+	post("carol", `{"next":"/auth/repositories"}`, map[string]string{"Sec-Fetch-Site": "cross-site"}).expectStatus(t, http.StatusForbidden)
+	post("carol", `{"next":"/auth/repositories"}`, map[string]string{"Sec-Fetch-Site": ""}).expectStatus(t, http.StatusForbidden)
+	// next must be this origin's repositories page or a client route.
+	for _, next := range []string{"https://evil.example/", "//evil.example/auth/repositories", "/auth/logout", "/auth/repositoriesx", "/\\evil.example", "/#/x\r\nSet-Cookie:a=b", "/auth/repositories?x=\u0001"} {
+		post("carol", `{"next":"`+next+`"}`, nil).expectStatus(t, http.StatusBadRequest)
+	}
 	post("carol", `not json`, nil).expectStatus(t, http.StatusBadRequest)
-	post("stranger", `{"assignment_slug":"hw1"}`, nil).expectStatus(t, http.StatusForbidden)
+	post("stranger", `{"next":"/auth/repositories"}`, nil).expectStatus(t, http.StatusForbidden)
 	// Refused starts leave no state behind for a callback to find.
 	s.callback("carol", url.Values{"state": {"anything"}, "code": {joinTestCode}}).expectStatus(t, http.StatusBadRequest)
 	if got := len(s.github.recorded()); got != 0 {
@@ -563,20 +572,20 @@ func TestJoinStartRefusals(t *testing.T) {
 func TestJoinStartIsRateLimitedPerStudent(t *testing.T) {
 	s := newJoinStack(t)
 	for i := 0; i < githubJoinStartsPerMinute; i++ {
-		if reply, _ := s.start("carol", "hw1"); reply.status != http.StatusOK {
+		if reply, _ := s.start("carol", joinTestNext); reply.status != http.StatusOK {
 			t.Fatalf("start %d = %d", i, reply.status)
 		}
 	}
-	reply, _ := s.start("carol", "hw1")
+	reply, _ := s.start("carol", joinTestNext)
 	reply.expectStatus(t, http.StatusTooManyRequests)
-	if reply, _ := s.start("alice", "hw1"); reply.status != http.StatusOK {
+	if reply, _ := s.start("alice", joinTestNext); reply.status != http.StatusOK {
 		t.Fatalf("another student is limited too: %d", reply.status)
 	}
 }
 
 func TestJoinNewMemberIsInvitedAcceptsAndIsAddedToTheTeam(t *testing.T) {
 	s := newJoinStack(t)
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 
 	want := []string{
 		"POST /login/oauth/access_token",
@@ -636,7 +645,7 @@ func TestJoinNewMemberIsInvitedAcceptsAndIsAddedToTheTeam(t *testing.T) {
 func TestJoinExistingMemberOnlyGetsTheTeamAdd(t *testing.T) {
 	s := newJoinStack(t)
 	s.github.memberships["carol-gh"] = "active"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	want := []string{
 		"POST /login/oauth/access_token",
 		"GET /user",
@@ -654,7 +663,7 @@ func TestJoinExistingMemberOnlyGetsTheTeamAdd(t *testing.T) {
 func TestJoinPendingInvitationIsAcceptedWithoutReinviting(t *testing.T) {
 	s := newJoinStack(t)
 	s.github.memberships["carol-gh"] = "pending"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	for _, call := range s.github.paths() {
 		if call == "PUT /orgs/course/memberships/carol-gh" {
 			t.Fatalf("re-invited a pending member: %v", s.github.paths())
@@ -673,7 +682,7 @@ func TestJoinQueuedAcceptIsConfirmedByRereading(t *testing.T) {
 	s := newJoinStack(t)
 	s.github.acceptStatus = http.StatusAccepted
 	s.github.acceptLands = true
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	want := []string{
 		"POST /login/oauth/access_token",
 		"GET /user",
@@ -690,7 +699,7 @@ func TestJoinQueuedAcceptIsConfirmedByRereading(t *testing.T) {
 	s = newJoinStack(t)
 	s.github.acceptStatus = http.StatusAccepted
 	s.github.acceptLands = false
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:membership_not_active")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:membership_not_active")
 	for _, call := range s.github.paths() {
 		if strings.Contains(call, "/teams/") {
 			t.Fatalf("added to the team while still pending: %v", s.github.paths())
@@ -705,7 +714,7 @@ func TestJoinQueuedAcceptIsConfirmedByRereading(t *testing.T) {
 func TestJoinWithoutAStudentsTeam(t *testing.T) {
 	s := newJoinStack(t)
 	s.handler.course.studentsTeamSlug = ""
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	for _, call := range s.github.paths() {
 		if strings.Contains(call, "/teams/") {
 			t.Fatalf("team add without a team configured: %v", s.github.paths())
@@ -722,14 +731,14 @@ func TestJoinCallbackRefusesWhatThisSessionDidNotStart(t *testing.T) {
 	// Mismatched state: refused, and the pending join is left for the
 	// real callback, so a stray hit cannot cancel an authorization in
 	// progress.
-	_, authorization := s.start("carol", "hw1")
+	_, authorization := s.start("carol", joinTestNext)
 	state := authorization.Query().Get("state")
 	s.github.expectedChallenge = authorization.Query().Get("code_challenge")
 	s.callback("carol", url.Values{"state": {"not-the-state"}, "code": {joinTestCode}}).expectStatus(t, http.StatusBadRequest)
 	s.callback("carol", url.Values{"state": {""}, "code": {joinTestCode}}).expectStatus(t, http.StatusBadRequest)
-	s.callback("carol", url.Values{"state": {state}, "code": {joinTestCode}}).expectRedirect(t, "hw1", "ok")
+	s.callback("carol", url.Values{"state": {state}, "code": {joinTestCode}}).expectRedirect(t, joinTestNext, "ok")
 	s.github.memberships = map[string]string{}
-	_, authorization = s.start("carol", "hw1")
+	_, authorization = s.start("carol", joinTestNext)
 	state = authorization.Query().Get("state")
 
 	// Another session's state, with a valid session of its own.
@@ -742,10 +751,10 @@ func TestJoinCallbackRefusesWhatThisSessionDidNotStart(t *testing.T) {
 	s.callback("carol", url.Values{"state": {state}, "code": {joinTestCode}}).expectStatus(t, http.StatusBadRequest)
 
 	// Replay: a state that was used once, whatever the outcome.
-	_, authorization = s.start("carol", "hw1")
+	_, authorization = s.start("carol", joinTestNext)
 	state = authorization.Query().Get("state")
 	s.github.expectedChallenge = authorization.Query().Get("code_challenge")
-	s.callback("carol", url.Values{"state": {state}, "code": {joinTestCode}}).expectRedirect(t, "hw1", "ok")
+	s.callback("carol", url.Values{"state": {state}, "code": {joinTestCode}}).expectRedirect(t, joinTestNext, "ok")
 	s.callback("carol", url.Values{"state": {state}, "code": {joinTestCode}}).expectStatus(t, http.StatusBadRequest)
 
 	// Exactly the two matching callbacks reached GitHub.
@@ -757,12 +766,12 @@ func TestJoinCallbackRefusesWhatThisSessionDidNotStart(t *testing.T) {
 
 func TestJoinDenialRedirectsWithoutCallingGitHub(t *testing.T) {
 	s := newJoinStack(t)
-	s.startAndCallback("carol", "hw1", url.Values{"error": {"access_denied"}, "error_description": {"The user has denied your application access."}}).
-		expectRedirect(t, "hw1", "denied")
-	s.startAndCallback("carol", "hw1", url.Values{"error": {"application_suspended"}}).
-		expectRedirect(t, "hw1", "error:authorization_failed")
+	s.startAndCallback("carol", joinTestNext, url.Values{"error": {"access_denied"}, "error_description": {"The user has denied your application access."}}).
+		expectRedirect(t, joinTestNext, "denied")
+	s.startAndCallback("carol", joinTestNext, url.Values{"error": {"application_suspended"}}).
+		expectRedirect(t, joinTestNext, "error:authorization_failed")
 	// A callback with neither a code nor an error.
-	s.startAndCallback("carol", "hw1", url.Values{}).expectRedirect(t, "hw1", "error:authorization_failed")
+	s.startAndCallback("carol", joinTestNext, url.Values{}).expectRedirect(t, joinTestNext, "error:authorization_failed")
 	if got := len(s.github.recorded()); got != 0 {
 		t.Fatalf("GitHub was called %d times", got)
 	}
@@ -777,7 +786,7 @@ func TestJoinIdentityTakenStopsBeforeMembership(t *testing.T) {
 	s := newJoinStack(t)
 	// alice already holds account 103.
 	s.db.users[1].GitHubUserID = 103
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:github_identity_taken")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:github_identity_taken")
 	want := []string{"POST /login/oauth/access_token", "GET /user"}
 	if got := s.github.paths(); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("GitHub calls: %v, want %v", got, want)
@@ -793,8 +802,8 @@ func TestJoinIdentityLockedAfterProvisioning(t *testing.T) {
 	// carol has a repository under account 999; the App says she is 103.
 	s.db.users[3].GitHubUserID = 999
 	s.db.users[3].GitHubLogin = "old-carol"
-	s.db.seedRepository(fakeRepositoryRow{AssignmentSlug: "hw1", UserID: 3, Provider: "github", ProviderRepoID: 5, ProviderFullName: "course/hw1-old-carol"})
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:github_identity_locked")
+	s.db.seedRepository(fakeRepositoryRow{TemplateSlug: "hw1", UserID: 3, Provider: "github", ProviderRepoID: 5, ProviderFullName: "course/hw1-old-carol"})
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:github_identity_locked")
 	if got := len(s.github.paths()); got != 2 {
 		t.Fatalf("GitHub calls after a locked identity: %v", s.github.paths())
 	}
@@ -805,7 +814,7 @@ func TestJoinIdentityLockedAfterProvisioning(t *testing.T) {
 	// The same account again is not a change: the login is refreshed and
 	// the identity becomes verified.
 	s.github.account = githubUser{ID: 999, Login: "renamed-carol"}
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	if carol := s.db.users[3]; carol.GitHubUserID != 999 || carol.GitHubLogin != "renamed-carol" || !s.db.verified[3] {
 		t.Fatalf("carol = %+v verified=%v", carol, s.db.verified[3])
 	}
@@ -814,28 +823,28 @@ func TestJoinIdentityLockedAfterProvisioning(t *testing.T) {
 func TestJoinTokenExchangeFailures(t *testing.T) {
 	s := newJoinStack(t)
 	s.github.tokenStatus = http.StatusBadGateway
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:github_unavailable")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:github_unavailable")
 
 	s.github.tokenStatus = 0
 	s.github.tokenError = "bad_verification_code"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:authorization_failed")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:authorization_failed")
 
 	// The OAuth error is read whatever the status carries it.
 	s.github.tokenStatus = http.StatusBadRequest
 	s.github.tokenError = "bad_verification_code"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:authorization_failed")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:authorization_failed")
 
 	s.github.tokenStatus = 0
 	s.github.tokenError = ""
 	s.handler.app.clientSecret = "rotated-away"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:join_app_misconfigured")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:join_app_misconfigured")
 	if !strings.Contains(s.logs.String(), "ERROR GitHub refused the join App's client id or secret") {
 		t.Fatalf("operator error not logged:\n%s", s.logs.String())
 	}
 	s.handler.app.clientSecret = joinTestClientSecret
 
 	s.github.tokenStatus = http.StatusTooManyRequests
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:github_rate_limited")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:github_rate_limited")
 	s.github.tokenStatus = 0
 
 	// Nothing past the exchange was attempted, and nothing was linked.
@@ -856,7 +865,7 @@ func TestJoinTokenExchangeFailures(t *testing.T) {
 func TestJoinMembershipFailureKeepsTheIdentityAndIsRetryable(t *testing.T) {
 	s := newJoinStack(t)
 	s.github.acceptStatus = http.StatusBadGateway
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:github_unavailable")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:github_unavailable")
 	if carol := s.db.users[3]; carol.GitHubUserID != 103 || !s.db.verified[3] {
 		t.Fatalf("identity not kept: %+v", carol)
 	}
@@ -865,7 +874,7 @@ func TestJoinMembershipFailureKeepsTheIdentityAndIsRetryable(t *testing.T) {
 	}
 
 	s.github.acceptStatus = 0
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	invites := 0
 	for _, call := range s.github.paths() {
 		if call == "PUT /orgs/course/memberships/carol-gh" {
@@ -882,7 +891,7 @@ func TestJoinCourseCredentialRejected(t *testing.T) {
 	s := newJoinStack(t)
 	// The installation was removed, or the App lost the members permission.
 	s.github.courseToken = "rotated-away"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "error:github_credential_rejected")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "error:github_credential_rejected")
 	if !strings.Contains(s.logs.String(), "ERROR GitHub refused the course credential") {
 		t.Fatalf("operator error not logged:\n%s", s.logs.String())
 	}
@@ -894,22 +903,28 @@ func TestJoinLandingPage(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, s.server.URL+path, nil)
 		return s.do(req, netID)
 	}
-	reply := get("carol", githubJoinURL("hw1"))
+	reply := get("carol", githubJoinURL("/#/assignments/hw1"))
 	if reply.status != http.StatusOK {
 		t.Fatalf("landing = %d %s", reply.status, reply.body)
 	}
-	for _, want := range []string{`action="` + githubJoinStartPath + `"`, `value="hw1"`, ">Continue to GitHub</button>", `<script src="` + githubJoinScriptPath + `">`, "<noscript>"} {
+	for _, want := range []string{`action="` + githubJoinStartPath + `"`, `name="next" value="/#/assignments/hw1"`, ">Continue to GitHub</button>", `<script src="` + githubJoinScriptPath + `">`, "<noscript>"} {
 		if !strings.Contains(reply.body, want) {
 			t.Fatalf("landing page lacks %q:\n%s", want, reply.body)
 		}
 	}
-	// The slug is escaped on the page and refused when malformed.
-	get("carol", githubJoinLandingPath+"?assignment_slug=%3Cscript%3E").expectStatus(t, http.StatusBadRequest)
-	get("carol", githubJoinLandingPath).expectStatus(t, http.StatusBadRequest)
+	// No next is the repositories page; a next off this origin, or
+	// elsewhere on it, is refused rather than defaulted.
+	if reply := get("carol", githubJoinLandingPath); reply.status != http.StatusOK || !strings.Contains(reply.body, `name="next" value="`+repositoriesPagePath+`"`) {
+		t.Fatalf("landing without next = %d %s", reply.status, reply.body)
+	}
+	get("carol", githubJoinURL("https://evil.example/")).expectStatus(t, http.StatusBadRequest)
+	get("carol", githubJoinURL("//evil.example/")).expectStatus(t, http.StatusBadRequest)
+	get("carol", githubJoinURL("/auth/connected-apps")).expectStatus(t, http.StatusBadRequest)
+	get("carol", githubJoinLandingPath+"?next=%3Cscript%3E").expectStatus(t, http.StatusBadRequest)
 
 	// A visitor without a session is sent through login and back here.
-	reply = get("", githubJoinURL("hw1"))
-	if reply.status != http.StatusFound || reply.location != githubJoinLoginPath+"?next="+url.QueryEscape(githubJoinURL("hw1")) {
+	reply = get("", githubJoinURL("/#/assignments/hw1"))
+	if reply.status != http.StatusFound || reply.location != githubJoinLoginPath+"?next="+url.QueryEscape(githubJoinURL("/#/assignments/hw1")) {
 		t.Fatalf("signed-out landing = %d %q", reply.status, reply.location)
 	}
 
@@ -945,10 +960,10 @@ func TestJoinLandingPage(t *testing.T) {
 	}
 }
 
-// The provisioning POST names the landing page when the caller's own
-// membership or identity is the blocker and the join App is configured; a
-// teammate's blocker stays a conflict, and without the join App the field
-// stays null.
+// The provisioning POST names the landing page, returning to the
+// repositories page, when the caller's own membership or identity is the
+// blocker and the join App is configured; a teammate's blocker stays a
+// conflict, and without the join App the field stays null.
 func TestJoinURLInProvisioningReplies(t *testing.T) {
 	s := newProvisioningStack(t)
 	s.github.memberships["alice"] = "pending"
@@ -967,21 +982,21 @@ func TestJoinURLInProvisioningReplies(t *testing.T) {
 		_ = json.Unmarshal([]byte(reply.body), &decoded)
 		return decoded.JoinURL
 	}
-	if got := joinURLOf(s.post("alice", "hw1"), repositoryStateNeedsOrgJoin); got != "/auth/github/join?assignment_slug=hw1" {
+	if got := joinURLOf(s.post("alice", "hw1"), repositoryStateNeedsOrgJoin); got != githubJoinURL(repositoriesPagePath) {
 		t.Fatalf("needs_org_join join_url = %q", got)
 	}
 	// No login on record (the claim RPC's refusal).
-	if got := joinURLOf(s.post("carol", "hw1"), repositoryStateNeedsGitHubLink); got != "/auth/github/join?assignment_slug=hw1" {
+	if got := joinURLOf(s.post("carol", "hw1"), repositoryStateNeedsGitHubLink); got != githubJoinURL(repositoriesPagePath) {
 		t.Fatalf("needs_github_link join_url = %q", got)
 	}
 	// A login that no longer resolves, and one that resolves to another id.
 	s.db.users[2].GitHubLogin = "bob-renamed"
-	if got := joinURLOf(s.post("bob", "hw1"), repositoryStateNeedsGitHubLink); got != "/auth/github/join?assignment_slug=hw1" {
+	if got := joinURLOf(s.post("bob", "hw1"), repositoryStateNeedsGitHubLink); got != githubJoinURL(repositoriesPagePath) {
 		t.Fatalf("unresolvable login join_url = %q", got)
 	}
 	s.github.memberships["alice"] = "active"
 	s.db.users[1].GitHubUserID = 999
-	if got := joinURLOf(s.post("alice", "hw1"), repositoryStateNeedsGitHubLink); got != "/auth/github/join?assignment_slug=hw1" {
+	if got := joinURLOf(s.post("alice", "hw1"), repositoryStateNeedsGitHubLink); got != githubJoinURL(repositoriesPagePath) {
 		t.Fatalf("mismatched id join_url = %q", got)
 	}
 	// bob's blocker blocks the team, and alice is not offered bob's join.
@@ -996,7 +1011,7 @@ func TestJoinURLInProvisioningReplies(t *testing.T) {
 func TestJoinLinksIdentityForExistingMembers(t *testing.T) {
 	s := newJoinStack(t)
 	s.github.memberships["carol-gh"] = "active"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	want := []string{
 		"POST /login/oauth/access_token",
 		"GET /user",
@@ -1012,86 +1027,61 @@ func TestJoinLinksIdentityForExistingMembers(t *testing.T) {
 
 	s = newJoinStack(t)
 	s.db.users[3].GitHubLogin = "carol-typed-this-wrong"
-	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	s.startAndCallback("carol", joinTestNext, nil).expectRedirect(t, joinTestNext, "ok")
 	if carol := s.db.users[3]; carol.GitHubUserID != 103 || carol.GitHubLogin != "carol-gh" || !s.db.verified[3] {
 		t.Fatalf("carol = %+v verified=%v", carol, s.db.verified[3])
 	}
 	s.assertNothingLeaked()
 }
 
-// The plain create link: a page that POSTs to the create route and goes to
-// the assignment page. It is not a second way to create anything.
-func TestRepositoryCreatePage(t *testing.T) {
-	s := newProvisioningStack(t)
-	get := func(netID string, path string) *http.Response {
-		t.Helper()
-		client := s.clientFor(netID)
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-		response, err := client.Get(s.server.URL + path)
-		if err != nil {
-			t.Fatalf("GET %s: %v", path, err)
-		}
-		t.Cleanup(func() { response.Body.Close() })
-		return response
+// The callback returns to whatever next the join was started with, with
+// the marker in the URL's query for a page and in the fragment's query for
+// a client route, appended to a query already there.
+func TestJoinCallbackReturnsToNext(t *testing.T) {
+	s := newJoinStack(t)
+	s.startAndCallback("carol", "/auth/repositories", nil).expectRedirect(t, "/auth/repositories", "ok")
+	s.github.memberships = map[string]string{}
+	s.startAndCallback("carol", "/#/assignments/hw1", nil).expectRedirect(t, "/#/assignments/hw1", "ok")
+	s.github.memberships = map[string]string{}
+	if reply := s.startAndCallback("carol", "/#/assignments/hw1?tab=fields", nil); reply.status != http.StatusSeeOther || reply.location != "/#/assignments/hw1?tab=fields&github_join=ok" {
+		t.Fatalf("fragment with a query: %d %q", reply.status, reply.location)
 	}
-	response := get("alice", "/auth/assignments/hw1/repository/create")
-	raw, _ := io.ReadAll(response.Body)
-	body := string(raw)
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("create page = %d %s", response.StatusCode, body)
+	s.github.memberships = map[string]string{}
+	if reply := s.startAndCallback("carol", "/auth/repositories?template=hw1", url.Values{"error": {"access_denied"}}); reply.status != http.StatusSeeOther || reply.location != "/auth/repositories?github_join=denied&template=hw1" {
+		t.Fatalf("page with a query: %d %q", reply.status, reply.location)
 	}
-	if csp := response.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "connect-src 'self'") {
-		t.Fatalf("CSP = %q", csp)
+	// The default when start names nothing.
+	req, _ := http.NewRequest(http.MethodPost, s.server.URL+githubJoinStartPath, strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	reply := s.do(req, "carol")
+	var decoded struct {
+		AuthorizationURL string `json:"authorization_url"`
 	}
-	if got := response.Header.Get("Cache-Control"); got != "no-store" {
-		t.Fatalf("Cache-Control = %q", got)
-	}
-	for _, want := range []string{`action="/auth/assignments/hw1/repository"`, `data-return="/#/assignments/hw1"`, `<script src="` + repositoryCreateScriptPath + `">`, "<noscript>"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("create page lacks %q:\n%s", want, body)
-		}
-	}
-	script := get("alice", repositoryCreateScriptPath)
-	scriptBody, _ := io.ReadAll(script.Body)
-	if script.StatusCode != http.StatusOK || !strings.Contains(string(scriptBody), "fetch(form.action") || !strings.Contains(string(scriptBody), `getAttribute("data-return")`) {
-		t.Fatalf("script = %d %s", script.StatusCode, scriptBody)
-	}
-	// The POST is made from the submit handler and nowhere else: no
-	// top-level call, so a link to this page cannot create anything by
-	// itself. Every fetch in the script sits inside the handler that
-	// addEventListener registers, and the button is disabled for the
-	// duration.
-	js := string(scriptBody)
-	handlerStart := strings.Index(js, `form.addEventListener("submit"`)
-	if handlerStart < 0 {
-		t.Fatalf("script registers no submit handler:\n%s", js)
-	}
-	if fetchAt := strings.Index(js, "fetch("); fetchAt < handlerStart || strings.Count(js, "fetch(") != 1 {
-		t.Fatalf("script fetches outside the submit handler:\n%s", js)
-	}
-	for _, banned := range []string{"create()", "submit()", "requestSubmit(", "DOMContentLoaded", `addEventListener("load"`} {
-		if strings.Contains(js, banned) {
-			t.Fatalf("script invokes the POST automatically (%q):\n%s", banned, js)
-		}
-	}
-	if !strings.Contains(js, "button.disabled = true") {
-		t.Fatalf("script does not disable the button while in flight:\n%s", js)
-	}
-	if bad := get("alice", "/auth/assignments/Not%20A%20Slug/repository/create"); bad.StatusCode != http.StatusBadRequest {
-		t.Fatalf("malformed slug = %d", bad.StatusCode)
-	}
+	_ = json.Unmarshal([]byte(reply.body), &decoded)
+	authorization, _ := url.Parse(decoded.AuthorizationURL)
+	s.github.mu.Lock()
+	s.github.expectedChallenge = authorization.Query().Get("code_challenge")
+	s.github.mu.Unlock()
+	s.callback("carol", url.Values{"state": {authorization.Query().Get("state")}, "code": {joinTestCode}}).expectRedirect(t, repositoriesPagePath, "ok")
+	s.assertNothingLeaked()
+}
 
-	visitor := get("", "/auth/assignments/hw1/repository/create")
-	if visitor.StatusCode != http.StatusFound || visitor.Header.Get("Location") != "/auth/login?next="+url.QueryEscape("/auth/assignments/hw1/repository/create") {
-		t.Fatalf("signed-out create page = %d %q", visitor.StatusCode, visitor.Header.Get("Location"))
+func TestGitHubJoinNext(t *testing.T) {
+	allowed := []string{"/auth/repositories", "/auth/repositories?github_join=ok", "/auth/repositories/", "/#/", "/#/assignments/hw1", "/#/assignments/hw1?x=1"}
+	for _, next := range allowed {
+		if got, ok := githubJoinNext(next); !ok || got != next {
+			t.Errorf("githubJoinNext(%q) = %q, %v; want it back", next, got, ok)
+		}
 	}
-	// Rendering the page, its script, and the refusals above touched
-	// neither GitHub nor the attempt table: nothing is created by a GET.
-	if got := s.github.count("generate") + s.github.count("user") + s.github.count("membership"); got != 0 {
-		t.Fatalf("rendering the page called GitHub (%d calls)", got)
+	if got, ok := githubJoinNext(""); !ok || got != repositoriesPagePath {
+		t.Errorf("githubJoinNext(\"\") = %q, %v", got, ok)
 	}
-	if got := s.db.rpcCalls["claim_repository_provisioning"]; got != 0 {
-		t.Fatalf("rendering the page claimed an attempt (%d)", got)
+	refused := []string{"https://evil.example/auth/repositories", "//evil.example", "/auth/repositoriesx", "/auth/login", "/", "#/assignments/hw1", "auth/repositories", "/auth/repositories\\evil", "/auth/repositories\n", "/#/\u00e9", strings.Repeat("/#/a", 200)}
+	for _, next := range refused {
+		if got, ok := githubJoinNext(next); ok {
+			t.Errorf("githubJoinNext(%q) = %q, allowed", next, got)
+		}
 	}
 }
 

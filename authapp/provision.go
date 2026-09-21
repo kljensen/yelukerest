@@ -1,21 +1,25 @@
 package main
 
-// Self-serve assignment repositories: the two routes a student's assignment
-// page talks to (ADR 0006; issues #395 and #396).
+// Self-serve repositories: the routes behind the repositories page (ADR
+// 0006; issues #395 and #396, decoupled from submissions on 2026-09-21).
 //
-//	POST /auth/assignments/{slug}/repository   create, or resume creating
-//	GET  /auth/assignments/{slug}/repository   ask how far it has got
+//	GET  /auth/repositories                  the page (repositoriespage.go)
+//	GET  /auth/repositories.js               its script
+//	POST /auth/repositories/{template_slug}  create, or resume creating
+//	GET  /auth/repositories/{template_slug}  ask how far it has got
 //
-// Authapp orchestrates and decides nothing about eligibility. Whether the
-// assignment takes repositories, whether the caller is a student on the
-// right team, whether the deadline has passed, and whether an attempt or a
-// repository already exists are answered by the service RPCs in migration
-// 01a0bb0d; this file calls them through PostgREST as the app role and does
-// the GitHub side in between. The attempt row is the checkpoint: every
-// GitHub call happens outside any database transaction, each stage is
-// recorded after the call that completes it, and a request that finds an
-// attempt part-way resumes from its stage. There is no worker; the next
-// request is the only actor.
+// A student creates a repository from a template (api.repository_templates)
+// on their own page; an assignment consumes the URL they paste. Authapp
+// orchestrates and decides nothing about eligibility. Whether the template
+// exists and is active, whether the caller is a student on a team when the
+// template is a team one, whether the template's assignment has closed, and
+// whether an attempt or a repository already exists are answered by the
+// service RPCs in migration 01a0bb0d; this file calls them through
+// PostgREST as the app role and does the GitHub side in between. The
+// attempt row is the checkpoint: every GitHub call happens outside any
+// database transaction, each stage is recorded after the call that
+// completes it, and a request that finds an attempt part-way resumes from
+// its stage. There is no worker; the next request is the only actor.
 
 import (
 	"bytes"
@@ -29,6 +33,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,6 +43,9 @@ import (
 )
 
 const (
+	// repositoriesPagePath is the page, and the prefix of the per-template
+	// routes. join.go sends a student back here by default.
+	repositoriesPagePath = "/auth/repositories"
 	// provisioningReadinessCacheWindow is how long a stored readiness answer
 	// stands in for asking GitHub again. The page polls every three seconds,
 	// so concurrent polls, and two tabs, share one check per interval.
@@ -72,9 +80,17 @@ const (
 	repositoryStateNeedsOrgJoin    = "needs_org_join"
 )
 
-// provisioningHandler serves both routes. One per process; the mutex map
-// and the provider cooldown are what make two requests in one process
-// cooperate, and the attempt row is what makes two processes cooperate.
+// templateSlugPattern is the shape of a repository template slug (the
+// database bounds it at 60 characters). A slug is the one caller-supplied
+// value the per-template routes take, and it reaches a PostgREST filter and
+// a redirect, so anything else is answered as a template that does not
+// exist before either.
+var templateSlugPattern = regexp.MustCompile(`^[a-z0-9-]{1,60}$`)
+
+// provisioningHandler serves the per-template routes and the page. One per
+// process; the mutex map and the provider cooldown are what make two
+// requests in one process cooperate, and the attempt row is what makes two
+// processes cooperate.
 type provisioningHandler struct {
 	github   *githubProvisioner
 	db       FetchJWTConfig
@@ -82,7 +98,7 @@ type provisioningHandler struct {
 	limiter  *rateLimiter
 	now      func() time.Time
 
-	// owners holds one *sync.Mutex per owner (assignment plus student or
+	// owners holds one *sync.Mutex per owner (template plus student or
 	// team) that has had a mutating request. Two POSTs for the same owner
 	// at once get the same attempt from the claim RPC; the second waits
 	// here for the first and then re-reads the attempt, so it continues
@@ -91,7 +107,7 @@ type provisioningHandler struct {
 	// replica; a second replica would still converge through the attempt
 	// row, at the cost of a possible duplicate GitHub call that the
 	// name-lookup reconciles. Entries are never removed: there is one per
-	// owner per assignment, which is bounded by the roster.
+	// owner per template, which is bounded by the roster.
 	owners sync.Map
 
 	// cooldownUntil is the deployment-wide provider cooldown. When GitHub
@@ -133,27 +149,58 @@ func registerProvisioningRoutes(mux *http.ServeMux, github *githubProvisioner, d
 		return
 	}
 	handler := newProvisioningHandler(github, db, sessions)
-	mux.Handle("/auth/assignments/{slug}/repository", handler)
-	registerRepositoryCreatePage(mux, sessions)
+	handler.register(mux)
 }
 
+func (h *provisioningHandler) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET "+repositoriesPagePath, h.servePage)
+	mux.HandleFunc("GET "+repositoriesScriptPath, serveRepositoriesScript)
+	mux.Handle(repositoriesPagePath+"/{template_slug}", h)
+}
+
+// ServeHTTP is the per-template routes. The POST answers JSON to the page's
+// script and any other fetch, and sends a plain form post back to the page
+// with the outcome in the query, so the page works without the script.
 func (h *provisioningHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	setNoStoreHeaders(w)
-	netID := h.sessions.GetString(r.Context(), "netid")
-	if netID == "" {
-		writeProvisioningReply(w, errorReply(http.StatusUnauthorized, "unauthenticated", false))
-		return
-	}
-	slug := r.PathValue("slug")
+	slug := r.PathValue("template_slug")
 	switch r.Method {
 	case http.MethodPost:
-		h.serveCreate(w, r, netID, slug)
+		reply := h.create(r, slug)
+		if wantsProvisioningJSON(r) {
+			writeProvisioningReply(w, reply)
+			return
+		}
+		if reply.code == "unauthenticated" {
+			http.Redirect(w, r, githubJoinLoginPath+"?"+url.Values{"next": {repositoriesPagePath}}.Encode(), http.StatusSeeOther)
+			return
+		}
+		result := reply.state
+		if result == "" {
+			result = reply.code
+		}
+		http.Redirect(w, r, repositoriesPagePath+"?"+url.Values{"template": {slug}, "result": {result}}.Encode(), http.StatusSeeOther)
 	case http.MethodGet:
-		h.serveStatus(w, r, netID, slug)
+		writeProvisioningReply(w, h.status(r, slug))
 	default:
 		w.Header().Set("Allow", "GET, POST")
 		writeProvisioningReply(w, errorReply(http.StatusMethodNotAllowed, "method_not_allowed", false))
 	}
+}
+
+// wantsProvisioningJSON tells the page's fetch (and any other script) from
+// a form submission. A fetch says so with Accept, and browsers mark one
+// with Sec-Fetch-Mode cors or same-origin; a form navigation says navigate
+// and accepts text/html.
+func wantsProvisioningJSON(r *http.Request) bool {
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		return true
+	}
+	switch r.Header.Get("Sec-Fetch-Mode") {
+	case "cors", "same-origin":
+		return true
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -321,22 +368,23 @@ func postgrestDo(ctx context.Context, bearer string, method string, endpoint str
 // fields are readable by the app role, which is why the user is looked up
 // here rather than through fetchUserInfo.
 type provisioningUser struct {
-	ID           int    `json:"id"`
-	NetID        string `json:"netid"`
-	Role         string `json:"role"`
-	TeamNickname string `json:"team_nickname"`
-	GitHubUserID int64  `json:"github_user_id"`
-	GitHubLogin  string `json:"github_login"`
+	ID               int        `json:"id"`
+	NetID            string     `json:"netid"`
+	Role             string     `json:"role"`
+	TeamNickname     string     `json:"team_nickname"`
+	GitHubUserID     int64      `json:"github_user_id"`
+	GitHubLogin      string     `json:"github_login"`
+	GitHubVerifiedAt *time.Time `json:"github_verified_at"`
 }
 
-const provisioningUserColumns = "id,netid,role,team_nickname,github_user_id,github_login"
+const provisioningUserColumns = "id,netid,role,team_nickname,github_user_id,github_login,github_verified_at"
 
 // provisioningAttempt is a row of api.claim_repository_provisioning's result,
-// which is also the shape of api.assignment_repository_provisionings plus
+// which is also the shape of api.repository_provisionings plus
 // existing_repository_id. Nullable columns decode to their zero value.
 type provisioningAttempt struct {
 	ID                   int        `json:"id"`
-	AssignmentSlug       string     `json:"assignment_slug"`
+	TemplateSlug         string     `json:"template_slug"`
 	IsTeam               bool       `json:"is_team"`
 	UserID               int        `json:"user_id"`
 	TeamNickname         string     `json:"team_nickname"`
@@ -355,12 +403,32 @@ type provisioningAttempt struct {
 	ExistingRepositoryID int        `json:"existing_repository_id"`
 }
 
-// provisioningRepository is the slice of api.assignment_repositories the
-// status route reads.
+// provisioningRepository is a row of api.my_repositories: the caller's own
+// (or their team's) repositories joined with their template. The status
+// route reads one; the page lists them all.
 type provisioningRepository struct {
 	ID               int       `json:"id"`
+	TemplateSlug     string    `json:"template_slug"`
+	IsTeam           bool      `json:"is_team"`
+	TeamNickname     string    `json:"team_nickname"`
 	ProviderFullName string    `json:"provider_full_name"`
+	RepoURL          string    `json:"repo_url"`
+	Label            string    `json:"label"`
+	AssignmentSlug   string    `json:"assignment_slug"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+// provisioningTemplate is a row of api.repository_templates as the page
+// and the status route read it.
+type provisioningTemplate struct {
+	Slug             string `json:"slug"`
+	Provider         string `json:"provider"`
+	TemplateFullName string `json:"template_full_name"`
+	Label            string `json:"label"`
+	Description      string `json:"description"`
+	IsTeam           bool   `json:"is_team"`
+	AssignmentSlug   string `json:"assignment_slug"`
+	IsActive         bool   `json:"is_active"`
 }
 
 // platformReply is the answer when PostgREST itself, rather than a rule in
@@ -398,19 +466,19 @@ func (h *provisioningHandler) teamMembers(ctx context.Context, teamNickname stri
 func (h *provisioningHandler) claim(ctx context.Context, slug string, userID int) (provisioningAttempt, *provisioningReply) {
 	var attempt provisioningAttempt
 	err := postgrestRPC(ctx, h.db, "claim_repository_provisioning", map[string]any{
-		"p_assignment_slug": slug,
-		"p_user_id":         userID,
+		"p_template_slug": slug,
+		"p_user_id":       userID,
 	}, &attempt)
 	if err == nil {
 		return attempt, nil
 	}
 	switch code := postgrestRaised(err); code {
-	case "repository_not_configured":
+	case "template_not_found", "template_inactive":
 		return attempt, errorReply(http.StatusNotFound, code, false)
 	case "not_a_student", "no_team", "assignment_closed":
 		return attempt, errorReply(http.StatusForbidden, code, false)
 	case "needs_github_link":
-		return attempt, h.selfServiceReply(slug, repositoryStateNeedsGitHubLink)
+		return attempt, h.selfServiceReply(repositoryStateNeedsGitHubLink)
 	case "destination_name_too_long":
 		return attempt, errorReply(http.StatusConflict, code, false)
 	case "":
@@ -516,7 +584,7 @@ func (h *provisioningHandler) cooldownReply() *provisioningReply {
 // return URL uses) plus the host -- so an http origin cannot pass for the
 // https site. A request that says neither is refused, because a browser
 // always sends at least one on a POST and anything else is not the
-// assignment page.
+// repositories page.
 func isSameOriginRequest(r *http.Request) bool {
 	switch r.Header.Get("Sec-Fetch-Site") {
 	case "same-origin", "none":
@@ -532,14 +600,21 @@ func isSameOriginRequest(r *http.Request) bool {
 	return strings.EqualFold(origin.Scheme, getRequestScheme(r)) && strings.EqualFold(origin.Host, r.Host)
 }
 
-func (h *provisioningHandler) serveCreate(w http.ResponseWriter, r *http.Request, netID string, slug string) {
+// create is the POST: create the caller's repository from the template, or
+// resume creating it, and answer its state.
+func (h *provisioningHandler) create(r *http.Request, slug string) *provisioningReply {
+	netID := h.sessions.GetString(r.Context(), "netid")
+	if netID == "" {
+		return errorReply(http.StatusUnauthorized, "unauthenticated", false)
+	}
 	if !isSameOriginRequest(r) {
-		writeProvisioningReply(w, errorReply(http.StatusForbidden, "cross_site_request", false))
-		return
+		return errorReply(http.StatusForbidden, "cross_site_request", false)
+	}
+	if !templateSlugPattern.MatchString(slug) {
+		return errorReply(http.StatusNotFound, "template_not_found", false)
 	}
 	if !h.limiter.Allow("netid:"+netID, h.now()) {
-		writeProvisioningReply(w, retryLaterReply("too_many_requests", time.Minute))
-		return
+		return retryLaterReply("too_many_requests", time.Minute)
 	}
 	// The body is ignored: the owner, template, and name all come from the
 	// session and the database, never from the caller.
@@ -548,22 +623,19 @@ func (h *provisioningHandler) serveCreate(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	caller, reply := h.lookupUser(ctx, netID)
 	if reply != nil {
-		writeProvisioningReply(w, reply)
-		return
+		return reply
 	}
 	attempt, reply := h.claim(ctx, slug, caller.ID)
 	if reply != nil {
-		writeProvisioningReply(w, reply)
-		return
+		return reply
 	}
 	if attempt.Stage != provisioningStageFinalized {
 		attempt, reply = h.advanceLocked(ctx, caller, slug, attempt)
 		if reply != nil {
-			writeProvisioningReply(w, reply)
-			return
+			return reply
 		}
 	}
-	writeProvisioningReply(w, h.readiness(ctx, readinessSubjectOf(attempt)))
+	return h.readiness(ctx, readinessSubjectOf(attempt))
 }
 
 // advanceLocked runs the mutating stages under the owner's mutex. The
@@ -571,7 +643,7 @@ func (h *provisioningHandler) serveCreate(w http.ResponseWriter, r *http.Request
 // finished a stage, or all of them, while this one waited, and the claim
 // RPC is the cheap, idempotent way to find out.
 func (h *provisioningHandler) advanceLocked(ctx context.Context, caller provisioningUser, slug string, attempt provisioningAttempt) (provisioningAttempt, *provisioningReply) {
-	key := attempt.AssignmentSlug + "|"
+	key := attempt.TemplateSlug + "|"
 	if attempt.IsTeam {
 		key += "team:" + attempt.TeamNickname
 	} else {
@@ -603,7 +675,7 @@ func (h *provisioningHandler) advance(ctx context.Context, caller provisioningUs
 	if reply != nil {
 		return attempt, reply
 	}
-	if reply := h.validateOwners(ctx, caller, attempt.AssignmentSlug, owners); reply != nil {
+	if reply := h.validateOwners(ctx, caller, owners); reply != nil {
 		return attempt, reply
 	}
 	if attempt.Stage == provisioningStageClaimed {
@@ -628,7 +700,7 @@ func (h *provisioningHandler) advance(ctx context.Context, caller provisioningUs
 }
 
 // ownersOf lists who must end up with push: the caller alone for an
-// individual assignment, the team's current roster for a team one, read
+// individual template, the team's current roster for a team one, read
 // fresh on every request so a roster change between stages is seen. The
 // caller comes first so their own blocker is reported before a teammate's.
 func (h *provisioningHandler) ownersOf(ctx context.Context, caller provisioningUser, attempt provisioningAttempt) ([]provisioningUser, *provisioningReply) {
@@ -650,14 +722,14 @@ func (h *provisioningHandler) ownersOf(ctx context.Context, caller provisioningU
 
 // selfServiceReply is the answer when the caller's own GitHub identity or
 // membership is what stands in the way. With the join flow configured
-// (join.go) it names the landing page for the assignment, and one
-// authorization there settles both: the callback records the verified
-// identity before it does anything about membership. Without it join_url
-// is null and the student is on their own, as before.
-func (h *provisioningHandler) selfServiceReply(slug string, state string) *provisioningReply {
+// (join.go) it names the landing page, which returns to the repositories
+// page, and one authorization there settles both: the callback records the
+// verified identity before it does anything about membership. Without it
+// join_url is null and the student is on their own, as before.
+func (h *provisioningHandler) selfServiceReply(state string) *provisioningReply {
 	reply := stateReply(http.StatusOK, state, "")
 	if h.github.join != nil {
-		reply.joinURL = githubJoinURL(slug)
+		reply.joinURL = githubJoinURL(repositoriesPagePath)
 	}
 	return reply
 }
@@ -667,9 +739,9 @@ func (h *provisioningHandler) selfServiceReply(slug string, state string) *provi
 // blocker is a conflict, because the caller cannot link or join on
 // someone else's behalf and a "needs_org_join" would send them to fix the
 // wrong account.
-func (h *provisioningHandler) blockedReply(caller provisioningUser, owner provisioningUser, slug string, state string) *provisioningReply {
+func (h *provisioningHandler) blockedReply(caller provisioningUser, owner provisioningUser, state string) *provisioningReply {
 	if owner.ID == caller.ID {
-		return h.selfServiceReply(slug, state)
+		return h.selfServiceReply(state)
 	}
 	return errorReply(http.StatusConflict, "team_prerequisites_incomplete", true)
 }
@@ -680,12 +752,12 @@ func (h *provisioningHandler) blockedReply(caller provisioningUser, owner provis
 // organization. It creates nothing. The linked id is written back into the
 // owner so finalize can name the account the grant went to. When the
 // caller's own identity or membership is the blocker and the join flow is
-// configured, the reply carries the join URL for the assignment.
-func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisioningUser, slug string, owners []provisioningUser) *provisioningReply {
+// configured, the reply carries the join URL.
+func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisioningUser, owners []provisioningUser) *provisioningReply {
 	for i := range owners {
 		owner := &owners[i]
 		if owner.GitHubLogin == "" {
-			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
+			return h.blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
 		}
 		if reply := h.cooldownReply(); reply != nil {
 			return reply
@@ -695,13 +767,13 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 			// Renamed or deleted. The stored login no longer names an
 			// account, and guessing which one it became is exactly the
 			// silent rebinding this check exists to prevent.
-			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
+			return h.blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
 		}
 		if err != nil {
 			return h.githubReply(err)
 		}
 		if owner.GitHubUserID != 0 && owner.GitHubUserID != account.ID {
-			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
+			return h.blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
 		}
 		if owner.GitHubUserID == 0 {
 			err := postgrestRPC(ctx, h.db, "set_user_github_identity", map[string]any{
@@ -716,7 +788,7 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 					return platformReply("linking the GitHub account", err)
 				}
 			case "github_identity_taken", "github_identity_locked":
-				return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
+				return h.blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
 			default:
 				return platformReply("linking the GitHub account", err)
 			}
@@ -730,7 +802,7 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 			return h.githubReply(err)
 		}
 		if membership != githubMembershipActive {
-			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsOrgJoin)
+			return h.blockedReply(caller, *owner, repositoryStateNeedsOrgJoin)
 		}
 	}
 	return nil
@@ -847,14 +919,12 @@ func (h *provisioningHandler) grant(ctx context.Context, caller provisioningUser
 	return h.record(ctx, attempt, provisioningStageGranted, githubRepo{}, "")
 }
 
-// finalize runs the one transaction that records the repository, the
-// submission, and the URL field. It is idempotent on the database side, so
-// a lost response is answered by the next request calling it again.
+// finalize records the repository row and marks the attempt finalized, in
+// one transaction. It writes no submission: the student pastes the URL into
+// whatever assignment wants it. It is idempotent on the database side, so a
+// lost response is answered by the next request calling it again.
 func (h *provisioningHandler) finalize(ctx context.Context, owners []provisioningUser, attempt *provisioningAttempt) *provisioningReply {
-	args := map[string]any{
-		"p_attempt_id": attempt.ID,
-		"p_repo_url":   "https://github.com/" + attempt.ProviderFullName,
-	}
+	args := map[string]any{"p_attempt_id": attempt.ID}
 	if !attempt.IsTeam && len(owners) > 0 && owners[0].GitHubUserID != 0 {
 		args["p_provider_user_id"] = owners[0].GitHubUserID
 	}
@@ -864,19 +934,16 @@ func (h *provisioningHandler) finalize(ctx context.Context, owners []provisionin
 		if err != nil {
 			return platformReply("finalizing the attempt", err)
 		}
-	case "repository_not_configured":
-		return h.fail(ctx, attempt, errorReply(http.StatusNotFound, code, false))
 	case "github_identity_mismatch":
 		// The account the grant went to is not the one linked to the
 		// student any more: the link has to be looked at again.
 		if reply := h.fail(ctx, attempt, errorReply(http.StatusConflict, code, false)); reply.code != code {
 			return reply
 		}
-		return h.selfServiceReply(attempt.AssignmentSlug, repositoryStateNeedsGitHubLink)
+		return h.selfServiceReply(repositoryStateNeedsGitHubLink)
 	default:
-		// repository_conflict, submission_conflict, url_pattern_mismatch,
-		// repo_url_mismatch: all of them are for staff, and the code says
-		// which.
+		// repository_conflict and anything else the RPC raises: for staff,
+		// and the code says which.
 		return h.fail(ctx, attempt, errorReply(http.StatusConflict, code, false))
 	}
 	attempt.Stage = provisioningStageFinalized
@@ -984,38 +1051,92 @@ func (h *provisioningHandler) touch(ctx context.Context, attemptID int, ready bo
 // GET: status
 // ---------------------------------------------------------------------------
 
-// serveStatus reads, and only reads. It runs as the student: a JWT is
-// minted for them and the views are read with it, so row-level security
-// answers whose attempt and repository they may see, exactly as it does for
-// the assignment page's other reads. The one write is the readiness
-// timestamp, which is the service's own bookkeeping.
-func (h *provisioningHandler) serveStatus(w http.ResponseWriter, r *http.Request, netID string, slug string) {
-	ctx := r.Context()
+// studentReads is what the status route and the page need to read as the
+// student: the JWT minted for them, under which the views' row-level
+// security answers whose attempt and repository they may see, exactly as
+// it does for the client's other reads.
+func (h *provisioningHandler) studentReads(netID string) (*UserJWTInfo, *provisioningReply) {
 	info, err, status := fetchUserJWTInfo(netID, h.db)
 	if err != nil {
 		if status == http.StatusForbidden {
-			writeProvisioningReply(w, errorReply(http.StatusForbidden, "not_enrolled", false))
-			return
+			return nil, errorReply(http.StatusForbidden, "not_enrolled", false)
 		}
-		writeProvisioningReply(w, platformReply("minting the student's JWT", err))
-		return
+		return nil, platformReply("minting the student's JWT", err)
+	}
+	return info, nil
+}
+
+// readAttempts reads the caller's attempts, for one template or for all.
+func (h *provisioningHandler) readAttempts(ctx context.Context, userJWT string, slug string) ([]provisioningAttempt, *provisioningReply) {
+	query := url.Values{}
+	if slug != "" {
+		query.Set("template_slug", "eq."+slug)
+	}
+	var attempts []provisioningAttempt
+	if err := postgrestSelect(ctx, h.db, userJWT, "repository_provisionings", query, &attempts); err != nil {
+		return nil, platformReply("reading the attempts", err)
+	}
+	return attempts, nil
+}
+
+// readRepositories reads the caller's repositories, for one template or
+// for all, newest first.
+func (h *provisioningHandler) readRepositories(ctx context.Context, userJWT string, slug string) ([]provisioningRepository, *provisioningReply) {
+	query := url.Values{}
+	if slug != "" {
+		query.Set("template_slug", "eq."+slug)
+	}
+	query.Set("order", "created_at.desc")
+	var repositories []provisioningRepository
+	if err := postgrestSelect(ctx, h.db, userJWT, "my_repositories", query, &repositories); err != nil {
+		return nil, platformReply("reading the repositories", err)
+	}
+	return repositories, nil
+}
+
+// readTemplates reads the active templates, for one slug or for all. Every
+// role may read the view; whether the caller may use a template is the
+// page's and the claim RPC's question.
+func (h *provisioningHandler) readTemplates(ctx context.Context, userJWT string, slug string) ([]provisioningTemplate, *provisioningReply) {
+	query := url.Values{}
+	if slug != "" {
+		query.Set("slug", "eq."+slug)
+	}
+	query.Set("is_active", "eq.true")
+	query.Set("order", "slug")
+	var templates []provisioningTemplate
+	if err := postgrestSelect(ctx, h.db, userJWT, "repository_templates", query, &templates); err != nil {
+		return nil, platformReply("reading the templates", err)
+	}
+	return templates, nil
+}
+
+// status is the GET. It reads, and only reads, as the student. The one
+// write is the readiness timestamp, which is the service's own
+// bookkeeping.
+func (h *provisioningHandler) status(r *http.Request, slug string) *provisioningReply {
+	ctx := r.Context()
+	netID := h.sessions.GetString(ctx, "netid")
+	if netID == "" {
+		return errorReply(http.StatusUnauthorized, "unauthenticated", false)
+	}
+	if !templateSlugPattern.MatchString(slug) {
+		return errorReply(http.StatusNotFound, "template_not_found", false)
+	}
+	info, reply := h.studentReads(netID)
+	if reply != nil {
+		return reply
 	}
 	if info.Role != "student" {
-		writeProvisioningReply(w, errorReply(http.StatusForbidden, "not_a_student", false))
-		return
+		return errorReply(http.StatusForbidden, "not_a_student", false)
 	}
-
-	query := url.Values{}
-	query.Set("assignment_slug", "eq."+slug)
-	var attempts []provisioningAttempt
-	if err := postgrestSelect(ctx, h.db, info.JWT, "assignment_repository_provisionings", query, &attempts); err != nil {
-		writeProvisioningReply(w, platformReply("reading the attempt", err))
-		return
+	attempts, reply := h.readAttempts(ctx, info.JWT, slug)
+	if reply != nil {
+		return reply
 	}
-	var repositories []provisioningRepository
-	if err := postgrestSelect(ctx, h.db, info.JWT, "assignment_repositories", query, &repositories); err != nil {
-		writeProvisioningReply(w, platformReply("reading the repository", err))
-		return
+	repositories, reply := h.readRepositories(ctx, info.JWT, slug)
+	if reply != nil {
+		return reply
 	}
 
 	// A recorded repository is authoritative whatever the attempt says,
@@ -1027,28 +1148,30 @@ func (h *provisioningHandler) serveStatus(w http.ResponseWriter, r *http.Request
 			subject.lastCheckedAt = attempts[0].LastCheckedAt
 			subject.readyAt = attempts[0].ReadyAt
 		}
-		writeProvisioningReply(w, h.readiness(ctx, subject))
-		return
+		return h.readiness(ctx, subject)
 	}
 	if len(attempts) == 0 {
-		writeProvisioningReply(w, h.notStartedReply(ctx, info.JWT, slug))
-		return
+		return h.notStartedReply(ctx, info.JWT, slug)
 	}
-	attempt := attempts[0]
+	return h.attemptStateReply(ctx, attempts[0])
+}
+
+// attemptStateReply answers for an attempt with no repository recorded yet.
+func (h *provisioningHandler) attemptStateReply(ctx context.Context, attempt provisioningAttempt) *provisioningReply {
 	switch attempt.Stage {
 	case provisioningStageFinalized:
-		writeProvisioningReply(w, h.readiness(ctx, readinessSubjectOf(attempt)))
+		return h.readiness(ctx, readinessSubjectOf(attempt))
 	case provisioningStageFailed:
 		code := attempt.ErrorCode
 		if code == "" {
 			code = "provisioning_failed"
 		}
-		writeProvisioningReply(w, errorReply(http.StatusConflict, code, true))
+		return errorReply(http.StatusConflict, code, true)
 	default:
 		// claimed, generated, granted: a request was interrupted between
 		// checkpoints. GET never resumes it; the client repeats the POST,
 		// which does.
-		writeProvisioningReply(w, errorReply(http.StatusConflict, "provisioning_interrupted", true))
+		return errorReply(http.StatusConflict, "provisioning_interrupted", true)
 	}
 }
 
@@ -1056,18 +1179,12 @@ func (h *provisioningHandler) serveStatus(w http.ResponseWriter, r *http.Request
 // is nothing to ask for", so the page can show a button for one and nothing
 // for the other.
 func (h *provisioningHandler) notStartedReply(ctx context.Context, userJWT string, slug string) *provisioningReply {
-	query := url.Values{}
-	query.Set("slug", "eq."+slug)
-	query.Set("select", "slug,is_draft,repository_template_provider")
-	var assignments []struct {
-		IsDraft  bool   `json:"is_draft"`
-		Provider string `json:"repository_template_provider"`
+	templates, reply := h.readTemplates(ctx, userJWT, slug)
+	if reply != nil {
+		return reply
 	}
-	if err := postgrestSelect(ctx, h.db, userJWT, "my_assignments", query, &assignments); err != nil {
-		return platformReply("reading the assignment", err)
-	}
-	if len(assignments) == 0 || assignments[0].IsDraft || assignments[0].Provider == "" {
-		return errorReply(http.StatusNotFound, "repository_not_configured", false)
+	if len(templates) == 0 {
+		return errorReply(http.StatusNotFound, "template_not_found", false)
 	}
 	return errorReply(http.StatusNotFound, "repository_not_started", false)
 }

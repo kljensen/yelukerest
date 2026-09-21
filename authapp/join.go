@@ -2,10 +2,10 @@ package main
 
 // Student-authorized organization joining (ADR 0006, issue #399).
 //
-//	GET  /auth/github/join?assignment_slug=…   landing page; its script POSTs to start
-//	GET  /auth/github/join.js                  that script
-//	POST /auth/github/join/start               {"assignment_slug"} → {"authorization_url"}
-//	GET  /auth/github/callback?code&state       where GitHub sends the student back
+//	GET  /auth/github/join?next=…          landing page; its script POSTs to start
+//	GET  /auth/github/join.js              that script
+//	POST /auth/github/join/start           {"next"} → {"authorization_url"}
+//	GET  /auth/github/callback?code&state  where GitHub sends the student back
 //
 // Provisioning (provision.go) stops at needs_org_join for a student who is
 // not an active member of the course organization. This is the way through:
@@ -24,13 +24,13 @@ package main
 // is what persists, through api.set_user_github_identity.
 //
 // The state parameter is the CSRF guard for the round trip through GitHub.
-// It is minted at start, stored in the student's own session with what it
-// was minted for, and consumed by the callback: it therefore cannot be
-// replayed, cannot be used from another session, and cannot be used after
-// ten minutes. A PKCE verifier is minted with it and sent on the exchange,
-// so a code intercepted on the way back is worthless without the session.
-// Everything the callback then does is for the session's own user; nothing
-// about who or what comes from the query string.
+// It is minted at start, stored in the student's own session with where to
+// return to afterwards, and consumed by the callback: it therefore cannot
+// be replayed, cannot be used from another session, and cannot be used
+// after ten minutes. A PKCE verifier is minted with it and sent on the
+// exchange, so a code intercepted on the way back is worthless without the
+// session. Everything the callback then does is for the session's own
+// user; nothing about who or where comes from the callback's query string.
 
 import (
 	"context"
@@ -81,11 +81,41 @@ const (
 	sessionKeyGitHubJoin = "github_join"
 )
 
-// assignmentSlugPattern is the database's own constraint on assignment
-// slugs (assignment_slug_check), plus a length bound. A slug is the one
-// caller-supplied value that reaches a redirect, so it is checked at start
-// and never taken from the callback's query.
-var assignmentSlugPattern = regexp.MustCompile(`^[a-z0-9-]{1,99}$`)
+// githubJoinNext is where the callback sends the student afterwards: the
+// repositories page by default, or the `next` the landing page was opened
+// with. It is the one caller-supplied value that reaches a redirect, so it
+// is checked here, at the landing page and at start, and never taken from
+// the callback's query. Allowed: a path on this origin under the
+// repositories page, or a client route (`/#/…`, the assignment page that
+// offered the join). Anything else -- another origin, a protocol-relative
+// URL, a path elsewhere on this site, control characters -- is refused,
+// and the caller is told rather than quietly sent to the default, because
+// a link built wrong should be noticed.
+func githubJoinNext(raw string) (string, bool) {
+	if raw == "" {
+		return repositoriesPagePath, true
+	}
+	if len(raw) > 512 || strings.ContainsAny(raw, "\\ \t\r\n") || !githubJoinNextPattern.MatchString(raw) {
+		return "", false
+	}
+	if strings.HasPrefix(raw, "/#/") {
+		return raw, true
+	}
+	rest := strings.TrimPrefix(raw, repositoriesPagePath)
+	if rest == raw || (rest != "" && rest[0] != '?' && rest[0] != '/' && rest[0] != '#') {
+		return "", false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(parsed.Path, "//") {
+		return "", false
+	}
+	return raw, true
+}
+
+// githubJoinNextPattern is the printable-ASCII shape a next must have,
+// starting with a slash. The characters a redirect target can legitimately
+// carry are all in it; a backslash and every control character are not.
+var githubJoinNextPattern = regexp.MustCompile(`^/[A-Za-z0-9._~!$&'()*+,;=:@%/?#-]*$`)
 
 // githubJoinApp is the join App's configuration. It is a plain OAuth client
 // (id and secret) from authapp's point of view: no installation id, no
@@ -168,13 +198,13 @@ func isLocalHost(host string) bool {
 // between start and callback. RedirectURI is kept because GitHub requires
 // the token exchange to repeat exactly what the authorization request said.
 type githubJoinPending struct {
-	State          string    `json:"state"`
-	CodeVerifier   string    `json:"code_verifier"`
-	UserID         int       `json:"user_id"`
-	NetID          string    `json:"netid"`
-	AssignmentSlug string    `json:"assignment_slug"`
-	RedirectURI    string    `json:"redirect_uri"`
-	CreatedAt      time.Time `json:"created_at"`
+	State        string    `json:"state"`
+	CodeVerifier string    `json:"code_verifier"`
+	UserID       int       `json:"user_id"`
+	NetID        string    `json:"netid"`
+	Next         string    `json:"next"`
+	RedirectURI  string    `json:"redirect_uri"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type githubJoinHandler struct {
@@ -216,10 +246,10 @@ func registerGitHubJoinRoutes(mux *http.ServeMux, course *githubProvisioner, db 
 	mux.HandleFunc("GET "+githubJoinCallbackPath, h.serveCallback)
 }
 
-// githubJoinURL is what provisioning puts in join_url: the landing page for
-// the assignment, on this origin.
-func githubJoinURL(slug string) string {
-	return githubJoinLandingPath + "?" + url.Values{"assignment_slug": {slug}}.Encode()
+// githubJoinURL is what provisioning puts in join_url: the landing page,
+// on this origin, returning to next afterwards.
+func githubJoinURL(next string) string {
+	return githubJoinLandingPath + "?" + url.Values{"next": {next}}.Encode()
 }
 
 // ---------------------------------------------------------------------------
@@ -227,17 +257,17 @@ func githubJoinURL(slug string) string {
 // ---------------------------------------------------------------------------
 
 // setLandingPageHeaders is setOAuthPageHeaders' counterpart for the
-// landing pages here and in createpage.go, which need a same-origin
-// script and a same-origin fetch and nothing else. Caddy's site-wide CSP
-// also applies to these paths and allows both; the two are enforced as
-// their intersection.
+// landing page here and the repositories page (repositoriespage.go), which
+// need a same-origin script, a same-origin fetch, and the same-origin
+// stylesheet and nothing else. Caddy's site-wide CSP also applies to these
+// paths and allows all three; the two are enforced as their intersection.
 func setLandingPageHeaders(w http.ResponseWriter) {
 	setNoStoreHeaders(w)
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy",
-		"default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+		"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 }
 
 // githubJoinLandingTemplate is deliberately plain: an explanation and a
@@ -260,7 +290,7 @@ var githubJoinLandingTemplate = template.Must(template.New("join").Parse(`<!DOCT
 <h1>Join the course organization on GitHub</h1>
 <p>Continue to GitHub to authorize the course's app. Authorizing it confirms which GitHub account is yours and accepts your invitation to the course organization; it grants the course no access to your repositories.</p>
 <form id="join" method="POST" action="{{.StartPath}}">
-<input type="hidden" name="assignment_slug" value="{{.Slug}}">
+<input type="hidden" name="next" value="{{.Next}}">
 <button type="submit">Continue to GitHub</button>
 </form>
 <p id="status"><noscript>This page needs JavaScript to continue.</noscript></p>
@@ -287,7 +317,7 @@ const githubJoinScript = `(function () {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ assignment_slug: form.elements.assignment_slug.value })
+      body: JSON.stringify({ next: form.elements.next.value })
     }).then(function (response) {
       return response.json().then(function (body) { return { ok: response.ok, body: body }; });
     }).then(function (result) {
@@ -308,20 +338,20 @@ const githubJoinScript = `(function () {
 
 func (h *githubJoinHandler) serveLanding(w http.ResponseWriter, r *http.Request) {
 	setLandingPageHeaders(w)
-	slug := r.URL.Query().Get("assignment_slug")
-	if !assignmentSlugPattern.MatchString(slug) {
-		http.Error(w, "Missing or malformed assignment_slug", http.StatusBadRequest)
+	next, ok := githubJoinNext(r.URL.Query().Get("next"))
+	if !ok {
+		http.Error(w, "Malformed next: it must be a path on this site under /auth/repositories or /#/", http.StatusBadRequest)
 		return
 	}
 	if h.sessions.GetString(r.Context(), "netid") == "" {
 		// Sent through CAS and back here. The return target is rebuilt
-		// from constants plus the validated slug.
-		returnTo := safeRedirectPath(githubJoinURL(slug))
+		// from constants plus the validated next.
+		returnTo := safeRedirectPath(githubJoinURL(next))
 		http.Redirect(w, r, githubJoinLoginPath+"?"+url.Values{"next": {returnTo}}.Encode(), http.StatusFound)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	view := struct{ Slug, StartPath, ScriptPath string }{Slug: slug, StartPath: githubJoinStartPath, ScriptPath: githubJoinScriptPath}
+	view := struct{ Next, StartPath, ScriptPath string }{Next: next, StartPath: githubJoinStartPath, ScriptPath: githubJoinScriptPath}
 	if err := githubJoinLandingTemplate.Execute(w, view); err != nil {
 		log.Printf("github join: rendering the landing page: %v", err)
 	}
@@ -368,10 +398,15 @@ func (h *githubJoinHandler) serveStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		AssignmentSlug string `json:"assignment_slug"`
+		Next string `json:"next"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, githubJoinMaxBodyBytes)).Decode(&body); err != nil || !assignmentSlugPattern.MatchString(body.AssignmentSlug) {
-		writeJoinError(w, http.StatusBadRequest, "invalid_assignment_slug")
+	if err := json.NewDecoder(io.LimitReader(r.Body, githubJoinMaxBodyBytes)).Decode(&body); err != nil {
+		writeJoinError(w, http.StatusBadRequest, "invalid_next")
+		return
+	}
+	next, ok := githubJoinNext(body.Next)
+	if !ok {
+		writeJoinError(w, http.StatusBadRequest, "invalid_next")
 		return
 	}
 
@@ -404,13 +439,13 @@ func (h *githubJoinHandler) serveStart(w http.ResponseWriter, r *http.Request) {
 	}
 	redirectURI := (&url.URL{Scheme: getRequestScheme(r), Host: getRequestHost(r), Path: githubJoinCallbackPath}).String()
 	pending, err := json.Marshal(githubJoinPending{
-		State:          state,
-		CodeVerifier:   codeVerifier,
-		UserID:         user.ID,
-		NetID:          netID,
-		AssignmentSlug: body.AssignmentSlug,
-		RedirectURI:    redirectURI,
-		CreatedAt:      h.now(),
+		State:        state,
+		CodeVerifier: codeVerifier,
+		UserID:       user.ID,
+		NetID:        netID,
+		Next:         next,
+		RedirectURI:  redirectURI,
+		CreatedAt:    h.now(),
 	})
 	if err != nil {
 		log.Printf("github join: encoding state: %v", err)
@@ -470,7 +505,7 @@ func selectUserByNetID(ctx context.Context, config FetchJWTConfig, netID string)
 // ---------------------------------------------------------------------------
 
 // The markers the callback redirects with, as `github_join=<marker>` in the
-// query of the assignment page's fragment. docs/github-join.md lists them.
+// query of the page the student returns to. docs/github-join.md lists them.
 const (
 	joinMarkerOK     = "ok"
 	joinMarkerDenied = "denied"
@@ -495,13 +530,33 @@ const (
 	joinErrMembershipNotActive = "membership_not_active"
 )
 
-// redirectToAssignment sends the browser back to the assignment page with
-// the marker. The slug came from the pending state, which start validated;
-// the path is built from constants, so this can only ever land on the
-// assignment page of this origin.
-func redirectToAssignment(w http.ResponseWriter, r *http.Request, slug string, marker string) {
-	target := "/#/assignments/" + url.PathEscape(slug) + "?" + url.Values{"github_join": {marker}}.Encode()
-	http.Redirect(w, r, target, http.StatusSeeOther)
+// redirectToNext sends the browser back to where the join was started
+// from, with the marker. next came from the pending state, which start
+// validated with githubJoinNext, so this can only ever land on this
+// origin. For a page the marker goes in the URL's query; for a client
+// route (`/#/…`) it goes in the fragment's own query, which is where the
+// Elm client reads it.
+func redirectToNext(w http.ResponseWriter, r *http.Request, next string, marker string) {
+	http.Redirect(w, r, joinReturnURL(next, marker), http.StatusSeeOther)
+}
+
+func joinReturnURL(next string, marker string) string {
+	encoded := url.Values{"github_join": {marker}}.Encode()
+	if strings.HasPrefix(next, "/#/") {
+		separator := "?"
+		if strings.Contains(next, "?") {
+			separator = "&"
+		}
+		return next + separator + encoded
+	}
+	target, err := url.Parse(next)
+	if err != nil {
+		return repositoriesPagePath + "?" + encoded
+	}
+	query := target.Query()
+	query.Set("github_join", marker)
+	target.RawQuery = query.Encode()
+	return target.String()
 }
 
 // takePending checks the session's outstanding join against this callback
@@ -515,23 +570,23 @@ func redirectToAssignment(w http.ResponseWriter, r *http.Request, slug string, m
 func (h *githubJoinHandler) takePending(w http.ResponseWriter, r *http.Request, netID string) (githubJoinPending, bool) {
 	raw := h.sessions.GetString(r.Context(), sessionKeyGitHubJoin)
 	if raw == "" {
-		http.Error(w, "No GitHub authorization is in progress for this session. Start again from the assignment page.", http.StatusBadRequest)
+		http.Error(w, "No GitHub authorization is in progress for this session. Start again from the repositories page.", http.StatusBadRequest)
 		return githubJoinPending{}, false
 	}
 	var pending githubJoinPending
 	if err := json.Unmarshal([]byte(raw), &pending); err != nil || pending.State == "" || pending.CodeVerifier == "" || pending.NetID != netID {
 		h.sessions.Remove(r.Context(), sessionKeyGitHubJoin)
-		http.Error(w, "This GitHub authorization does not belong to this session. Start again from the assignment page.", http.StatusBadRequest)
+		http.Error(w, "This GitHub authorization does not belong to this session. Start again from the repositories page.", http.StatusBadRequest)
 		return githubJoinPending{}, false
 	}
 	state := r.URL.Query().Get("state")
 	if subtle.ConstantTimeCompare([]byte(state), []byte(pending.State)) != 1 {
-		http.Error(w, "This GitHub authorization does not match the one this session started. Return to the GitHub tab you were sent to, or start again from the assignment page.", http.StatusBadRequest)
+		http.Error(w, "This GitHub authorization does not match the one this session started. Return to the GitHub tab you were sent to, or start again from the repositories page.", http.StatusBadRequest)
 		return githubJoinPending{}, false
 	}
 	h.sessions.Remove(r.Context(), sessionKeyGitHubJoin)
 	if h.now().Sub(pending.CreatedAt) > githubJoinStateLifetime {
-		http.Error(w, "This GitHub authorization has expired. Start again from the assignment page.", http.StatusBadRequest)
+		http.Error(w, "This GitHub authorization has expired. Start again from the repositories page.", http.StatusBadRequest)
 		return githubJoinPending{}, false
 	}
 	return pending, true
@@ -542,50 +597,50 @@ func (h *githubJoinHandler) serveCallback(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 	netID := h.sessions.GetString(ctx, "netid")
 	if netID == "" {
-		http.Error(w, "Sign in to the course site, then start again from the assignment page.", http.StatusUnauthorized)
+		http.Error(w, "Sign in to the course site, then start again from the repositories page.", http.StatusUnauthorized)
 		return
 	}
 	pending, ok := h.takePending(w, r, netID)
 	if !ok {
 		return
 	}
-	slug := pending.AssignmentSlug
+	next := pending.Next
 
 	query := r.URL.Query()
 	if reported := query.Get("error"); reported != "" {
 		if reported == "access_denied" {
 			log.Printf("github join: %s declined the authorization", netID)
-			redirectToAssignment(w, r, slug, joinMarkerDenied)
+			redirectToNext(w, r, next, joinMarkerDenied)
 			return
 		}
 		// error_description is GitHub's text, not logged: it is not ours
 		// and the error code says enough.
 		log.Printf("github join: GitHub reported %q for %s", reported, netID)
-		redirectToAssignment(w, r, slug, "error:"+joinErrAuthorizationFailed)
+		redirectToNext(w, r, next, "error:"+joinErrAuthorizationFailed)
 		return
 	}
 	code := query.Get("code")
 	if code == "" {
-		redirectToAssignment(w, r, slug, "error:"+joinErrAuthorizationFailed)
+		redirectToNext(w, r, next, "error:"+joinErrAuthorizationFailed)
 		return
 	}
 
 	// The student's token. This variable is its whole life.
 	studentToken, marker := h.exchangeCode(ctx, code, pending)
 	if marker != "" {
-		redirectToAssignment(w, r, slug, "error:"+marker)
+		redirectToNext(w, r, next, "error:"+marker)
 		return
 	}
 	student := newGitHubClient(h.app.apiBaseURL, githubStaticTokenSource{token: studentToken})
 
 	account, err := student.GetAuthenticatedUser(ctx)
 	if err != nil {
-		redirectToAssignment(w, r, slug, "error:"+h.githubMarker("student", err))
+		redirectToNext(w, r, next, "error:"+h.githubMarker("student", err))
 		return
 	}
 	if account.ID == 0 || account.Login == "" {
 		log.Printf("github join: GET /user for %s answered without an id or login", netID)
-		redirectToAssignment(w, r, slug, "error:"+joinErrGitHubUnavailable)
+		redirectToNext(w, r, next, "error:"+joinErrGitHubUnavailable)
 		return
 	}
 
@@ -594,14 +649,14 @@ func (h *githubJoinHandler) serveCallback(w http.ResponseWriter, r *http.Request
 	// account is linked keeps that even if the membership step fails and is
 	// retried.
 	if marker := h.linkIdentity(ctx, pending.UserID, netID, account); marker != "" {
-		redirectToAssignment(w, r, slug, "error:"+marker)
+		redirectToNext(w, r, next, "error:"+marker)
 		return
 	}
 	if marker := h.joinOrganization(ctx, netID, student, account.Login); marker != "" {
-		redirectToAssignment(w, r, slug, "error:"+marker)
+		redirectToNext(w, r, next, "error:"+marker)
 		return
 	}
-	redirectToAssignment(w, r, slug, joinMarkerOK)
+	redirectToNext(w, r, next, joinMarkerOK)
 }
 
 // exchangeCode redeems the authorization code for the student's token.

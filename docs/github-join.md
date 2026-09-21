@@ -63,7 +63,7 @@ On the same organization as the provisioner, *Settings → Developer settings
 - **Request user authorization (OAuth) during installation**: leave
   unticked. That option prompts the *installer* to authorize at install
   time; here the installer is an organization owner and the people who
-  authorize are students, from the assignment page.
+  authorize are students, from the repositories page.
 - **Enable Device Flow**: leave unticked.
 - **Webhook**: untick *Active*.
 - **Permissions**: Organization → *Members*: **Read and write**. Nothing
@@ -132,19 +132,24 @@ back from it.
 
 ## The flow
 
-1. The student clicks *Create repository* on an assignment page. Authapp
-   finds they have no usable GitHub login on record (`needs_github_link`)
-   or that their account is not an active organization member
-   (`needs_org_join`), and answers with
-   `join_url: "/auth/github/join?assignment_slug=<slug>"` either way.
-2. The page sends them to that URL, a small page on this origin with an
-   explanation and a *Continue to GitHub* button. On the click (only then;
-   a link to the page starts nothing by itself) its script POSTs to
+1. The student presses **Connect your GitHub account** on the
+   repositories page (`/auth/repositories`, [github-provisioning.md](github-provisioning.md)),
+   or presses *Create* there and is told they have no usable GitHub login
+   on record (`needs_github_link`) or that their account is not an active
+   organization member (`needs_org_join`); both replies carry
+   `join_url: "/auth/github/join?next=/auth/repositories"`.
+2. That URL is a small page on this origin with an explanation and a
+   *Continue to GitHub* button. `next` is where the callback will return
+   to: the repositories page by default, or a client route (`/#/…`) when
+   an assignment page offered the join; anything else -- another origin,
+   another path on this site -- is refused with a 400 rather than
+   defaulted, so a link built wrong is noticed. On the click (only then; a
+   link to the page starts nothing by itself) its script POSTs to
    `/auth/github/join/start` (same-origin only, like the create POST) and
    follows the `authorization_url` it gets back. The POST mints a
    random, single-use `state` and a PKCE code verifier, stores both in the
-   student's session together with their user id, netid, the assignment
-   slug, the `redirect_uri`, and a timestamp, and builds the GitHub
+   student's session together with their user id, netid, the validated
+   `next`, the `redirect_uri`, and a timestamp, and builds the GitHub
    authorize URL: `client_id`, `redirect_uri`, `state`, `code_challenge`
    (S256) with `code_challenge_method`, and **no `scope`** (a GitHub App's
    user token carries the App's permissions; scopes are an OAuth-App
@@ -184,9 +189,13 @@ back from it.
    - Then, if `GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG` is set,
      `PUT /orgs/{org}/teams/{team}/memberships/{login}` with the **course**
      credential. Repeating it for a member is a no-op.
-8. The browser is redirected to the assignment page,
-   `/#/assignments/<slug>?github_join=ok`, and the page resumes the ordinary
-   create flow once. The callback never creates a repository itself.
+8. The browser is redirected to `next` with `github_join=ok`: as a query
+   parameter for the repositories page
+   (`/auth/repositories?github_join=ok`), which renders it as a one-line
+   notice, or in the fragment's own query for a client route
+   (`/#/assignments/<slug>?github_join=ok`), which is where the Elm client
+   reads it. The callback never creates a repository itself; the student
+   presses *Create* on the page.
 
 The student's token exists in one variable of the callback handler and
 nowhere else: not in the session, not in the database, not in a log line,
@@ -209,20 +218,23 @@ One GitHub screen: the App's name, the organization that owns it, what it
 asks for on the student's account (the organization permission, shown by
 GitHub as the ability to act on organization membership on their behalf;
 nothing about their repositories), and *Authorize* / *Cancel*. If they are not signed in to GitHub, GitHub's sign-in comes first.
-Then they are back on the assignment page, and the repository is being
-made. They are never asked to type a username.
+Then they are back on the repositories page, shown as *Connected as
+`<login>`* with a *verified* badge, and press *Create*. They are never
+asked to type a username.
 
 If they arrive at the landing page without a course session (a stale tab,
 say), they are sent through CAS and back to it.
 
 ## Failure markers
 
-The callback always ends on the assignment page, with `github_join` in the
-fragment's query telling the page what happened:
+The callback always ends on `next`, with `github_join` in its query (the
+page's, or the fragment's for a client route) telling the page what
+happened. The repositories page renders each as a one-line notice; a
+client page may do more:
 
 | `github_join` | Meaning | What the page should do |
 | --- | --- | --- |
-| `ok` | Verified, member, on the team. | Resume the create flow once. |
+| `ok` | Verified, member, on the team. | Show it; the student presses *Create*. |
 | `denied` | The student clicked *Cancel* on GitHub. | Keep the `needs_org_join` state with its join link. |
 | `error:authorization_failed` | GitHub reported an error other than a denial, sent no code, refused the code (expired, already used, or a redirect_uri mismatch), or refused the student's token (which is what an App not installed on the organization looks like). | Offer the join link again. |
 | `error:join_app_misconfigured` | GitHub refused the join App's client id or secret. Logged as `ERROR`; an operator problem. | Tell them to contact staff. |

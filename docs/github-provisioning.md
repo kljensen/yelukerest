@@ -63,10 +63,10 @@ number is `GITHUB_PROVISIONER_INSTALLATION_ID`.
 
 Every template the platform is allowed to generate from must be a repository
 in this organization marked as a template (*Settings → Template repository*)
-**and** in the installation's repository list. When a new assignment gets a
-new template, add it to the installation (*Settings → GitHub Apps → the App
-→ Configure → Repository access*); forgetting to shows up as `not_found` on
-generate.
+**and** in the installation's repository list. When a new template is
+added to `api.repository_templates`, add its repository to the installation
+(*Settings → GitHub Apps → the App → Configure → Repository access*);
+forgetting to shows up as `not_found` on generate.
 
 ## Environment
 
@@ -178,20 +178,66 @@ Every installation token dies immediately; provisioning fails with
 
 ## HTTP contract
 
-The assignment page talks to two session-authenticated routes in authapp
-(issues #395 and #396). They exist only when provisioning is enabled; with
-it disabled they are absent and answer 404 like any unknown path. Every
-response carries `Cache-Control: no-store`.
+Repositories are a resource with their own page: a student creates one from
+a **template** (`api.repository_templates`, configured by faculty) on
+`/auth/repositories`, and pastes its address into whatever assignment asks
+for a URL. Nothing is written to a submission by the platform (ADR 0006,
+*Decoupled from submissions*). The routes are session-authenticated and
+exist only when provisioning is enabled; with it disabled they are absent
+and answer 404 like any unknown path. Every response carries
+`Cache-Control: no-store`.
 
-### `POST /auth/assignments/{slug}/repository`
+### `GET /auth/repositories`
 
-Creates the caller's repository for the assignment, or resumes creating it.
-The body is `{}` and is ignored: the owner (the student, or their team for a
-team assignment), the template, the repository name and the GitHub login all
-come from the session and the database. The request must be same-origin
-(`Sec-Fetch-Site: same-origin`, or an `Origin` matching the host); anything
-else is refused with 403 `cross_site_request`. Six clicks a minute per
-student are admitted; more get 429 `too_many_requests` with `Retry-After`.
+The page. Server-rendered from the database alone: rendering it never
+calls GitHub and never claims an attempt. A signed-out visitor is sent
+through `/auth/login?next=/auth/repositories` and back. Three sections:
+
+1. **GitHub account.** *Connected as `<login>`*, with a *verified* badge
+   once the join flow has confirmed the account. Otherwise a **Connect
+   your GitHub account** button, which is the join landing page
+   ([github-join.md](github-join.md)) returning here; when the join flow is
+   not configured, text telling the student to ask staff to record their
+   username and to accept the organization's invitation instead. A
+   connected but unverified account also gets the button, since one
+   authorization verifies it and joins the organization.
+2. **Create a repository.** One row per active template the student may
+   use: every individual template, plus the team templates when they are
+   on a team. Each shows the template's label and description and either
+   a **Create** button (a form that POSTs to the create route below) or
+   the state known from the rows: *Ready* with the link, *Preparing…* with
+   the link (the script polls), *Could not create it last time (`code`)*
+   or *A previous attempt was interrupted* with a **Try again** button,
+   which is the same POST.
+3. **Your repositories.** The rows of `api.my_repositories` -- own and
+   current team -- as links, with the template's label.
+
+One external script, `/auth/repositories.js`, submits Create by `fetch`
+and re-renders the row from the JSON reply (button disabled while in
+flight), then polls the status route every three seconds while the reply
+is `copying`, honouring a longer `Retry-After`, for at most two minutes,
+after which it shows a **Check again** button. It never posts on load: the
+page is a GET anyone can link to, so the POST is made only when the
+student presses the button. Without the script the form posts natively and
+the create route sends the browser back to the page with the outcome in
+the query (`?template=<slug>&result=<state or code>`), which the page
+renders as a one-line notice; `?github_join=<marker>` from the join
+callback is rendered the same way.
+
+### `POST /auth/repositories/{template_slug}`
+
+Creates the caller's repository from the template, or resumes creating it.
+The body is ignored: the owner (the student, or their current team for a
+team template), the template, the repository name
+(`<template_slug>-<login>` or `<template_slug>-<team nickname>`) and the
+GitHub login all come from the session and the database. The request must
+be same-origin (`Sec-Fetch-Site: same-origin`, or an `Origin` matching the
+host); anything else is refused with 403 `cross_site_request`. Six clicks
+a minute per student are admitted; more get 429 `too_many_requests` with
+`Retry-After`.
+
+The reply is JSON for a fetch (`Accept: application/json`, or a browser's
+`Sec-Fetch-Mode: cors`) and a 303 back to the page for a form post.
 
 Repeating the POST is safe and is how every interruption is recovered: the
 attempt row records the stage reached (`claimed`, `generated`, `granted`,
@@ -200,47 +246,29 @@ unfinished attempt re-validates every owner first (login on record, the
 account it resolves to, organization membership) and re-grants push to the
 current roster before finalizing, so a change between clicks is seen.
 Before a generate the destination name is always looked up: a repository
-already there that was generated from the assignment's template after the
-attempt began is adopted, which is how a generate that timed out after it
-landed converges on one repository. Two clicks at once share one attempt
-and produce one repository.
+already there that was generated from the template after the attempt
+began is adopted, which is how a generate that timed out after it landed
+converges on one repository. Two clicks at once share one attempt and
+produce one repository. Finalizing records the `assignment_repository` row
+(with the template's `assignment_slug` copied onto it) and nothing else.
 
-### `GET /auth/assignments/{slug}/repository`
+### `GET /auth/repositories/{template_slug}`
 
-Reads. It never creates a repository and never writes a submission; the one
-thing it records is when readiness was last checked. It runs as the student,
-so row-level security decides which attempt and repository they may see: a
-former teammate sees nothing.
-
-### `GET /auth/assignments/{slug}/repository/create`
-
-A plain link for assignment text, in the way a GitHub Classroom invitation
-link is one: a small page on this origin that explains what will happen and
-shows a *Create repository* button. The button sends the POST above with the
-browser's session and then goes to the assignment page,
-`/#/assignments/{slug}`, whatever the answer was (`ready`, `copying`,
-`needs_github_link`, `needs_org_join`, or an error); the assignment page
-shows the state. Nothing happens on the click of the link itself: the page
-is a GET anyone can link to, so the POST is made only when the student
-presses the button (the script does not fire it on load, and without the
-script the form posts to the same route, which that route's origin check
-protects). It records the repository URL in the submission automatically,
-as the POST always does. A signed-out visitor is sent through
-`/auth/login?next=…` and back. It is not a second way to create a
-repository -- same POST, same same-origin check, same limits and rules --
-and it is not the primary UX; the assignment page's button is. Use it
-where a link is the only thing available, such as the assignment's text.
+Reads. It never creates a repository; the one thing it records is when
+readiness was last checked. It runs as the student, so row-level security
+decides which attempt and repository they may see: a former teammate sees
+nothing.
 
 ### States
 
-Both routes answer `{"state": ..., "repo_url": ..., "join_url": ...}` on
+Both per-template routes answer `{"state": ..., "repo_url": ..., "join_url": ...}` on
 success. `repo_url` and `join_url` are `null` when not applicable.
 
 | Status | `state` | Meaning |
 | --- | --- | --- |
 | 200 | `ready` | The mapping is recorded, every owner has push, and the default branch has a commit. `repo_url` is set. |
 | 202 | `copying` | The repository exists and is recorded, but GitHub is still copying the template into it (or it has not become visible yet). `repo_url` is set. Poll. |
-| 200 | `needs_github_link` | The caller has no GitHub login on record, or the login on record no longer names the linked account. Nothing was created. With the join flow configured ([github-join.md](github-join.md)) `join_url` names the page where one GitHub authorization links the verified account and joins the organization; `null` means staff have to record the login. |
+| 200 | `needs_github_link` | The caller has no GitHub login on record, or the login on record no longer names the linked account. Nothing was created. With the join flow configured ([github-join.md](github-join.md)) `join_url` names the landing page (`/auth/github/join?next=/auth/repositories`) where one GitHub authorization links the verified account and joins the organization; `null` means staff have to record the login. |
 | 200 | `needs_org_join` | The caller's GitHub account is not an active member of the course organization. Nothing was created. `join_url` is set when the join flow is configured, and `null` when it is not, which means: ask to be invited. |
 
 ### Errors
@@ -251,21 +279,21 @@ repeat, including after a `GET` that reported an interruption.
 
 | Status | `code` | When |
 | --- | --- | --- |
-| 401 | `unauthenticated` | No session. |
+| 401 | `unauthenticated` | No session. (A form post is sent through login instead.) |
 | 403 | `cross_site_request` | The POST did not come from the site. |
-| 403 | `not_a_student`, `not_enrolled`, `no_team`, `assignment_closed` | The caller is not eligible, as the database decided. |
-| 404 | `repository_not_configured` | The assignment does not exist, is a draft, or has no template. |
+| 403 | `not_a_student`, `not_enrolled`, `no_team`, `assignment_closed` | The caller is not eligible, as the database decided. `assignment_closed` applies when the template points at an assignment that has closed for this owner (exceptions included). |
+| 404 | `template_not_found`, `template_inactive` | No such template (or a malformed slug), or one faculty have deactivated. |
 | 404 | `repository_not_started` | GET only: nothing has been asked for yet; show the button. |
 | 409 | `provisioning_interrupted` | GET only, retryable: a POST stopped between checkpoints. Repeat the POST. |
 | 409 | `team_prerequisites_incomplete` | Retryable: a teammate has no login on record or is not in the organization. The caller cannot fix it for them. |
 | 409 | `name_taken` | A repository with the destination name exists and was not generated from our template after this attempt began. Staff resolve it; nothing is renamed or deleted. |
-| 409 | `collaborator_not_member`, `repository_conflict`, `submission_conflict`, `url_pattern_mismatch`, `repo_url_mismatch`, `destination_name_too_long` | Conflicts for staff, named by the database or GitHub. A GET after one of these returns the code that was recorded, with `retryable: true`, because a POST resets the attempt and tries again. |
+| 409 | `collaborator_not_member`, `repository_conflict`, `destination_name_too_long` | Conflicts for staff, named by the database or GitHub. A GET after one of these returns the code that was recorded, with `retryable: true`, because a POST resets the attempt and tries again. |
 | 200 | `needs_github_link` (after `github_identity_mismatch`) | The database found the account the grant went to is no longer the one linked to the student; the attempt is recorded failed with that code and the student is asked to relink (`join_url` as above). |
 | 429 | `too_many_requests` | The per-student admission limit. `Retry-After` is set. |
 | 429 | `github_rate_limited` | GitHub is rate limiting the course credential. `Retry-After` carries GitHub's wait, and every GitHub call is refused for that long; work that needs none (a recorded `ready`) still answers. |
 | 502 | `github_unavailable` | Retryable: GitHub timed out or failed. After an ambiguous generate the next POST looks the name up before posting again. |
 | 502 | `github_credential_rejected` | GitHub refused the course credential; an operator must fix the installation. |
-| 502 | `template_not_found`, `template_empty` | The template is not in the installation, is not a template, or has no contents. |
+| 502 | `template_not_found`, `template_empty` | The template repository is not in the installation, is not a template, or has no contents. (The same code with a 404 is the database's: no such template row.) |
 | 502 | `generate_rejected` | Retryable: GitHub refused the generate although the name was free a moment earlier -- a race, which the next click's lookup settles, or a request GitHub will not honour, which repeats. |
 | 502 | `repository_not_visible`, `template_copy_timed_out` | Ten minutes after the attempt began the repository still answers 404, or still has no commits. |
 | 502 | `platform_unavailable` | Retryable: PostgREST did not answer. |
@@ -275,11 +303,11 @@ repeat, including after a `GET` that reported an interruption.
 After a `copying`, GET every three seconds. Never overlap requests: wait for
 one to answer before sending the next. Honour a `Retry-After` header when
 it is longer than three seconds. Stop automatic polling two minutes after
-the click and leave a manual retry (a fresh POST) available; the server
-keeps answering `copying` for up to ten minutes before it reports an error.
-A poll within three seconds of the last check is answered from the recorded
-result without asking GitHub, so several tabs, or several teammates, cost
-one GitHub call per interval.
+the click and leave a manual check available; the server keeps answering
+`copying` for up to ten minutes before it reports an error. A poll within
+three seconds of the last check is answered from the recorded result
+without asking GitHub, so several tabs, or several teammates, cost one
+GitHub call per interval. The page's script does all of this.
 
 ## Verifying the lifecycle
 
@@ -315,8 +343,7 @@ What the nine scenarios establish, taken together:
   after success, a click during another click's generate (the fake holds
   the generate for 1.5 s and the second request is sent while it is in
   flight), and a click after each kind of interruption all end with one
-  generate in the call log, one attempt row, one mapping row, one
-  submission, one URL field and one event.
+  generate in the call log, one attempt row and one mapping row.
 - **Every checkpoint resumes.** An attempt interrupted after generate (the
   first grant fails with a 500) resumes from `generated` with one more grant
   and no generate; a generate whose reply was cut off after the repository
@@ -333,12 +360,11 @@ What the nine scenarios establish, taken together:
   mapping or submission.
 - **What is recorded is consistent and correctly scoped.** After every
   success the mapping's `provider_repo_id` equals the attempt's, the
-  submission's URL field holds `https://github.com/<provider_full_name>`
-  with `origin = 'provisioning'`, and the event ledger has exactly one
-  entry. On a team assignment each teammate's grant carries
-  `permission: push` against the same repository path, either teammate's
-  GET answers `ready`, and a student on another team sees none of it
-  through the routes or through PostgREST.
+  mapping carries the template's `assignment_slug`, and no submission or
+  field submission was written. On a team template each teammate's grant
+  carries `permission: push` against the same repository path, either
+  teammate's GET answers `ready`, and a student on another team sees none
+  of it through the routes or through PostgREST.
 
 It does not exercise the join flow (`docs/github-join.md`), a template
 that is missing or empty, or the ten-minute readiness grace; the Go tests
@@ -349,10 +375,10 @@ organization, not part of any suite here.
 ## Enablement order
 
 Each step can be left in place before the next. The one that changes what a
-student sees is putting a template on an assignment (step 5): the button
-appears on that assignment's page the moment the template is there, so the
-pilot is done on one assignment in a short, announced window, or on an
-assignment created for the purpose.
+student sees is adding a template (step 5): it appears on every student's
+repositories page the moment the row is there, so the pilot is done with
+one template in a short, announced window, or with a template made for the
+purpose and deactivated afterwards.
 
 1. **Deploy the code.** `./bin/deploy-prod.sh --deploy --services "authapp
    elmclient"` applies the pending migrations through
@@ -364,8 +390,8 @@ assignment created for the purpose.
    authapp without a credential logs `GitHub provisioning disabled`.
 2. **Credential.** Create and install the App (above), set the
    `GITHUB_PROVISIONER_*` variables, restart authapp, and confirm the log line
-   `GitHub provisioning enabled for organization "…"`. Still nothing for a
-   student: no assignment has a template.
+   `GitHub provisioning enabled for organization "…"`. The repositories
+   page now exists, with no templates on it.
 3. **Import logins.** For a course that already collected GitHub usernames
    through an assignment field, faculty run
    `POST /rest/rpc/import_github_logins` with `p_assignment_slug` and
@@ -376,22 +402,23 @@ assignment created for the purpose.
    more usernames come in.
 4. **Stop every other writer.** A course migrating from an external
    provisioner (the cutover checklist below) disables its cron here, before
-   any assignment carries a template.
-5. **Pilot on one assignment.** Faculty
-   `PATCH /rest/assignments?slug=eq.<slug>` with
-   `repository_template_provider`, `repository_template_full_name` and
-   `repository_url_field_slug` (an existing `is_url` field of that
-   assignment; the database refuses any other). From that moment the
-   assignment's page shows the button to every student who can see the
-   assignment. Have two people click in the window: one student who
-   **already has** a mapping row (the click must answer `ready` for the
-   existing repository and generate nothing) and one who does not (expect
-   `copying` then `ready`, the repository in the organization with push
-   for that account, and the URL in the field with
-   `origin = 'provisioning'`). Then each clicks again and confirms nothing
-   new was created. Roll back (below) if anything is off; it costs nothing.
-6. **Roll out.** Put templates on the remaining assignments. There is no
-   separate UI switch; the template is the switch.
+   any template is added.
+5. **Pilot with one template.** Faculty
+   `POST /rest/repository_templates` with `slug`, `label`,
+   `template_full_name` (`<org>/<template>`), `is_team`, and optionally
+   `description` and `assignment_slug` (the assignment whose deadline
+   closes the template; a team template can only name a team assignment).
+   From that moment the template is on every student's repositories page
+   (team templates only for students on a team). Have two people click in
+   the window: one student who **already has** a mapping row for the
+   template (the click must answer `ready` for the existing repository and
+   generate nothing) and one who does not (expect `copying` then `ready`,
+   the repository in the organization with push for that account, and a
+   row in `api.my_repositories`). Then each clicks again and confirms
+   nothing new was created. Roll back (below) if anything is off; it costs
+   nothing.
+6. **Roll out.** Add the remaining templates. There is no separate UI
+   switch; the row is the switch, and `is_active = false` hides it.
 
 ## Consumer cutover checklist for `yale-mgt-656-fall-2026/admin`
 
@@ -411,32 +438,34 @@ refers to that repository's `admin provision-repos` command and the cron
       recorded repository. Do not delete or rewrite them, and do not run a
       "re-provision"; a row with the wrong `provider_repo_id` is fixed by
       hand (see *Staff recovery*).
-- [ ] **Validate the URL pattern.** The platform submits
-      `https://github.com/<org>/<slug>-<login>` (or `-<team nickname>` for a
-      team assignment) through the URL field, and `finalize` refuses with
-      `url_pattern_mismatch` if the field's `pattern` does not accept it.
-      Check each field's pattern against a real login before anyone
-      clicks. A pattern written for Classroom-style names is the usual
-      culprit.
+- [ ] **Validate the URL patterns.** The student pastes
+      `https://github.com/<org>/<template_slug>-<login>` (or
+      `-<team nickname>` for a team template) into the assignment's URL
+      field themselves, or takes the one-click fill the assignment page
+      offers when a repository of theirs names that assignment; the
+      field's `pattern` is what checks it, as for any pasted URL. Check
+      each field's pattern against a real login before anyone clicks. A
+      pattern written for Classroom-style names is the usual culprit.
 - [ ] **Replace Classroom links.** Assignment text that pointed at a GitHub
-      Classroom invitation points at the assignment page instead; the button
-      will be there.
-- [ ] **Disable the cron BEFORE any assignment gets a template.** Remove
+      Classroom invitation points at `/auth/repositories` instead, and
+      tells the student to paste the address into the field.
+- [ ] **Disable the cron BEFORE any template is added.** Remove
       the crontab entry (the `UNTIL` mechanism in the install script, or
       `crontab -e` on the server) and confirm no run is in flight. The cron
       and a student click both create `<slug>-<login>`; a cron run that
       lands between a student's lookup and generate produces `name_taken`
       for the student and a duplicate row for the cron, and the row has to
-      be sorted out by hand. Once a template is on an assignment the
-      platform must be the only writer for it.
-- [ ] **Set the templates in the fixtures**, one assignment first (the
-      pilot above), then the rest. Each assignment that gets a repository
-      carries `repository_template_provider = 'github'`,
-      `repository_template_full_name = '<org>/<template>'` and
-      `repository_url_field_slug = '<its URL field>'` in the course's
-      assignment fixtures. The template must be marked as a template on
-      GitHub and be in the App installation's repository list. Applying the
-      fixture is what exposes the button.
+      be sorted out by hand. Once a template exists the platform must be
+      the only writer for it.
+- [ ] **Add the templates**, one first (the pilot above), then the rest,
+      as rows of `api.repository_templates` in the course's fixtures: a
+      `slug` (which is the prefix of every repository name), `label`,
+      `template_full_name = '<org>/<template>'`, `is_team`, and the
+      `assignment_slug` whose deadline should close it. The migration
+      backfilled a template per assignment that already had mapping rows,
+      with `template_full_name = 'unknown/<slug>'`; fix those up. The
+      template must be marked as a template on GitHub and be in the App
+      installation's repository list. The row is what exposes the button.
 - [ ] **Keep the CLI as the staff fallback.** `admin provision-repos`
       stays installed for a staff member to run **by hand, once, for one
       assignment** when GitHub is refusing the platform's credential or a
@@ -449,16 +478,16 @@ assignment goes live, not something this repository automates.
 
 ## Rollback
 
-To stop new provisioning: faculty `PATCH /rest/assignments?slug=eq.<slug>`
-setting all three template columns to `null` (the database keeps them
-all-or-nothing, so one alone is refused). The button disappears from the
-assignment page on its next load,
-the POST answers `repository_not_configured`, and the GET does the same for
+To stop new provisioning from a template: faculty
+`PATCH /rest/repository_templates?slug=eq.<slug>` with `is_active = false`.
+The row disappears from the repositories page on its next load, the POST
+answers `template_inactive`, and the GET answers `template_not_found` for
 anyone without a repository. **Nothing else changes**: every
-`assignment_repositories` row, every submission, and every URL field stays,
-and a student whose repository was already made keeps it. To stop it for
-every assignment at once, unset the credential and restart authapp; the
-routes are then absent altogether.
+`assignment_repositories` row stays, and a student whose repository was
+already made keeps it and still sees it under *Your repositories*.
+Submissions were never written by the platform, so there is nothing to
+undo there. To stop it for every template at once, unset the credential
+and restart authapp; the routes are then absent altogether.
 
 Do **not** restart the old cron after a rollback without reconciling first:
 the platform will have made repositories the cron does not know about, and
@@ -469,7 +498,7 @@ agrees with every `provider_repo_id` before it is allowed to write again.
 ## Staff recovery
 
 Recovery always starts from what was recorded -- the attempt's
-`provider_repo_id` in `api.assignment_repository_provisionings`, the
+`provider_repo_id` in `api.repository_provisionings`, the
 mapping's in `api.assignment_repositories` -- never from a repository's
 name. Names are guessable and reattach to whatever holds them next; the ids
 do not.
@@ -483,28 +512,18 @@ do not.
   click also fails, in which case the recorded `error_code` names what to
   fix.
 - **Unrelated repository holds the name** (`name_taken`): a repository
-  called `<slug>-<login>` exists in the organization and was not generated
-  from the assignment's template after the attempt began. The simple fix
-  is to rename the stray repository on GitHub; the student's next click
-  then generates. If it is in fact the student's repository and should be
-  kept, record it by hand, and record **both** halves: the mapping row in
-  `api.assignment_repositories` with the repository's numeric id from
-  `GET /repos/<org>/<name>` as `provider_repo_id`, **and** the URL field
-  submission (`api.assignment_submissions` for the owner if there is none,
-  then `api.assignment_field_submissions` with the repository's URL; the
-  trigger records `origin = 'staff'` for a faculty write). A mapping row
-  alone is not enough: once it exists
-  the claim reports the repository as finalized and the finalize step, which
-  is what writes the submission, never runs, so the student would see
-  `ready` with nothing handed in. Never delete the stray repository from
-  here; it may be somebody's work.
-- **Mismatched submission URL** (`submission_conflict`, or a student who
-  pasted a different URL into the field before clicking): faculty edit
-  the field submission through `api.assignment_field_submissions` to the
-  recorded repository's URL, `https://github.com/<provider_full_name>`,
-  then the student clicks again and `finalize` finds the values equal. The
-  edit is recorded in the event ledger with the faculty member as
-  submitter, which is the audit trail.
+  called `<template_slug>-<login>` exists in the organization and was not
+  generated from the template after the attempt began. The simple fix is
+  to rename the stray repository on GitHub; the student's next click then
+  generates. If it is in fact the student's repository and should be kept,
+  record it by hand: a mapping row in `api.assignment_repositories` with
+  the `template_slug`, the owner, and the repository's numeric id from
+  `GET /repos/<org>/<name>` as `provider_repo_id`. Once it exists the claim
+  reports the repository as finalized and the page lists it. Never delete
+  the stray repository from here; it may be somebody's work.
+- **Wrong URL in an assignment field**: that is the student's own
+  submission, edited the way any submission is; the platform never wrote
+  it and never checks it against the mapping.
 - **Credential failure** (`github_credential_rejected` to the student; the
   one line authapp logs as `provisioning: ERROR GitHub refused the course
   credential`): the installation was removed, the key deleted, or a

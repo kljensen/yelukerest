@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,15 +34,27 @@ const provisioningTestToken = "secret-github-token-do-not-leak"
 // Fake PostgREST
 // ---------------------------------------------------------------------------
 
-type fakeAssignment struct {
-	isTeam   bool
-	template string
-	draft    bool
-	closed   bool
+// fakeTemplate is a row of api.repository_templates.
+type fakeTemplate struct {
+	label          string
+	description    string
+	isTeam         bool
+	template       string
+	assignmentSlug string
+	inactive       bool
 }
 
+// fakeAssignment is what the claim RPC asks of an assignment a template
+// points at: whether it has closed for the owner.
+type fakeAssignment struct {
+	closed bool
+}
+
+// fakeRepositoryRow is a row of data.assignment_repository, served through
+// api.my_repositories joined with its template.
 type fakeRepositoryRow struct {
 	ID               int       `json:"id"`
+	TemplateSlug     string    `json:"template_slug"`
 	AssignmentSlug   string    `json:"assignment_slug"`
 	IsTeam           bool      `json:"is_team"`
 	UserID           int       `json:"user_id"`
@@ -62,12 +75,10 @@ type fakePostgREST struct {
 
 	mu           sync.Mutex
 	users        map[int]*provisioningUser
+	templates    map[string]fakeTemplate
 	assignments  map[string]fakeAssignment
 	attempts     map[int]*provisioningAttempt
 	repositories []*fakeRepositoryRow
-	// submissions is the URL field's body per owner ("slug|user|team"),
-	// which finalize writes and refuses to overwrite.
-	submissions map[string]string
 	// verified records p_verified from the last set_user_github_identity
 	// per user, standing in for github_verified_at.
 	verified      map[int]bool
@@ -75,6 +86,7 @@ type fakePostgREST struct {
 	nextRepoID    int
 	finalizeCalls int
 	rpcCalls      map[string]int
+	viewReads     map[string]int
 	// finalizeRaise, when set, is raised by the next finalize instead of
 	// running it: for the refusals the handler cannot provoke through the
 	// store because it always sends the row's own values.
@@ -87,13 +99,14 @@ func newFakePostgREST(t *testing.T, clock *fakeClock) *fakePostgREST {
 		t:             t,
 		clock:         clock,
 		users:         map[int]*provisioningUser{},
+		templates:     map[string]fakeTemplate{},
 		assignments:   map[string]fakeAssignment{},
 		attempts:      map[int]*provisioningAttempt{},
-		submissions:   map[string]string{},
 		verified:      map[int]bool{},
 		nextAttemptID: 1,
 		nextRepoID:    1,
 		rpcCalls:      map[string]int{},
+		viewReads:     map[string]int{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /rpc/{name}", f.serveRPC)
@@ -163,7 +176,10 @@ func (f *fakePostgREST) serveRPC(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusNotAcceptable, map[string]string{"code": "PGRST116"})
 	case "claim_repository_provisioning":
-		f.claim(w, argString("p_assignment_slug"), argInt("p_user_id"))
+		if _, present := args["p_assignment_slug"]; present {
+			f.t.Errorf("claim still sends p_assignment_slug: %v", args)
+		}
+		f.claim(w, argString("p_template_slug"), argInt("p_user_id"))
 	case "record_repository_provisioning":
 		f.record(w, args)
 	case "finalize_repository_provisioning":
@@ -213,6 +229,10 @@ func (f *fakePostgREST) serveRPC(w http.ResponseWriter, r *http.Request) {
 		user.GitHubLogin = argString("p_github_login")
 		verified, _ := args["p_verified"].(bool)
 		f.verified[user.ID] = verified
+		if verified {
+			now := f.clock.Now()
+			user.GitHubVerifiedAt = &now
+		}
 		writeJSON(w, http.StatusOK, user)
 	default:
 		f.t.Errorf("unexpected rpc %s", name)
@@ -222,7 +242,7 @@ func (f *fakePostgREST) serveRPC(w http.ResponseWriter, r *http.Request) {
 
 func (f *fakePostgREST) findAttempt(slug string, userID int, team string) *provisioningAttempt {
 	for _, a := range f.attempts {
-		if a.AssignmentSlug == slug && a.UserID == userID && a.TeamNickname == team {
+		if a.TemplateSlug == slug && a.UserID == userID && a.TeamNickname == team {
 			return a
 		}
 	}
@@ -231,7 +251,7 @@ func (f *fakePostgREST) findAttempt(slug string, userID int, team string) *provi
 
 func (f *fakePostgREST) findRepository(slug string, userID int, team string) *fakeRepositoryRow {
 	for _, r := range f.repositories {
-		if r.AssignmentSlug == slug && r.UserID == userID && r.TeamNickname == team {
+		if r.TemplateSlug == slug && r.UserID == userID && r.TeamNickname == team {
 			return r
 		}
 	}
@@ -242,9 +262,13 @@ func (f *fakePostgREST) findRepository(slug string, userID int, team string) *fa
 // handler's branches: the same refusals in the same order, the synthetic
 // finalized row for an existing repository, the failed-to-claimed reset.
 func (f *fakePostgREST) claim(w http.ResponseWriter, slug string, userID int) {
-	assignment, ok := f.assignments[slug]
-	if !ok || assignment.draft || assignment.template == "" {
-		f.raise(w, "repository_not_configured")
+	template, ok := f.templates[slug]
+	if !ok {
+		f.raise(w, "template_not_found")
+		return
+	}
+	if template.inactive {
+		f.raise(w, "template_inactive")
 		return
 	}
 	user := f.users[userID]
@@ -257,7 +281,7 @@ func (f *fakePostgREST) claim(w http.ResponseWriter, slug string, userID int) {
 		return
 	}
 	ownerUser, ownerTeam := userID, ""
-	if assignment.isTeam {
+	if template.isTeam {
 		if user.TeamNickname == "" {
 			f.raise(w, "no_team")
 			return
@@ -267,8 +291,8 @@ func (f *fakePostgREST) claim(w http.ResponseWriter, slug string, userID int) {
 	attempt := f.findAttempt(slug, ownerUser, ownerTeam)
 	if repo := f.findRepository(slug, ownerUser, ownerTeam); repo != nil {
 		synthetic := provisioningAttempt{
-			AssignmentSlug: slug, IsTeam: repo.IsTeam, UserID: repo.UserID, TeamNickname: repo.TeamNickname,
-			InitiatedByUserID: userID, Provider: repo.Provider, TemplateFullName: assignment.template,
+			TemplateSlug: slug, IsTeam: repo.IsTeam, UserID: repo.UserID, TeamNickname: repo.TeamNickname,
+			InitiatedByUserID: userID, Provider: repo.Provider, TemplateFullName: template.template,
 			DestinationName: strings.SplitN(repo.ProviderFullName, "/", 2)[1], ProviderRepoID: repo.ProviderRepoID,
 			ProviderFullName: repo.ProviderFullName, Stage: "finalized", CreatedAt: repo.CreatedAt, UpdatedAt: repo.UpdatedAt,
 			ExistingRepositoryID: repo.ID,
@@ -287,11 +311,11 @@ func (f *fakePostgREST) claim(w http.ResponseWriter, slug string, userID int) {
 		writeJSON(w, http.StatusOK, attempt)
 		return
 	}
-	if assignment.closed {
+	if template.assignmentSlug != "" && f.assignments[template.assignmentSlug].closed {
 		f.raise(w, "assignment_closed")
 		return
 	}
-	if !assignment.isTeam && user.GitHubLogin == "" {
+	if !template.isTeam && user.GitHubLogin == "" {
 		f.raise(w, "needs_github_link")
 		return
 	}
@@ -301,8 +325,8 @@ func (f *fakePostgREST) claim(w http.ResponseWriter, slug string, userID int) {
 	}
 	now := f.clock.Now()
 	attempt = &provisioningAttempt{
-		ID: f.nextAttemptID, AssignmentSlug: slug, IsTeam: assignment.isTeam, UserID: ownerUser, TeamNickname: ownerTeam,
-		InitiatedByUserID: userID, Provider: "github", TemplateFullName: assignment.template,
+		ID: f.nextAttemptID, TemplateSlug: slug, IsTeam: template.isTeam, UserID: ownerUser, TeamNickname: ownerTeam,
+		InitiatedByUserID: userID, Provider: "github", TemplateFullName: template.template,
 		DestinationName: slug + "-" + suffix, Stage: "claimed", CreatedAt: now, UpdatedAt: now,
 	}
 	f.nextAttemptID++
@@ -358,14 +382,17 @@ func (f *fakePostgREST) record(w http.ResponseWriter, args map[string]any) {
 }
 
 // finalize mirrors api.finalize_repository_provisioning's refusals, in its
-// order: stage granted, the URL bound to the recorded repository, the
-// account bound to the linked one, one repository per owner and per forge
-// id, and one value in the URL field.
+// order: stage granted, the account bound to the linked one, one repository
+// per owner and per forge id. It writes the repository row and nothing
+// else: no submission, no field.
 func (f *fakePostgREST) finalize(w http.ResponseWriter, args map[string]any) {
 	f.finalizeCalls++
 	if f.finalizeRaise != "" {
 		f.raise(w, f.finalizeRaise)
 		return
+	}
+	if _, present := args["p_repo_url"]; present {
+		f.t.Errorf("finalize still sends p_repo_url: %v", args)
 	}
 	id, _ := args["p_attempt_id"].(float64)
 	attempt := f.attempts[int(id)]
@@ -374,17 +401,12 @@ func (f *fakePostgREST) finalize(w http.ResponseWriter, args map[string]any) {
 		return
 	}
 	if attempt.Stage == "finalized" {
-		writeJSON(w, http.StatusOK, f.findRepository(attempt.AssignmentSlug, attempt.UserID, attempt.TeamNickname))
+		writeJSON(w, http.StatusOK, f.findRepository(attempt.TemplateSlug, attempt.UserID, attempt.TeamNickname))
 		return
 	}
 	if attempt.Stage != "granted" {
 		f.t.Errorf("finalize called at stage %s", attempt.Stage)
 		f.raise(w, "invalid_stage_transition")
-		return
-	}
-	repoURL, _ := args["p_repo_url"].(string)
-	if repoURL != "https://github.com/"+attempt.ProviderFullName {
-		f.raise(w, "repo_url_mismatch")
 		return
 	}
 	var providerUserID *int64
@@ -401,7 +423,7 @@ func (f *fakePostgREST) finalize(w http.ResponseWriter, args map[string]any) {
 			return
 		}
 	}
-	existing := f.findRepository(attempt.AssignmentSlug, attempt.UserID, attempt.TeamNickname)
+	existing := f.findRepository(attempt.TemplateSlug, attempt.UserID, attempt.TeamNickname)
 	if existing != nil && existing.ProviderRepoID != attempt.ProviderRepoID {
 		f.raise(w, "repository_conflict")
 		return
@@ -414,33 +436,58 @@ func (f *fakePostgREST) finalize(w http.ResponseWriter, args map[string]any) {
 			}
 		}
 	}
-	submissionKey := fmt.Sprintf("%s|%d|%s", attempt.AssignmentSlug, attempt.UserID, attempt.TeamNickname)
-	if body, ok := f.submissions[submissionKey]; ok && body != repoURL {
-		f.raise(w, "submission_conflict")
-		return
-	}
 	now := f.clock.Now()
 	if existing == nil {
 		existing = &fakeRepositoryRow{
-			ID: f.nextRepoID, AssignmentSlug: attempt.AssignmentSlug, IsTeam: attempt.IsTeam, UserID: attempt.UserID,
-			TeamNickname: attempt.TeamNickname, Provider: "github", ProviderRepoID: attempt.ProviderRepoID,
-			ProviderFullName: attempt.ProviderFullName, ProviderUserID: providerUserID, CreatedAt: now, UpdatedAt: now,
+			ID: f.nextRepoID, TemplateSlug: attempt.TemplateSlug, AssignmentSlug: f.templates[attempt.TemplateSlug].assignmentSlug,
+			IsTeam: attempt.IsTeam, UserID: attempt.UserID, TeamNickname: attempt.TeamNickname, Provider: "github",
+			ProviderRepoID: attempt.ProviderRepoID, ProviderFullName: attempt.ProviderFullName, ProviderUserID: providerUserID,
+			CreatedAt: now, UpdatedAt: now,
 		}
 		f.nextRepoID++
 		f.repositories = append(f.repositories, existing)
 	}
-	f.submissions[submissionKey] = repoURL
 	attempt.Stage, attempt.ErrorCode, attempt.UpdatedAt = "finalized", "", now
 	writeJSON(w, http.StatusOK, existing)
 }
 
+// myRepositoryJSON is a row of api.my_repositories: the repository joined
+// with its template, plus repo_url.
+func (f *fakePostgREST) myRepositoryJSON(repo *fakeRepositoryRow) map[string]any {
+	template := f.templates[repo.TemplateSlug]
+	return map[string]any{
+		"id": repo.ID, "template_slug": repo.TemplateSlug, "assignment_slug": nullable(template.assignmentSlug),
+		"is_team": repo.IsTeam, "user_id": repo.UserID, "team_nickname": repo.TeamNickname,
+		"provider": repo.Provider, "provider_repo_id": repo.ProviderRepoID, "provider_full_name": repo.ProviderFullName,
+		"created_at": repo.CreatedAt, "updated_at": repo.UpdatedAt,
+		"label": template.label, "template_full_name": template.template,
+		"repo_url": "https://github.com/" + repo.ProviderFullName,
+	}
+}
+
+func (f *fakePostgREST) templateJSON(slug string, t fakeTemplate) map[string]any {
+	return map[string]any{
+		"slug": slug, "provider": "github", "template_full_name": t.template, "label": t.label,
+		"description": nullable(t.description), "is_team": t.isTeam, "assignment_slug": nullable(t.assignmentSlug),
+		"is_active": !t.inactive,
+	}
+}
+
+func nullable(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 // serveView answers the reads: api.users for the service, and the
-// provisioning views for a student under their own row-level security.
+// repository views for a student under their own row-level security.
 func (f *fakePostgREST) serveView(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	service, user := f.userForBearer(r)
 	view := r.PathValue("view")
+	f.viewReads[view]++
 	query := r.URL.Query()
 	eq := func(column string) (string, bool) {
 		value, ok := strings.CutPrefix(query.Get(column), "eq.")
@@ -463,45 +510,54 @@ func (f *fakePostgREST) serveView(w http.ResponseWriter, r *http.Request) {
 			rows = append(rows, u)
 		}
 		writeJSON(w, http.StatusOK, rows)
-	case "assignment_repository_provisionings", "assignment_repositories", "my_assignments":
+	case "repository_templates":
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "views are read as a user"})
+			return
+		}
+		slugs := make([]string, 0, len(f.templates))
+		for slug := range f.templates {
+			slugs = append(slugs, slug)
+		}
+		sort.Strings(slugs)
+		rows := []map[string]any{}
+		for _, slug := range slugs {
+			t := f.templates[slug]
+			if want, ok := eq("slug"); ok && slug != want {
+				continue
+			}
+			if active, ok := eq("is_active"); ok && (active == "true") != !t.inactive {
+				continue
+			}
+			rows = append(rows, f.templateJSON(slug, t))
+		}
+		writeJSON(w, http.StatusOK, rows)
+	case "repository_provisionings", "my_repositories":
 		if user == nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "views are read as the student"})
 			return
 		}
-		slug, _ := eq("assignment_slug")
-		if view == "my_assignments" {
-			slug, _ = eq("slug")
-			rows := []map[string]any{}
-			if a, ok := f.assignments[slug]; ok {
-				provider := any(nil)
-				if a.template != "" {
-					provider = "github"
-				}
-				rows = append(rows, map[string]any{"slug": slug, "is_draft": a.draft, "repository_template_provider": provider})
-			}
-			writeJSON(w, http.StatusOK, rows)
-			return
-		}
+		slug, filtered := eq("template_slug")
 		visible := func(isTeam bool, userID int, team string) bool {
 			if isTeam {
 				return user.TeamNickname != "" && user.TeamNickname == team
 			}
 			return userID == user.ID
 		}
-		if view == "assignment_repository_provisionings" {
+		if view == "repository_provisionings" {
 			rows := []*provisioningAttempt{}
 			for _, a := range f.attempts {
-				if a.AssignmentSlug == slug && visible(a.IsTeam, a.UserID, a.TeamNickname) {
+				if (!filtered || a.TemplateSlug == slug) && visible(a.IsTeam, a.UserID, a.TeamNickname) {
 					rows = append(rows, a)
 				}
 			}
 			writeJSON(w, http.StatusOK, rows)
 			return
 		}
-		rows := []*fakeRepositoryRow{}
+		rows := []map[string]any{}
 		for _, repo := range f.repositories {
-			if repo.AssignmentSlug == slug && visible(repo.IsTeam, repo.UserID, repo.TeamNickname) {
-				rows = append(rows, repo)
+			if (!filtered || repo.TemplateSlug == slug) && visible(repo.IsTeam, repo.UserID, repo.TeamNickname) {
+				rows = append(rows, f.myRepositoryJSON(repo))
 			}
 		}
 		writeJSON(w, http.StatusOK, rows)
@@ -787,16 +843,17 @@ type provisioningStack struct {
 	clients   map[string]*http.Client
 }
 
-// Fixtures every test starts from. hw1 is individual, proj is a team
-// assignment; alice and bob are on team alpha with linked, active GitHub
+// Fixtures every test starts from. hw1 is an individual template for the
+// hw1 assignment, proj a team template for the proj assignment, plain an
+// inactive one; alice and bob are on team alpha with linked, active GitHub
 // accounts; carol has no GitHub login; prof is faculty.
 func newProvisioningStack(t *testing.T) *provisioningStack {
 	t.Helper()
 	clock := &fakeClock{now: time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)}
 	db := newFakePostgREST(t, clock)
-	db.assignments["hw1"] = fakeAssignment{template: "course/hw1-starter"}
-	db.assignments["proj"] = fakeAssignment{isTeam: true, template: "course/proj-starter"}
-	db.assignments["plain"] = fakeAssignment{}
+	db.templates["hw1"] = fakeTemplate{label: "Homework 1 starter", description: "Go, with the tests wired up", template: "course/hw1-starter", assignmentSlug: "hw1"}
+	db.templates["proj"] = fakeTemplate{label: "Project starter", isTeam: true, template: "course/proj-starter", assignmentSlug: "proj"}
+	db.templates["plain"] = fakeTemplate{label: "Retired starter", template: "course/plain-starter", inactive: true}
 	db.users[1] = &provisioningUser{ID: 1, NetID: "alice", Role: "student", TeamNickname: "alpha", GitHubLogin: "alice"}
 	db.users[2] = &provisioningUser{ID: 2, NetID: "bob", Role: "student", TeamNickname: "alpha", GitHubLogin: "bob"}
 	db.users[3] = &provisioningUser{ID: 3, NetID: "carol", Role: "student"}
@@ -819,8 +876,7 @@ func newProvisioningStack(t *testing.T) *provisioningStack {
 	handler.now = clock.Now
 
 	mux := http.NewServeMux()
-	mux.Handle("/auth/assignments/{slug}/repository", handler)
-	registerRepositoryCreatePage(mux, sessionManager)
+	handler.register(mux)
 	mux.HandleFunc("/test/seed", func(w http.ResponseWriter, r *http.Request) {
 		sessionManager.Put(r.Context(), "netid", r.URL.Query().Get("netid"))
 		w.WriteHeader(http.StatusNoContent)
@@ -866,15 +922,17 @@ type provisioningResponse struct {
 	hasJoinURL bool
 }
 
-// do sends one request as the netid. POSTs are marked same-origin the way a
-// browser marks them unless the test says otherwise. Every body is checked
-// for the GitHub token: no reply may ever carry it.
+// do sends one request as the netid, the way the page's script does: with
+// Accept: application/json, and a POST marked same-origin the way a browser
+// marks a fetch, unless the test says otherwise. Every body is checked for
+// the GitHub token: no reply may ever carry it.
 func (s *provisioningStack) do(method string, netID string, slug string, headers map[string]string) provisioningResponse {
 	s.t.Helper()
-	req, err := http.NewRequest(method, s.server.URL+"/auth/assignments/"+slug+"/repository", strings.NewReader("{}"))
+	req, err := http.NewRequest(method, s.server.URL+repositoriesPagePath+"/"+slug, strings.NewReader("{}"))
 	if err != nil {
 		s.t.Fatalf("building request: %v", err)
 	}
+	req.Header.Set("Accept", "application/json")
 	if method == http.MethodPost {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Sec-Fetch-Site", "same-origin")
@@ -983,7 +1041,7 @@ func TestProvisioningIndividualHappyPath(t *testing.T) {
 		t.Fatalf("alice's github_user_id = %d, want 101", s.db.users[1].GitHubUserID)
 	}
 	repo := s.db.findRepository("hw1", 1, "")
-	if repo == nil || repo.ProviderUserID == nil || *repo.ProviderUserID != 101 {
+	if repo == nil || repo.ProviderUserID == nil || *repo.ProviderUserID != 101 || repo.AssignmentSlug != "hw1" {
 		t.Fatalf("repository row = %+v", repo)
 	}
 
@@ -1093,7 +1151,7 @@ func TestProvisioningResumesFromEachStage(t *testing.T) {
 			s := newProvisioningStack(t)
 			s.db.users[1].GitHubUserID = 101
 			attempt := provisioningAttempt{
-				AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter",
+				TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter",
 				DestinationName: "hw1-alice", Stage: tc.stage, CreatedAt: s.clock.Now().Add(-time.Minute),
 			}
 			if tc.stage != "claimed" {
@@ -1102,7 +1160,7 @@ func TestProvisioningResumesFromEachStage(t *testing.T) {
 			}
 			seeded := s.db.seedAttempt(attempt)
 			if tc.stage == "finalized" {
-				s.db.seedRepository(fakeRepositoryRow{AssignmentSlug: "hw1", UserID: 1, ProviderRepoID: seeded.ProviderRepoID, ProviderFullName: seeded.ProviderFullName})
+				s.db.seedRepository(fakeRepositoryRow{TemplateSlug: "hw1", UserID: 1, ProviderRepoID: seeded.ProviderRepoID, ProviderFullName: seeded.ProviderFullName})
 			}
 
 			s.post("alice", "hw1").expectState(t, tc.wantStatus, tc.wantState)
@@ -1126,7 +1184,7 @@ func TestProvisioningResumesFromEachStage(t *testing.T) {
 func TestProvisioningRetriesAFailedAttempt(t *testing.T) {
 	s := newProvisioningStack(t)
 	s.db.seedAttempt(provisioningAttempt{
-		AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter",
+		TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter",
 		DestinationName: "hw1-alice", Stage: "failed", ErrorCode: "github_unavailable",
 	})
 	s.get("alice", "hw1").expectError(t, http.StatusConflict, "github_unavailable", true)
@@ -1278,7 +1336,7 @@ func TestProvisioningTemplatePreflight(t *testing.T) {
 	if got := s.github.count("generate"); got != 0 {
 		t.Fatalf("generated from an empty template (%d)", got)
 	}
-	s.db.assignments["hw2"] = fakeAssignment{template: "course/missing-starter"}
+	s.db.templates["hw2"] = fakeTemplate{label: "Homework 2 starter", template: "course/missing-starter"}
 	s.post("alice", "hw2").expectError(t, http.StatusBadGateway, "template_not_found", false)
 }
 
@@ -1302,7 +1360,7 @@ func TestProvisioningResumedAttemptsRevalidateOwners(t *testing.T) {
 		s.db.users[1].GitHubUserID = 101
 		repo := s.github.addRepo(fakeGitHubRepo{fullName: "course/hw1-alice", template: "course/hw1-starter"})
 		s.db.seedAttempt(provisioningAttempt{
-			AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
+			TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
 			Stage: "generated", ProviderRepoID: repo.id, ProviderFullName: repo.fullName,
 		})
 		// The login "alice" is now somebody else's account.
@@ -1319,7 +1377,7 @@ func TestProvisioningResumedAttemptsRevalidateOwners(t *testing.T) {
 		s := newProvisioningStack(t)
 		repo := s.github.addRepo(fakeGitHubRepo{fullName: "course/proj-alpha", template: "course/proj-starter"})
 		s.db.seedAttempt(provisioningAttempt{
-			AssignmentSlug: "proj", IsTeam: true, TeamNickname: "alpha", InitiatedByUserID: 1, TemplateFullName: "course/proj-starter",
+			TemplateSlug: "proj", IsTeam: true, TeamNickname: "alpha", InitiatedByUserID: 1, TemplateFullName: "course/proj-starter",
 			DestinationName: "proj-alpha", Stage: "generated", ProviderRepoID: repo.id, ProviderFullName: repo.fullName,
 		})
 		s.github.memberships["bob"] = "pending"
@@ -1332,7 +1390,7 @@ func TestProvisioningResumedAttemptsRevalidateOwners(t *testing.T) {
 		s := newProvisioningStack(t)
 		repo := s.github.addRepo(fakeGitHubRepo{fullName: "course/proj-alpha", template: "course/proj-starter", ready: true})
 		s.db.seedAttempt(provisioningAttempt{
-			AssignmentSlug: "proj", IsTeam: true, TeamNickname: "alpha", InitiatedByUserID: 1, TemplateFullName: "course/proj-starter",
+			TemplateSlug: "proj", IsTeam: true, TeamNickname: "alpha", InitiatedByUserID: 1, TemplateFullName: "course/proj-starter",
 			DestinationName: "proj-alpha", Stage: "granted", ProviderRepoID: repo.id, ProviderFullName: repo.fullName,
 		})
 		s.db.users[5] = &provisioningUser{ID: 5, NetID: "dave", Role: "student", TeamNickname: "alpha", GitHubLogin: "dave"}
@@ -1357,7 +1415,7 @@ func TestProvisioningCooldownIsPerCall(t *testing.T) {
 	s.db.users[1].GitHubUserID = 101
 	repo := s.github.addRepo(fakeGitHubRepo{fullName: "course/hw1-alice", template: "course/hw1-starter", ready: true})
 	s.db.seedAttempt(provisioningAttempt{
-		AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
+		TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
 		Stage: "granted", ProviderRepoID: repo.id, ProviderFullName: repo.fullName,
 	})
 	s.handler.setCooldown(s.clock.Now().Add(time.Minute))
@@ -1387,7 +1445,7 @@ func TestProvisioningFinalizeRefusals(t *testing.T) {
 		s.db.users[1].GitHubUserID = 101
 		s.github.addRepo(fakeGitHubRepo{id: repoID, fullName: "course/hw1-alice", template: "course/hw1-starter", ready: true})
 		s.db.seedAttempt(provisioningAttempt{
-			AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
+			TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
 			Stage: "granted", ProviderRepoID: repoID, ProviderFullName: "course/hw1-alice",
 		})
 	}
@@ -1402,23 +1460,9 @@ func TestProvisioningFinalizeRefusals(t *testing.T) {
 	t.Run("repository_conflict: forge id already recorded for another owner", func(t *testing.T) {
 		s := newProvisioningStack(t)
 		seedGranted(s, 5)
-		s.db.seedRepository(fakeRepositoryRow{AssignmentSlug: "hw1", UserID: 2, ProviderRepoID: 5, ProviderFullName: "course/hw1-alice"})
+		s.db.seedRepository(fakeRepositoryRow{TemplateSlug: "hw1", UserID: 2, ProviderRepoID: 5, ProviderFullName: "course/hw1-alice"})
 		s.post("alice", "hw1").expectError(t, http.StatusConflict, "repository_conflict", false)
 		expectFailed(t, s, "repository_conflict")
-	})
-	t.Run("submission_conflict: the URL field already holds another value", func(t *testing.T) {
-		s := newProvisioningStack(t)
-		seedGranted(s, 5)
-		s.db.submissions["hw1|1|"] = "https://github.com/alice/my-own-repo"
-		s.post("alice", "hw1").expectError(t, http.StatusConflict, "submission_conflict", false)
-		expectFailed(t, s, "submission_conflict")
-	})
-	t.Run("repo_url_mismatch", func(t *testing.T) {
-		s := newProvisioningStack(t)
-		seedGranted(s, 5)
-		s.db.finalizeRaise = "repo_url_mismatch"
-		s.post("alice", "hw1").expectError(t, http.StatusConflict, "repo_url_mismatch", false)
-		expectFailed(t, s, "repo_url_mismatch")
 	})
 	t.Run("github_identity_mismatch is a link problem", func(t *testing.T) {
 		s := newProvisioningStack(t)
@@ -1525,8 +1569,9 @@ func TestProvisioningConcurrentPollsShareOneCheck(t *testing.T) {
 func TestProvisioningStatusBeforeAnyClick(t *testing.T) {
 	s := newProvisioningStack(t)
 	s.get("alice", "hw1").expectError(t, http.StatusNotFound, "repository_not_started", false)
-	s.get("alice", "plain").expectError(t, http.StatusNotFound, "repository_not_configured", false)
-	s.get("alice", "nope").expectError(t, http.StatusNotFound, "repository_not_configured", false)
+	s.get("alice", "plain").expectError(t, http.StatusNotFound, "template_not_found", false)
+	s.get("alice", "nope").expectError(t, http.StatusNotFound, "template_not_found", false)
+	s.get("alice", "Not%20A%20Slug").expectError(t, http.StatusNotFound, "template_not_found", false)
 	s.get("prof", "hw1").expectError(t, http.StatusForbidden, "not_a_student", false)
 	if got := s.github.count("generate") + s.github.count("head"); got != 0 {
 		t.Fatalf("a GET called GitHub (%d)", got)
@@ -1540,7 +1585,7 @@ func TestProvisioningStatusOnInterruptedAttempt(t *testing.T) {
 	for _, stage := range []string{"claimed", "generated", "granted"} {
 		t.Run(stage, func(t *testing.T) {
 			s := newProvisioningStack(t)
-			attempt := provisioningAttempt{AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice", Stage: stage}
+			attempt := provisioningAttempt{TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice", Stage: stage}
 			if stage != "claimed" {
 				attempt.ProviderRepoID, attempt.ProviderFullName = 5, "course/hw1-alice"
 			}
@@ -1558,7 +1603,7 @@ func TestProvisioningStatusOnInterruptedAttempt(t *testing.T) {
 func TestProvisioningStatusOnLegacyRepository(t *testing.T) {
 	s := newProvisioningStack(t)
 	s.github.addRepo(fakeGitHubRepo{fullName: "course/hw1-alice", ready: true})
-	s.db.seedRepository(fakeRepositoryRow{AssignmentSlug: "hw1", UserID: 1, ProviderRepoID: 77, ProviderFullName: "course/hw1-alice"})
+	s.db.seedRepository(fakeRepositoryRow{TemplateSlug: "hw1", UserID: 1, ProviderRepoID: 77, ProviderFullName: "course/hw1-alice"})
 	reply := s.get("alice", "hw1")
 	reply.expectState(t, http.StatusOK, repositoryStateReady)
 	if reply.repoURL != "https://github.com/course/hw1-alice" {
@@ -1575,10 +1620,10 @@ func TestProvisioningReadinessBounds(t *testing.T) {
 	seed := func(s *provisioningStack, age time.Duration) {
 		s.db.users[1].GitHubUserID = 101
 		s.db.seedAttempt(provisioningAttempt{
-			AssignmentSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
+			TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice",
 			Stage: "finalized", ProviderRepoID: 5, ProviderFullName: "course/hw1-alice", CreatedAt: s.clock.Now().Add(-age),
 		})
-		s.db.seedRepository(fakeRepositoryRow{AssignmentSlug: "hw1", UserID: 1, ProviderRepoID: 5, ProviderFullName: "course/hw1-alice", CreatedAt: s.clock.Now().Add(-age)})
+		s.db.seedRepository(fakeRepositoryRow{TemplateSlug: "hw1", UserID: 1, ProviderRepoID: 5, ProviderFullName: "course/hw1-alice", CreatedAt: s.clock.Now().Add(-age)})
 	}
 
 	t.Run("not yet visible within the grace is copying", func(t *testing.T) {
@@ -1622,11 +1667,13 @@ func TestProvisioningReadinessBounds(t *testing.T) {
 func TestProvisioningRoutesAbsentWhenDisabled(t *testing.T) {
 	mux := http.NewServeMux()
 	registerProvisioningRoutes(mux, nil, FetchJWTConfig{}, newSessionManager(true, memstore.New()))
-	for _, method := range []string{http.MethodGet, http.MethodPost} {
-		recorder := httptest.NewRecorder()
-		mux.ServeHTTP(recorder, httptest.NewRequest(method, "/auth/assignments/hw1/repository", nil))
-		if recorder.Code != http.StatusNotFound {
-			t.Fatalf("%s with provisioning disabled = %d, want 404", method, recorder.Code)
+	for _, path := range []string{repositoriesPagePath, repositoriesScriptPath, repositoriesPagePath + "/hw1"} {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			recorder := httptest.NewRecorder()
+			mux.ServeHTTP(recorder, httptest.NewRequest(method, path, nil))
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("%s %s with provisioning disabled = %d, want 404", method, path, recorder.Code)
+			}
 		}
 	}
 }
@@ -1690,17 +1737,71 @@ func TestProvisioningClicksAreRateLimitedPerStudent(t *testing.T) {
 func TestProvisioningEligibilityRefusals(t *testing.T) {
 	s := newProvisioningStack(t)
 	s.post("prof", "hw1").expectError(t, http.StatusForbidden, "not_a_student", false)
-	s.post("alice", "plain").expectError(t, http.StatusNotFound, "repository_not_configured", false)
+	s.post("alice", "plain").expectError(t, http.StatusNotFound, "template_inactive", false)
+	s.post("alice", "nope").expectError(t, http.StatusNotFound, "template_not_found", false)
+	s.post("alice", "Not%20A%20Slug").expectError(t, http.StatusNotFound, "template_not_found", false)
 	s.post("carol", "proj").expectError(t, http.StatusForbidden, "no_team", false)
-	s.db.assignments["hw1"] = fakeAssignment{template: "course/hw1-starter", closed: true}
+	s.db.assignments["hw1"] = fakeAssignment{closed: true}
 	s.post("alice", "hw1").expectError(t, http.StatusForbidden, "assignment_closed", false)
 	if got := s.github.count("generate"); got != 0 {
 		t.Fatalf("generate calls = %d, want 0", got)
+	}
+	if s.db.rpcCalls["claim_repository_provisioning"] != 5 {
+		t.Fatalf("a malformed slug reached the claim RPC (%d claims)", s.db.rpcCalls["claim_repository_provisioning"])
 	}
 	// Other methods are refused with an Allow header.
 	reply := s.do(http.MethodDelete, "alice", "hw1", nil)
 	if reply.status != http.StatusMethodNotAllowed || reply.header.Get("Allow") != "GET, POST" {
 		t.Fatalf("DELETE = %d Allow=%q", reply.status, reply.header.Get("Allow"))
+	}
+}
+
+// Without the script the Create form posts natively: the reply is a
+// redirect back to the page with the outcome in the query, and a signed-out
+// post goes through login. A fetch is told apart by its Accept header or
+// by the Sec-Fetch-Mode a browser puts on it, and gets JSON.
+func TestProvisioningFormPostRedirectsToThePage(t *testing.T) {
+	s := newProvisioningStack(t)
+	post := func(netID string, slug string, headers map[string]string) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, s.server.URL+repositoriesPagePath+"/"+slug, strings.NewReader("button="))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set("Sec-Fetch-Mode", "navigate")
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		client := s.clientFor(netID)
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		response, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", slug, err)
+		}
+		t.Cleanup(func() { response.Body.Close() })
+		return response
+	}
+	expectRedirect := func(t *testing.T, response *http.Response, want string) {
+		t.Helper()
+		if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != want {
+			t.Fatalf("got %d Location %q, want 303 to %q", response.StatusCode, response.Header.Get("Location"), want)
+		}
+	}
+	expectRedirect(t, post("alice", "hw1", nil), repositoriesPagePath+"?result=copying&template=hw1")
+	if got := s.github.count("generate"); got != 1 {
+		t.Fatalf("generate calls = %d, want 1", got)
+	}
+	s.github.memberships["bob"] = "pending"
+	expectRedirect(t, post("bob", "hw1", nil), repositoriesPagePath+"?result=needs_org_join&template=hw1")
+	expectRedirect(t, post("alice", "nope", nil), repositoriesPagePath+"?result=template_not_found&template=nope")
+	expectRedirect(t, post("", "hw1", nil), githubJoinLoginPath+"?next="+url.QueryEscape(repositoriesPagePath))
+	// The same-origin check still applies to a form post.
+	if cross := post("alice", "hw1", map[string]string{"Sec-Fetch-Site": "cross-site"}); cross.StatusCode != http.StatusSeeOther || cross.Header.Get("Location") != repositoriesPagePath+"?result=cross_site_request&template=hw1" {
+		t.Fatalf("cross-site form post = %d %q", cross.StatusCode, cross.Header.Get("Location"))
+	}
+	// A fetch that forgot Accept is still a fetch.
+	if asFetch := post("alice", "hw1", map[string]string{"Sec-Fetch-Mode": "cors"}); asFetch.StatusCode/100 != 2 || !strings.HasPrefix(asFetch.Header.Get("Content-Type"), "application/json") {
+		t.Fatalf("fetch without Accept = %d %q", asFetch.StatusCode, asFetch.Header.Get("Content-Type"))
 	}
 }
 
@@ -1739,7 +1840,7 @@ func TestIsSameOriginRequest(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("site=%q origin=%q", tc.fetchSite, tc.origin), func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodPost, "/auth/assignments/hw1/repository", nil)
+			r := httptest.NewRequest(http.MethodPost, repositoriesPagePath+"/hw1", nil)
 			r.Host = tc.host
 			// Behind Caddy the request is https by X-Forwarded-Proto.
 			r.Header.Set("X-Forwarded-Proto", "https")
@@ -1772,7 +1873,7 @@ func TestIsSameOriginRequest(t *testing.T) {
 	}
 	for _, tc := range schemes {
 		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodPost, "/auth/assignments/hw1/repository", nil)
+			r := httptest.NewRequest(http.MethodPost, repositoriesPagePath+"/hw1", nil)
 			r.Host = "example.edu"
 			r.Header.Set("Origin", tc.origin)
 			if tc.forwardedProto != "" {

@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted, 2026-09-19. Records the decisions behind milestone "Roadmap 17:
+Accepted, 2026-09-19; amended 2026-09-21 (*Decoupled from submissions*,
+below). Records the decisions behind milestone "Roadmap 17:
 Self-Serve Assignment Repositories" (issues #393–#399). This ADR and the
 GitHub client land first (#393); the schema, the endpoints, the Elm client,
 and the student-authorized join flow follow in the milestone's later issues
@@ -188,6 +189,51 @@ credential, for the reasons in Context; leases or a background worker, when
 the next request is a sufficient actor; automatic deletion of anything on
 GitHub; replaying a `POST` from inside the client; and a single App for both
 the platform's provisioning and the student's authorization.
+
+## Decoupled from submissions (2026-09-21)
+
+The first design tied a repository to an assignment: the assignment named
+the template and a URL field, `finalize` wrote the repository's address
+into that field with `origin = 'provisioning'`, and the assignment page
+was where the button lived. Building it showed the coupling was the wrong
+shape. An assignment consumes a URL; it does not care where the
+repository came from, and a student who made one by hand, or was given one
+by a teammate, pastes it like anyone else. Tying the write to a field
+meant the field had to be designated, its pattern had to admit the
+platform's name, the write had to be locked against the student's own
+edits, and every one of those was a rule about submissions living in the
+provisioning code.
+
+**Repositories are a resource with their own page.** `data.repository_template`
+is the thing faculty configure (slug, label, `owner/repo`, individual or
+team, optionally the assignment whose deadline closes it, active or not),
+through `api.repository_templates`. A student creates a repository from a
+template on `/auth/repositories`, which shows their GitHub account state,
+the templates they may use, and the repositories they have
+(`api.my_repositories`). The mapping row is keyed by owner and template,
+carries the template's `assignment_slug` for whoever wants to read it, and
+`finalize` writes that row and nothing else: no submission, no field, no
+origin. The attempt row, the checkpoints, the name lookup, the owner
+revalidation, and the readiness contract are unchanged; only what the
+last step records is smaller.
+
+**Assignments stay assignments.** Nothing on an assignment page is locked,
+hidden, or written by the server. The one concession to convenience is
+client-side: when a student has a repository whose `assignment_slug` is
+the assignment on screen, and the assignment has a URL field the
+repository's address would satisfy and that is still empty, the page
+offers to fill the field with it. The student still presses Submit. The
+repositories page also carries a nav link and the join flow returns there
+by default, so the account, the templates, and the outcomes are in one
+place rather than spread over every assignment that happens to take a
+repository.
+
+Deliberately not kept: the designated URL field and its all-or-nothing
+template columns on `data.assignment`; the `provisioning` origin as
+something the platform writes (the value stays defined, from the earlier
+migration, and nothing writes it); the create link per assignment
+(`/auth/assignments/{slug}/repository/create`), which the page replaces;
+and polling from the assignment page.
 
 ## Related Decisions
 
