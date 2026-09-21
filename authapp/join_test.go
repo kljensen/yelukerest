@@ -898,7 +898,7 @@ func TestJoinLandingPage(t *testing.T) {
 	if reply.status != http.StatusOK {
 		t.Fatalf("landing = %d %s", reply.status, reply.body)
 	}
-	for _, want := range []string{`action="` + githubJoinStartPath + `"`, `value="hw1"`, `<script src="` + githubJoinScriptPath + `">`, "<noscript>"} {
+	for _, want := range []string{`action="` + githubJoinStartPath + `"`, `value="hw1"`, ">Continue to GitHub</button>", `<script src="` + githubJoinScriptPath + `">`, "<noscript>"} {
 		if !strings.Contains(reply.body, want) {
 			t.Fatalf("landing page lacks %q:\n%s", want, reply.body)
 		}
@@ -916,6 +916,32 @@ func TestJoinLandingPage(t *testing.T) {
 	script := get("carol", githubJoinScriptPath)
 	if script.status != http.StatusOK || !strings.Contains(script.body, "fetch(form.action") || !strings.Contains(script.body, "authorization_url") {
 		t.Fatalf("script = %d %s", script.status, script.body)
+	}
+	// The start POST is made from the submit handler and nowhere else, so
+	// a link to this page starts nothing by itself.
+	js := script.body
+	handlerStart := strings.Index(js, `form.addEventListener("submit"`)
+	if handlerStart < 0 {
+		t.Fatalf("script registers no submit handler:\n%s", js)
+	}
+	if fetchAt := strings.Index(js, "fetch("); fetchAt < handlerStart || strings.Count(js, "fetch(") != 1 {
+		t.Fatalf("script fetches outside the submit handler:\n%s", js)
+	}
+	for _, banned := range []string{"start()", "submit()", "requestSubmit(", "DOMContentLoaded", `addEventListener("load"`} {
+		if strings.Contains(js, banned) {
+			t.Fatalf("script invokes the POST automatically (%q):\n%s", banned, js)
+		}
+	}
+	if !strings.Contains(js, "button.disabled = true") {
+		t.Fatalf("script does not disable the button while in flight:\n%s", js)
+	}
+	// Rendering the page and its script started nothing: no state in the
+	// session, no GitHub call.
+	if got := len(s.github.recorded()); got != 0 {
+		t.Fatalf("rendering the landing page called GitHub (%d calls)", got)
+	}
+	if s.store.everHeld(sessionKeyGitHubJoin) {
+		t.Fatal("rendering the landing page minted a join state")
 	}
 }
 
@@ -1030,6 +1056,27 @@ func TestRepositoryCreatePage(t *testing.T) {
 	if script.StatusCode != http.StatusOK || !strings.Contains(string(scriptBody), "fetch(form.action") || !strings.Contains(string(scriptBody), `getAttribute("data-return")`) {
 		t.Fatalf("script = %d %s", script.StatusCode, scriptBody)
 	}
+	// The POST is made from the submit handler and nowhere else: no
+	// top-level call, so a link to this page cannot create anything by
+	// itself. Every fetch in the script sits inside the handler that
+	// addEventListener registers, and the button is disabled for the
+	// duration.
+	js := string(scriptBody)
+	handlerStart := strings.Index(js, `form.addEventListener("submit"`)
+	if handlerStart < 0 {
+		t.Fatalf("script registers no submit handler:\n%s", js)
+	}
+	if fetchAt := strings.Index(js, "fetch("); fetchAt < handlerStart || strings.Count(js, "fetch(") != 1 {
+		t.Fatalf("script fetches outside the submit handler:\n%s", js)
+	}
+	for _, banned := range []string{"create()", "submit()", "requestSubmit(", "DOMContentLoaded", `addEventListener("load"`} {
+		if strings.Contains(js, banned) {
+			t.Fatalf("script invokes the POST automatically (%q):\n%s", banned, js)
+		}
+	}
+	if !strings.Contains(js, "button.disabled = true") {
+		t.Fatalf("script does not disable the button while in flight:\n%s", js)
+	}
 	if bad := get("alice", "/auth/assignments/Not%20A%20Slug/repository/create"); bad.StatusCode != http.StatusBadRequest {
 		t.Fatalf("malformed slug = %d", bad.StatusCode)
 	}
@@ -1038,8 +1085,13 @@ func TestRepositoryCreatePage(t *testing.T) {
 	if visitor.StatusCode != http.StatusFound || visitor.Header.Get("Location") != "/auth/login?next="+url.QueryEscape("/auth/assignments/hw1/repository/create") {
 		t.Fatalf("signed-out create page = %d %q", visitor.StatusCode, visitor.Header.Get("Location"))
 	}
-	if got := s.github.count("generate"); got != 0 {
-		t.Fatalf("the page itself generated a repository (%d)", got)
+	// Rendering the page, its script, and the refusals above touched
+	// neither GitHub nor the attempt table: nothing is created by a GET.
+	if got := s.github.count("generate") + s.github.count("user") + s.github.count("membership"); got != 0 {
+		t.Fatalf("rendering the page called GitHub (%d calls)", got)
+	}
+	if got := s.db.rpcCalls["claim_repository_provisioning"]; got != 0 {
+		t.Fatalf("rendering the page claimed an attempt (%d)", got)
 	}
 }
 

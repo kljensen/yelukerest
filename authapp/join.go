@@ -240,11 +240,13 @@ func setLandingPageHeaders(w http.ResponseWriter) {
 		"default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 }
 
-// githubJoinLandingTemplate is deliberately plain: the page exists to be
-// left. The script does the POST (so the same-origin check on start holds)
-// and follows the authorization URL; the form is what the script attaches
-// to, and what a student without JavaScript sees, with the noscript note.
-// It is an external script because Caddy's CSP forbids inline ones.
+// githubJoinLandingTemplate is deliberately plain: an explanation and a
+// button. The script does the POST on the click (so the same-origin check
+// on start holds, and so a cross-site link to this page starts nothing by
+// itself) and follows the authorization URL; the form is what the script
+// attaches to, and what a student without JavaScript sees, with the
+// noscript note. It is an external script because Caddy's CSP forbids
+// inline ones.
 var githubJoinLandingTemplate = template.Must(template.New("join").Parse(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -256,7 +258,7 @@ var githubJoinLandingTemplate = template.Must(template.New("join").Parse(`<!DOCT
 <body>
 <main>
 <h1>Join the course organization on GitHub</h1>
-<p>You are being sent to GitHub to authorize the course's app. Authorizing it confirms which GitHub account is yours and accepts your invitation to the course organization; it grants the course no access to your repositories.</p>
+<p>Continue to GitHub to authorize the course's app. Authorizing it confirms which GitHub account is yours and accepts your invitation to the course organization; it grants the course no access to your repositories.</p>
 <form id="join" method="POST" action="{{.StartPath}}">
 <input type="hidden" name="assignment_slug" value="{{.Slug}}">
 <button type="submit">Continue to GitHub</button>
@@ -268,17 +270,18 @@ var githubJoinLandingTemplate = template.Must(template.New("join").Parse(`<!DOCT
 </html>
 `))
 
-// githubJoinScript posts the form as JSON and follows the answer. It runs
-// on load so the page is a hop, not a stop; the button remains for a
-// retry after a failure.
+// githubJoinScript posts the form as JSON when it is submitted -- only
+// then, never on load -- and follows the answer. The button is disabled
+// while the request is in flight and re-enabled after a failure so the
+// student can try again.
 const githubJoinScript = `(function () {
   var form = document.getElementById("join");
+  var button = form.querySelector("button");
   var status = document.getElementById("status");
-  var busy = false;
-  function start(event) {
-    if (event) { event.preventDefault(); }
-    if (busy) { return; }
-    busy = true;
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    if (button.disabled) { return; }
+    button.disabled = true;
     status.textContent = "Contacting the course site…";
     fetch(form.action, {
       method: "POST",
@@ -291,17 +294,15 @@ const githubJoinScript = `(function () {
       if (!result.ok || !result.body || !result.body.authorization_url) {
         var code = result.body && result.body.error && result.body.error.code;
         status.textContent = "Could not start the GitHub authorization" + (code ? " (" + code + ")" : "") + ". Use the button to try again.";
-        busy = false;
+        button.disabled = false;
         return;
       }
       window.location.assign(result.body.authorization_url);
     }).catch(function () {
       status.textContent = "Could not reach the course site. Use the button to try again.";
-      busy = false;
+      button.disabled = false;
     });
-  }
-  form.addEventListener("submit", start);
-  start();
+  });
 })();
 `
 

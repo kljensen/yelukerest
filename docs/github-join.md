@@ -137,9 +137,11 @@ back from it.
    or that their account is not an active organization member
    (`needs_org_join`), and answers with
    `join_url: "/auth/github/join?assignment_slug=<slug>"` either way.
-2. The page sends them to that URL, a small page on this origin. Its script
-   POSTs to `/auth/github/join/start` (same-origin only, like the create
-   POST) and follows the `authorization_url` it gets back. The POST mints a
+2. The page sends them to that URL, a small page on this origin with an
+   explanation and a *Continue to GitHub* button. On the click (only then;
+   a link to the page starts nothing by itself) its script POSTs to
+   `/auth/github/join/start` (same-origin only, like the create POST) and
+   follows the `authorization_url` it gets back. The POST mints a
    random, single-use `state` and a PKCE code verifier, stores both in the
    student's session together with their user id, netid, the assignment
    slug, the `redirect_uri`, and a timestamp, and builds the GitHub
