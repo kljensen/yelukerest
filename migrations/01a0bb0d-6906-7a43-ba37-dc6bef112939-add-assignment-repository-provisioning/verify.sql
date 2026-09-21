@@ -43,6 +43,8 @@ BEGIN
         ('data', 'user', 'github_verified_at'),
         ('data', 'assignment_repository', 'template_slug'),
         ('data', 'assignment_repository_provisioning', 'template_slug'),
+        ('data', 'assignment_repository_provisioning', 'assignment_slug'),
+        ('api', 'repository_provisionings', 'assignment_slug'),
         ('api', 'assignment_repositories', 'template_slug'),
         ('api', 'my_repositories', 'repo_url'),
         ('api', 'users', 'github_user_id'),
@@ -59,13 +61,12 @@ BEGIN
         RAISE EXCEPTION 'missing columns: %', missing;
     END IF;
 
-    -- The template columns that left data.assignment must be gone, and the
-    -- attempt table must not carry an assignment of its own.
+    -- The template columns that left data.assignment must be gone.
     SELECT string_agg(c.table_name || '.' || c.column_name, ', ' ORDER BY c.table_name || '.' || c.column_name) INTO missing
     FROM information_schema.columns c
     WHERE c.table_schema = 'data'
-      AND ((c.table_name = 'assignment' AND c.column_name IN ('repository_template_provider', 'repository_template_full_name', 'repository_url_field_slug'))
-        OR (c.table_name = 'assignment_repository_provisioning' AND c.column_name = 'assignment_slug'));
+      AND c.table_name = 'assignment'
+      AND c.column_name IN ('repository_template_provider', 'repository_template_full_name', 'repository_url_field_slug');
     IF missing IS NOT NULL THEN
         RAISE EXCEPTION 'columns that should not exist: %', missing;
     END IF;
@@ -104,7 +105,8 @@ BEGIN
         ('data.repository_template'::regclass, 'data.assignment'::regclass, 'assignment_slug, is_team'),
         ('data.assignment_repository'::regclass, 'data.repository_template'::regclass, 'template_slug, is_team'),
         ('data.assignment_repository'::regclass, 'data.assignment'::regclass, 'assignment_slug, is_team'),
-        ('data.assignment_repository_provisioning'::regclass, 'data.repository_template'::regclass, 'template_slug, is_team')
+        ('data.assignment_repository_provisioning'::regclass, 'data.repository_template'::regclass, 'template_slug, is_team'),
+        ('data.assignment_repository_provisioning'::regclass, 'data.assignment'::regclass, 'assignment_slug, is_team')
     ) AS expected(conrelid, confrelid, columns)
     WHERE NOT EXISTS (
         SELECT 1 FROM pg_constraint c
@@ -159,6 +161,7 @@ BEGIN
     SELECT string_agg(expected.tgname, ', ' ORDER BY expected.tgname) INTO missing
     FROM (VALUES
         ('data.repository_template'::regclass, 'tg_repository_template_update_timestamps', 'data.update_updated_at_column()'::regprocedure),
+        ('data.assignment_repository'::regclass, 'tg_assignment_repository_assignment', 'data.keep_assignment_repository_assignment()'::regprocedure),
         ('data.assignment_repository_provisioning'::regclass, 'tg_assignment_repository_provisioning_update_timestamps', 'data.update_updated_at_column()'::regprocedure)
     ) AS expected(tgrelid, tgname, tgfoid)
     WHERE NOT EXISTS (
@@ -188,27 +191,31 @@ BEGIN
         RAISE EXCEPTION 'row-level security disabled on: %', missing;
     END IF;
 
-    -- The attempt policy: SELECT, for api, and scoped by the caller's
-    -- identity. The template policy: all commands, for api, faculty-only on
-    -- write, and scoped on the caller for reads.
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies
-        WHERE schemaname = 'data' AND tablename = 'assignment_repository_provisioning'
-          AND policyname = 'assignment_repository_provisioning_access_policy'
-          AND cmd = 'SELECT' AND roles = ARRAY['api']::name[]
-          AND qual LIKE '%request.user_id()%'
-    ) THEN
-        RAISE EXCEPTION 'assignment_repository_provisioning_access_policy is not a SELECT policy for api scoped on request.user_id()';
-    END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies
-        WHERE schemaname = 'data' AND tablename = 'repository_template'
-          AND policyname = 'repository_template_access_policy'
-          AND cmd = 'ALL' AND roles = ARRAY['api']::name[]
-          AND qual LIKE '%request.user_id()%'
-          AND with_check LIKE '%faculty%'
-    ) THEN
-        RAISE EXCEPTION 'repository_template_access_policy is not an ALL policy for api, scoped on request.user_id() and faculty-only on write';
+    -- The two policies, compared as PostgreSQL renders them with whitespace
+    -- collapsed, so a policy loosened by one clause is caught rather than
+    -- merely found. The attempt policy: SELECT, for api, own rows and the
+    -- current team's, faculty everything. The template policy: all commands,
+    -- for api, reads of active templates and of those backing one of the
+    -- caller's repositories, writes faculty-only.
+    SELECT string_agg(expected.policyname, ', ' ORDER BY expected.policyname) INTO missing
+    FROM (VALUES
+        ('assignment_repository_provisioning', 'assignment_repository_provisioning_access_policy', 'SELECT',
+         '((request.user_role() = ''faculty''::text) OR ((request.user_role() = ANY (''{student,ta}''::text[])) AND (((NOT is_team) AND (request.user_id() = user_id)) OR (is_team AND (EXISTS ( SELECT 1 FROM data."user" u WHERE ((u.id = request.user_id()) AND (u.team_nickname = assignment_repository_provisioning.team_nickname))))))))',
+         NULL),
+        ('repository_template', 'repository_template_access_policy', 'ALL',
+         '((request.user_role() = ''faculty''::text) OR ((request.user_role() = ANY (''{student,ta}''::text[])) AND (is_active OR (EXISTS ( SELECT 1 FROM data.assignment_repository r WHERE ((r.template_slug = repository_template.slug) AND ((r.user_id = request.user_id()) OR ((r.team_nickname IS NOT NULL) AND (r.team_nickname = ( SELECT u.team_nickname FROM data."user" u WHERE (u.id = request.user_id())))))))))))',
+         '(request.user_role() = ''faculty''::text)')
+    ) AS expected(tablename, policyname, cmd, qual, with_check)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM pg_policies p
+        WHERE p.schemaname = 'data' AND p.tablename = expected.tablename
+          AND p.policyname = expected.policyname
+          AND p.cmd = expected.cmd AND p.roles = ARRAY['api']::name[]
+          AND regexp_replace(p.qual, '\s+', ' ', 'g') = expected.qual
+          AND regexp_replace(p.with_check, '\s+', ' ', 'g') IS NOT DISTINCT FROM expected.with_check
+    );
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'policies missing or not as written: %', missing;
     END IF;
 
     -- The service RPCs: executable by app and by nobody human; the faculty

@@ -10,11 +10,13 @@
 -- lost: data.assignment_repository rows, which are ordinary course records
 -- and stay, keyed by assignment again as 01a011e3 defined them.
 --
--- A repository whose template served no assignment has no assignment_slug
--- and cannot be represented in the old shape. Rather than delete a course
--- record, this revert refuses while any such row exists; attach or delete
--- them first, deliberately. Revert after real provisioning has run only
--- with a dump of the attempt and template tables in hand.
+-- Two things the old shape cannot hold: a repository whose template served
+-- no assignment (no assignment_slug to put back NOT NULL), and an owner with
+-- two repositories on one assignment from two templates (the old unique
+-- index is per owner and assignment). Rather than delete a course record,
+-- this revert refuses while either exists and says which rows; attach,
+-- merge or delete them first, deliberately. Revert after real provisioning
+-- has run only with a dump of the attempt and template tables in hand.
 --
 -- The api views cannot lose a column through CREATE OR REPLACE, and
 -- api.users is named inside row policies of other tables and inside
@@ -22,11 +24,23 @@
 -- as the bootstrap and 01a08afb defined them.
 DO $$
 DECLARE
-    unattached int;
+    offending text;
 BEGIN
-    SELECT count(*) INTO unattached FROM data.assignment_repository WHERE assignment_slug IS NULL;
-    IF unattached > 0 THEN
-        RAISE EXCEPTION '% assignment_repository rows have no assignment_slug and cannot be kept in the pre-template shape; attach or delete them before reverting', unattached;
+    SELECT string_agg(r.id::text, ', ' ORDER BY r.id) INTO offending
+    FROM data.assignment_repository r
+    WHERE r.assignment_slug IS NULL;
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'assignment_repository rows % have no assignment_slug and cannot be kept in the pre-template shape; attach them to an assignment or delete them before reverting', offending;
+    END IF;
+    SELECT string_agg(format('%s owned by %s', dup.assignment_slug, dup.owner), '; ' ORDER BY dup.assignment_slug, dup.owner) INTO offending
+    FROM (
+        SELECT r.assignment_slug, coalesce(r.team_nickname, 'user ' || r.user_id::text) AS owner
+        FROM data.assignment_repository r
+        GROUP BY r.assignment_slug, r.user_id, r.team_nickname
+        HAVING count(*) > 1
+    ) dup;
+    IF offending IS NOT NULL THEN
+        RAISE EXCEPTION 'more than one repository per owner on an assignment, which the pre-template unique index cannot hold: %; keep one row per owner and assignment before reverting', offending;
     END IF;
 END $$
 ; DROP FUNCTION IF EXISTS api.import_github_logins(text, text)
@@ -37,6 +51,8 @@ END $$
 ; DROP FUNCTION IF EXISTS api.claim_repository_provisioning(text, int)
 ; DROP VIEW IF EXISTS api.repository_provisionings
 ; DROP TABLE IF EXISTS data.assignment_repository_provisioning
+; DROP TRIGGER IF EXISTS tg_assignment_repository_assignment ON data.assignment_repository
+; DROP FUNCTION IF EXISTS data.keep_assignment_repository_assignment()
 ; DROP VIEW IF EXISTS api.my_repositories
 ; DROP VIEW IF EXISTS api.assignment_repositories
 ;

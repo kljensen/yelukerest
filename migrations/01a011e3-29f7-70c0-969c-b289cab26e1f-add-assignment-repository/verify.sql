@@ -83,21 +83,25 @@ BEGIN
     END IF;
 
     -- One repository per student, and per team, per the thing the row is
-    -- keyed by: the assignment here, the template once 01a0bb0d has run, so
-    -- the second column is not pinned. The predicates are load-bearing:
-    -- NULLs are distinct in a unique index, so an index that lost its
-    -- `WHERE` admits every team row unchecked.
+    -- keyed by: the assignment as this migration made it, or the template
+    -- once 01a0bb0d has run. Exactly those two definitions are accepted.
+    -- The predicates are load-bearing: NULLs are distinct in a unique index,
+    -- so an index that lost its `WHERE` admits every team row unchecked.
     SELECT string_agg(expected.indexname, ' | ' ORDER BY expected.indexname) INTO missing
     FROM (VALUES
-        ('assignment_repository_unique_user', 'CREATE UNIQUE INDEX assignment_repository_unique_user ON data.assignment_repository USING btree (user_id, %) WHERE (team_nickname IS NULL)'),
-        ('assignment_repository_unique_team', 'CREATE UNIQUE INDEX assignment_repository_unique_team ON data.assignment_repository USING btree (team_nickname, %) WHERE (user_id IS NULL)')
-    ) AS expected(indexname, indexdef)
+        ('assignment_repository_unique_user', ARRAY[
+            'CREATE UNIQUE INDEX assignment_repository_unique_user ON data.assignment_repository USING btree (user_id, assignment_slug) WHERE (team_nickname IS NULL)',
+            'CREATE UNIQUE INDEX assignment_repository_unique_user ON data.assignment_repository USING btree (user_id, template_slug) WHERE (team_nickname IS NULL)']),
+        ('assignment_repository_unique_team', ARRAY[
+            'CREATE UNIQUE INDEX assignment_repository_unique_team ON data.assignment_repository USING btree (team_nickname, assignment_slug) WHERE (user_id IS NULL)',
+            'CREATE UNIQUE INDEX assignment_repository_unique_team ON data.assignment_repository USING btree (team_nickname, template_slug) WHERE (user_id IS NULL)'])
+    ) AS expected(indexname, indexdefs)
     WHERE NOT EXISTS (
         SELECT 1 FROM pg_indexes
         WHERE schemaname = 'data'
         AND tablename = 'assignment_repository'
         AND pg_indexes.indexname = expected.indexname
-        AND pg_indexes.indexdef LIKE expected.indexdef
+        AND pg_indexes.indexdef = ANY (expected.indexdefs)
     );
 
     IF missing IS NOT NULL THEN

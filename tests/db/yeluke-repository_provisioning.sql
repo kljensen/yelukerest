@@ -13,8 +13,9 @@
 -- here: it runs once, inside the deploy, on a column this file can no longer
 -- leave NULL. What is asserted below is that every row the backfill would
 -- synthesize for the sample assignments satisfies the template table's
--- constraints. The backfill itself is exercised by deploying against a
--- snapshot that holds old-style rows.
+-- constraints, and that such a row, being inactive, is neither shown to nor
+-- claimable by a student. The backfill itself is exercised by deploying
+-- against a snapshot that holds old-style rows.
 SELECT *
 FROM no_plan()
 ;
@@ -91,16 +92,16 @@ SELECT lives_ok('
     ', '23514', NULL, 'a label cannot be empty')
 ;
 -- What the deploy's backfill synthesizes for a pre-template row -- slug =
--- the assignment slug, 'unknown/' || slug, label = the title -- has to pass
--- the same constraints for every sample assignment, or a real deploy over
--- old rows would fail.
+-- the assignment slug, 'unknown/' || slug, label = the title, inactive --
+-- has to pass the same constraints for every sample assignment, or a real
+-- deploy over old rows would fail. The rows stay on the board: the
+-- placeholder template must be invisible to students and unclaimable until
+-- faculty fix and activate it.
 SELECT lives_ok('
-        INSERT INTO data.repository_template (slug, template_full_name, label, is_team, assignment_slug)
-        SELECT a.slug, ''unknown/'' || a.slug, coalesce(nullif(a.title, ''''), a.slug), a.is_team, a.slug
+        INSERT INTO data.repository_template (slug, template_full_name, label, is_team, assignment_slug, is_active)
+        SELECT a.slug, ''unknown/'' || a.slug, coalesce(nullif(a.title, ''''), a.slug), a.is_team, a.slug, false
         FROM data.assignment a
     ', 'the backfill''s synthesized template is admitted for every sample assignment')
-; DELETE FROM data.repository_template
-WHERE template_full_name LIKE 'unknown/%'
 ;
 -- Faculty configure through the view; students read the active ones and
 -- cannot write.
@@ -114,11 +115,11 @@ SET LOCAL role TO faculty
     ', 'faculty can create a template through api.repository_templates')
 ; SELECT lives_ok('UPDATE api.repository_templates SET description = ''one line'' WHERE slug = ''faculty-made''', 'and update one')
 ; SELECT lives_ok('DELETE FROM api.repository_templates WHERE slug = ''faculty-made''', 'and delete one')
-; SELECT set_eq('SELECT slug FROM api.repository_templates', ARRAY['exam-1-starter', 'project-starter', 'go-starter', 'retired-starter', 'draft-starter'], 'faculty see every template, active or not')
+; SELECT set_eq('SELECT slug FROM api.repository_templates', ARRAY['exam-1-starter', 'project-starter', 'go-starter', 'retired-starter', 'draft-starter', 'exam-1', 'team-selection', 'js-koans', 'project-update-1'], 'faculty see every template, active or not, the backfilled placeholders included')
 ; SET LOCAL role TO student
 ; SET "request.jwt.claim.role" TO student
 ; SET "request.jwt.claim.user_id" TO "1"
-; SELECT set_eq('SELECT slug FROM api.repository_templates', ARRAY['exam-1-starter', 'project-starter', 'go-starter', 'draft-starter'], 'a student sees the active templates')
+; SELECT set_eq('SELECT slug FROM api.repository_templates', ARRAY['exam-1-starter', 'project-starter', 'go-starter', 'draft-starter'], 'a student sees the active templates and no backfilled placeholder')
 ; SELECT throws_ok('
         INSERT INTO api.repository_templates (slug, template_full_name, label)
         VALUES (''evil'', ''evil/template'', ''x'')
@@ -187,6 +188,7 @@ SET "request.jwt.claim.app_name" TO ''
 SET "request.jwt.claim.app_name" TO authapp
 ; SELECT throws_ok('SELECT * FROM api.claim_repository_provisioning(''no-such-template'', 1)', 'P0001', 'template_not_found', 'an unknown template cannot be claimed')
 ; SELECT throws_ok('SELECT * FROM api.claim_repository_provisioning(''retired-starter'', 1)', 'P0001', 'template_inactive', 'nor an inactive one')
+; SELECT throws_ok('SELECT * FROM api.claim_repository_provisioning(''exam-1'', 1)', 'P0001', 'template_inactive', 'a backfilled placeholder template is inactive and cannot be claimed')
 ; SELECT throws_ok('SELECT * FROM api.claim_repository_provisioning(''exam-1-starter'', 4)', 'P0001', 'not_a_student', 'a ta cannot claim a repository')
 ; SELECT throws_ok('SELECT * FROM api.claim_repository_provisioning(''exam-1-starter'', 3)', 'P0001', 'not_a_student', 'nor can faculty')
 ; UPDATE data."user"
@@ -223,12 +225,12 @@ WHERE id = 2
 ;
 -- A fresh claim.
 SELECT results_eq('
-        SELECT template_slug, is_team, user_id, team_nickname, initiated_by_user_id,
+        SELECT template_slug, assignment_slug, is_team, user_id, team_nickname, initiated_by_user_id,
                provider, template_full_name, destination_name, provider_repo_id, stage,
                error_code, existing_repository_id
         FROM api.claim_repository_provisioning(''exam-1-starter'', 1)
-    ', ' VALUES (''exam-1-starter''::text, false, 1, NULL::text, 1, ''github''::text, ''yale-mgt-656/exam-1-starter''::text,
-                 ''exam-1-starter-alice-m''::text, NULL::bigint, ''claimed''::text, NULL::text, NULL::int) ', 'a fresh claim creates an attempt named after the template and the login')
+    ', ' VALUES (''exam-1-starter''::text, ''exam-1''::text, false, 1, NULL::text, 1, ''github''::text, ''yale-mgt-656/exam-1-starter''::text,
+                 ''exam-1-starter-alice-m''::text, NULL::bigint, ''claimed''::text, NULL::text, NULL::int) ', 'a fresh claim creates an attempt named after the template and the login, snapshotting the assignment')
 ; SELECT
     "is"((
         SELECT count(*)::int
@@ -339,10 +341,20 @@ SELECT throws_ok('SELECT * FROM api.touch_repository_provisioning_readiness(zapa
 -- ---------------------------------------------------------------------------
 SELECT throws_ok('SELECT * FROM api.finalize_repository_provisioning(zapadka_test.attempt(''exam-1-starter'', 1), 9999)', 'P0001', 'github_identity_mismatch', 'the account the repository was granted to must be the one the student linked')
 ; SELECT is_empty('SELECT 1 FROM data.assignment_repository WHERE template_slug = ''exam-1-starter''', 'a refused finalize wrote no repository')
+;
+-- Faculty re-point the template at a closed assignment while the attempt
+-- is in flight: the repository is still recorded under the assignment the
+-- attempt was claimed for, which is the one whose deadline was checked.
+UPDATE data.repository_template
+SET assignment_slug = 'zz-closed'
+WHERE slug = 'exam-1-starter'
 ; SELECT results_eq('
         SELECT template_slug, assignment_slug, is_team, user_id, provider, provider_repo_id, provider_full_name, provider_user_id
         FROM api.finalize_repository_provisioning(zapadka_test.attempt(''exam-1-starter'', 1), 1001)
-    ', ' VALUES (''exam-1-starter''::text, ''exam-1''::text, false, 1, ''github''::text, 500001::bigint, ''yale-mgt-656/exam-1-starter-alice-m''::text, 1001::bigint) ', 'finalize records the repository for the owner and template, with the assignment the template serves')
+    ', ' VALUES (''exam-1-starter''::text, ''exam-1''::text, false, 1, ''github''::text, 500001::bigint, ''yale-mgt-656/exam-1-starter-alice-m''::text, 1001::bigint) ', 'finalize records the repository for the owner and template, under the assignment the attempt was claimed for')
+; UPDATE data.repository_template
+SET assignment_slug = 'exam-1'
+WHERE slug = 'exam-1-starter'
 ; SELECT is_empty('SELECT 1 FROM data.assignment_submission WHERE assignment_slug = ''exam-1''', 'finalize wrote no submission')
 ; SELECT is_empty('SELECT 1 FROM data.assignment_field_submission WHERE assignment_slug = ''exam-1''', 'and no field submission')
 ; SELECT
@@ -383,6 +395,34 @@ VALUES ('closed-starter', 'zz-closed', false, 2, 500004, 'yale-mgt-656/zz-closed
         FROM api.claim_repository_provisioning(''closed-starter'', 2)
     ', ' VALUES (NULL::int, ''finalized''::text, ''yale-mgt-656/zz-closed-bob''::text, ''zz-closed-bob''::text, true) ', 'an existing repository answers a claim without an attempt, even for a student with no login on a closed assignment')
 ;
+-- A repository's assignment is its template's: a writer through the view
+-- can omit it and gets the template's, or state it and must agree.
+SET LOCAL role TO faculty
+; SET "request.jwt.claim.role" TO faculty
+; SET "request.jwt.claim.user_id" TO "3"
+; SET "request.jwt.claim.app_name" TO ''
+; SELECT results_eq('
+        INSERT INTO api.assignment_repositories (template_slug, is_team, user_id, provider_repo_id, provider_full_name)
+        VALUES (''closed-starter'', false, 5, 500005, ''yale-mgt-656/zz-closed-crt'')
+        RETURNING assignment_slug
+    ', ' VALUES (''zz-closed''::text) ', 'a repository written without an assignment takes its template''s')
+; SELECT throws_ok('
+        INSERT INTO api.assignment_repositories (template_slug, assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
+        VALUES (''closed-starter'', ''exam-1'', false, 4, 500006, ''yale-mgt-656/zz-closed-jlb'')
+    ', 'P0001', 'repository_assignment_mismatch', 'a repository cannot be attributed to an assignment its template does not serve')
+; SELECT throws_ok('
+        UPDATE api.assignment_repositories SET assignment_slug = ''exam-1'' WHERE provider_repo_id = 500005
+    ', 'P0001', 'repository_assignment_mismatch', 'nor re-attributed afterwards')
+; SELECT lives_ok('
+        UPDATE api.assignment_repositories SET provider_full_name = ''yale-mgt-656/zz-closed-crt-renamed'' WHERE provider_repo_id = 500005
+    ', 'every other edit stays free')
+; DELETE FROM api.assignment_repositories
+WHERE provider_repo_id = 500005
+; RESET role
+; SET "request.jwt.claim.role" TO app
+; SET "request.jwt.claim.user_id" TO ''
+; SET "request.jwt.claim.app_name" TO authapp
+;
 -- A team attempt.
 SELECT results_eq('
         SELECT is_team, team_nickname, initiated_by_user_id, destination_name
@@ -419,7 +459,13 @@ VALUES ('exam-1-starter', 'exam-1', false, 2, 600002, 'yale-mgt-656/exam-1-bob-b
 ; SELECT lives_ok('SELECT * FROM api.claim_repository_provisioning(''go-starter'', 2)', 'user 2 claims go-starter')
 ; SELECT lives_ok('SELECT * FROM api.record_repository_provisioning(zapadka_test.attempt(''go-starter'', 2), ''generated'', 500001, ''yale-mgt-656/exam-1-starter-alice-m'')', 'the forge answers with a repository somebody else already holds')
 ; SELECT lives_ok('SELECT * FROM api.record_repository_provisioning(zapadka_test.attempt(''go-starter'', 2), ''granted'')', 'granted')
-; SELECT throws_ok('SELECT * FROM api.finalize_repository_provisioning(zapadka_test.attempt(''go-starter'', 2))', 'P0001', 'repository_conflict', 'a forge repository recorded for another owner is a conflict')
+; SELECT throws_ok('SELECT * FROM api.finalize_repository_provisioning(zapadka_test.attempt(''go-starter'', 2))', 'P0001', 'repository_conflict', 'a forge repository recorded for another owner is a conflict, reported from the unique violation the insert trips')
+; SELECT
+    "is"((
+        SELECT stage
+        FROM data.assignment_repository_provisioning
+        WHERE id = zapadka_test.attempt('go-starter', 2)
+    ), 'granted', 'and the attempt is left granted')
 ;
 -- ---------------------------------------------------------------------------
 -- my_repositories
@@ -443,36 +489,30 @@ SET LOCAL role TO student
 ; RESET role
 ;
 -- Deactivating a template hides it from the page but not from the students
--- whose repositories came from it.
+-- whose repositories came from it. go-starter backs user 1's repository
+-- only (user 2 has a failed attempt on it, no repository); project-starter
+-- backs bright-fog's, and user 2 is on hazy-mountain.
 UPDATE data.repository_template
 SET is_active = false
-WHERE slug = 'exam-1-starter'
+WHERE slug IN ('go-starter', 'project-starter')
 ; SET LOCAL role TO student
 ; SET "request.jwt.claim.role" TO student
 ; SET "request.jwt.claim.user_id" TO "1"
-; SELECT
-    "is"((
-        SELECT label
-        FROM api.my_repositories
-        WHERE template_slug = 'exam-1-starter'
-    ), 'Exam 1 starter', 'a repository from a deactivated template keeps its label on my_repositories')
-; SELECT
-    ok((
-        SELECT count(*) = 1
-        FROM api.repository_templates
-        WHERE slug = 'exam-1-starter'
-    ), 'and its owner still reads the template')
+; SELECT set_eq('SELECT slug FROM api.repository_templates WHERE slug IN (''go-starter'', ''project-starter'')', ARRAY['go-starter', 'project-starter'], 'a student still reads the deactivated templates behind their own and their team''s repositories')
+; SELECT set_eq('SELECT template_slug || '':'' || label FROM api.my_repositories WHERE template_slug IN (''go-starter'', ''project-starter'')', ARRAY['go-starter:Go programming starter', 'project-starter:Project starter'], 'and the repositories keep their labels on my_repositories')
+; SET "request.jwt.claim.user_id" TO "2"
+; SELECT is_empty('SELECT slug FROM api.repository_templates WHERE slug IN (''go-starter'', ''project-starter'')', 'another student, and another team, do not read them')
 ; SET LOCAL role TO ta
 ; SET "request.jwt.claim.role" TO ta
 ; SET "request.jwt.claim.user_id" TO "4"
-; SELECT is_empty('SELECT slug FROM api.repository_templates WHERE slug IN (''exam-1-starter'', ''retired-starter'')', 'a ta with no repository from it does not read a deactivated template')
+; SELECT is_empty('SELECT slug FROM api.repository_templates WHERE slug IN (''go-starter'', ''project-starter'', ''retired-starter'')', 'nor does a ta with no repository from them')
 ; RESET role
 ; SET "request.jwt.claim.role" TO app
 ; SET "request.jwt.claim.user_id" TO ''
 ; SET "request.jwt.claim.app_name" TO authapp
 ; UPDATE data.repository_template
 SET is_active = true
-WHERE slug = 'exam-1-starter'
+WHERE slug IN ('go-starter', 'project-starter')
 ;
 -- ---------------------------------------------------------------------------
 -- The GitHub identity, as authapp

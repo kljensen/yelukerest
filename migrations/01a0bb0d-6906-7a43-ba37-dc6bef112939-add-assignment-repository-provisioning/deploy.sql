@@ -119,16 +119,19 @@ ON data.repository_template USING btree (assignment_slug, is_team)
 -- Backfill. Rows the old course tooling recorded name an assignment and no
 -- template. For each distinct (assignment_slug, is_team) among them a
 -- template is synthesized with slug = assignment_slug, template_full_name =
--- 'unknown/' || assignment_slug (faculty fix it up), label = the assignment
--- title, and the rows point at it. Uniqueness per owner and assignment
--- therefore carries over as uniqueness per owner and template.
+-- 'unknown/' || assignment_slug, label = the assignment title, and the rows
+-- point at it. The synthesized template is inactive: its owner/repo is a
+-- placeholder nobody could generate from, so students must not see or claim
+-- it until faculty set the real template and activate it. Uniqueness per
+-- owner and assignment therefore carries over as uniqueness per owner and
+-- template.
 ALTER TABLE data.assignment_repository
     ADD COLUMN template_slug text CHECK (char_length(template_slug) <= 60),
     ALTER COLUMN assignment_slug DROP NOT NULL
-; INSERT INTO data.repository_template (slug, provider, template_full_name, label, is_team, assignment_slug)
+; INSERT INTO data.repository_template (slug, provider, template_full_name, label, is_team, assignment_slug, is_active)
 SELECT
     r.assignment_slug, min(r.provider), 'unknown/' || r.assignment_slug,
-    COALESCE(NULLIF(a.title, ''), a.slug), r.is_team, r.assignment_slug
+    COALESCE(NULLIF(a.title, ''), a.slug), r.is_team, r.assignment_slug, false
 FROM
     data.assignment_repository r
     JOIN data.assignment a ON a.slug = r.assignment_slug
@@ -153,6 +156,51 @@ WHERE user_id IS NULL
 ; CREATE INDEX idx_assignment_repository_template_fk
 ON data.assignment_repository USING btree (template_slug, is_team)
 ; COMMENT ON COLUMN data.assignment_repository.template_slug IS 'The template the repository was created from. Backfilled for pre-template rows with a template named after the assignment. Issue #394.'
+;
+-- A repository's assignment is its template's, never a writer's choice: an
+-- omitted assignment_slug is filled from the template, and an explicit one
+-- that differs is refused, so faculty tooling writing through
+-- api.assignment_repositories cannot attribute a repository to an assignment
+-- its template does not serve. The one legitimate difference is the
+-- assignment the owner's attempt on this template was claimed under: the
+-- attempt snapshots it (below), and finalize records the snapshot even if
+-- faculty have since re-pointed the template. Only insert and a change of
+-- assignment or template are checked, so a rename of a legacy row whose
+-- template has moved on is not refused. Runs as the definer because faculty
+-- hold nothing on the data schema, as the existing lookup triggers do.
+CREATE FUNCTION data.keep_assignment_repository_assignment() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
+DECLARE
+    template_assignment text;
+BEGIN
+    IF TG_OP = 'UPDATE'
+        AND NEW.assignment_slug IS NOT DISTINCT FROM OLD.assignment_slug
+        AND NEW.template_slug IS NOT DISTINCT FROM OLD.template_slug THEN
+        RETURN NEW;
+    END IF;
+    SELECT t.assignment_slug INTO template_assignment
+    FROM data.repository_template t
+    WHERE t.slug = NEW.template_slug;
+    IF NEW.assignment_slug IS NULL THEN
+        NEW.assignment_slug := template_assignment;
+        RETURN NEW;
+    END IF;
+    IF NEW.assignment_slug IS DISTINCT FROM template_assignment
+        AND NOT EXISTS (
+            SELECT 1
+            FROM data.assignment_repository_provisioning p
+            WHERE p.template_slug = NEW.template_slug
+              AND p.user_id IS NOT DISTINCT FROM NEW.user_id
+              AND p.team_nickname IS NOT DISTINCT FROM NEW.team_nickname
+              AND p.assignment_slug = NEW.assignment_slug
+        ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001',
+            MESSAGE = 'repository_assignment_mismatch',
+            DETAIL = format('template %s serves assignment %s, not %s', NEW.template_slug, coalesce(template_assignment, '(none)'), NEW.assignment_slug);
+    END IF;
+    RETURN NEW;
+END;
+$$
+; ALTER FUNCTION data.keep_assignment_repository_assignment() OWNER TO yelukerest_migrator
 ;
 -- Faculty configure templates; students read them. A student reads the
 -- active ones, which are what the page offers, and also any template one of
@@ -211,10 +259,12 @@ CREATE OR REPLACE VIEW api.assignment_repositories AS
 -- assignment and the browser URL. The row policy on
 -- data.assignment_repository already narrows a student to these; the WHERE
 -- makes the view mean "mine" for faculty too. assignment_slug is the
--- template's current one, so a template faculty re-point follows.
+-- repository's own, which the trigger above keeps equal to the template's
+-- except for an attempt's snapshot, so a client matching a repository to an
+-- assignment page sees the assignment the repository was created for.
 CREATE VIEW api.my_repositories WITH (security_barrier=true) AS
     SELECT
-        r.id, r.template_slug, t.label, t.assignment_slug, t.template_full_name,
+        r.id, r.template_slug, t.label, r.assignment_slug, t.template_full_name,
         r.is_team, r.user_id, r.team_nickname, r.provider, r.provider_repo_id,
         r.provider_full_name,
         CASE
@@ -238,7 +288,7 @@ CREATE VIEW api.my_repositories WITH (security_barrier=true) AS
 ; COMMENT ON COLUMN api.my_repositories.id IS 'Same as assignment_repositories.id'
 ; COMMENT ON COLUMN api.my_repositories.template_slug IS 'The template the repository was created from'
 ; COMMENT ON COLUMN api.my_repositories.label IS 'The template''s label'
-; COMMENT ON COLUMN api.my_repositories.assignment_slug IS 'The assignment the template currently serves, NULL when none'
+; COMMENT ON COLUMN api.my_repositories.assignment_slug IS 'The assignment the repository was created for, NULL when its template served none'
 ; COMMENT ON COLUMN api.my_repositories.template_full_name IS 'The template repository as owner/repo'
 ; COMMENT ON COLUMN api.my_repositories.is_team IS 'True when the repository belongs to the caller''s team'
 ; COMMENT ON COLUMN api.my_repositories.user_id IS 'Owning student, NULL for a team repository'
@@ -255,10 +305,14 @@ CREATE VIEW api.my_repositories WITH (security_barrier=true) AS
 -- ---------------------------------------------------------------------------
 -- Shaped after data.assignment_repository: the same (template_slug, is_team)
 -- foreign key, the same user XOR team check, the same one-per-owner partial
--- unique indexes. What it adds is the state of an attempt: the template and
--- destination name as they were when the student clicked, the forge id once
--- generate has returned it, the stage, and a sanitized error code. No lease:
--- an attempt that is not finalized is simply resumed by the next request.
+-- unique indexes. What it adds is the state of an attempt: the template,
+-- the assignment it served and the destination name as they were when the
+-- student clicked, the forge id once generate has returned it, the stage,
+-- and a sanitized error code. The assignment is snapshotted because the
+-- deadline was checked against it at the click, and finalize records the
+-- repository under it even if faculty re-point the template meanwhile. No
+-- lease: an attempt that is not finalized is simply resumed by the next
+-- request.
 --
 -- provider_repo_id is NOT unique here on purpose. A failed attempt may hold
 -- the id of a repository that was generated and then lost, and a later
@@ -269,6 +323,8 @@ CREATE TABLE data.assignment_repository_provisioning (
     template_slug text NOT NULL CHECK (char_length(template_slug) <= 60),
     is_team boolean NOT NULL,
     FOREIGN KEY (template_slug, is_team) REFERENCES data.repository_template (slug, is_team) ON UPDATE CASCADE,
+    assignment_slug text CHECK (char_length(assignment_slug) < 100),
+    FOREIGN KEY (assignment_slug, is_team) REFERENCES data.assignment (slug, is_team) ON UPDATE CASCADE,
     user_id int REFERENCES data."user" (id) ON UPDATE CASCADE,
     team_nickname text CHECK (char_length(team_nickname) < 50) REFERENCES data.team (nickname) ON UPDATE CASCADE,
     initiated_by_user_id int NOT NULL REFERENCES data."user" (id) ON UPDATE CASCADE,
@@ -307,6 +363,8 @@ WHERE user_id IS NULL
 -- Foreign key indexes, as tests/db/foreign-key-indexes.sql requires.
 CREATE INDEX idx_assignment_repository_provisioning_template_fk
 ON data.assignment_repository_provisioning USING btree (template_slug, is_team)
+; CREATE INDEX idx_assignment_repository_provisioning_assignment_fk
+ON data.assignment_repository_provisioning USING btree (assignment_slug, is_team)
 ; CREATE INDEX idx_assignment_repository_provisioning_user_fk
 ON data.assignment_repository_provisioning USING btree (user_id)
 ; CREATE INDEX idx_assignment_repository_provisioning_team_fk
@@ -342,6 +400,7 @@ AND EXISTS (
 ; COMMENT ON VIEW api.repository_provisionings IS 'Repository provisioning attempts: one per student or team per template, with the stage the attempt has reached. Read-only; the authapp service advances it'
 ; COMMENT ON COLUMN api.repository_provisionings.id IS 'Surrogate key for this attempt'
 ; COMMENT ON COLUMN api.repository_provisionings.template_slug IS 'The template the repository is being created from'
+; COMMENT ON COLUMN api.repository_provisionings.assignment_slug IS 'The assignment the template served when the attempt was claimed, NULL when none. The repository is recorded under it'
 ; COMMENT ON COLUMN api.repository_provisionings.is_team IS 'True when the repository will belong to a team, copied from the template'
 ; COMMENT ON COLUMN api.repository_provisionings.user_id IS 'Owning student, set when the template is individual and NULL otherwise'
 ; COMMENT ON COLUMN api.repository_provisionings.team_nickname IS 'Owning team, set when the template is a team template and NULL otherwise'
@@ -357,6 +416,9 @@ AND EXISTS (
 ; COMMENT ON COLUMN api.repository_provisionings.ready_at IS 'When the forge first reported the repository contents ready, NULL until then'
 ; COMMENT ON COLUMN api.repository_provisionings.created_at IS 'When the attempt was claimed'
 ; COMMENT ON COLUMN api.repository_provisionings.updated_at IS 'When the attempt last changed'
+;
+-- The assignment trigger, now that both tables it reads exist.
+CREATE TRIGGER tg_assignment_repository_assignment BEFORE INSERT OR UPDATE ON data.assignment_repository FOR EACH ROW EXECUTE FUNCTION data.keep_assignment_repository_assignment()
 ;
 -- ---------------------------------------------------------------------------
 -- api.users carries the identity
@@ -395,7 +457,7 @@ CREATE OR REPLACE VIEW api.users AS
 -- synthesized from it (stage finalized) and no attempt is created or
 -- changed. That covers both a student coming back after a successful
 -- provisioning and a repository the old course tooling created.
-CREATE FUNCTION api.claim_repository_provisioning(p_template_slug text, p_user_id int) RETURNS TABLE (id int, template_slug text, is_team boolean, user_id int, team_nickname text, initiated_by_user_id int, provider text, template_full_name text, destination_name text, provider_repo_id bigint, provider_full_name text, stage text, error_code text, last_checked_at timestamp with time zone, ready_at timestamp with time zone, created_at timestamp with time zone, updated_at timestamp with time zone, existing_repository_id int) SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
+CREATE FUNCTION api.claim_repository_provisioning(p_template_slug text, p_user_id int) RETURNS TABLE (id int, template_slug text, assignment_slug text, is_team boolean, user_id int, team_nickname text, initiated_by_user_id int, provider text, template_full_name text, destination_name text, provider_repo_id bigint, provider_full_name text, stage text, error_code text, last_checked_at timestamp with time zone, ready_at timestamp with time zone, created_at timestamp with time zone, updated_at timestamp with time zone, existing_repository_id int) SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
 DECLARE
     the_template data.repository_template%ROWTYPE;
     the_assignment data.assignment%ROWTYPE;
@@ -471,7 +533,7 @@ BEGIN
         -- The attempt's id is carried when there is one, so readiness can
         -- still be recorded against it; the rest describes the repository.
         RETURN QUERY SELECT
-            the_attempt.id, the_repository.template_slug, the_repository.is_team,
+            the_attempt.id, the_repository.template_slug, the_repository.assignment_slug, the_repository.is_team,
             the_repository.user_id, the_repository.team_nickname, p_user_id,
             the_repository.provider, the_template.template_full_name,
             split_part(the_repository.provider_full_name, '/', 2),
@@ -489,7 +551,7 @@ BEGIN
             RETURNING p.* INTO the_attempt;
         END IF;
         RETURN QUERY SELECT
-            the_attempt.id, the_attempt.template_slug, the_attempt.is_team,
+            the_attempt.id, the_attempt.template_slug, the_attempt.assignment_slug, the_attempt.is_team,
             the_attempt.user_id, the_attempt.team_nickname, the_attempt.initiated_by_user_id,
             the_attempt.provider, the_attempt.template_full_name, the_attempt.destination_name,
             the_attempt.provider_repo_id, the_attempt.provider_full_name,
@@ -538,18 +600,18 @@ BEGIN
     END IF;
 
     INSERT INTO data.assignment_repository_provisioning (
-        template_slug, is_team, user_id, team_nickname, initiated_by_user_id,
+        template_slug, assignment_slug, is_team, user_id, team_nickname, initiated_by_user_id,
         provider, template_full_name, destination_name, stage
     )
     VALUES (
-        p_template_slug, the_template.is_team, owner_user, owner_team, p_user_id,
+        p_template_slug, the_template.assignment_slug, the_template.is_team, owner_user, owner_team, p_user_id,
         the_template.provider, the_template.template_full_name,
         destination, 'claimed'
     )
     RETURNING * INTO the_attempt;
 
     RETURN QUERY SELECT
-        the_attempt.id, the_attempt.template_slug, the_attempt.is_team,
+        the_attempt.id, the_attempt.template_slug, the_attempt.assignment_slug, the_attempt.is_team,
         the_attempt.user_id, the_attempt.team_nickname, the_attempt.initiated_by_user_id,
         the_attempt.provider, the_attempt.template_full_name, the_attempt.destination_name,
         the_attempt.provider_repo_id, the_attempt.provider_full_name,
@@ -651,7 +713,6 @@ $$
 CREATE FUNCTION api.finalize_repository_provisioning(p_attempt_id int, p_provider_user_id bigint = NULL) RETURNS SETOF api.assignment_repositories SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
 DECLARE
     the_attempt data.assignment_repository_provisioning%ROWTYPE;
-    the_template data.repository_template%ROWTYPE;
     the_repository data.assignment_repository%ROWTYPE;
     owner_github_user_id bigint;
 BEGIN
@@ -695,8 +756,12 @@ BEGIN
 
     -- An existing row for this owner and template is reused when it is the
     -- same repository; a different one is a conflict for staff, never an
-    -- overwrite. The same forge repository recorded for another owner is a
-    -- conflict too, before the unique index says so less clearly.
+    -- overwrite. The repository is recorded under the assignment the attempt
+    -- was claimed for, not the template's current one. The unique indexes
+    -- have the last word: the same forge repository recorded for another
+    -- owner, or a row for this owner that landed between the read above and
+    -- the insert, arrives as a unique violation, which is re-read and
+    -- reported as the same conflict rather than as a bare 23505.
     SELECT r.* INTO the_repository
     FROM data.assignment_repository r
     WHERE r.template_slug = the_attempt.template_slug
@@ -709,27 +774,28 @@ BEGIN
                 DETAIL = format('a different repository (%s %s) is already recorded for this owner on template %s', the_repository.provider, the_repository.provider_repo_id, the_attempt.template_slug);
         END IF;
     ELSE
-        IF EXISTS (
-            SELECT 1 FROM data.assignment_repository r
-            WHERE r.provider = the_attempt.provider AND r.provider_repo_id = the_attempt.provider_repo_id
-        ) THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001',
-                MESSAGE = 'repository_conflict',
-                DETAIL = format('repository %s %s is already recorded for another owner', the_attempt.provider, the_attempt.provider_repo_id);
-        END IF;
-        -- assignment_slug is the template's as it stands now, so the
-        -- repository is recorded for the assignment the template serves at
-        -- the moment it exists, not the one it served at the click.
-        SELECT t.* INTO the_template FROM data.repository_template t WHERE t.slug = the_attempt.template_slug;
-        INSERT INTO data.assignment_repository (
-            template_slug, assignment_slug, is_team, user_id, team_nickname,
-            provider, provider_repo_id, provider_full_name, provider_user_id
-        )
-        VALUES (
-            the_attempt.template_slug, the_template.assignment_slug, the_attempt.is_team, the_attempt.user_id, the_attempt.team_nickname,
-            the_attempt.provider, the_attempt.provider_repo_id, the_attempt.provider_full_name, p_provider_user_id
-        )
-        RETURNING * INTO the_repository;
+        BEGIN
+            INSERT INTO data.assignment_repository (
+                template_slug, assignment_slug, is_team, user_id, team_nickname,
+                provider, provider_repo_id, provider_full_name, provider_user_id
+            )
+            VALUES (
+                the_attempt.template_slug, the_attempt.assignment_slug, the_attempt.is_team, the_attempt.user_id, the_attempt.team_nickname,
+                the_attempt.provider, the_attempt.provider_repo_id, the_attempt.provider_full_name, p_provider_user_id
+            )
+            RETURNING * INTO the_repository;
+        EXCEPTION WHEN unique_violation THEN
+            SELECT r.* INTO the_repository
+            FROM data.assignment_repository r
+            WHERE r.template_slug = the_attempt.template_slug
+              AND r.user_id IS NOT DISTINCT FROM the_attempt.user_id
+              AND r.team_nickname IS NOT DISTINCT FROM the_attempt.team_nickname;
+            IF NOT FOUND OR the_repository.provider <> the_attempt.provider OR the_repository.provider_repo_id <> the_attempt.provider_repo_id THEN
+                RAISE EXCEPTION USING ERRCODE = 'P0001',
+                    MESSAGE = 'repository_conflict',
+                    DETAIL = format('repository %s %s is already recorded for another owner, or this owner already holds a different one on template %s', the_attempt.provider, the_attempt.provider_repo_id, the_attempt.template_slug);
+            END IF;
+        END;
     END IF;
 
     UPDATE data.assignment_repository_provisioning p
@@ -742,7 +808,7 @@ $$
 ; ALTER FUNCTION api.finalize_repository_provisioning(int, bigint) OWNER TO yelukerest_migrator
 ; REVOKE ALL ON FUNCTION api.finalize_repository_provisioning(int, bigint) FROM public
 ; GRANT execute ON FUNCTION api.finalize_repository_provisioning(int, bigint) TO app
-; COMMENT ON FUNCTION api.finalize_repository_provisioning(int, bigint) IS 'Finish a granted provisioning attempt: record the repository for its owner and template, with the assignment the template serves, and mark the attempt finalized. Writes no submission. authapp only. Idempotent once finalized. Refuses with invalid_stage_transition, github_identity_mismatch or repository_conflict.'
+; COMMENT ON FUNCTION api.finalize_repository_provisioning(int, bigint) IS 'Finish a granted provisioning attempt: record the repository for its owner and template, under the assignment the attempt was claimed for, and mark the attempt finalized. Writes no submission. authapp only. Idempotent once finalized. Refuses with invalid_stage_transition, github_identity_mismatch or repository_conflict.'
 ;
 -- Readiness, for the poll that waits for the template contents to land
 -- (#396). ready_at is set once and never moved.
