@@ -40,6 +40,33 @@ describe('assignment repository provisioning over HTTP', () => {
         resetdb();
     });
 
+    // Regression: the first cut of the migration added a second foreign key
+    // between assignment and assignment_field, and PostgREST answered the
+    // embed the web client makes on every page load with 300 PGRST201.
+    it('still embeds assignment fields from assignments, and the reverse', async () => {
+        const jwt = await studentJWTPromise;
+        const assignments = await restService()
+            .get('/assignments?order=closed_at&select=*,fields:assignment_fields(*)')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect('Content-Type', /json/)
+            .expect(200);
+        const exam = assignments.body.find(row => row.slug === 'exam-1');
+        we.expect(exam.fields.map(field => field.slug).sort()).to.deep.equal(['fooword', 'profound', 'url']);
+
+        const mine = await restService()
+            .get('/my_assignments?slug=eq.exam-1&select=slug,fields:assignment_fields(slug)')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect(200);
+        we.expect(mine.body[0].fields).to.have.lengthOf(3);
+
+        const fields = await restService()
+            .get('/assignment_fields?assignment_slug=eq.exam-1&select=slug,assignment:assignments(slug)')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect(200);
+        we.expect(fields.body).to.have.lengthOf(3);
+        we.expect(fields.body[0].assignment).to.deep.equal({ slug: 'exam-1' });
+    });
+
     it('refuses a student who tries to configure a template', async () => {
         await restService()
             .patch('/assignments?slug=eq.exam-1')

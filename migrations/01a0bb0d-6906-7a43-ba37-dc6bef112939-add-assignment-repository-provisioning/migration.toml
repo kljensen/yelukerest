@@ -18,7 +18,7 @@ reversibility = "reversible"
 
 [[allow]]
 lint = "lint.index_without_concurrently"
-reason = "The provisioning indexes are built on a table created a few statements earlier in this same transaction, with no rows and no concurrent writer. The two indexes on existing tables (the assignment field foreign key, the GitHub account id) are on small tables that this deployment locks anyway for ALTER TABLE ... ADD COLUMN. CONCURRENTLY cannot run inside the transaction Zapadka owns."
+reason = "The provisioning indexes are built on a table created a few statements earlier in this same transaction, with no rows and no concurrent writer. The two indexes on data.\"user\" (the GitHub account id and login) are on a small table that this deployment locks anyway for ALTER TABLE ... ADD COLUMN. CONCURRENTLY cannot run inside the transaction Zapadka owns."
 
 [[allow]]
 lint = "lint.constraint_scans_table"

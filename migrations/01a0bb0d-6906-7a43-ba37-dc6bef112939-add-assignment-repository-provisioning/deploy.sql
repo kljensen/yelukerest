@@ -43,41 +43,39 @@
 -- assignment_repository.provider, so the two never disagree on what to call
 -- a forge. template_full_name is owner/repo: a GitHub owner is a login (no
 -- leading, trailing or doubled hyphen), and a repository name is a dotted
--- token. repository_url_field_slug names the assignment's own field; the
--- foreign key below is what makes a field of another assignment
--- unrepresentable, and its default NO ACTION is what stops a designated
--- field being deleted from under the configuration.
+-- token. repository_url_field_slug names the assignment's own field.
+--
+-- Deliberately NOT a foreign key onto data.assignment_field. PostgREST
+-- derives resource embedding from foreign keys, and a second key between
+-- these two tables makes `assignments?select=*,fields:assignment_fields(*)`
+-- -- the request the web client sends on every page load -- ambiguous:
+-- PGRST201, HTTP 300, for every user. The reference is kept by the two
+-- triggers below instead, which also carry the rule a key cannot: the field
+-- has to be a URL field.
 ALTER TABLE data.assignment
     ADD COLUMN repository_template_provider text CHECK (repository_template_provider ~ '^[a-z][a-z0-9_-]{0,31}$'),
     ADD COLUMN repository_template_full_name text CHECK (repository_template_full_name ~ '^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}/[A-Za-z0-9._-]+$'
     AND char_length(repository_template_full_name) BETWEEN 3 AND 255),
     ADD COLUMN repository_url_field_slug text CHECK (char_length(repository_url_field_slug) < 30),
     ADD CONSTRAINT repository_template_all_or_nothing CHECK ((repository_template_provider IS NULL) = (repository_template_full_name IS NULL)
-    AND (repository_template_provider IS NULL) = (repository_url_field_slug IS NULL)),
-    ADD CONSTRAINT assignment_repository_url_field_fkey FOREIGN KEY (slug, repository_url_field_slug) REFERENCES data.assignment_field (assignment_slug, slug)
-;
--- tests/db/foreign-key-indexes.sql requires a plain btree index on every
--- data foreign key's referencing columns, in the constraint's column order.
--- The primary key on slug alone does not cover a two-column key.
-CREATE INDEX idx_assignment_repository_url_field_fk
-ON data.assignment USING btree (slug, repository_url_field_slug)
+    AND (repository_template_provider IS NULL) = (repository_url_field_slug IS NULL))
 ; COMMENT ON COLUMN data.assignment.repository_template_provider IS 'Forge the template repository lives on, such as github. Set with the other two template columns or not at all. Issue #394.'
 ; COMMENT ON COLUMN data.assignment.repository_template_full_name IS 'Template repository as owner/repo on the provider. Issue #394.'
 ; COMMENT ON COLUMN data.assignment.repository_url_field_slug IS 'The URL field of this assignment that a provisioned repository is submitted through. Must be is_url. Issue #394.'
 ;
--- The designated field has to be a URL field. A foreign key can say the field
--- exists but not what kind it is, so two triggers hold that line: one on the
--- assignment when the configuration is set, and one on the field so is_url
--- cannot be switched off while an assignment points at it. The first says
--- only what the foreign key cannot: a field that does not exist is left to
--- the foreign key, so that refusal reads as the missing reference it is. Both
--- run as the definer because faculty write through api views and hold
--- nothing on the data schema, as the existing lookup triggers do.
+-- The reference, in both directions, and the rule that the field is a URL
+-- field. Forward: when an assignment designates a field, that field must
+-- exist on this assignment and be is_url. Reverse: a designated field cannot
+-- be deleted, renamed, or made a non-URL field while the assignment points
+-- at it; every other edit to it (label, help, pattern) stays free. Each
+-- refusal is a stable code in MESSAGE, as the RPCs do, so a client can
+-- branch on it. Both run as the definer because faculty write through api
+-- views and hold nothing on the data schema, as the existing lookup triggers
+-- do.
 --
--- Each locks the row it reads FOR UPDATE before deciding, so two sessions --
--- one designating the field, one flipping its is_url -- serialize on the
--- field row instead of both passing a check against a snapshot and
--- committing a designated non-URL field.
+-- Each locks the row on the other side FOR UPDATE before deciding, so two
+-- sessions -- one designating the field, one deleting or flipping it --
+-- serialize on that row instead of both passing a check against a snapshot.
 CREATE FUNCTION data.check_assignment_repository_url_field() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
 DECLARE
     field_is_url boolean;
@@ -90,35 +88,50 @@ BEGIN
     WHERE f.assignment_slug = NEW.slug
       AND f.slug = NEW.repository_url_field_slug
     FOR UPDATE;
-    IF field_is_url IS FALSE THEN
-        RAISE EXCEPTION 'repository_url_field_slug must name a URL field of this assignment'
-            USING ERRCODE = '23514',
-                  DETAIL = format('assignment %s field %s is not is_url', NEW.slug, NEW.repository_url_field_slug);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001',
+            MESSAGE = 'repository_url_field_missing',
+            DETAIL = format('assignment %s has no field %s', NEW.slug, NEW.repository_url_field_slug);
+    END IF;
+    IF NOT field_is_url THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001',
+            MESSAGE = 'repository_url_field_not_url',
+            DETAIL = format('assignment %s field %s is not is_url', NEW.slug, NEW.repository_url_field_slug);
     END IF;
     RETURN NEW;
 END;
 $$
 ; ALTER FUNCTION data.check_assignment_repository_url_field() OWNER TO yelukerest_migrator
 ; CREATE TRIGGER tg_assignment_repository_url_field BEFORE INSERT OR UPDATE OF repository_url_field_slug ON data.assignment FOR EACH ROW EXECUTE FUNCTION data.check_assignment_repository_url_field()
-; CREATE FUNCTION data.keep_designated_repository_url_field_is_url() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
+; CREATE FUNCTION data.keep_designated_repository_url_field() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
+DECLARE
+    change text;
 BEGIN
-    IF NOT NEW.is_url AND EXISTS (
+    change := CASE
+        WHEN TG_OP = 'DELETE' THEN 'deleted'
+        WHEN NEW.slug <> OLD.slug OR NEW.assignment_slug <> OLD.assignment_slug THEN 'renamed'
+        WHEN NOT NEW.is_url THEN 'made a non-URL field'
+    END;
+    IF change IS NULL THEN
+        RETURN NEW;
+    END IF;
+    IF EXISTS (
         SELECT 1
         FROM data.assignment a
-        WHERE a.slug = NEW.assignment_slug
-          AND a.repository_url_field_slug = NEW.slug
+        WHERE a.slug = OLD.assignment_slug
+          AND a.repository_url_field_slug = OLD.slug
         FOR UPDATE
     ) THEN
-        RAISE EXCEPTION 'this field is the repository URL field of its assignment and must stay is_url'
-            USING ERRCODE = '23514',
-                  DETAIL = format('assignment %s designates field %s as repository_url_field_slug', NEW.assignment_slug, NEW.slug),
-                  HINT = 'Clear the assignment''s template configuration first.';
+        RAISE EXCEPTION USING ERRCODE = 'P0001',
+            MESSAGE = 'repository_url_field_in_use',
+            DETAIL = format('field %s is the repository URL field of assignment %s and cannot be %s', OLD.slug, OLD.assignment_slug, change),
+            HINT = 'Clear the assignment''s template configuration first.';
     END IF;
-    RETURN NEW;
+    RETURN COALESCE(NEW, OLD);
 END;
 $$
-; ALTER FUNCTION data.keep_designated_repository_url_field_is_url() OWNER TO yelukerest_migrator
-; CREATE TRIGGER tg_assignment_field_designated_url BEFORE UPDATE OF is_url ON data.assignment_field FOR EACH ROW EXECUTE FUNCTION data.keep_designated_repository_url_field_is_url()
+; ALTER FUNCTION data.keep_designated_repository_url_field() OWNER TO yelukerest_migrator
+; CREATE TRIGGER tg_assignment_field_designated_url BEFORE DELETE OR UPDATE ON data.assignment_field FOR EACH ROW EXECUTE FUNCTION data.keep_designated_repository_url_field()
 ;
 -- ---------------------------------------------------------------------------
 -- data."user": GitHub identity
