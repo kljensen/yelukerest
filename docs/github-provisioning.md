@@ -212,6 +212,20 @@ thing it records is when readiness was last checked. It runs as the student,
 so row-level security decides which attempt and repository they may see: a
 former teammate sees nothing.
 
+### `GET /auth/assignments/{slug}/repository/create`
+
+A plain link for assignment text, in the way a GitHub Classroom invitation
+link is one: a small page on this origin whose script sends the POST above
+with the browser's session and then goes to the assignment page,
+`/#/assignments/{slug}`, whatever the answer was (`ready`, `copying`,
+`needs_github_link`, `needs_org_join`, or an error); the assignment page
+shows the state. It records the repository URL in the submission
+automatically, as the POST always does. A signed-out visitor is sent
+through `/auth/login?next=…` and back. It is not a second way to create a
+repository -- same POST, same same-origin check, same limits and rules --
+and it is not the primary UX; the assignment page's button is. Use it
+where a link is the only thing available, such as the assignment's text.
+
 ### States
 
 Both routes answer `{"state": ..., "repo_url": ..., "join_url": ...}` on
@@ -221,8 +235,8 @@ success. `repo_url` and `join_url` are `null` when not applicable.
 | --- | --- | --- |
 | 200 | `ready` | The mapping is recorded, every owner has push, and the default branch has a commit. `repo_url` is set. |
 | 202 | `copying` | The repository exists and is recorded, but GitHub is still copying the template into it (or it has not become visible yet). `repo_url` is set. Poll. |
-| 200 | `needs_github_link` | The caller has no GitHub login on record, or the login on record no longer names the linked account. Nothing was created. |
-| 200 | `needs_org_join` | The caller's GitHub account is not an active member of the course organization. Nothing was created. `join_url` is `null` until the join flow (issue #399) exists, which means: ask to be invited. |
+| 200 | `needs_github_link` | The caller has no GitHub login on record, or the login on record no longer names the linked account. Nothing was created. With the join flow configured ([github-join.md](github-join.md)) `join_url` names the page where one GitHub authorization links the verified account and joins the organization; `null` means staff have to record the login. |
+| 200 | `needs_org_join` | The caller's GitHub account is not an active member of the course organization. Nothing was created. `join_url` is set when the join flow is configured, and `null` when it is not, which means: ask to be invited. |
 
 ### Errors
 
@@ -241,7 +255,7 @@ repeat, including after a `GET` that reported an interruption.
 | 409 | `team_prerequisites_incomplete` | Retryable: a teammate has no login on record or is not in the organization. The caller cannot fix it for them. |
 | 409 | `name_taken` | A repository with the destination name exists and was not generated from our template after this attempt began. Staff resolve it; nothing is renamed or deleted. |
 | 409 | `collaborator_not_member`, `repository_conflict`, `submission_conflict`, `url_pattern_mismatch`, `repo_url_mismatch`, `destination_name_too_long` | Conflicts for staff, named by the database or GitHub. A GET after one of these returns the code that was recorded, with `retryable: true`, because a POST resets the attempt and tries again. |
-| 200 | `needs_github_link` (after `github_identity_mismatch`) | The database found the account the grant went to is no longer the one linked to the student; the attempt is recorded failed with that code and the student is asked to relink. |
+| 200 | `needs_github_link` (after `github_identity_mismatch`) | The database found the account the grant went to is no longer the one linked to the student; the attempt is recorded failed with that code and the student is asked to relink (`join_url` as above). |
 | 429 | `too_many_requests` | The per-student admission limit. `Retry-After` is set. |
 | 429 | `github_rate_limited` | GitHub is rate limiting the course credential. `Retry-After` carries GitHub's wait, and every GitHub call is refused for that long; work that needs none (a recorded `ready`) still answers. |
 | 502 | `github_unavailable` | Retryable: GitHub timed out or failed. After an ambiguous generate the next POST looks the name up before posting again. |

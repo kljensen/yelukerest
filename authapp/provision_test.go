@@ -820,6 +820,7 @@ func newProvisioningStack(t *testing.T) *provisioningStack {
 
 	mux := http.NewServeMux()
 	mux.Handle("/auth/assignments/{slug}/repository", handler)
+	registerRepositoryCreatePage(mux, sessionManager)
 	mux.HandleFunc("/test/seed", func(w http.ResponseWriter, r *http.Request) {
 		sessionManager.Put(r.Context(), "netid", r.URL.Query().Get("netid"))
 		w.WriteHeader(http.StatusNoContent)

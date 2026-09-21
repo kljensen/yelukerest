@@ -11,9 +11,12 @@ This page is what to click and what to set.
 
 The join is optional on top of provisioning. Without it, provisioning still
 works: a student who is not an active member of the organization is told
-`needs_org_join` with `join_url: null` and has to be invited by hand. With
-it, the same answer carries a `join_url`, and the student joins from the
-assignment page in one GitHub screen.
+`needs_org_join` with `join_url: null` and has to be invited by hand, and
+one with no usable login on record is told `needs_github_link` with
+`join_url: null` and staff record it. With it, both answers carry a
+`join_url`, and one GitHub screen settles both: the callback records the
+verified account first and the membership second, so a student with no
+login on file, a stale login, or no membership all take the same link.
 
 ## Why a second App
 
@@ -130,8 +133,10 @@ back from it.
 ## The flow
 
 1. The student clicks *Create repository* on an assignment page. Authapp
-   finds their linked login is not an active organization member and
-   answers `needs_org_join` with `join_url: "/auth/github/join?assignment_slug=<slug>"`.
+   finds they have no usable GitHub login on record (`needs_github_link`)
+   or that their account is not an active organization member
+   (`needs_org_join`), and answers with
+   `join_url: "/auth/github/join?assignment_slug=<slug>"` either way.
 2. The page sends them to that URL, a small page on this origin. Its script
    POSTs to `/auth/github/join/start` (same-origin only, like the create
    POST) and follows the `authorization_url` it gets back. The POST mints a
@@ -171,7 +176,9 @@ back from it.
      on a 202 the membership is re-read with the course credential, and if
      it is not yet active the student is told (`membership_not_active`) and
      clicks again in a moment.
-   - An existing active membership is left as it is, role included.
+   - An existing active membership is left as it is, role included: a
+     student who was already a member but had no identity on record gets
+     the identity linked and the team add, and no invitation.
    - Then, if `GITHUB_PROVISIONER_STUDENTS_TEAM_SLUG` is set,
      `PUT /orgs/{org}/teams/{team}/memberships/{login}` with the **course**
      credential. Repeating it for a member is a no-op.
