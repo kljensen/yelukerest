@@ -18,7 +18,10 @@ import Assignments.Model
         , RepositoryState(..)
         , RepositoryStatus
         , assignmentSubmissionAction
+        , answerFields
+        , newSubmissionId
         , notSubmissibleMessage
+        , repositoryUrlField
         , submissionBelongsToUser
         , usesRepositoryFlow
         )
@@ -323,6 +326,9 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                 |> RemoteData.toMaybe
                 |> Maybe.map (List.filter (exceptionMatches assignment.slug user.id user.team_nickname))
                 |> Maybe.andThen List.head
+
+        flow =
+            repositoryFlow user currentDate maybeRepository assignment maybeSubmission
     in
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
@@ -336,41 +342,70 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
         , case maybeSubmission of
             Just submission ->
                 Html.div []
-                    [ showPreviousAssignment assignment submission
+                    [ showPreviousAssignment assignment submission flow.active
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
                     , renderAssignmentSubmissionAction maybeBeginAssignment
-                        (repositoryFlow user currentDate maybeRepository)
+                        flow
                         (assignmentSubmissionAction currentDate maybeException assignment user (Just submission))
                     ]
 
             Nothing ->
                 renderAssignmentSubmissionAction maybeBeginAssignment
-                    (repositoryFlow user currentDate maybeRepository)
+                    flow
                     (assignmentSubmissionAction currentDate maybeException assignment user Nothing)
         ]
 
 
-{-| What the repository flow needs to draw itself, when the assignment and
-person get it (see `Assignments.Model.usesRepositoryFlow`).
+{-| What the repository flow needs to draw itself, and whether it is on
+for this page at all (`active`).
+
+It is on for a student's template assignment (see
+`Assignments.Model.usesRepositoryFlow`), with one exception: a student
+whose submission already names a repository URL, and for whom the server
+has no repository on record (its status check said `repository_not_started`),
+made that repository some other way. They keep the old page, URL field and
+all. Once the server does have one on record, the page is the new one
+whatever the field held before.
+
 -}
 type alias RepositoryFlow =
     { user : CurrentUser
     , now : Posix
     , progress : Maybe RepositoryProgress
+    , active : Bool
     }
 
 
-repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> RepositoryFlow
-repositoryFlow user now progress =
-    { user = user, now = now, progress = progress }
-
-
-showPreviousAssignment : Assignment -> AssignmentSubmission -> Html.Html Msg
-showPreviousAssignment assignment submission =
+repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> Assignment -> Maybe AssignmentSubmission -> RepositoryFlow
+repositoryFlow user now progress assignment maybeSubmission =
     let
-        show =
-            showPreviousSubmissionField submission.fields
+        legacy =
+            maybeSubmission
+                |> Maybe.andThen (repositoryUrlField assignment)
+                |> Maybe.map (\_ -> progress == Just NotStarted)
+                |> Maybe.withDefault False
+    in
+    { user = user
+    , now = now
+    , progress = progress
+    , active = usesRepositoryFlow user assignment && not legacy
+    }
+
+
+{-| The answers on record. With the repository flow on, the repository URL
+field is shown as what it is, a link the repository put there (or nothing
+yet), rather than as a disabled input.
+-}
+showPreviousAssignment : Assignment -> AssignmentSubmission -> Bool -> Html.Html Msg
+showPreviousAssignment assignment submission repositoryFlowActive =
+    let
+        show field =
+            if repositoryFlowActive && Just field.slug == assignment.repository_url_field_slug then
+                showPreviousRepositoryField submission.fields field
+
+            else
+                showPreviousSubmissionField submission.fields field
     in
     Html.div []
         (Html.h3 [] [ Html.text "Your existing submission" ]
@@ -378,40 +413,95 @@ showPreviousAssignment assignment submission =
         )
 
 
-{-| A student's assignment with a repository template gets the create/poll
-flow in place of "Begin assignment": creating the repository begins the
-submission on the server. The flow stays above the form once a submission
-exists, so a student whose repository was never made (or is still being
-made) can see that from the same page they submit on. Everything else,
+showPreviousRepositoryField : List AssignmentFieldSubmission -> AssignmentField -> Html.Html Msg
+showPreviousRepositoryField fieldSubmissions field =
+    let
+        recorded =
+            fieldSubmissions
+                |> List.filter (\f -> f.assignment_field_slug == field.slug && String.trim f.body /= "")
+                |> List.head
+                |> Maybe.map .body
+    in
+    Html.div []
+        [ Html.label [] [ Html.text field.label ]
+        , Html.div []
+            [ case recorded of
+                Just url ->
+                    Html.a [ Attrs.href url ] [ Html.text url ]
+
+                Nothing ->
+                    Html.text "not yet"
+            ]
+        ]
+
+
+{-| A student's template assignment has two independent parts: the
+repository section on top, and beneath it the ordinary form for every
+field but the repository URL one, which the repository fills in and the
+student never types. There is no "Begin assignment" button: the first
+submit (or the repository) begins the assignment. Everything else,
 including staff looking at such an assignment, is as before.
 -}
 renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> RepositoryFlow -> AssignmentSubmissionAction -> Html.Html Msg
 renderAssignmentSubmissionAction maybeBeginAssignment flow action =
     case action of
         CanBeginAssignment assignment2 ->
-            if usesRepositoryFlow flow.user assignment2 then
-                showRepositoryProgress assignment2 flow
+            if flow.active then
+                Html.div []
+                    [ showRepositoryProgress assignment2 flow
+                    , showAnswers assignment2 Nothing flow
+                    ]
 
             else
                 showBeginAssignmentButton assignment2 maybeBeginAssignment
 
         CanUpdateAssignment assignment2 submission ->
-            if usesRepositoryFlow flow.user assignment2 then
+            if flow.active then
                 Html.div []
                     [ showRepositoryProgress assignment2 flow
-                    , showSubmissionForm submission assignment2
+                    , showAnswers assignment2 (Just submission) flow
                     ]
 
             else
-                showSubmissionForm submission assignment2
+                showSubmissionForm submission.id (Msgs.OnSubmitAssignmentFieldSubmissions submission) assignment2.fields
 
         CannotSubmitAssignment reason ->
             Common.Views.divWithText (notSubmissibleMessage reason)
 
 
+{-| The form for the fields the student answers by hand. An assignment
+whose only field is the repository URL has nothing to ask, and says so
+once the repository is there.
+-}
+showAnswers : Assignment -> Maybe AssignmentSubmission -> RepositoryFlow -> Html.Html Msg
+showAnswers assignment maybeSubmission flow =
+    case ( answerFields assignment, maybeSubmission ) of
+        ( [], _ ) ->
+            case flow.progress of
+                Just (Done _) ->
+                    Html.div [] [ Html.text "Nothing else to submit here — continue your work in GitHub." ]
+
+                _ ->
+                    Html.text ""
+
+        ( fields, Just submission ) ->
+            showSubmissionForm submission.id (Msgs.OnSubmitAssignmentFieldSubmissions submission) fields
+
+        ( fields, Nothing ) ->
+            showSubmissionForm newSubmissionId (Msgs.OnBeginAndSubmitAssignmentFieldSubmissions assignment.slug) fields
+
+
 showRepositoryProgress : Assignment -> RepositoryFlow -> Html.Html Msg
 showRepositoryProgress assignment flow =
     let
+        -- "your repository" or "our team repository", as the case may be.
+        repository =
+            if assignment.is_team then
+                "our team repository"
+
+            else
+                "your repository"
+
         createLabel =
             if assignment.is_team then
                 "Create our team repository"
@@ -422,10 +512,10 @@ showRepositoryProgress assignment flow =
     Html.div [ Attrs.class "mb2" ]
         (case flow.progress of
             Nothing ->
-                [ Html.text "Checking your repository…" ]
+                [ Html.text ("Checking " ++ repository ++ "…") ]
 
             Just Checking ->
-                [ Html.text "Checking your repository…" ]
+                [ Html.text ("Checking " ++ repository ++ "…") ]
 
             Just NotStarted ->
                 [ Html.button
@@ -440,18 +530,18 @@ showRepositoryProgress assignment flow =
                     [ Attrs.class "btn btn-primary black bg-silver"
                     , Attrs.disabled True
                     ]
-                    [ Html.text "Creating your private repository…" ]
+                    [ Html.text (capitalize ("creating " ++ repository ++ "…")) ]
                 ]
 
             Just (Polling polling) ->
                 [ repositoryLink polling.last
-                , Html.div [] [ Html.text "Starter files are being copied — usually under a minute." ]
+                , Html.div [] [ Html.text (capitalize ("preparing " ++ repository ++ "'s starter files — usually under a minute.")) ]
                 ]
 
             Just (PollTimedOut status) ->
                 [ repositoryLink status
                 , Html.div []
-                    [ Html.text "Still copying. "
+                    [ Html.text "Status checks paused. "
                     , actionButton (Msgs.OnLoadRepository assignment.slug) "Check again" Nothing
                     ]
                 ]
@@ -459,10 +549,11 @@ showRepositoryProgress assignment flow =
             Just (Done status) ->
                 [ case status.repoUrl of
                     Just url ->
-                        Html.a [ Attrs.class "btn btn-primary", Attrs.href url ] [ Html.text "Open your repository" ]
+                        Html.a [ Attrs.class "btn btn-primary", Attrs.href url ] [ Html.text (capitalize ("open " ++ repository)) ]
 
                     Nothing ->
-                        Html.text "Your repository is ready."
+                        Html.text (capitalize (repository ++ " is ready."))
+                , Html.div [] [ Html.small [] [ Html.text "Repository recorded." ] ]
                 ]
 
             Just (Blocked blocked) ->
@@ -471,6 +562,11 @@ showRepositoryProgress assignment flow =
             Just (Failed failed) ->
                 showRepositoryFailed assignment.slug (secondsOfHold flow.now failed.notBefore) failed.error
         )
+
+
+capitalize : String -> String
+capitalize text =
+    String.toUpper (String.left 1 text) ++ String.dropLeft 1 text
 
 
 repositoryLink : RepositoryStatus -> Html.Html Msg
@@ -554,8 +650,14 @@ showRepositoryBlocked slug holdSeconds blocked =
                    , tryAgain
                    ]
 
-        _ ->
-            [ Html.div [] [ Html.text "We don't have a working GitHub username for you; tell the teaching staff." ]
+        ( _, Just joinUrl ) ->
+            [ Html.a [ Attrs.class "btn btn-primary mr1", Attrs.href joinUrl ] [ Html.text "Connect your GitHub account" ]
+            , Html.div [] [ Html.text "This also joins the course GitHub organization." ]
+            , tryAgain
+            ]
+
+        ( _, Nothing ) ->
+            [ Html.div [] [ Html.text "We don't have a GitHub account on file for you; tell the teaching staff." ]
             , tryAgain
             ]
 
@@ -662,23 +764,26 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
             Html.text "other error"
 
 
-showSubmissionForm : AssignmentSubmission -> Assignment -> Html.Html Msg
-showSubmissionForm submission assignment =
+{-| The form for `fields`, whose inputs are held under `submissionId`
+(`newSubmissionId` when no submission exists yet) and sent by `submitMsg`.
+-}
+showSubmissionForm : Int -> Msg -> List AssignmentField -> Html.Html Msg
+showSubmissionForm submissionId submitMsg fields =
     Html.form
         [ Events.custom
             "submit"
             (Decode.succeed
                 { preventDefault = True
                 , stopPropagation = False
-                , message = Msgs.OnSubmitAssignmentFieldSubmissions submission
+                , message = submitMsg
                 }
             )
         ]
-        (List.map (showFormField submission) assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
+        (List.map (showFormField submissionId) fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
 
-showFormField : AssignmentSubmission -> AssignmentField -> Html.Html Msg
-showFormField submission assignmentField =
+showFormField : Int -> AssignmentField -> Html.Html Msg
+showFormField submissionId assignmentField =
     let
         fieldType =
             if assignmentField.is_url then
@@ -693,7 +798,7 @@ showFormField submission assignmentField =
             , Attrs.pattern assignmentField.pattern
             , Events.onInput
             (Msgs.OnUpdateAssignmentFieldSubmissionInput
-                submission.id
+                submissionId
                 assignmentField.slug
             )]
     in

@@ -2,7 +2,8 @@ module Update exposing (listToDict, update, valuesFromDict)
 
 import Assignments.Commands
     exposing
-        ( createAssignmentSubmission
+        ( beginAndSendAssignmentFieldSubmissions
+        , createAssignmentSubmission
         , createRepository
         , fetchAssignmentGradeDistributions
         , fetchAssignmentGradeExceptions
@@ -12,7 +13,7 @@ import Assignments.Commands
         , loadRepository
         , sendAssignmentFieldSubmissions
         )
-import Assignments.Model exposing (valuesForSubmissionID)
+import Assignments.Model exposing (newSubmissionId, valuesForSubmissionID)
 import Assignments.Updates
     exposing
         ( RepositoryRequest(..)
@@ -514,6 +515,24 @@ update msg model =
                     , Cmd.batch
                         [ sendAssignmentFieldSubmissions user.jwt assignmentSubmission.assignment_slug values
                         ]
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msgs.OnBeginAndSubmitAssignmentFieldSubmissions assignmentSlug ->
+            -- Answers typed before any submission exists are held under
+            -- `newSubmissionId`; the reply is handled by the ordinary
+            -- submit's handler, which refetches and clears the inputs.
+            case model.currentUser of
+                RemoteData.Success user ->
+                    ( { model
+                        | pendingAssignmentFieldSubmissionRequests =
+                            Dict.insert assignmentSlug RemoteData.Loading model.pendingAssignmentFieldSubmissionRequests
+                      }
+                    , beginAndSendAssignmentFieldSubmissions user.jwt
+                        assignmentSlug
+                        (valuesForSubmissionID newSubmissionId model.assignmentFieldSubmissionInputs)
                     )
 
                 _ ->

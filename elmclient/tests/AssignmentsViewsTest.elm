@@ -3,11 +3,14 @@ module AssignmentsViewsTest exposing (tests)
 import Assignments.Model
     exposing
         ( Assignment
+        , AssignmentField
+        , AssignmentFieldSubmission
         , AssignmentSubmission
         , RepositoryError
         , RepositoryProgress(..)
         , RepositoryState(..)
         , RepositoryStatus
+        , newSubmissionId
         )
 import Assignments.Views
 import Auth.Model exposing (CurrentUser)
@@ -79,11 +82,13 @@ tests =
             [ test "offers to create the repository instead of beginning the assignment" <|
                 \_ ->
                     detail templateAssignment Nothing (Just NotStarted)
+                        |> repositorySection
                         |> Query.find [ Selector.tag "button" ]
                         |> Query.has [ Selector.text "Create my repository" ]
             , test "and that button creates the repository" <|
                 \_ ->
                     detail templateAssignment Nothing (Just NotStarted)
+                        |> repositorySection
                         |> Query.find [ Selector.tag "button" ]
                         |> Event.simulate Event.click
                         |> Event.expect (Msgs.OnCreateRepository templateAssignment.slug)
@@ -95,47 +100,136 @@ tests =
                 \_ ->
                     detail { templateAssignment | is_team = True } Nothing (Just NotStarted)
                         |> Query.has [ Selector.text "Create our team repository" ]
-            , test "still offers to create when a submission exists but no repository does" <|
+
+            -- Part B: the answers. The form is there from the start, minus
+            -- the repository URL field, which the repository fills in.
+            , test "shows the form for the other fields before any submission exists" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just NotStarted)
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Query.has [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
+            , test "never renders the repository URL field as an input" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just NotStarted)
+                        |> Query.hasNot [ Selector.tag "input", Selector.attribute (Html.Attributes.name "repository_url") ]
+            , test "nor once a submission exists" <|
+                \_ ->
+                    detail templateAssignment (Just submission) (Just (Done ready))
+                        |> Query.hasNot [ Selector.tag "input", Selector.attribute (Html.Attributes.name "repository_url") ]
+            , test "a submit before any submission exists begins the assignment and sends the answers as one" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just NotStarted)
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Event.simulate Event.submit
+                        |> Event.expect (Msgs.OnBeginAndSubmitAssignmentFieldSubmissions templateAssignment.slug)
+            , test "and its inputs are held under the placeholder submission id" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just NotStarted)
+                        |> Query.find [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
+                        |> Event.simulate (Event.input "hello")
+                        |> Event.expect (Msgs.OnUpdateAssignmentFieldSubmissionInput newSubmissionId "notes" "hello")
+            , test "a submit on an existing submission updates it as before" <|
                 \_ ->
                     detail templateAssignment (Just submission) (Just NotStarted)
-                        |> Query.has [ Selector.text "Create my repository" ]
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Event.simulate Event.submit
+                        |> Event.expect (Msgs.OnSubmitAssignmentFieldSubmissions { submission | assignment_slug = templateAssignment.slug })
+            , test "the form is there whatever the repository is doing" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just (failed { code = "github_unavailable", retryable = True, httpStatus = 502, retryAfterSeconds = Nothing }))
+                        |> Query.has [ Selector.tag "form" ]
+            , test "an assignment with only the repository field has no form" <|
+                \_ ->
+                    detail repoOnlyAssignment Nothing (Just NotStarted)
+                        |> Expect.all
+                            [ Query.hasNot [ Selector.tag "form" ]
+                            , Query.has [ Selector.text "Create my repository" ]
+                            ]
+            , test "and says so once the repository is ready" <|
+                \_ ->
+                    detail repoOnlyAssignment (Just submission) (Just (Done ready))
+                        |> Expect.all
+                            [ Query.hasNot [ Selector.tag "form" ]
+                            , Query.has [ Selector.text "Nothing else to submit here — continue your work in GitHub." ]
+                            ]
+            , test "but not before" <|
+                \_ ->
+                    detail repoOnlyAssignment Nothing (Just Creating)
+                        |> Query.hasNot [ Selector.text "Nothing else to submit here — continue your work in GitHub." ]
+            , test "the existing submission shows the recorded repository as a link" <|
+                \_ ->
+                    detail templateAssignment (Just (submissionWith urlField)) (Just (Done ready))
+                        |> Query.find [ Selector.tag "a", Selector.attribute (Html.Attributes.href repoUrl), Selector.containing [ Selector.text repoUrl ] ]
+                        |> Query.has [ Selector.tag "a" ]
+            , test "or \"not yet\" when nothing is recorded" <|
+                \_ ->
+                    detail templateAssignment (Just submission) (Just NotStarted)
+                        |> Query.has [ Selector.text "not yet" ]
+
+            -- Part C: a repository made some other way. The URL is theirs
+            -- and the server has none on record, so the old page stays.
+            , test "a URL the student recorded, with no repository on record, keeps the old page" <|
+                \_ ->
+                    detail templateAssignment (Just (submissionWith urlField)) (Just NotStarted)
+                        |> Expect.all
+                            [ Query.hasNot [ Selector.text "Create my repository" ]
+                            , Query.hasNot [ Selector.text "not yet" ]
+                            , Query.find [ Selector.tag "form" ] >> Query.has [ Selector.tag "input", Selector.attribute (Html.Attributes.name "repository_url") ]
+                            ]
+            , test "but once the server has one on record the field is the repository's" <|
+                \_ ->
+                    detail templateAssignment (Just (submissionWith urlField)) (Just (Done ready))
+                        |> Expect.all
+                            [ Query.has [ Selector.text "Repository recorded." ]
+                            , Query.hasNot [ Selector.tag "input", Selector.attribute (Html.Attributes.name "repository_url") ]
+                            ]
+            , test "and while the server is still being asked, the new page is shown" <|
+                \_ ->
+                    detail templateAssignment (Just (submissionWith urlField)) (Just Checking)
+                        |> Query.has [ Selector.text "Checking your repository…" ]
             , test "waits while the status is unknown" <|
                 \_ ->
                     detail templateAssignment Nothing Nothing
                         |> Expect.all
                             [ Query.has [ Selector.text "Checking your repository…" ]
-                            , Query.hasNot [ Selector.tag "button" ]
+                            , repositorySection >> Query.hasNot [ Selector.tag "button" ]
                             ]
             , test "disables the button while creating" <|
                 \_ ->
                     detail templateAssignment Nothing (Just Creating)
+                        |> repositorySection
                         |> Query.find [ Selector.tag "button" ]
-                        |> Query.has [ Selector.disabled True, Selector.text "Creating your private repository…" ]
+                        |> Query.has [ Selector.disabled True, Selector.text "Creating your repository…" ]
             , test "links to the repository while it is being copied" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (Polling { since = millis 0, last = copying, inFlight = False, notBefore = Nothing }))
                         |> Expect.all
-                            [ Query.has [ Selector.text "Starter files are being copied — usually under a minute." ]
+                            [ Query.has [ Selector.text "Preparing your repository's starter files — usually under a minute." ]
                             , Query.find [ Selector.tag "a", Selector.attribute (Html.Attributes.href repoUrl) ] >> Query.has [ Selector.text repoUrl ]
                             ]
             , test "offers \"Check again\" once polling has given up" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (PollTimedOut copying))
-                        |> Query.find [ Selector.tag "button" ]
+                        |> Query.find [ Selector.tag "button", Selector.containing [ Selector.text "Check again" ] ]
                         |> Event.simulate Event.click
                         |> Event.expect (Msgs.OnLoadRepository templateAssignment.slug)
+            , test "and says the checks are paused" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just (PollTimedOut copying))
+                        |> Query.has [ Selector.text "Status checks paused. " ]
             , test "links to the finished repository" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (Done ready))
                         |> Query.find [ Selector.tag "a", Selector.containing [ Selector.text "Open your repository" ] ]
                         |> Query.has [ Selector.attribute (Html.Attributes.href repoUrl) ]
-            , test "and shows the form beneath it once the submission is back" <|
+            , test "and says it is recorded" <|
                 \_ ->
-                    detail templateAssignment (Just submission) (Just (Done ready))
-                        |> Expect.all
-                            [ Query.has [ Selector.text "Open your repository" ]
-                            , Query.has [ Selector.tag "form" ]
-                            ]
+                    detail templateAssignment Nothing (Just (Done ready))
+                        |> Query.has [ Selector.text "Repository recorded." ]
+            , test "a team's finished repository is \"our team repository\"" <|
+                \_ ->
+                    detail { templateAssignment | is_team = True } Nothing (Just (Done ready))
+                        |> Query.has [ Selector.text "Open our team repository" ]
             , test "sends the student to join the organization when it knows where" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (blocked needsOrgJoin))
@@ -152,10 +246,17 @@ tests =
                 \_ ->
                     detail templateAssignment Nothing (Just (blocked { needsOrgJoin | joinUrl = Nothing }))
                         |> Query.has [ Selector.text "You need to accept the GitHub organization invitation first (check your email), then try again." ]
-            , test "points a missing GitHub username at the teaching staff" <|
+            , test "offers to connect a GitHub account when it knows where" <|
+                \_ ->
+                    detail templateAssignment Nothing (Just (blocked { state = NeedsGithubLink, repoUrl = Nothing, joinUrl = Just "/auth/github/join?assignment_slug=project-1" }))
+                        |> Expect.all
+                            [ Query.find [ Selector.tag "a", Selector.containing [ Selector.text "Connect your GitHub account" ] ] >> Query.has [ Selector.attribute (Html.Attributes.href "/auth/github/join?assignment_slug=project-1") ]
+                            , Query.has [ Selector.text "This also joins the course GitHub organization." ]
+                            ]
+            , test "points a missing GitHub account at the teaching staff otherwise" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (blocked { state = NeedsGithubLink, repoUrl = Nothing, joinUrl = Nothing }))
-                        |> Query.has [ Selector.text "We don't have a working GitHub username for you; tell the teaching staff." ]
+                        |> Query.has [ Selector.text "We don't have a GitHub account on file for you; tell the teaching staff." ]
             , test "offers to resume an interrupted create" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (failed { code = "provisioning_interrupted", retryable = True, httpStatus = 409, retryAfterSeconds = Nothing }))
@@ -173,7 +274,7 @@ tests =
                     detail templateAssignment Nothing (Just (Failed { error = rateLimited, notBefore = Just (millis 18000) }))
                         |> Expect.all
                             [ Query.has [ Selector.text "Too many requests. Please wait before trying again." ]
-                            , Query.find [ Selector.tag "button" ] >> Query.has [ Selector.disabled True, Selector.text "Try again" ]
+                            , repositorySection >> Query.find [ Selector.tag "button" ] >> Query.has [ Selector.disabled True, Selector.text "Try again" ]
                             , Query.has [ Selector.text " You can try again in 17 s." ]
                             ]
             , test "a rate limit under a prerequisite turns its \"Try again\" off too" <|
@@ -181,11 +282,12 @@ tests =
                     detail templateAssignment Nothing (Just (Blocked { status = needsOrgJoin, notBefore = Just (millis 18000), joinCancelled = False }))
                         |> Expect.all
                             [ Query.has [ Selector.text "You need to join the course GitHub organization before a repository can be created for you." ]
-                            , Query.find [ Selector.tag "button" ] >> Query.has [ Selector.disabled True ]
+                            , repositorySection >> Query.find [ Selector.tag "button" ] >> Query.has [ Selector.disabled True ]
                             ]
             , test "the button comes back once the hold is up" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (Failed { error = rateLimited, notBefore = Just (millis 1000) }))
+                        |> repositorySection
                         |> Query.find [ Selector.tag "button" ]
                         |> Query.hasNot [ Selector.disabled True ]
             , test "an expired session says to sign in again, with no retry" <|
@@ -193,14 +295,14 @@ tests =
                     detail templateAssignment Nothing (Just (failed { code = "session_expired", retryable = False, httpStatus = 401, retryAfterSeconds = Nothing }))
                         |> Expect.all
                             [ Query.has [ Selector.text "Your session has expired. Reload the page and sign in again." ]
-                            , Query.hasNot [ Selector.tag "button" ]
+                            , repositorySection >> Query.hasNot [ Selector.tag "button" ]
                             ]
             , test "names the code of a conflict and offers no retry" <|
                 \_ ->
                     detail templateAssignment Nothing (Just (failed { code = "submission_conflict", retryable = False, httpStatus = 409, retryAfterSeconds = Nothing }))
                         |> Expect.all
                             [ Query.has [ Selector.text "Please tell the teaching staff and mention the code \"submission_conflict\"." ]
-                            , Query.hasNot [ Selector.tag "button" ]
+                            , repositorySection >> Query.hasNot [ Selector.tag "button" ]
                             ]
             , test "a closed assignment offers no repository at all" <|
                 \_ ->
@@ -211,6 +313,13 @@ tests =
                             ]
             ]
         ]
+
+
+{-| The repository section of the page, apart from the answers form.
+-}
+repositorySection : Query.Single Msg -> Query.Single Msg
+repositorySection =
+    Query.find [ Selector.class "mb2" ]
 
 
 {-| The detail page for one assignment, the student's submission to it if
@@ -263,9 +372,53 @@ templateAssignment : Assignment
 templateAssignment =
     { baseAssignment
         | slug = "project-1"
+        , fields = [ field "repository_url" True, field "notes" False ]
         , repository_template_provider = Just "github"
         , repository_template_full_name = Just "org/project-1-template"
         , repository_url_field_slug = Just "repository_url"
+    }
+
+
+field : String -> Bool -> AssignmentField
+field slug isUrl =
+    { slug = slug
+    , assignment_slug = "project-1"
+    , label = slug
+    , help = ""
+    , placeholder = ""
+    , example = ""
+    , pattern = ".*"
+    , is_url = isUrl
+    , is_multiline = False
+    , display_order = 1
+    , created_at = millis 0
+    , updated_at = millis 0
+    }
+
+
+{-| An assignment that asks for nothing but the repository.
+-}
+repoOnlyAssignment : Assignment
+repoOnlyAssignment =
+    { templateAssignment | fields = [ field "repository_url" True ] }
+
+
+submissionWith : AssignmentFieldSubmission -> AssignmentSubmission
+submissionWith fieldSubmission =
+    { submission | fields = [ fieldSubmission ] }
+
+
+{-| The repository URL field, filled in.
+-}
+urlField : AssignmentFieldSubmission
+urlField =
+    { assignment_submission_id = submission.id
+    , assignment_field_slug = "repository_url"
+    , assignment_slug = "project-1"
+    , body = repoUrl
+    , submitter_user_id = currentUser.id
+    , created_at = millis 0
+    , updated_at = millis 0
     }
 
 

@@ -1,5 +1,6 @@
 module Assignments.Commands exposing
-    ( createAssignmentSubmission
+    ( beginAndSendAssignmentFieldSubmissions
+    , createAssignmentSubmission
     , createRepository
     , fetchAssignmentGradeDistributions
     , fetchAssignmentGradeExceptions
@@ -30,7 +31,7 @@ import Assignments.Model
         , repositoryErrorDecoder
         , repositoryStatusDecoder
         )
-import Auth.Commands exposing (fetchForCurrentUser, sendRequestWithJWT)
+import Auth.Commands exposing (fetchForCurrentUser, handleJsonResponse, sendRequestWithJWT)
 import Auth.Model exposing (CurrentUser, JWT)
 import Dict
 import Http
@@ -312,6 +313,46 @@ retryAfterSeconds headers =
         |> List.filter (\( name, _ ) -> String.toLower name == "retry-after")
         |> List.head
         |> Maybe.andThen (\( _, value ) -> String.toInt (String.trim value))
+
+
+{-| Begin the assignment and send the answers in one go, for a template
+assignment the student has not begun (there the page has no "Begin
+assignment" button: the repository or the first submit begins it). The
+submission row must exist before the field submissions can, so the two
+requests run in sequence; the reply is the field submissions', so the page
+handles it exactly as an ordinary submit.
+-}
+beginAndSendAssignmentFieldSubmissions : JWT -> AssignmentSlug -> List ( String, String ) -> Cmd Msg
+beginAndSendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
+    let
+        headers =
+            [ Http.header "Authorization" ("Bearer " ++ jwt)
+            , Http.header "Prefer" "return=representation"
+            ]
+
+        begin =
+            Http.task
+                { method = "POST"
+                , headers = Http.header "Accept" "application/vnd.pgrst.object+json" :: headers
+                , url = "/rest/assignment_submissions"
+                , body = Http.jsonBody (Encode.object [ ( "assignment_slug", Encode.string assignmentSlug ) ])
+                , resolver = Http.stringResolver (handleJsonResponse assignmentSubmissionDecoder)
+                , timeout = Nothing
+                }
+
+        send =
+            Http.task
+                { method = "POST"
+                , headers = Http.header "Prefer" "resolution=merge-duplicates" :: headers
+                , url = "/rest/assignment_field_submissions"
+                , body = Http.jsonBody (encodeAFSList assignmentSlug valueTuples)
+                , resolver = Http.stringResolver (handleJsonResponse assignmentFieldSubmissionsDecoder)
+                , timeout = Nothing
+                }
+    in
+    begin
+        |> Task.andThen (\_ -> send)
+        |> Task.attempt (RemoteData.fromResult >> Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug)
 
 
 {-| Notice that there is no way to restrict this

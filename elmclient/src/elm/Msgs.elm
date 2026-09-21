@@ -93,6 +93,9 @@ type Msg
     | LinkClicked UrlRequest
     | Tick Posix
     | OnSubmitAssignmentFieldSubmissions AssignmentSubmission
+      -- Submit on a template assignment nobody has begun: the submission
+      -- row is created and the answers sent as one action (issue #397).
+    | OnBeginAndSubmitAssignmentFieldSubmissions AssignmentSlug
     | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
     | OnUpdateAssignmentFieldSubmissionInput Int String String
     | OnFetchEngagements (WebData (List Engagement))

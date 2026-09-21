@@ -36,6 +36,9 @@ module Assignments.Model exposing
     , notSubmissibleMessage
     , repositoryErrorDecoder
     , repositoryStatusDecoder
+    , answerFields
+    , newSubmissionId
+    , repositoryUrlField
     , submissionBelongsToUser
     , usesRepositoryFlow
     , valuesForSubmissionID
@@ -99,6 +102,37 @@ refusal aimed at themselves.
 usesRepositoryFlow : CurrentUser -> Assignment -> Bool
 usesRepositoryFlow user assignment =
     user.role == "student" && hasRepositoryTemplate assignment
+
+
+{-| The fields a student answers by hand: all but the one the repository
+fills in.
+-}
+answerFields : Assignment -> List AssignmentField
+answerFields assignment =
+    List.filter (\field -> Just field.slug /= assignment.repository_url_field_slug) assignment.fields
+
+
+{-| The submission id under which a student's answers are held before any
+submission row exists (see `AssignmentFieldSubmissionInputs`); real ids
+start at 1.
+-}
+newSubmissionId : Int
+newSubmissionId =
+    0
+
+
+{-| The submission's entry for the assignment's repository URL field, when
+there is one and it says something.
+-}
+repositoryUrlField : Assignment -> AssignmentSubmission -> Maybe AssignmentFieldSubmission
+repositoryUrlField assignment submission =
+    assignment.repository_url_field_slug
+        |> Maybe.andThen
+            (\fieldSlug ->
+                submission.fields
+                    |> List.filter (\field -> field.assignment_field_slug == fieldSlug && String.trim field.body /= "")
+                    |> List.head
+            )
 
 
 type alias AssignmentField =
