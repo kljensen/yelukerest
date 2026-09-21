@@ -114,7 +114,8 @@ BEGIN
     FROM (VALUES
         ('data.assignment'::regclass, 'tg_assignment_repository_url_field', 'data.check_assignment_repository_url_field()'::regprocedure),
         ('data.assignment_field'::regclass, 'tg_assignment_field_designated_url', 'data.keep_designated_repository_url_field()'::regprocedure),
-        ('data.assignment_repository_provisioning'::regclass, 'tg_assignment_repository_provisioning_update_timestamps', 'data.update_updated_at_column()'::regprocedure)
+        ('data.assignment_repository_provisioning'::regclass, 'tg_assignment_repository_provisioning_update_timestamps', 'data.update_updated_at_column()'::regprocedure),
+        ('data.assignment_field_submission'::regclass, 'tg_assignment_field_submission_repository_lock', 'data.lock_repository_url_field_submission()'::regprocedure)
     ) AS expected(tgrelid, tgname, tgfoid)
     WHERE NOT EXISTS (
         SELECT 1 FROM pg_trigger t

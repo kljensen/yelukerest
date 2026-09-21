@@ -14,6 +14,7 @@
 
 const {
     resetdb,
+    runSQL,
     baseURL,
     authPath,
     jwtPath,
@@ -173,5 +174,29 @@ describe('assignment repository provisioning over HTTP', () => {
             })
             .expect(201);
         we.expect(field.body.origin).to.equal('student');
+    });
+
+    // Once a repository is on record for the owner, the designated field is
+    // what grading clones, so the student can no longer move it; staff can.
+    it('locks the designated field for the student once a repository is on record, not for faculty', async () => {
+        runSQL(`
+            INSERT INTO data.assignment_repository (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
+            VALUES ('exam-1', false, 1, 700001, 'yale-mgt-656/exam-1-abc123');
+        `);
+        const where = '/assignment_field_submissions?assignment_slug=eq.exam-1&assignment_field_slug=eq.url';
+        const refused = await restService()
+            .patch(where)
+            .set('Authorization', `Bearer ${await studentJWTPromise}`)
+            .send({ body: 'https://github.com/abc123/moved' })
+            .expect(400);
+        we.expect(refused.body.message).to.equal('repository_url_field_locked');
+
+        const repaired = await restService()
+            .patch(`${where}&select=body,origin`)
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
+            .set('Prefer', 'return=representation')
+            .send({ body: 'https://github.com/yale-mgt-656/exam-1-abc123' })
+            .expect(200);
+        we.expect(repaired.body).to.deep.equal([{ body: 'https://github.com/yale-mgt-656/exam-1-abc123', origin: 'student' }]);
     });
 });

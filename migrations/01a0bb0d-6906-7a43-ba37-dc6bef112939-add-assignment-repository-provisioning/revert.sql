@@ -21,6 +21,8 @@ DROP FUNCTION IF EXISTS api.import_github_logins(text, text)
 ; DROP FUNCTION IF EXISTS api.finalize_repository_provisioning(int, text, bigint)
 ; DROP FUNCTION IF EXISTS api.record_repository_provisioning(int, text, bigint, text, text)
 ; DROP FUNCTION IF EXISTS api.claim_repository_provisioning(text, int)
+; DROP TRIGGER IF EXISTS tg_assignment_field_submission_repository_lock ON data.assignment_field_submission
+; DROP FUNCTION IF EXISTS data.lock_repository_url_field_submission()
 ; DROP VIEW IF EXISTS api.assignment_repository_provisionings
 ; DROP TABLE IF EXISTS data.assignment_repository_provisioning
 ; DROP POLICY IF EXISTS assignment_submission_access_policy ON data.assignment_submission

@@ -414,6 +414,66 @@ WHERE
         FROM api.claim_repository_provisioning(''exam-1'', 1)
     ', ' VALUES (true, ''finalized''::text, 500001::bigint, true) ', 'claiming after finalize returns the finalized row with the repository')
 ;
+-- ---------------------------------------------------------------------------
+-- The designated field is locked for students once a repository is on record
+-- ---------------------------------------------------------------------------
+-- User 1's exam-1 submission now carries the provisioned URL. Give it a
+-- second, undesignated field, and give zz-closed (designated field `url`,
+-- claimed but no repository) a legacy submission from the same student.
+INSERT INTO data.assignment_field_submission (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, origin)
+SELECT s.id, 'profound', 'exam-1', 'first draft', 1, 'student'
+FROM data.assignment_submission s
+WHERE
+    s.assignment_slug = 'exam-1'
+    AND s.user_id = 1
+; INSERT INTO data.assignment_submission (assignment_slug, is_team, user_id, submitter_user_id)
+VALUES ('zz-closed', false, 1, 1)
+; INSERT INTO data.assignment_field_submission (assignment_submission_id, assignment_field_slug, assignment_slug, body, submitter_user_id, origin)
+SELECT s.id, 'url', 'zz-closed', 'https://github.com/abc123/by-hand', 1, 'student'
+FROM data.assignment_submission s
+WHERE
+    s.assignment_slug = 'zz-closed'
+    AND s.user_id = 1
+; CREATE OR REPLACE FUNCTION zapadka_test.submission(p_slug text, p_user int) RETURNS int LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO pg_catalog, data, pg_temp AS $$
+    SELECT id FROM data.assignment_submission WHERE assignment_slug = p_slug AND user_id = p_user
+$$
+; SET LOCAL role TO student
+; SET "request.jwt.claim.role" TO student
+; SET "request.jwt.claim.user_id" TO "1"
+; SET "request.jwt.claim.app_name" TO ''
+; SELECT throws_ok('
+        UPDATE api.assignment_field_submissions SET body = ''https://github.com/abc123/somewhere-else''
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''url''
+    ', 'P0001', 'repository_url_field_locked', 'a student cannot repoint the designated field once a repository is on record')
+; SELECT lives_ok('
+        UPDATE api.assignment_field_submissions SET body = ''second draft''
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''profound''
+    ', 'the other fields of the same submission stay writable')
+;
+-- Students hold no DELETE on the view at all, so the trigger's DELETE branch
+-- is reached with the student claim on the table itself.
+RESET role
+; SELECT throws_ok('
+        DELETE FROM data.assignment_field_submission
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''url''
+    ', 'P0001', 'repository_url_field_locked', 'nor delete it under a student claim')
+; SET LOCAL role TO student
+; SELECT lives_ok('
+        UPDATE api.assignment_field_submissions SET body = ''https://github.com/abc123/by-hand-2''
+        WHERE assignment_submission_id = zapadka_test.submission(''zz-closed'', 1) AND assignment_field_slug = ''url''
+    ', 'a designated field with no repository on record is a legacy submission and stays writable')
+; SET LOCAL role TO faculty
+; SET "request.jwt.claim.role" TO faculty
+; SET "request.jwt.claim.user_id" TO "3"
+; SELECT lives_ok('
+        UPDATE api.assignment_field_submissions SET body = ''https://github.com/yale-mgt-656/exam-1-alice-m''
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''url''
+    ', 'faculty can still repair the designated field')
+; RESET role
+; SET "request.jwt.claim.role" TO app
+; SET "request.jwt.claim.user_id" TO ''
+; SET "request.jwt.claim.app_name" TO authapp
+;
 -- A repository the old course tooling recorded, with no attempt at all: it
 -- answers the claim before the login or the deadline is looked at.
 INSERT INTO data.assignment_repository (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)

@@ -270,6 +270,46 @@ AND EXISTS (
 ; COMMENT ON COLUMN api.assignment_repository_provisionings.updated_at IS 'When the attempt last changed'
 ;
 -- ---------------------------------------------------------------------------
+-- The URL field is locked once a repository is on record
+-- ---------------------------------------------------------------------------
+-- Grading clones the repository in data.assignment_repository; the form
+-- shows the URL in the designated field. Once the mapping exists the two
+-- must not disagree, so a student or TA can no longer change or delete that
+-- one field submission for that owner. Faculty, the service, and a direct
+-- session are not bound: that is the repair path. Every other field, and the
+-- same field on an assignment with no repository on record (a legacy
+-- submission), stays writable as before. Inserts are untouched: finalize
+-- makes the row, and the primary key already stops a second one.
+CREATE FUNCTION data.lock_repository_url_field_submission() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO pg_catalog, data, request, pg_temp AS $$
+BEGIN
+    IF request.user_role() IS DISTINCT FROM 'student' AND request.user_role() IS DISTINCT FROM 'ta' THEN
+        RETURN COALESCE(NEW, OLD);
+    END IF;
+    IF TG_OP = 'UPDATE' AND NEW.body IS NOT DISTINCT FROM OLD.body THEN
+        RETURN NEW;
+    END IF;
+    IF EXISTS (
+        SELECT 1
+        FROM data.assignment a
+        JOIN data.assignment_submission s ON s.id = OLD.assignment_submission_id
+        JOIN data.assignment_repository r
+            ON r.assignment_slug = a.slug
+            AND r.user_id IS NOT DISTINCT FROM s.user_id
+            AND r.team_nickname IS NOT DISTINCT FROM s.team_nickname
+        WHERE a.slug = OLD.assignment_slug
+          AND a.repository_url_field_slug = OLD.assignment_field_slug
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001',
+            MESSAGE = 'repository_url_field_locked',
+            DETAIL = format('field %s of submission %s names the repository on record for %s and can be changed by staff only', OLD.assignment_field_slug, OLD.assignment_submission_id, OLD.assignment_slug);
+    END IF;
+    RETURN COALESCE(NEW, OLD);
+END;
+$$
+; ALTER FUNCTION data.lock_repository_url_field_submission() OWNER TO yelukerest_migrator
+; CREATE TRIGGER tg_assignment_field_submission_repository_lock BEFORE DELETE OR UPDATE OF body ON data.assignment_field_submission FOR EACH ROW EXECUTE FUNCTION data.lock_repository_url_field_submission()
+;
+-- ---------------------------------------------------------------------------
 -- The api views that carry the new columns
 -- ---------------------------------------------------------------------------
 -- api.assignments lists its columns, so the base table growing does not grow
@@ -766,8 +806,9 @@ BEGIN
         RETURNING id INTO submission_id;
     END IF;
 
-    -- 3. The URL field. A value already there is the student's, or an earlier
-    -- finalize's: identical is a no-op, different is a conflict.
+    -- 3. The URL field. A value already there -- the student's own, an
+    -- earlier finalize's, or a staff repair -- is a no-op when it equals the
+    -- bound URL and a conflict otherwise; nothing here overwrites.
     SELECT fs.body INTO existing_body
     FROM data.assignment_field_submission fs
     WHERE fs.assignment_submission_id = submission_id
