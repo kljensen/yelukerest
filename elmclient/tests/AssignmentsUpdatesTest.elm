@@ -58,6 +58,52 @@ tests =
     describe "Assignments.Updates"
         [ repositoryTests
         , answersTests
+        , workspaceTests
+        ]
+
+
+{-| The two flows together, on one model, in the order the messages arrive
+in `Update`: a draft is typed, the repository is created and comes back
+ready, the refetch it asked for delivers the new submission, and Submit
+must then send what was typed.
+-}
+workspaceTests : Test
+workspaceTests =
+    describe "a draft typed before the repository is created"
+        [ test "is sent by the first Submit after the repository is ready" <|
+            \_ ->
+                workspace
+                    |> onUpdateDraftInput slug "notes" "something profound"
+                    |> onCreateRepository slug
+                    |> Tuple.first
+                    |> onCreateRepositoryResponse slug 1 (at 1000) (Ok ready)
+                    |> Expect.all
+                        [ Tuple.second >> Expect.equal [ RefetchSubmissions ]
+                        , Tuple.first
+                            >> adoptDrafts student [ submissionRow ]
+                            >> onSubmitAnswers slug (Just submissionRow.id)
+                            >> Tuple.second
+                            >> Expect.equal (Just [ ( "notes", "something profound" ) ])
+                        ]
+        , test "the same when the copy had to be polled for" <|
+            \_ ->
+                workspace
+                    |> onUpdateDraftInput slug "notes" "something profound"
+                    |> onCreateRepository slug
+                    |> Tuple.first
+                    |> onCreateRepositoryResponse slug 1 (at 1000) (Ok copying)
+                    |> Tuple.first
+                    |> onRepositoryPollTick (at 4000)
+                    |> Tuple.first
+                    |> onLoadRepositoryResponse slug 2 (at 4500) (Ok ready)
+                    |> Expect.all
+                        [ Tuple.second >> Expect.equal [ RefetchSubmissions ]
+                        , Tuple.first
+                            >> adoptDrafts student [ submissionRow ]
+                            >> onSubmitAnswers slug (Just submissionRow.id)
+                            >> Tuple.second
+                            >> Expect.equal (Just [ ( "notes", "something profound" ) ])
+                        ]
         ]
 
 
@@ -554,6 +600,35 @@ answersTests =
 
 
 -- Fixtures and helpers
+
+
+{-| Both slices at once, as `Models.Model` has them.
+-}
+type alias Workspace =
+    { assignments : WebData (List Assignment)
+    , assignmentRepositories : AssignmentRepositories
+    , repositoryGenerations : RepositoryGenerations
+    , currentUser : WebData CurrentUser
+    , current_date : Maybe Time.Posix
+    , route : Route
+    , assignmentFieldSubmissionInputs : AssignmentFieldSubmissionInputs
+    , assignmentDrafts : AssignmentDrafts
+    , pendingAssignmentFieldSubmissionRequests : PendingAssignmentFieldSubmissionRequests
+    }
+
+
+workspace : Workspace
+workspace =
+    { assignments = RemoteData.Success [ templateAssignment, plainAssignment ]
+    , assignmentRepositories = Dict.singleton slug NotStarted
+    , repositoryGenerations = Dict.empty
+    , currentUser = RemoteData.Success student
+    , current_date = Nothing
+    , route = AssignmentDetailRoute slug
+    , assignmentFieldSubmissionInputs = Dict.empty
+    , assignmentDrafts = Dict.empty
+    , pendingAssignmentFieldSubmissionRequests = Dict.empty
+    }
 
 
 type alias Answers =

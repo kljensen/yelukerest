@@ -47,6 +47,8 @@ tests =
                     Dict.empty
                     Dict.empty
                     Dict.empty
+                    Dict.empty
+                    Dict.empty
                     baseAssignment.slug
                     Nothing
                     |> Query.fromHtml
@@ -136,6 +138,18 @@ tests =
                         |> Query.find [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
                         |> Event.simulate (Event.input "hello")
                         |> Event.expect (Msgs.OnUpdateAssignmentFieldSubmissionInput submission.id "notes" "hello")
+            , test "shows the draft in its input" <|
+                \_ ->
+                    detailTyped currentUser Nothing Dict.empty (Dict.singleton templateAssignment.slug (Dict.singleton "notes" "so far")) templateAssignment Nothing (Just NotStarted)
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Query.find [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
+                        |> Query.has [ Selector.attribute (Html.Attributes.value "so far") ]
+            , test "and, once the submission is there, what was adopted under its id" <|
+                \_ ->
+                    detailTyped currentUser Nothing (Dict.singleton ( submission.id, "notes" ) "so far") Dict.empty templateAssignment (Just submission) (Just (Done ready))
+                        |> Query.find [ Selector.tag "form" ]
+                        |> Query.find [ Selector.tag "input", Selector.attribute (Html.Attributes.name "notes") ]
+                        |> Query.has [ Selector.attribute (Html.Attributes.value "so far") ]
             , test "Submit is off while the answers are being sent" <|
                 \_ ->
                     detailWithPending (Just RemoteData.Loading) templateAssignment Nothing (Just NotStarted)
@@ -372,7 +386,15 @@ detailWithPending =
 
 
 detailFor : CurrentUser -> Maybe (WebData (List AssignmentSubmission)) -> Assignment -> Maybe AssignmentSubmission -> Maybe RepositoryProgress -> Query.Single Msg
-detailFor user pending assignment maybeSubmission maybeProgress =
+detailFor user pending =
+    detailTyped user pending Dict.empty Dict.empty
+
+
+{-| The page with what the student has typed: `inputs` under a submission
+id, `drafts` under an assignment slug.
+-}
+detailTyped : CurrentUser -> Maybe (WebData (List AssignmentSubmission)) -> Dict.Dict ( Int, String ) String -> Dict.Dict String (Dict.Dict String String) -> Assignment -> Maybe AssignmentSubmission -> Maybe RepositoryProgress -> Query.Single Msg
+detailTyped user pending inputs drafts assignment maybeSubmission maybeProgress =
     Assignments.Views.detailView
         (RemoteData.Success user)
         (Just (millis 1000))
@@ -387,6 +409,8 @@ detailFor user pending assignment maybeSubmission maybeProgress =
         (RemoteData.Success [])
         Dict.empty
         (pending |> Maybe.map (Dict.singleton assignment.slug) |> Maybe.withDefault Dict.empty)
+        inputs
+        drafts
         (maybeProgress |> Maybe.map (Dict.singleton assignment.slug) |> Maybe.withDefault Dict.empty)
         assignment.slug
         Nothing

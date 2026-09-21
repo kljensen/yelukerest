@@ -3,8 +3,10 @@ module Assignments.Views exposing (detailView, listView, gradeView)
 import Assignments.Model
     exposing
         ( Assignment
+        , AssignmentDrafts
         , AssignmentField
         , AssignmentFieldSubmission
+        , AssignmentFieldSubmissionInputs
         , AssignmentGradeException
         , AssignmentGrade
         , AssignmentRepositories
@@ -24,6 +26,7 @@ import Assignments.Model
         , repositoryUrlField
         , submissionBelongsToUser
         , usesRepositoryFlow
+        , valuesForSubmissionID
         )
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
@@ -262,8 +265,8 @@ exceptionMatches slug user_id maybeNickname exception =
         False
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> PendingAssignmentFieldSubmissionRequests -> AssignmentRepositories -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments pendingAnswers repositories slug _ =
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> PendingAssignmentFieldSubmissionRequests -> AssignmentFieldSubmissionInputs -> AssignmentDrafts -> AssignmentRepositories -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments pendingAnswers inputs drafts repositories slug _ =
     case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
         Just data ->
             let
@@ -286,7 +289,7 @@ detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions 
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin maybePendingAnswers maybeRepository
+                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin maybePendingAnswers inputs drafts maybeRepository
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -321,8 +324,8 @@ showDueDate dueDate timeZone maybeException _ _ =
             dueString
 
 
-detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Maybe (WebData (List AssignmentSubmission)) -> Maybe RepositoryProgress -> Html.Html Msg
-detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment maybePendingAnswers maybeRepository =
+detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Maybe (WebData (List AssignmentSubmission)) -> AssignmentFieldSubmissionInputs -> AssignmentDrafts -> Maybe RepositoryProgress -> Html.Html Msg
+detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment maybePendingAnswers inputs drafts maybeRepository =
     let
         maybeException =
             wdExceptions
@@ -331,7 +334,7 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                 |> Maybe.andThen List.head
 
         flow =
-            repositoryFlow user currentDate maybeRepository maybePendingAnswers assignment maybeSubmission
+            repositoryFlow user currentDate maybeRepository maybePendingAnswers inputs drafts assignment maybeSubmission
     in
     Html.div []
         [ Html.h1 [] [ Html.text assignment.title, Common.Views.showDraftStatus assignment.is_draft ]
@@ -372,7 +375,8 @@ all. Once the server does have one on record, the page is the new one
 whatever the field held before.
 
 `pendingAnswers` is the answers request out, or lately failed, for this
-assignment; it rides along because the form is drawn from the same place.
+assignment, and `inputs`/`drafts` what the student has typed; they ride
+along because the form is drawn from the same place.
 
 -}
 type alias RepositoryFlow =
@@ -381,11 +385,13 @@ type alias RepositoryFlow =
     , progress : Maybe RepositoryProgress
     , active : Bool
     , pendingAnswers : Maybe (WebData (List AssignmentSubmission))
+    , inputs : AssignmentFieldSubmissionInputs
+    , drafts : AssignmentDrafts
     }
 
 
-repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> Maybe (WebData (List AssignmentSubmission)) -> Assignment -> Maybe AssignmentSubmission -> RepositoryFlow
-repositoryFlow user now progress pendingAnswers assignment maybeSubmission =
+repositoryFlow : CurrentUser -> Posix -> Maybe RepositoryProgress -> Maybe (WebData (List AssignmentSubmission)) -> AssignmentFieldSubmissionInputs -> AssignmentDrafts -> Assignment -> Maybe AssignmentSubmission -> RepositoryFlow
+repositoryFlow user now progress pendingAnswers inputs drafts assignment maybeSubmission =
     let
         legacy =
             maybeSubmission
@@ -398,6 +404,8 @@ repositoryFlow user now progress pendingAnswers assignment maybeSubmission =
     , progress = progress
     , active = usesRepositoryFlow user assignment && not legacy
     , pendingAnswers = pendingAnswers
+    , inputs = inputs
+    , drafts = drafts
     }
 
 
@@ -503,6 +511,7 @@ showAnswers assignment maybeSubmission flow =
                 { onInput = Msgs.OnUpdateAssignmentDraftInput assignment.slug
                 , onSubmit = Msgs.OnBeginAndSubmitAssignmentFieldSubmissions assignment.slug
                 , pending = flow.pendingAnswers
+                , values = Dict.get assignment.slug flow.drafts |> Maybe.withDefault Dict.empty
                 }
                 fields
 
@@ -780,13 +789,21 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
             Html.text "other error"
 
 
-{-| Where a form's keystrokes and its submit go, and the request already
-out (or lately failed) for it.
+{-| Where a form's keystrokes and its submit go, the request already out
+(or lately failed) for it, and what its inputs hold, by field slug.
+
+The inputs show what the model holds rather than whatever the browser
+last had: the page is rebuilt around the form when a submission first
+appears (the existing-submission block goes in above it), and a draft
+typed before that would otherwise vanish from view while still being the
+thing Submit sends.
+
 -}
 type alias AnswersForm =
     { onInput : String -> String -> Msg
     , onSubmit : Msg
     , pending : Maybe (WebData (List AssignmentSubmission))
+    , values : Dict.Dict String String
     }
 
 
@@ -795,6 +812,7 @@ existingSubmissionForm submission flow =
     { onInput = Msgs.OnUpdateAssignmentFieldSubmissionInput submission.id
     , onSubmit = Msgs.OnSubmitAssignmentFieldSubmissions submission
     , pending = flow.pendingAnswers
+    , values = Dict.fromList (valuesForSubmissionID submission.id flow.inputs)
     }
 
 
@@ -830,11 +848,11 @@ showSubmissionForm form fields =
                 }
             )
         ]
-        (List.map (showFormField form.onInput) fields ++ failure ++ [ submitButton ])
+        (List.map (showFormField form) fields ++ failure ++ [ submitButton ])
 
 
-showFormField : (String -> String -> Msg) -> AssignmentField -> Html.Html Msg
-showFormField onInput assignmentField =
+showFormField : AnswersForm -> AssignmentField -> Html.Html Msg
+showFormField form assignmentField =
     let
         fieldType =
             if assignmentField.is_url then
@@ -842,8 +860,10 @@ showFormField onInput assignmentField =
 
             else
                 "text"
+        onInput = form.onInput
         commonAttributes = [
-            Attrs.placeholder assignmentField.placeholder
+            Attrs.value (Dict.get assignmentField.slug form.values |> Maybe.withDefault "")
+            , Attrs.placeholder assignmentField.placeholder
             , Attrs.title assignmentField.help
             , Attrs.name assignmentField.slug
             , Attrs.pattern assignmentField.pattern
