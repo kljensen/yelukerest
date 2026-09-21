@@ -920,31 +920,127 @@ func TestJoinLandingPage(t *testing.T) {
 }
 
 // The provisioning POST names the landing page when the caller's own
-// membership is the blocker and the join App is configured; a teammate's
-// blocker stays a conflict, and without the join App the field stays null.
+// membership or identity is the blocker and the join App is configured; a
+// teammate's blocker stays a conflict, and without the join App the field
+// stays null.
 func TestJoinURLInProvisioningReplies(t *testing.T) {
 	s := newProvisioningStack(t)
 	s.github.memberships["alice"] = "pending"
-	if reply := s.post("alice", "hw1"); reply.hasJoinURL {
-		t.Fatalf("join_url set without the join App: %s", reply.body)
-	}
+	s.post("alice", "hw1").expectState(t, http.StatusOK, repositoryStateNeedsOrgJoin)
+	s.post("carol", "hw1").expectState(t, http.StatusOK, repositoryStateNeedsGitHubLink)
 
 	s.handler.github.join = &githubJoinApp{clientID: "x", clientSecret: "y"}
-	reply := s.post("alice", "hw1")
-	if reply.status != http.StatusOK || reply.state != repositoryStateNeedsOrgJoin {
-		t.Fatalf("got %d %q", reply.status, reply.state)
+	joinURLOf := func(reply provisioningResponse, state string) string {
+		t.Helper()
+		if reply.status != http.StatusOK || reply.state != state {
+			t.Fatalf("got %d %q (%s), want %q", reply.status, reply.state, reply.body, state)
+		}
+		var decoded struct {
+			JoinURL string `json:"join_url"`
+		}
+		_ = json.Unmarshal([]byte(reply.body), &decoded)
+		return decoded.JoinURL
 	}
-	var decoded struct {
-		JoinURL string `json:"join_url"`
+	if got := joinURLOf(s.post("alice", "hw1"), repositoryStateNeedsOrgJoin); got != "/auth/github/join?assignment_slug=hw1" {
+		t.Fatalf("needs_org_join join_url = %q", got)
 	}
-	_ = json.Unmarshal([]byte(reply.body), &decoded)
-	if decoded.JoinURL != "/auth/github/join?assignment_slug=hw1" {
-		t.Fatalf("join_url = %q", decoded.JoinURL)
+	// No login on record (the claim RPC's refusal).
+	if got := joinURLOf(s.post("carol", "hw1"), repositoryStateNeedsGitHubLink); got != "/auth/github/join?assignment_slug=hw1" {
+		t.Fatalf("needs_github_link join_url = %q", got)
 	}
-	// bob's membership blocks the team, and alice is not offered bob's join.
+	// A login that no longer resolves, and one that resolves to another id.
+	s.db.users[2].GitHubLogin = "bob-renamed"
+	if got := joinURLOf(s.post("bob", "hw1"), repositoryStateNeedsGitHubLink); got != "/auth/github/join?assignment_slug=hw1" {
+		t.Fatalf("unresolvable login join_url = %q", got)
+	}
 	s.github.memberships["alice"] = "active"
-	s.github.memberships["bob"] = "pending"
+	s.db.users[1].GitHubUserID = 999
+	if got := joinURLOf(s.post("alice", "hw1"), repositoryStateNeedsGitHubLink); got != "/auth/github/join?assignment_slug=hw1" {
+		t.Fatalf("mismatched id join_url = %q", got)
+	}
+	// bob's blocker blocks the team, and alice is not offered bob's join.
+	s.db.users[1].GitHubUserID = 101
 	s.post("alice", "proj").expectError(t, http.StatusConflict, "team_prerequisites_incomplete", true)
+}
+
+// One authorization settles identity and membership together: a student
+// with no identity on file who is already a member is linked and added to
+// the team, with no invitation; one whose stored login is stale but whose
+// id is unlinked is linked to the account GitHub reports.
+func TestJoinLinksIdentityForExistingMembers(t *testing.T) {
+	s := newJoinStack(t)
+	s.github.memberships["carol-gh"] = "active"
+	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	want := []string{
+		"POST /login/oauth/access_token",
+		"GET /user",
+		"GET /orgs/course/memberships/carol-gh",
+		"PUT /orgs/course/teams/students/memberships/carol-gh",
+	}
+	if got := s.github.paths(); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("GitHub calls:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if carol := s.db.users[3]; carol.GitHubUserID != 103 || carol.GitHubLogin != "carol-gh" || !s.db.verified[3] {
+		t.Fatalf("carol = %+v verified=%v", carol, s.db.verified[3])
+	}
+
+	s = newJoinStack(t)
+	s.db.users[3].GitHubLogin = "carol-typed-this-wrong"
+	s.startAndCallback("carol", "hw1", nil).expectRedirect(t, "hw1", "ok")
+	if carol := s.db.users[3]; carol.GitHubUserID != 103 || carol.GitHubLogin != "carol-gh" || !s.db.verified[3] {
+		t.Fatalf("carol = %+v verified=%v", carol, s.db.verified[3])
+	}
+	s.assertNothingLeaked()
+}
+
+// The plain create link: a page that POSTs to the create route and goes to
+// the assignment page. It is not a second way to create anything.
+func TestRepositoryCreatePage(t *testing.T) {
+	s := newProvisioningStack(t)
+	get := func(netID string, path string) *http.Response {
+		t.Helper()
+		client := s.clientFor(netID)
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+		response, err := client.Get(s.server.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		t.Cleanup(func() { response.Body.Close() })
+		return response
+	}
+	response := get("alice", "/auth/assignments/hw1/repository/create")
+	raw, _ := io.ReadAll(response.Body)
+	body := string(raw)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("create page = %d %s", response.StatusCode, body)
+	}
+	if csp := response.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "connect-src 'self'") {
+		t.Fatalf("CSP = %q", csp)
+	}
+	if got := response.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
+	for _, want := range []string{`action="/auth/assignments/hw1/repository"`, `data-return="/#/assignments/hw1"`, `<script src="` + repositoryCreateScriptPath + `">`, "<noscript>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("create page lacks %q:\n%s", want, body)
+		}
+	}
+	script := get("alice", repositoryCreateScriptPath)
+	scriptBody, _ := io.ReadAll(script.Body)
+	if script.StatusCode != http.StatusOK || !strings.Contains(string(scriptBody), "fetch(form.action") || !strings.Contains(string(scriptBody), `getAttribute("data-return")`) {
+		t.Fatalf("script = %d %s", script.StatusCode, scriptBody)
+	}
+	if bad := get("alice", "/auth/assignments/Not%20A%20Slug/repository/create"); bad.StatusCode != http.StatusBadRequest {
+		t.Fatalf("malformed slug = %d", bad.StatusCode)
+	}
+
+	visitor := get("", "/auth/assignments/hw1/repository/create")
+	if visitor.StatusCode != http.StatusFound || visitor.Header.Get("Location") != "/auth/login?next="+url.QueryEscape("/auth/assignments/hw1/repository/create") {
+		t.Fatalf("signed-out create page = %d %q", visitor.StatusCode, visitor.Header.Get("Location"))
+	}
+	if got := s.github.count("generate"); got != 0 {
+		t.Fatalf("the page itself generated a repository (%d)", got)
+	}
 }
 
 func TestJoinRoutesAbsentWhenDisabled(t *testing.T) {

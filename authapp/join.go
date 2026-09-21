@@ -226,11 +226,12 @@ func githubJoinURL(slug string) string {
 // Landing page and its script
 // ---------------------------------------------------------------------------
 
-// setGitHubJoinPageHeaders is setOAuthPageHeaders' counterpart for the
-// landing page, which needs a same-origin script and a same-origin fetch
-// and nothing else. Caddy's site-wide CSP also applies to this path and
-// allows both; the two are enforced as their intersection.
-func setGitHubJoinPageHeaders(w http.ResponseWriter) {
+// setLandingPageHeaders is setOAuthPageHeaders' counterpart for the
+// landing pages here and in createpage.go, which need a same-origin
+// script and a same-origin fetch and nothing else. Caddy's site-wide CSP
+// also applies to these paths and allows both; the two are enforced as
+// their intersection.
+func setLandingPageHeaders(w http.ResponseWriter) {
 	setNoStoreHeaders(w)
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -305,7 +306,7 @@ const githubJoinScript = `(function () {
 `
 
 func (h *githubJoinHandler) serveLanding(w http.ResponseWriter, r *http.Request) {
-	setGitHubJoinPageHeaders(w)
+	setLandingPageHeaders(w)
 	slug := r.URL.Query().Get("assignment_slug")
 	if !assignmentSlugPattern.MatchString(slug) {
 		http.Error(w, "Missing or malformed assignment_slug", http.StatusBadRequest)

@@ -134,6 +134,7 @@ func registerProvisioningRoutes(mux *http.ServeMux, github *githubProvisioner, d
 	}
 	handler := newProvisioningHandler(github, db, sessions)
 	mux.Handle("/auth/assignments/{slug}/repository", handler)
+	registerRepositoryCreatePage(mux, sessions)
 }
 
 func (h *provisioningHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +410,7 @@ func (h *provisioningHandler) claim(ctx context.Context, slug string, userID int
 	case "not_a_student", "no_team", "assignment_closed":
 		return attempt, errorReply(http.StatusForbidden, code, false)
 	case "needs_github_link":
-		return attempt, stateReply(http.StatusOK, repositoryStateNeedsGitHubLink, "")
+		return attempt, h.selfServiceReply(slug, repositoryStateNeedsGitHubLink)
 	case "destination_name_too_long":
 		return attempt, errorReply(http.StatusConflict, code, false)
 	case "":
@@ -647,14 +648,28 @@ func (h *provisioningHandler) ownersOf(ctx context.Context, caller provisioningU
 	return owners, nil
 }
 
+// selfServiceReply is the answer when the caller's own GitHub identity or
+// membership is what stands in the way. With the join flow configured
+// (join.go) it names the landing page for the assignment, and one
+// authorization there settles both: the callback records the verified
+// identity before it does anything about membership. Without it join_url
+// is null and the student is on their own, as before.
+func (h *provisioningHandler) selfServiceReply(slug string, state string) *provisioningReply {
+	reply := stateReply(http.StatusOK, state, "")
+	if h.github.join != nil {
+		reply.joinURL = githubJoinURL(slug)
+	}
+	return reply
+}
+
 // blockedReply is the answer when an owner cannot receive the repository
 // yet. The caller is told what they themselves must do; a teammate's
 // blocker is a conflict, because the caller cannot link or join on
 // someone else's behalf and a "needs_org_join" would send them to fix the
 // wrong account.
-func blockedReply(caller provisioningUser, owner provisioningUser, state string) *provisioningReply {
+func (h *provisioningHandler) blockedReply(caller provisioningUser, owner provisioningUser, slug string, state string) *provisioningReply {
 	if owner.ID == caller.ID {
-		return stateReply(http.StatusOK, state, "")
+		return h.selfServiceReply(slug, state)
 	}
 	return errorReply(http.StatusConflict, "team_prerequisites_incomplete", true)
 }
@@ -664,13 +679,13 @@ func blockedReply(caller provisioningUser, owner provisioningUser, state string)
 // it, unverified), and that the account is an active member of the
 // organization. It creates nothing. The linked id is written back into the
 // owner so finalize can name the account the grant went to. When the
-// caller's own membership is the blocker and the join flow is configured,
-// the reply carries the join URL for the assignment.
+// caller's own identity or membership is the blocker and the join flow is
+// configured, the reply carries the join URL for the assignment.
 func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisioningUser, slug string, owners []provisioningUser) *provisioningReply {
 	for i := range owners {
 		owner := &owners[i]
 		if owner.GitHubLogin == "" {
-			return blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
+			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
 		}
 		if reply := h.cooldownReply(); reply != nil {
 			return reply
@@ -680,13 +695,13 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 			// Renamed or deleted. The stored login no longer names an
 			// account, and guessing which one it became is exactly the
 			// silent rebinding this check exists to prevent.
-			return blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
+			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
 		}
 		if err != nil {
 			return h.githubReply(err)
 		}
 		if owner.GitHubUserID != 0 && owner.GitHubUserID != account.ID {
-			return blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
+			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
 		}
 		if owner.GitHubUserID == 0 {
 			err := postgrestRPC(ctx, h.db, "set_user_github_identity", map[string]any{
@@ -701,7 +716,7 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 					return platformReply("linking the GitHub account", err)
 				}
 			case "github_identity_taken", "github_identity_locked":
-				return blockedReply(caller, *owner, repositoryStateNeedsGitHubLink)
+				return h.blockedReply(caller, *owner, slug, repositoryStateNeedsGitHubLink)
 			default:
 				return platformReply("linking the GitHub account", err)
 			}
@@ -715,11 +730,7 @@ func (h *provisioningHandler) validateOwners(ctx context.Context, caller provisi
 			return h.githubReply(err)
 		}
 		if membership != githubMembershipActive {
-			reply := blockedReply(caller, *owner, repositoryStateNeedsOrgJoin)
-			if reply.state != "" && h.github.join != nil {
-				reply.joinURL = githubJoinURL(slug)
-			}
-			return reply
+			return h.blockedReply(caller, *owner, slug, repositoryStateNeedsOrgJoin)
 		}
 	}
 	return nil
@@ -861,7 +872,7 @@ func (h *provisioningHandler) finalize(ctx context.Context, owners []provisionin
 		if reply := h.fail(ctx, attempt, errorReply(http.StatusConflict, code, false)); reply.code != code {
 			return reply
 		}
-		return stateReply(http.StatusOK, repositoryStateNeedsGitHubLink, "")
+		return h.selfServiceReply(attempt.AssignmentSlug, repositoryStateNeedsGitHubLink)
 	default:
 		// repository_conflict, submission_conflict, url_pattern_mismatch,
 		// repo_url_mismatch: all of them are for staff, and the code says
