@@ -5,6 +5,7 @@ module Auth.Model exposing
     , isFaculty
     , isFacultyOrTA
     , isLoggedInFacultyOrTA
+    , isStudent
     )
 
 import Json.Decode as Decode
@@ -48,6 +49,14 @@ no other role, so the page, its link and its requests all use this one test.
 isFaculty : String -> Bool
 isFaculty role =
     role == "faculty"
+
+
+{-| Students alone: the repositories page and my\_repositories serve only
+them, so the nav link and the fetch use this one test.
+-}
+isStudent : String -> Bool
+isStudent role =
+    role == "student"
 
 
 isLoggedInFacultyOrTA : WebData CurrentUser -> Result String CurrentUser

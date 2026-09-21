@@ -6,15 +6,19 @@ import Assignments.Model
         , AssignmentGradeException
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
+        , MyRepository
         , NotSubmissibleReason(..)
         , SubmissibleState(..)
         , assignmentSubmissionAction
         , isSubmissible
+        , myRepositoriesDecoder
         , notSubmissibleMessage
+        , repositoryUrlForAssignment
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
 import Expect
+import Json.Decode as Decode
 import Test exposing (Test, describe, test)
 import Time
 
@@ -111,7 +115,75 @@ tests =
                         |> submissionBelongsToUser { currentUser | team_nickname = Nothing }
                         |> Expect.equal False
             ]
+        , describe "myRepositoriesDecoder"
+            [ test "decodes an individual github repository" <|
+                \_ ->
+                    Decode.decodeString myRepositoriesDecoder ("[" ++ repositoryJson ++ "]")
+                        |> Expect.equal (Ok [ baseRepository ])
+            , test "decodes the nullable columns of a team repository on an unknown forge" <|
+                \_ ->
+                    Decode.decodeString myRepositoriesDecoder
+                        ("""[{"id": 8, "template_slug": "t", "label": "Starter", "assignment_slug": null,
+                            "template_full_name": "org/starter", "is_team": true, "user_id": null,
+                            "team_nickname": "team-a", "provider": "gitlab", "provider_repo_id": 5,
+                            "provider_full_name": "org/starter-team-a", "repo_url": null,
+                            "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z"}]""")
+                        |> Expect.equal
+                            (Ok
+                                [ { baseRepository
+                                    | assignment_slug = Nothing
+                                    , is_team = True
+                                    , user_id = Nothing
+                                    , team_nickname = Just "team-a"
+                                    , provider_full_name = "org/starter-team-a"
+                                    , repo_url = Nothing
+                                  }
+                                ]
+                            )
+            ]
+        , describe "repositoryUrlForAssignment"
+            [ test "offers the repository created for this assignment" <|
+                \_ ->
+                    repositoryUrlForAssignment baseAssignment.slug [ baseRepository ]
+                        |> Expect.equal baseRepository.repo_url
+            , test "ignores repositories for other assignments or none" <|
+                \_ ->
+                    repositoryUrlForAssignment baseAssignment.slug [ { baseRepository | assignment_slug = Just "other" }, { baseRepository | assignment_slug = Nothing } ]
+                        |> Expect.equal Nothing
+            , test "ignores a repository without a browser URL" <|
+                \_ ->
+                    repositoryUrlForAssignment baseAssignment.slug [ { baseRepository | repo_url = Nothing } ]
+                        |> Expect.equal Nothing
+            , test "takes the first, which the fetch orders oldest first" <|
+                \_ ->
+                    repositoryUrlForAssignment baseAssignment.slug [ baseRepository, { baseRepository | repo_url = Just "https://github.com/org/second" } ]
+                        |> Expect.equal baseRepository.repo_url
+            ]
         ]
+
+
+repositoryJson : String
+repositoryJson =
+    """{"id": 7, "template_slug": "t", "label": "Starter", "assignment_slug": "assignment-1",
+        "template_full_name": "org/starter", "is_team": false, "user_id": 42,
+        "team_nickname": null, "provider": "github", "provider_repo_id": 5,
+        "provider_full_name": "org/starter-abc123", "repo_url": "https://github.com/org/starter-abc123",
+        "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-09-01T00:00:00Z"}"""
+
+
+baseRepository : MyRepository
+baseRepository =
+    { template_slug = "t"
+    , label = "Starter"
+    , assignment_slug = Just "assignment-1"
+    , template_full_name = "org/starter"
+    , repo_url = Just "https://github.com/org/starter-abc123"
+    , is_team = False
+    , user_id = Just 42
+    , team_nickname = Nothing
+    , provider_full_name = "org/starter-abc123"
+    , created_at = millis 1788220800000
+    }
 
 
 currentUser : CurrentUser

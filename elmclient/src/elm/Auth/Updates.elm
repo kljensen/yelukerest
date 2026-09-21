@@ -7,8 +7,9 @@ import Assignments.Commands
         , fetchAssignmentGrades
         , fetchAssignmentSubmissions
         , fetchAssignments
+        , fetchMyRepositories
         )
-import Auth.Model exposing (CurrentUser, isFacultyOrTA)
+import Auth.Model exposing (CurrentUser, isFacultyOrTA, isStudent)
 import Engagements.Commands exposing (fetchEngagements)
 import Msgs exposing (Msg)
 import Quizzes.Commands
@@ -68,6 +69,11 @@ onFetchCurrentUser response state =
                     , fetchEngagements user
                     , fetchUsers user
                     ]
+                )
+
+            else if isStudent user.role then
+                ( { state | currentUser = response }
+                , Cmd.batch [ newUserCmds, fetchMyRepositories user ]
                 )
 
             else

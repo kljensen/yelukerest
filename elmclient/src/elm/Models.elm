@@ -9,6 +9,7 @@ import Assignments.Model
         , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
+        , MyRepository
         , PendingAssignmentFieldSubmissionRequests
         , PendingBeginAssignments
         )
@@ -114,6 +115,11 @@ type alias Model =
     , assignmentGrades : WebData (List AssignmentGrade)
     , assignmentGradeDistributions : WebData (List AssignmentGradeDistribution)
 
+    -- The student's repositories from api.my_repositories, fetched for
+    -- students only; an assignment page offers a matching one for its URL
+    -- field. Never asked for anyone else, so staff see no hint.
+    , myRepositories : WebData (List MyRepository)
+
     -- Applications the student has authorized to reach their course data,
     -- and the client ids whose disconnect is currently in flight.
     , connectedApps : WebData ConnectedApps
@@ -188,6 +194,7 @@ initialModel flags url route key =
     , assignmentSubmissions = RemoteData.NotAsked
     , assignmentGrades = RemoteData.NotAsked
     , assignmentGradeDistributions = RemoteData.NotAsked
+    , myRepositories = RemoteData.NotAsked
     , connectedApps = RemoteData.NotAsked
     , pendingDisconnects = Set.empty
     , apiTokens = RemoteData.NotAsked

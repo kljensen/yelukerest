@@ -5,14 +5,17 @@ import Assignments.Model
         ( Assignment
         , AssignmentField
         , AssignmentFieldSubmission
+        , AssignmentFieldSubmissionInputs
         , AssignmentGradeException
         , AssignmentGrade
         , AssignmentSlug
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
+        , MyRepository
         , PendingBeginAssignments
         , assignmentSubmissionAction
         , notSubmissibleMessage
+        , repositoryUrlForAssignment
         , submissionBelongsToUser
         )
 import Auth.Model exposing (CurrentUser)
@@ -252,8 +255,8 @@ exceptionMatches slug user_id maybeNickname exception =
         False
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments slug _ =
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentFieldSubmissionInputs -> WebData (List MyRepository) -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments inputs wdRepositories slug _ =
     case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
         Just data ->
             let
@@ -267,10 +270,14 @@ detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions 
 
                 maybePendingBegin =
                     Dict.get slug pendingBeginAssignments
+
+                -- Repositories not fetched, or not yet, or failed: no hint.
+                repositories =
+                    RemoteData.withDefault [] wdRepositories
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin
+                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin inputs repositories
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -305,8 +312,8 @@ showDueDate dueDate timeZone maybeException _ _ =
             dueString
 
 
-detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment =
+detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> AssignmentFieldSubmissionInputs -> List MyRepository -> Html.Html Msg
+detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment inputs repositories =
     let
         maybeException =
             wdExceptions
@@ -329,12 +336,12 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                     [ showPreviousAssignment assignment submission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
-                    , renderAssignmentSubmissionAction maybeBeginAssignment
+                    , renderAssignmentSubmissionAction maybeBeginAssignment inputs repositories
                         (assignmentSubmissionAction currentDate maybeException assignment user (Just submission))
                     ]
 
             Nothing ->
-                renderAssignmentSubmissionAction maybeBeginAssignment
+                renderAssignmentSubmissionAction maybeBeginAssignment inputs repositories
                     (assignmentSubmissionAction currentDate maybeException assignment user Nothing)
         ]
 
@@ -351,14 +358,14 @@ showPreviousAssignment assignment submission =
         )
 
 
-renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> AssignmentSubmissionAction -> Html.Html Msg
-renderAssignmentSubmissionAction maybeBeginAssignment action =
+renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> AssignmentFieldSubmissionInputs -> List MyRepository -> AssignmentSubmissionAction -> Html.Html Msg
+renderAssignmentSubmissionAction maybeBeginAssignment inputs repositories action =
     case action of
         CanBeginAssignment assignment2 ->
             showBeginAssignmentButton assignment2 maybeBeginAssignment
 
         CanUpdateAssignment assignment2 submission ->
-            showSubmissionForm submission assignment2
+            showSubmissionForm submission assignment2 inputs repositories
 
         CannotSubmitAssignment reason ->
             Common.Views.divWithText (notSubmissibleMessage reason)
@@ -390,8 +397,8 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
             Html.text "other error"
 
 
-showSubmissionForm : AssignmentSubmission -> Assignment -> Html.Html Msg
-showSubmissionForm submission assignment =
+showSubmissionForm : AssignmentSubmission -> Assignment -> AssignmentFieldSubmissionInputs -> List MyRepository -> Html.Html Msg
+showSubmissionForm submission assignment inputs repositories =
     Html.form
         [ Events.custom
             "submit"
@@ -402,11 +409,11 @@ showSubmissionForm submission assignment =
                 }
             )
         ]
-        (List.map (showFormField submission) assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
+        (List.map (showFormField submission inputs repositories) assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
 
 
-showFormField : AssignmentSubmission -> AssignmentField -> Html.Html Msg
-showFormField submission assignmentField =
+showFormField : AssignmentSubmission -> AssignmentFieldSubmissionInputs -> List MyRepository -> AssignmentField -> Html.Html Msg
+showFormField submission inputs repositories assignmentField =
     let
         fieldType =
             if assignmentField.is_url then
@@ -414,11 +421,19 @@ showFormField submission assignmentField =
 
             else
                 "text"
+
+        currentValue =
+            Dict.get ( submission.id, assignmentField.slug ) inputs
+                |> Maybe.withDefault ""
+
+        -- The value is bound so that "Use it" below, which only changes the
+        -- model, shows up in the input.
         commonAttributes = [
             Attrs.placeholder assignmentField.placeholder
             , Attrs.title assignmentField.help
             , Attrs.name assignmentField.slug
             , Attrs.pattern assignmentField.pattern
+            , Attrs.value currentValue
             , Events.onInput
             (Msgs.OnUpdateAssignmentFieldSubmissionInput
                 submission.id
@@ -435,7 +450,53 @@ showFormField submission assignmentField =
                 Html.input
                     ([ Attrs.type_ fieldType , Attrs.class "input field" ] ++ commonAttributes)
                     []
+        , if currentValue == "" then
+            repositoryHint submission repositories assignmentField
+
+          else
+            Html.text ""
         ]
+
+
+{-| Offer the student's repository for this assignment as the value of an
+empty URL field. The student still presses Submit, where the browser checks
+the field's pattern as for a typed value. Nothing is shown once the field
+has a recorded body or the student has typed.
+-}
+repositoryHint : AssignmentSubmission -> List MyRepository -> AssignmentField -> Html.Html Msg
+repositoryHint submission repositories field =
+    let
+        recordedBody =
+            submission.fields
+                |> List.filter (\f -> f.assignment_field_slug == field.slug)
+                |> List.head
+                |> Maybe.map .body
+                |> Maybe.withDefault ""
+
+        maybeUrl =
+            if field.is_url && recordedBody == "" then
+                repositoryUrlForAssignment submission.assignment_slug repositories
+
+            else
+                Nothing
+    in
+    case maybeUrl of
+        Just url ->
+            Html.div [ Attrs.class "repository-hint" ]
+                [ Html.text "Your repository for this assignment: "
+                , a [ Attrs.href url ] [ Html.text url ]
+                , Html.text " "
+                , Html.button
+                    -- type=button: inside the form, a bare button would submit.
+                    [ Attrs.type_ "button"
+                    , Attrs.class "btn"
+                    , Events.onClick (Msgs.OnUpdateAssignmentFieldSubmissionInput submission.id field.slug url)
+                    ]
+                    [ Html.text "Use it" ]
+                ]
+
+        Nothing ->
+            Html.text ""
 
 
 getSubmissionValueForFieldSlug : List AssignmentFieldSubmission -> String -> String

@@ -5,6 +5,8 @@ module Assignments.Commands exposing
     , fetchAssignmentGrades
     , fetchAssignmentSubmissions
     , fetchAssignments
+    , fetchMyRepositories
+    , fetchMyRepositoriesUrl
     , sendAssignmentFieldSubmissions
     )
 
@@ -20,6 +22,7 @@ import Assignments.Model
         , assignmentSubmissionDecoder
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
+        , myRepositoriesDecoder
         )
 import Auth.Commands exposing (fetchForCurrentUser, sendRequestWithJWT)
 import Auth.Model exposing (CurrentUser, JWT)
@@ -78,6 +81,19 @@ fetchAssignmentSubmissionsUrl currentUser =
 
         Nothing ->
             defaultQuery
+
+
+fetchMyRepositories : CurrentUser -> Cmd Msg
+fetchMyRepositories currentUser =
+    fetchForCurrentUser currentUser fetchMyRepositoriesUrl myRepositoriesDecoder Msgs.OnFetchMyRepositories
+
+
+{-| Oldest first, so that when a student somehow has several repositories
+for one assignment the one offered does not change between visits.
+-}
+fetchMyRepositoriesUrl : String
+fetchMyRepositoriesUrl =
+    "/rest/my_repositories?order=created_at.asc"
 
 
 createAssignmentSubmission : JWT -> AssignmentSlug -> Cmd Msg

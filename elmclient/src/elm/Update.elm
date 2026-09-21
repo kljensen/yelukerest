@@ -8,6 +8,7 @@ import Assignments.Commands
         , fetchAssignmentGrades
         , fetchAssignmentSubmissions
         , fetchAssignments
+        , fetchMyRepositories
         , sendAssignmentFieldSubmissions
         )
 import Assignments.Model exposing (valuesForSubmissionID)
@@ -15,6 +16,8 @@ import Assignments.Updates
     exposing
         ( onFetchAssignmentGradeDistributions
         , onFetchAssignmentGrades
+        , onSubmitAssignmentFieldSubmissionsResponse
+        , studentEnteringAssignment
         )
 import Auth.Model exposing (CurrentUser, JWT, isFaculty, isFacultyOrTA)
 import Auth.Updates exposing (onFetchCurrentUser)
@@ -161,6 +164,16 @@ update msg model =
                     case facultyUser model of
                         Just user ->
                             fetchDataGrants user
+
+                        Nothing ->
+                            Cmd.none
+
+                AssignmentDetailRoute _ ->
+                    -- Refetched on entry, for students, who are the only
+                    -- ones who get repositories: see studentEnteringAssignment.
+                    case studentEnteringAssignment newRoute model.currentUser of
+                        Just user ->
+                            fetchMyRepositories user
 
                         Nothing ->
                             Cmd.none
@@ -465,24 +478,17 @@ update msg model =
         Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug response ->
             -- todo, update the model.assignmentSubmissions
             case ( model.currentUser, model.assignmentSubmissions ) of
-                ( RemoteData.Success user, RemoteData.Success submissions ) ->
-                    case response of
-                        RemoteData.Success newSubmissions ->
-                            let
-                                pfsrs =
-                                    Dict.remove assignmentSlug model.pendingAssignmentFieldSubmissionRequests
+                ( RemoteData.Success user, RemoteData.Success _ ) ->
+                    let
+                        ( newModel, refetch ) =
+                            onSubmitAssignmentFieldSubmissionsResponse assignmentSlug response model
+                    in
+                    if refetch then
+                        -- Lazy for right now - just re-fetch all assignment fiend submissions
+                        ( newModel, fetchAssignmentSubmissions user )
 
-                                cmd =
-                                    Cmd.batch [ fetchAssignmentSubmissions user ]
-
-                                newModel =
-                                    { model | pendingAssignmentFieldSubmissionRequests = pfsrs, assignmentFieldSubmissionInputs = Dict.empty }
-                            in
-                            -- Lazy for right now - just re-fetch all assignment fiend submissions
-                            ( newModel, cmd )
-
-                        _ ->
-                            ( model, Cmd.none )
+                    else
+                        ( newModel, Cmd.none )
 
                 ( _, _ ) ->
                     ( model, Cmd.none )
@@ -507,6 +513,9 @@ update msg model =
 
         Msgs.OnFetchAssignmentGradeExceptions assignmentGradeExceptions ->
             ( { model | assignmentGradeExceptions = assignmentGradeExceptions }, Cmd.none )
+
+        Msgs.OnFetchMyRepositories response ->
+            ( { model | myRepositories = response }, Cmd.none )
 
         Msgs.OnFetchUserSecrets userSecrets ->
             ( { model | userSecrets = userSecrets }, Cmd.none )

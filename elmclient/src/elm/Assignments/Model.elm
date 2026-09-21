@@ -9,6 +9,7 @@ module Assignments.Model exposing
     , AssignmentSlug
     , AssignmentSubmission
     , AssignmentSubmissionAction(..)
+    , MyRepository
     , NotSubmissibleReason(..)
     , PendingAssignmentFieldSubmissionRequests
     , PendingBeginAssignments
@@ -22,7 +23,9 @@ module Assignments.Model exposing
     , assignmentsDecoder
     , assignmentSubmissionAction
     , isSubmissible
+    , myRepositoriesDecoder
     , notSubmissibleMessage
+    , repositoryUrlForAssignment
     , submissionBelongsToUser
     , valuesForSubmissionID
     )
@@ -216,6 +219,56 @@ assignmentFieldSubmissionDecoder =
         |> required "submitter_user_id" Decode.int
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
+
+
+{-| A row of api.my\_repositories: a repository the student (or their team)
+created from a template, with the assignment the template served, if any,
+and the browser URL, which is NULL on a forge the view does not know.
+-}
+type alias MyRepository =
+    { template_slug : String
+    , label : String
+    , assignment_slug : Maybe String
+    , template_full_name : String
+    , repo_url : Maybe String
+    , is_team : Bool
+    , user_id : Maybe Int
+    , team_nickname : Maybe String
+    , provider_full_name : String
+    , created_at : Posix
+    }
+
+
+myRepositoryDecoder : Decode.Decoder MyRepository
+myRepositoryDecoder =
+    Decode.succeed MyRepository
+        |> required "template_slug" Decode.string
+        |> required "label" Decode.string
+        |> required "assignment_slug" (Decode.nullable Decode.string)
+        |> required "template_full_name" Decode.string
+        |> required "repo_url" (Decode.nullable Decode.string)
+        |> required "is_team" Decode.bool
+        |> required "user_id" (Decode.nullable Decode.int)
+        |> required "team_nickname" (Decode.nullable Decode.string)
+        |> required "provider_full_name" Decode.string
+        |> required "created_at" Json.Decode.Extra.datetime
+
+
+myRepositoriesDecoder : Decode.Decoder (List MyRepository)
+myRepositoriesDecoder =
+    Decode.list myRepositoryDecoder
+
+
+{-| The browser URL of the first repository created for this assignment, in
+the order the rows were fetched. Whether a URL field accepts it is the
+browser's call, through the field's pattern attribute, on submit.
+-}
+repositoryUrlForAssignment : AssignmentSlug -> List MyRepository -> Maybe String
+repositoryUrlForAssignment assignmentSlug repositories =
+    repositories
+        |> List.filter (\r -> r.assignment_slug == Just assignmentSlug)
+        |> List.filterMap .repo_url
+        |> List.head
 
 
 type NotSubmissibleReason

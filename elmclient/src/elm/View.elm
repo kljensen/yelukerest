@@ -1,7 +1,7 @@
 module View exposing (indexView, notFoundView, page, view)
 
 import Assignments.Views
-import Auth.Model exposing (CurrentUser)
+import Auth.Model exposing (CurrentUser, isStudent)
 import Auth.Views
 import Browser exposing (Document)
 import Common.Views exposing (piazzaLink, slackLink)
@@ -48,7 +48,7 @@ page model =
             lazy2 Assignments.Views.listView model.timeZone model.assignments
 
         Models.AssignmentDetailRoute slug ->
-            Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.assignmentGradeExceptions model.pendingBeginAssignments slug model.current_date
+            Assignments.Views.detailView model.currentUser model.current_date model.timeZone model.assignments model.assignmentSubmissions model.assignmentGradeExceptions model.pendingBeginAssignments model.assignmentFieldSubmissionInputs model.myRepositories slug model.current_date
         
         Models.AssignmentGradeDetailRoute slug ->
             Assignments.Views.gradeView model.assignmentGrades model.assignmentSubmissions slug model.currentUser
@@ -84,12 +84,30 @@ indexView currentUser uiElements =
         , div [] [ a [ href uiElements.aboutURL ] [ text "About" ] ]
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
+        , repositoriesLink currentUser
         , div [] [ Html.a [ href uiElements.canvasURL ] [ Html.text "Canvas" ] ]
         , piazzaLink uiElements.piazzaURL
         , slackLink uiElements.slackURL
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard currentUser ]
         ]
+
+
+{-| The self-serve repositories page is served by authapp to students only,
+so the link appears exactly when it works.
+-}
+repositoriesLink : WebData CurrentUser -> Html Msg
+repositoriesLink currentUser =
+    case currentUser of
+        RemoteData.Success user ->
+            if isStudent user.role then
+                div [] [ a [ href "/auth/repositories" ] [ text "Repositories" ] ]
+
+            else
+                text ""
+
+        _ ->
+            text ""
 
 
 notFoundView : Html msg
