@@ -449,6 +449,45 @@ $$
         UPDATE api.assignment_field_submissions SET body = ''second draft''
         WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''profound''
     ', 'the other fields of the same submission stay writable')
+; SELECT lives_ok('
+        UPDATE api.assignment_field_submissions SET body = ''https://github.com/yale-mgt-656/exam-1-alice-m''
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''url''
+    ', 'an unchanged re-save of the locked row passes')
+;
+-- The key cannot be freed or taken by moving rows between fields either.
+SELECT throws_ok('
+        UPDATE api.assignment_field_submissions SET assignment_field_slug = ''profound''
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''url''
+    ', 'P0001', 'repository_url_field_locked', 'a locked row cannot be moved to another field')
+; SELECT throws_ok('
+        UPDATE api.assignment_field_submissions SET assignment_field_slug = ''url''
+        WHERE assignment_submission_id = zapadka_test.submission(''exam-1'', 1) AND assignment_field_slug = ''profound''
+    ', 'P0001', 'repository_url_field_locked', 'another row cannot be moved onto the designated field')
+;
+-- User 2 gets a zz-closed repository recorded by the old tooling, and a
+-- submission with no field rows yet: the student cannot create the
+-- designated row either, only the others. (zz-closed is open to user 2 for
+-- this through an extension; the lock, not the deadline, is under test.)
+RESET role
+; INSERT INTO data.assignment_repository (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
+VALUES ('zz-closed', false, 2, 500004, 'yale-mgt-656/zz-closed-bob')
+; INSERT INTO data.assignment_field (slug, assignment_slug, label, help, placeholder, is_url, is_multiline)
+VALUES ('notes', 'zz-closed', 'l', 'h', 'p', false, false)
+; INSERT INTO data.assignment_grade_exception (assignment_slug, user_id, closed_at, fractional_credit)
+VALUES ('zz-closed', 2, current_timestamp + '7 days'::interval, 1)
+; INSERT INTO data.assignment_submission (assignment_slug, is_team, user_id, submitter_user_id)
+VALUES ('zz-closed', false, 2, 2)
+; SET LOCAL role TO student
+; SET "request.jwt.claim.user_id" TO "2"
+; SELECT throws_ok('
+        INSERT INTO api.assignment_field_submissions (assignment_submission_id, assignment_field_slug, assignment_slug, body)
+        VALUES (zapadka_test.submission(''zz-closed'', 2), ''url'', ''zz-closed'', ''https://github.com/bde456/mine'')
+    ', 'P0001', 'repository_url_field_locked', 'a student cannot create the designated field row once a repository is on record')
+; SELECT lives_ok('
+        INSERT INTO api.assignment_field_submissions (assignment_submission_id, assignment_field_slug, assignment_slug, body)
+        VALUES (zapadka_test.submission(''zz-closed'', 2), ''notes'', ''zz-closed'', ''thoughts'')
+    ', 'but can still submit the other fields')
+; SET "request.jwt.claim.user_id" TO "1"
 ;
 -- Students hold no DELETE on the view at all, so the trigger's DELETE branch
 -- is reached with the student claim on the table itself.
@@ -474,11 +513,9 @@ RESET role
 ; SET "request.jwt.claim.user_id" TO ''
 ; SET "request.jwt.claim.app_name" TO authapp
 ;
--- A repository the old course tooling recorded, with no attempt at all: it
--- answers the claim before the login or the deadline is looked at.
-INSERT INTO data.assignment_repository (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-VALUES ('zz-closed', false, 2, 500004, 'yale-mgt-656/zz-closed-bob')
-; SELECT results_eq('
+-- The repository the old course tooling recorded for user 2 above, with no
+-- attempt at all: it answers the claim before the login is looked at.
+SELECT results_eq('
         SELECT id, stage, provider_full_name, destination_name, existing_repository_id IS NOT NULL
         FROM api.claim_repository_provisioning(''zz-closed'', 2)
     ', ' VALUES (NULL::int, ''finalized''::text, ''yale-mgt-656/zz-closed-bob''::text, ''zz-closed-bob''::text, true) ', 'an existing repository answers a claim without an attempt, even for a student with no login on a closed assignment')

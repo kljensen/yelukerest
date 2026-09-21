@@ -274,40 +274,66 @@ AND EXISTS (
 -- ---------------------------------------------------------------------------
 -- Grading clones the repository in data.assignment_repository; the form
 -- shows the URL in the designated field. Once the mapping exists the two
--- must not disagree, so a student or TA can no longer change or delete that
--- one field submission for that owner. Faculty, the service, and a direct
--- session are not bound: that is the repair path. Every other field, and the
--- same field on an assignment with no repository on record (a legacy
--- submission), stays writable as before. Inserts are untouched: finalize
--- makes the row, and the primary key already stops a second one.
-CREATE FUNCTION data.lock_repository_url_field_submission() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO pg_catalog, data, request, pg_temp AS $$
+-- must not disagree, so under a student or TA claim no write may touch that
+-- one row -- and no write may create it or move another row onto its key,
+-- either. The check is made on the row as it was AND the row as it would
+-- be: an UPDATE that carries a locked row to another field or submission
+-- frees the key, one that carries a row onto the key takes it, and an
+-- INSERT when the mapping exists but the row does not (a legacy import, or
+-- after a staff repair deleted it) would put a student's URL where grading
+-- expects the repository's. A truly unchanged re-save passes. Faculty, the
+-- service, and a direct session are not bound: that is the repair path, and
+-- finalize's own insert. Every other field, and the same field on an
+-- assignment with no repository on record, stays writable as before.
+--
+-- The owner and the assignment come from the parent submission row, not
+-- from the columns the client sent, so a mismatched assignment_slug in the
+-- payload cannot dodge the check (the foreign key refuses it anyway).
+CREATE FUNCTION data.is_mapped_repository_url_field(p_assignment_submission_id int, p_field_slug text) RETURNS boolean LANGUAGE sql STABLE SET search_path TO pg_catalog, data, pg_temp AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM data.assignment_submission s
+        JOIN data.assignment a ON a.slug = s.assignment_slug
+        JOIN data.assignment_repository r
+            ON r.assignment_slug = s.assignment_slug
+            AND r.user_id IS NOT DISTINCT FROM s.user_id
+            AND r.team_nickname IS NOT DISTINCT FROM s.team_nickname
+        WHERE s.id = p_assignment_submission_id
+          AND a.repository_url_field_slug = p_field_slug
+    )
+$$
+; ALTER FUNCTION data.is_mapped_repository_url_field(int, text) OWNER TO yelukerest_migrator
+; REVOKE ALL ON FUNCTION data.is_mapped_repository_url_field(int, text) FROM public
+; CREATE FUNCTION data.lock_repository_url_field_submission() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO pg_catalog, data, request, pg_temp AS $$
+DECLARE
+    locked_before boolean := false;
+    locked_after boolean := false;
 BEGIN
     IF request.user_role() IS DISTINCT FROM 'student' AND request.user_role() IS DISTINCT FROM 'ta' THEN
         RETURN COALESCE(NEW, OLD);
     END IF;
-    IF TG_OP = 'UPDATE' AND NEW.body IS NOT DISTINCT FROM OLD.body THEN
+    IF TG_OP = 'UPDATE'
+        AND (NEW.assignment_submission_id, NEW.assignment_field_slug, NEW.assignment_slug, NEW.body)
+            IS NOT DISTINCT FROM (OLD.assignment_submission_id, OLD.assignment_field_slug, OLD.assignment_slug, OLD.body) THEN
         RETURN NEW;
     END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM data.assignment a
-        JOIN data.assignment_submission s ON s.id = OLD.assignment_submission_id
-        JOIN data.assignment_repository r
-            ON r.assignment_slug = a.slug
-            AND r.user_id IS NOT DISTINCT FROM s.user_id
-            AND r.team_nickname IS NOT DISTINCT FROM s.team_nickname
-        WHERE a.slug = OLD.assignment_slug
-          AND a.repository_url_field_slug = OLD.assignment_field_slug
-    ) THEN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+        locked_before := data.is_mapped_repository_url_field(OLD.assignment_submission_id, OLD.assignment_field_slug);
+    END IF;
+    IF TG_OP IN ('INSERT', 'UPDATE') THEN
+        locked_after := data.is_mapped_repository_url_field(NEW.assignment_submission_id, NEW.assignment_field_slug);
+    END IF;
+    IF locked_before OR locked_after THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001',
             MESSAGE = 'repository_url_field_locked',
-            DETAIL = format('field %s of submission %s names the repository on record for %s and can be changed by staff only', OLD.assignment_field_slug, OLD.assignment_submission_id, OLD.assignment_slug);
+            DETAIL = format('the repository URL field of submission %s names the repository on record and can be written by staff only',
+                CASE WHEN locked_before THEN OLD.assignment_submission_id ELSE NEW.assignment_submission_id END);
     END IF;
     RETURN COALESCE(NEW, OLD);
 END;
 $$
 ; ALTER FUNCTION data.lock_repository_url_field_submission() OWNER TO yelukerest_migrator
-; CREATE TRIGGER tg_assignment_field_submission_repository_lock BEFORE DELETE OR UPDATE OF body ON data.assignment_field_submission FOR EACH ROW EXECUTE FUNCTION data.lock_repository_url_field_submission()
+; CREATE TRIGGER tg_assignment_field_submission_repository_lock BEFORE INSERT OR DELETE OR UPDATE ON data.assignment_field_submission FOR EACH ROW EXECUTE FUNCTION data.lock_repository_url_field_submission()
 ;
 -- ---------------------------------------------------------------------------
 -- The api views that carry the new columns
