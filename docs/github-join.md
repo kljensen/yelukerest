@@ -146,7 +146,10 @@ back from it.
    defaulted, so a link built wrong is noticed. On the click (only then; a
    link to the page starts nothing by itself) its script POSTs to
    `/auth/github/join/start` (same-origin only, like the create POST) and
-   follows the `authorization_url` it gets back. The POST mints a
+   follows the `authorization_url` it gets back. Students only: staff are
+   refused with `not_a_student`, at start and again at the callback,
+   since the join links an identity and adds the account to the students
+   team. The POST mints a
    random, single-use `state` and a PKCE code verifier, stores both in the
    student's session together with their user id, netid, the validated
    `next`, the `redirect_uri`, and a timestamp, and builds the GitHub

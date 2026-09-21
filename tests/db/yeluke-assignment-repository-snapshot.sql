@@ -41,16 +41,22 @@ SELECT table_privs_are('api', 'assignment_repository_snapshots_due', 'faculty', 
 UPDATE data.assignment
 SET closed_at = current_timestamp - '1 day'::interval
 WHERE slug IN ('exam-1', 'js-koans', 'project-update-1')
-; INSERT INTO data.assignment_repository (id, assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
+; INSERT INTO data.repository_template (slug, template_full_name, label, is_team, assignment_slug)
 VALUES
-    (9001, 'exam-1', false, 1, 300000001, 'mgt-656/exam-1-abc123'),
-    (9002, 'exam-1', false, 2, 300000002, 'mgt-656/exam-1-bde456'),
-    (9005, 'js-koans', false, 1, 300000005, 'mgt-656/js-koans-abc123'),
-    (9006, 'team-selection', false, 1, 300000006, 'mgt-656/team-selection-abc123')
-; INSERT INTO data.assignment_repository (id, assignment_slug, is_team, team_nickname, provider_repo_id, provider_full_name)
+    ('exam-1', 'mgt-656/exam-1-template', 'First Exam', false, 'exam-1'),
+    ('team-selection', 'mgt-656/team-selection-template', 'Select your team', false, 'team-selection'),
+    ('js-koans', 'mgt-656/js-koans-template', 'JavaScript Koans', false, 'js-koans'),
+    ('project-update-1', 'mgt-656/project-template', 'First Project update', true, 'project-update-1')
+; INSERT INTO data.assignment_repository (id, template_slug, assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
 VALUES
-    (9003, 'project-update-1', true, 'bright-fog', 300000003, 'mgt-656/project-update-1-bright-fog'),
-    (9004, 'project-update-1', true, 'hazy-mountain', 300000004, 'mgt-656/project-update-1-hazy-mountain')
+    (9001, 'exam-1', 'exam-1', false, 1, 300000001, 'mgt-656/exam-1-abc123'),
+    (9002, 'exam-1', 'exam-1', false, 2, 300000002, 'mgt-656/exam-1-bde456'),
+    (9005, 'js-koans', 'js-koans', false, 1, 300000005, 'mgt-656/js-koans-abc123'),
+    (9006, 'team-selection', 'team-selection', false, 1, 300000006, 'mgt-656/team-selection-abc123')
+; INSERT INTO data.assignment_repository (id, template_slug, assignment_slug, is_team, team_nickname, provider_repo_id, provider_full_name)
+VALUES
+    (9003, 'project-update-1', 'project-update-1', true, 'bright-fog', 300000003, 'mgt-656/project-update-1-bright-fog'),
+    (9004, 'project-update-1', 'project-update-1', true, 'hazy-mountain', 300000004, 'mgt-656/project-update-1-hazy-mountain')
 ;
 -- ---------------------------------------------------------------------------
 -- Constraints

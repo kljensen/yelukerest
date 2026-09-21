@@ -22,13 +22,15 @@ SELECT plan(9)
         FROM api.platform_version
     ), 1, 'api.platform_version should expose the expected platform compatibility version')
 ;
--- Shape 6 adds api.assignment_repository_snapshots and
--- api.assignment_repository_snapshots_due (#22), on top of the
--- api.assignment_repositories that shape 5 added (#312). A course client that
--- runs the snapshotter declares {6}; one that reads none of those views
--- declares {4, 5, 6, 7}. This is an equality because it pins what the deployment
--- currently advertises, and it is meant to be revised deliberately by whichever
--- change next moves the shape.
+-- Shape 8 adds api.repository_templates, api.repository_provisionings and
+-- api.my_repositories, appends template_slug to api.assignment_repositories
+-- and the GitHub columns to api.users (#394), on top of the snapshot views
+-- shape 6 added (#22) and the api.assignment_repositories that shape 5 added
+-- (#312). A course client that writes assignment_repositories declares {8};
+-- one that reads none of those views declares {4, 5, 6, 7, 8}. This is an
+-- equality because it pins what the deployment currently advertises, and it
+-- is meant to be revised deliberately by whichever change next moves the
+-- shape.
 SELECT
     "is"((
         SELECT schema_compatibility_version

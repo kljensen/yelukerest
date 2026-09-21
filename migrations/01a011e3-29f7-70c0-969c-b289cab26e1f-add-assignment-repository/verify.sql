@@ -32,6 +32,9 @@ BEGIN
     -- Identity has to be an id, and it has to be required. A nullable or
     -- renamed provider_repo_id turns the record back into something derived
     -- from a repository name, which is the pattern this table exists to end.
+    -- assignment_slug's requiredness is not pinned: 01a0bb0d keys the row by
+    -- template and makes the assignment optional, and `zapadka verify` runs
+    -- this script against head.
     SELECT string_agg(expected.column_name || ' ' || expected.data_type, ', '
         ORDER BY expected.column_name) INTO missing
     FROM (VALUES
@@ -39,7 +42,7 @@ BEGIN
         ('provider_repo_id', 'bigint', true),
         ('provider_full_name', 'text', true),
         ('provider_user_id', 'bigint', false),
-        ('assignment_slug', 'text', true),
+        ('assignment_slug', 'text', NULL),
         ('is_team', 'boolean', true)
     ) AS expected(column_name, data_type, is_required)
     WHERE NOT EXISTS (
@@ -48,7 +51,7 @@ BEGIN
         AND table_name = 'assignment_repository'
         AND columns.column_name = expected.column_name
         AND columns.data_type = expected.data_type
-        AND (columns.is_nullable = 'NO') = expected.is_required
+        AND ((columns.is_nullable = 'NO') = expected.is_required OR expected.is_required IS NULL)
     );
 
     IF missing IS NOT NULL THEN
@@ -79,19 +82,22 @@ BEGIN
         RAISE EXCEPTION 'data.assignment_repository constraints are missing or reshaped: %', missing;
     END IF;
 
-    -- One repository per student per assignment, and per team per assignment.
-    -- The predicates are load-bearing: NULLs are distinct in a unique index, so
-    -- an index that lost its `WHERE` admits every team row unchecked.
-    SELECT string_agg(expected.indexdef, ' | ' ORDER BY expected.indexdef) INTO missing
+    -- One repository per student, and per team, per the thing the row is
+    -- keyed by: the assignment here, the template once 01a0bb0d has run, so
+    -- the second column is not pinned. The predicates are load-bearing:
+    -- NULLs are distinct in a unique index, so an index that lost its
+    -- `WHERE` admits every team row unchecked.
+    SELECT string_agg(expected.indexname, ' | ' ORDER BY expected.indexname) INTO missing
     FROM (VALUES
-        ('CREATE UNIQUE INDEX assignment_repository_unique_user ON data.assignment_repository USING btree (user_id, assignment_slug) WHERE (team_nickname IS NULL)'),
-        ('CREATE UNIQUE INDEX assignment_repository_unique_team ON data.assignment_repository USING btree (team_nickname, assignment_slug) WHERE (user_id IS NULL)')
-    ) AS expected(indexdef)
+        ('assignment_repository_unique_user', 'CREATE UNIQUE INDEX assignment_repository_unique_user ON data.assignment_repository USING btree (user_id, %) WHERE (team_nickname IS NULL)'),
+        ('assignment_repository_unique_team', 'CREATE UNIQUE INDEX assignment_repository_unique_team ON data.assignment_repository USING btree (team_nickname, %) WHERE (user_id IS NULL)')
+    ) AS expected(indexname, indexdef)
     WHERE NOT EXISTS (
         SELECT 1 FROM pg_indexes
         WHERE schemaname = 'data'
         AND tablename = 'assignment_repository'
-        AND pg_indexes.indexdef = expected.indexdef
+        AND pg_indexes.indexname = expected.indexname
+        AND pg_indexes.indexdef LIKE expected.indexdef
     );
 
     IF missing IS NOT NULL THEN

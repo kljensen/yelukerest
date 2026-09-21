@@ -1,19 +1,20 @@
 /* global describe it before */
 
-// The provisioning boundary as HTTP clients meet it (issue #394).
+// The repository boundary as HTTP clients meet it (issue #394, roadmap 17).
 //
-// tests/db/yeluke-assignment_repository_provisioning.sql proves the RPCs and
-// the policies. This half sends real requests through Caddy and PostgREST
-// with JWTs issued by the login flow, so what it proves is the refusals a
-// student receives as status codes, that faculty configure a template with
-// an ordinary PATCH, and that the configuration reaches the me-scoped view.
+// tests/db/yeluke-repository_provisioning.sql proves the RPCs and the
+// policies. This half sends real requests through Caddy and PostgREST with
+// JWTs issued by the login flow, so what it proves is the refusals a student
+// receives as status codes, that faculty configure a template with an
+// ordinary POST, and that a student's repositories reach the me-scoped view
+// with their browser URL.
 //
 // Sample data in play: abc123 is student 1 on team bright-fog, klj39 is the
-// faculty member; exam-1 is an open individual assignment whose `url` field
-// is a URL field.
+// faculty member; exam-1 is an open individual assignment.
 
 const {
     resetdb,
+    runSQL,
     baseURL,
     authPath,
     jwtPath,
@@ -27,12 +28,13 @@ const {
 } = require('./helpers.js');
 
 const template = {
-    repository_template_provider: 'github',
-    repository_template_full_name: 'yale-mgt-656/exam-1-template',
-    repository_url_field_slug: 'url',
+    slug: 'exam-1-starter',
+    template_full_name: 'yale-mgt-656/exam-1-starter',
+    label: 'Exam 1 starter',
+    assignment_slug: 'exam-1',
 };
 
-describe('assignment repository provisioning over HTTP', () => {
+describe('repository templates and provisioning over HTTP', () => {
     const studentJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'abc123');
     const facultyJWTPromise = getJWTForNetid(baseURL, authPath, jwtPath, 'klj39');
 
@@ -67,9 +69,9 @@ describe('assignment repository provisioning over HTTP', () => {
         we.expect(fields.body[0].assignment).to.deep.equal({ slug: 'exam-1' });
     });
 
-    it('refuses a student who tries to configure a template', async () => {
+    it('refuses a student who tries to create a template', async () => {
         await restService()
-            .patch('/assignments?slug=eq.exam-1')
+            .post('/repository_templates')
             .set('Authorization', `Bearer ${await studentJWTPromise}`)
             .send(template)
             .expect(403);
@@ -94,9 +96,9 @@ describe('assignment repository provisioning over HTTP', () => {
     it('refuses a student on every service RPC', async () => {
         const jwt = await studentJWTPromise;
         const calls = [
-            ['/rpc/claim_repository_provisioning', { p_assignment_slug: 'exam-1', p_user_id: 1 }],
+            ['/rpc/claim_repository_provisioning', { p_template_slug: 'exam-1-starter', p_user_id: 1 }],
             ['/rpc/record_repository_provisioning', { p_attempt_id: 1, p_stage: 'failed' }],
-            ['/rpc/finalize_repository_provisioning', { p_attempt_id: 1, p_repo_url: 'https://github.com/x/y' }],
+            ['/rpc/finalize_repository_provisioning', { p_attempt_id: 1 }],
             ['/rpc/touch_repository_provisioning_readiness', { p_attempt_id: 1, p_ready: true }],
             ['/rpc/set_user_github_identity', {
                 p_user_id: 1, p_github_user_id: 1, p_github_login: 'abc123', p_verified: true,
@@ -110,44 +112,95 @@ describe('assignment repository provisioning over HTTP', () => {
         await postRequestWithJWT(calls[0][0], calls[0][1], undefined).expect(401);
     });
 
-    it('lets faculty configure a template through the assignments view', async () => {
+    it('lets faculty create a template through the repository_templates view', async () => {
         const jwt = await facultyJWTPromise;
         const response = await restService()
-            .patch('/assignments?slug=eq.exam-1&select=slug,repository_template_provider,repository_template_full_name,repository_url_field_slug')
+            .post('/repository_templates?select=slug,provider,template_full_name,label,description,is_team,assignment_slug,is_active')
             .set('Authorization', `Bearer ${jwt}`)
             .set('Prefer', 'return=representation')
             .send(template)
             .expect('Content-Type', /json/)
-            .expect(200);
-        we.expect(response.body).to.deep.equal([{ slug: 'exam-1', ...template }]);
+            .expect(201);
+        we.expect(response.body).to.deep.equal([{
+            ...template,
+            provider: 'github',
+            description: null,
+            is_team: false,
+            is_active: true,
+        }]);
     });
 
-    it('refuses a template whose field is not a URL field', async () => {
+    it('refuses a team template on an individual assignment', async () => {
         await restService()
-            .patch('/assignments?slug=eq.exam-1')
+            .post('/repository_templates')
             .set('Authorization', `Bearer ${await facultyJWTPromise}`)
-            .send({ ...template, repository_url_field_slug: 'profound' })
-            .expect(400);
+            .send({ ...template, slug: 'wrong-kind', is_team: true })
+            .expect(409);
     });
 
-    it('shows the template columns on my_assignments to a student', async () => {
-        const response = await restService()
+    it('shows active templates to a student, and my_assignments carries no template columns', async () => {
+        const jwt = await studentJWTPromise;
+        const templates = await restService()
+            .get('/repository_templates?select=slug,label,assignment_slug')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect('Content-Type', /json/)
+            .expect(200);
+        we.expect(templates.body).to.deep.equal([{ slug: 'exam-1-starter', label: 'Exam 1 starter', assignment_slug: 'exam-1' }]);
+
+        const mine = await restService()
             .get('/my_assignments?slug=eq.exam-1')
+            .set('Authorization', `Bearer ${jwt}`)
+            .expect(200);
+        we.expect(mine.body).to.have.lengthOf(1);
+        we.expect(mine.body[0]).to.not.have.any.keys(
+            'repository_template_provider', 'repository_template_full_name', 'repository_url_field_slug',
+        );
+    });
+
+    it('lists the caller\'s repositories on my_repositories with the browser URL', async () => {
+        // Rows as the service's finalize, or the old tooling, would leave
+        // them: one of the student's own, one of their team's, one of
+        // somebody else's.
+        runSQL(`
+            INSERT INTO data.repository_template (slug, template_full_name, label, is_team, assignment_slug)
+            VALUES ('project-starter', 'yale-mgt-656/project-starter', 'Project starter', true, 'project-update-1');
+            INSERT INTO data.assignment_repository (template_slug, assignment_slug, is_team, user_id, team_nickname, provider_repo_id, provider_full_name)
+            VALUES
+                ('exam-1-starter', 'exam-1', false, 1, NULL, 700001, 'yale-mgt-656/exam-1-starter-abc123'),
+                ('exam-1-starter', 'exam-1', false, 2, NULL, 700002, 'yale-mgt-656/exam-1-starter-bde456'),
+                ('project-starter', 'project-update-1', true, NULL, 'bright-fog', 700003, 'yale-mgt-656/project-starter-bright-fog');
+        `);
+        const response = await restService()
+            .get('/my_repositories?select=template_slug,label,assignment_slug,is_team,team_nickname,repo_url&order=template_slug')
             .set('Authorization', `Bearer ${await studentJWTPromise}`)
             .expect('Content-Type', /json/)
             .expect(200);
-        we.expect(response.body).to.have.lengthOf(1);
-        we.expect(response.body[0]).to.include({ slug: 'exam-1', ...template });
+        we.expect(response.body).to.deep.equal([
+            {
+                template_slug: 'exam-1-starter',
+                label: 'Exam 1 starter',
+                assignment_slug: 'exam-1',
+                is_team: false,
+                team_nickname: null,
+                repo_url: 'https://github.com/yale-mgt-656/exam-1-starter-abc123',
+            },
+            {
+                template_slug: 'project-starter',
+                label: 'Project starter',
+                assignment_slug: 'project-update-1',
+                is_team: true,
+                team_nickname: 'bright-fog',
+                repo_url: 'https://github.com/yale-mgt-656/project-starter-bright-fog',
+            },
+        ]);
 
-        const unconfigured = await restService()
-            .get('/my_assignments?slug=eq.team-selection')
-            .set('Authorization', `Bearer ${await studentJWTPromise}`)
+        // klj39 is on bright-fog too, so "mine" for faculty is the team's
+        // repository and nobody's individual one.
+        const faculty = await restService()
+            .get('/my_repositories?select=template_slug')
+            .set('Authorization', `Bearer ${await facultyJWTPromise}`)
             .expect(200);
-        we.expect(unconfigured.body[0]).to.include({
-            repository_template_provider: null,
-            repository_template_full_name: null,
-            repository_url_field_slug: null,
-        });
+        we.expect(faculty.body).to.deep.equal([{ template_slug: 'project-starter' }]);
     });
 
     it('classifies a student submission as student whatever origin it claims', async () => {

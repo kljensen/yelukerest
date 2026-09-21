@@ -1,138 +1,47 @@
 -- Deployed inside a transaction Zapadka opens and commits.
 -- Do not write BEGIN, COMMIT, ROLLBACK, or SAVEPOINT here.
--- Self-serve assignment repositories: template configuration, GitHub identity,
--- and the provisioning attempt with its service RPCs (issue #394).
+-- Self-serve repositories: repository templates, GitHub identity, and the
+-- provisioning attempt with its service RPCs (issue #394, roadmap 17).
 --
 -- data.assignment_repository (01a011e3) records a repository once the forge
--- has returned its id. It cannot say which template an assignment is built
--- from, which field the repository URL is handed in through, or that an
--- attempt is under way and where it got to. `admin provision-repos` kept all
--- of that in a course repo and its own memory, and wrote the student's URL
--- field with a direct connection. This migration moves the configuration,
--- the attempt and the finalizing transaction into the database, where the
--- deadline, the team roster, the submission and the RLS already are.
--- authapp (#395, #396) drives the forge and calls the RPCs below; it holds
--- no course data of its own.
+-- has returned its id. It cannot say which template the repository was
+-- generated from, or that an attempt is under way and where it got to.
+-- `admin provision-repos` kept both in a course repo and its own memory.
+-- This migration moves the template, the attempt and the finalizing write
+-- into the database, where the deadline, the team roster and the RLS
+-- already are. authapp (#395, #396) drives the forge and calls the RPCs
+-- below; it holds no course data of its own.
 --
--- Three additions, in order:
---   * data.assignment gains an optional template configuration: the forge,
---     the template repository and the URL field the finished repository is
---     submitted through. All three or none, so an unconfigured assignment
---     behaves exactly as before.
+-- A repository is a thing a student creates from a template, on their own
+-- page, and hands in by pasting its URL into whatever assignment field asks
+-- for one. Nothing here writes a submission: the template may name the
+-- assignment it is meant for, which governs the deadline and lets a client
+-- offer the URL, and that is the whole of the coupling.
+--
+-- Four changes, in order:
 --   * data."user" gains the student's GitHub identity: the numeric account
 --     id (identity), the login (display, and the repository name), and when
 --     the platform verified the link. Phase one fills the login from a
 --     faculty import with verified_at NULL; phase two (#399) verifies.
---   * data.assignment_repository_provisioning is the attempt: claimed by the
---     student's click, advanced by authapp as the forge answers, finalized
---     into a repository row, a submission and a field submission in one
---     transaction. One attempt per owner per assignment, like the repository.
+--   * data.repository_template is what faculty configure: the forge, the
+--     template repository, a label for the page, whether it is for teams,
+--     and optionally the assignment it serves.
+--   * data.assignment_repository is keyed by template rather than by
+--     assignment: template_slug arrives NOT NULL, assignment_slug becomes
+--     optional, and one-per-owner is per template. Existing rows are
+--     carried over by a template synthesized from their assignment.
+--   * data.assignment_repository_provisioning is the attempt: claimed by
+--     the student's click, advanced by authapp as the forge answers,
+--     finalized into a repository row. One attempt per owner per template.
 --
 -- The RPCs are SECURITY DEFINER, owned by yelukerest_migrator like
 -- api.exchange_user_api_token, and admit only the authapp service credential
 -- (role app, app_name authapp), except api.import_github_logins which is the
 -- faculty bootstrap. The guards compare with IS DISTINCT FROM: a session with
 -- no role or no app_name claim at all must be refused, and `NOT (NULL AND x)`
--- is NULL, which an IF treats as false. Every refusal a client should branch on is raised with
--- a stable code as the MESSAGE and the explanation in DETAIL, so authapp maps
--- the message and never parses prose.
--- ---------------------------------------------------------------------------
--- data.assignment: the template configuration
--- ---------------------------------------------------------------------------
--- provider is constrained to the same slug shape as
--- assignment_repository.provider, so the two never disagree on what to call
--- a forge. template_full_name is owner/repo: a GitHub owner is a login (no
--- leading, trailing or doubled hyphen), and a repository name is a dotted
--- token. repository_url_field_slug names the assignment's own field.
---
--- Deliberately NOT a foreign key onto data.assignment_field. PostgREST
--- derives resource embedding from foreign keys, and a second key between
--- these two tables makes `assignments?select=*,fields:assignment_fields(*)`
--- -- the request the web client sends on every page load -- ambiguous:
--- PGRST201, HTTP 300, for every user. The reference is kept by the two
--- triggers below instead, which also carry the rule a key cannot: the field
--- has to be a URL field.
-ALTER TABLE data.assignment
-    ADD COLUMN repository_template_provider text CHECK (repository_template_provider ~ '^[a-z][a-z0-9_-]{0,31}$'),
-    ADD COLUMN repository_template_full_name text CHECK (repository_template_full_name ~ '^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}/[A-Za-z0-9._-]+$'
-    AND char_length(repository_template_full_name) BETWEEN 3 AND 255),
-    ADD COLUMN repository_url_field_slug text CHECK (char_length(repository_url_field_slug) < 30),
-    ADD CONSTRAINT repository_template_all_or_nothing CHECK ((repository_template_provider IS NULL) = (repository_template_full_name IS NULL)
-    AND (repository_template_provider IS NULL) = (repository_url_field_slug IS NULL))
-; COMMENT ON COLUMN data.assignment.repository_template_provider IS 'Forge the template repository lives on, such as github. Set with the other two template columns or not at all. Issue #394.'
-; COMMENT ON COLUMN data.assignment.repository_template_full_name IS 'Template repository as owner/repo on the provider. Issue #394.'
-; COMMENT ON COLUMN data.assignment.repository_url_field_slug IS 'The URL field of this assignment that a provisioned repository is submitted through. Must be is_url. Issue #394.'
-;
--- The reference, in both directions, and the rule that the field is a URL
--- field. Forward: when an assignment designates a field, that field must
--- exist on this assignment and be is_url. Reverse: a designated field cannot
--- be deleted, renamed, or made a non-URL field while the assignment points
--- at it; every other edit to it (label, help, pattern) stays free. Each
--- refusal is a stable code in MESSAGE, as the RPCs do, so a client can
--- branch on it. Both run as the definer because faculty write through api
--- views and hold nothing on the data schema, as the existing lookup triggers
--- do.
---
--- Each locks the row on the other side FOR UPDATE before deciding, so two
--- sessions -- one designating the field, one deleting or flipping it --
--- serialize on that row instead of both passing a check against a snapshot.
-CREATE FUNCTION data.check_assignment_repository_url_field() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
-DECLARE
-    field_is_url boolean;
-BEGIN
-    IF NEW.repository_url_field_slug IS NULL THEN
-        RETURN NEW;
-    END IF;
-    SELECT f.is_url INTO field_is_url
-    FROM data.assignment_field f
-    WHERE f.assignment_slug = NEW.slug
-      AND f.slug = NEW.repository_url_field_slug
-    FOR UPDATE;
-    IF NOT FOUND THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'repository_url_field_missing',
-            DETAIL = format('assignment %s has no field %s', NEW.slug, NEW.repository_url_field_slug);
-    END IF;
-    IF NOT field_is_url THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'repository_url_field_not_url',
-            DETAIL = format('assignment %s field %s is not is_url', NEW.slug, NEW.repository_url_field_slug);
-    END IF;
-    RETURN NEW;
-END;
-$$
-; ALTER FUNCTION data.check_assignment_repository_url_field() OWNER TO yelukerest_migrator
-; CREATE TRIGGER tg_assignment_repository_url_field BEFORE INSERT OR UPDATE OF repository_url_field_slug ON data.assignment FOR EACH ROW EXECUTE FUNCTION data.check_assignment_repository_url_field()
-; CREATE FUNCTION data.keep_designated_repository_url_field() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO data, pg_temp AS $$
-DECLARE
-    change text;
-BEGIN
-    change := CASE
-        WHEN TG_OP = 'DELETE' THEN 'deleted'
-        WHEN NEW.slug <> OLD.slug OR NEW.assignment_slug <> OLD.assignment_slug THEN 'renamed'
-        WHEN NOT NEW.is_url THEN 'made a non-URL field'
-    END;
-    IF change IS NULL THEN
-        RETURN NEW;
-    END IF;
-    IF EXISTS (
-        SELECT 1
-        FROM data.assignment a
-        WHERE a.slug = OLD.assignment_slug
-          AND a.repository_url_field_slug = OLD.slug
-        FOR UPDATE
-    ) THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'repository_url_field_in_use',
-            DETAIL = format('field %s is the repository URL field of assignment %s and cannot be %s', OLD.slug, OLD.assignment_slug, change),
-            HINT = 'Clear the assignment''s template configuration first.';
-    END IF;
-    RETURN COALESCE(NEW, OLD);
-END;
-$$
-; ALTER FUNCTION data.keep_designated_repository_url_field() OWNER TO yelukerest_migrator
-; CREATE TRIGGER tg_assignment_field_designated_url BEFORE DELETE OR UPDATE ON data.assignment_field FOR EACH ROW EXECUTE FUNCTION data.keep_designated_repository_url_field()
-;
+-- is NULL, which an IF treats as false. Every refusal a client should branch
+-- on is raised with a stable code as the MESSAGE and the explanation in
+-- DETAIL, so authapp maps the message and never parses prose.
 -- ---------------------------------------------------------------------------
 -- data."user": GitHub identity
 -- ---------------------------------------------------------------------------
@@ -162,11 +71,191 @@ WHERE github_login IS NOT NULL
 ; COMMENT ON COLUMN data."user".github_verified_at IS 'When the platform verified this GitHub identity belongs to the user. NULL for a faculty-attested import. Issue #394.'
 ;
 -- ---------------------------------------------------------------------------
+-- data.repository_template: what a student can create a repository from
+-- ---------------------------------------------------------------------------
+-- The slug is the key a client and a URL carry, and the first half of the
+-- repository name, so it has the assignment slug's shape. provider is
+-- constrained to the same slug shape as assignment_repository.provider, so
+-- the two never disagree on what to call a forge. template_full_name is
+-- owner/repo: a GitHub owner is a login (no leading, trailing or doubled
+-- hyphen), and a repository name is a dotted token.
+--
+-- assignment_slug is optional, and foreign-keyed together with is_team to
+-- (assignment.slug, assignment.is_team) as data.assignment_repository is, so
+-- a team template can only serve a team assignment. The key is MATCH
+-- SIMPLE, PostgreSQL's default, and a NULL assignment_slug satisfies it.
+-- (slug, is_team) is unique for the same reason (assignment.slug,
+-- assignment.is_team) is: the repository and attempt tables key on both, so
+-- a team repository from an individual template is unrepresentable.
+CREATE TABLE data.repository_template (
+    slug text PRIMARY KEY CHECK (slug ~ '^[a-z0-9-]+$'
+    AND char_length(slug) <= 60),
+    provider text NOT NULL DEFAULT 'github' CHECK (provider ~ '^[a-z][a-z0-9_-]{0,31}$'),
+    template_full_name text NOT NULL CHECK (template_full_name ~ '^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}/[A-Za-z0-9._-]+$'
+    AND char_length(template_full_name) BETWEEN 3 AND 255),
+    label text NOT NULL CHECK (char_length(label) BETWEEN 1 AND 100),
+    description text CHECK (char_length(description) <= 500),
+    is_team boolean NOT NULL DEFAULT false,
+    assignment_slug text CHECK (char_length(assignment_slug) < 100),
+    FOREIGN KEY (assignment_slug, is_team) REFERENCES data.assignment (slug, is_team) ON UPDATE CASCADE,
+    is_active boolean NOT NULL DEFAULT true,
+    created_at timestamp with time zone NOT NULL DEFAULT current_timestamp,
+    updated_at timestamp with time zone NOT NULL DEFAULT current_timestamp,
+    CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
+    UNIQUE (slug, is_team)
+)
+; ALTER TABLE data.repository_template
+    OWNER TO yelukerest_migrator
+;
+-- Foreign key index, as tests/db/foreign-key-indexes.sql requires.
+CREATE INDEX idx_repository_template_assignment_fk
+ON data.repository_template USING btree (assignment_slug, is_team)
+; CREATE TRIGGER tg_repository_template_update_timestamps BEFORE INSERT OR UPDATE ON data.repository_template FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column()
+; COMMENT ON TABLE data.repository_template IS 'A forge template repository students may create their own repository from, optionally tied to the assignment it serves'
+;
+-- ---------------------------------------------------------------------------
+-- data.assignment_repository: keyed by template
+-- ---------------------------------------------------------------------------
+-- Backfill. Rows the old course tooling recorded name an assignment and no
+-- template. For each distinct (assignment_slug, is_team) among them a
+-- template is synthesized with slug = assignment_slug, template_full_name =
+-- 'unknown/' || assignment_slug (faculty fix it up), label = the assignment
+-- title, and the rows point at it. Uniqueness per owner and assignment
+-- therefore carries over as uniqueness per owner and template.
+ALTER TABLE data.assignment_repository
+    ADD COLUMN template_slug text CHECK (char_length(template_slug) <= 60),
+    ALTER COLUMN assignment_slug DROP NOT NULL
+; INSERT INTO data.repository_template (slug, provider, template_full_name, label, is_team, assignment_slug)
+SELECT
+    r.assignment_slug, min(r.provider), 'unknown/' || r.assignment_slug,
+    COALESCE(NULLIF(a.title, ''), a.slug), r.is_team, r.assignment_slug
+FROM
+    data.assignment_repository r
+    JOIN data.assignment a ON a.slug = r.assignment_slug
+GROUP BY r.assignment_slug, r.is_team, a.title, a.slug
+; UPDATE data.assignment_repository
+SET template_slug = assignment_slug
+; ALTER TABLE data.assignment_repository
+    ALTER COLUMN template_slug SET NOT NULL,
+    ADD FOREIGN KEY (template_slug, is_team) REFERENCES data.repository_template (slug, is_team) ON UPDATE CASCADE
+;
+-- One repository per student per template, and per team per template, in
+-- place of per assignment. The partial predicates are as before: NULLs are
+-- distinct in a unique index. The (provider, provider_repo_id) key stays.
+DROP INDEX data.assignment_repository_unique_user
+; DROP INDEX data.assignment_repository_unique_team
+; CREATE UNIQUE INDEX assignment_repository_unique_user
+ON data.assignment_repository USING btree (user_id, template_slug)
+WHERE team_nickname IS NULL
+; CREATE UNIQUE INDEX assignment_repository_unique_team
+ON data.assignment_repository USING btree (team_nickname, template_slug)
+WHERE user_id IS NULL
+; CREATE INDEX idx_assignment_repository_template_fk
+ON data.assignment_repository USING btree (template_slug, is_team)
+; COMMENT ON COLUMN data.assignment_repository.template_slug IS 'The template the repository was created from. Backfilled for pre-template rows with a template named after the assignment. Issue #394.'
+;
+-- Faculty configure templates; students read them. A student reads the
+-- active ones, which are what the page offers, and also any template one of
+-- their own repositories was created from, so deactivating a template never
+-- makes a repository vanish from api.my_repositories, which joins here. The
+-- policy names assignment_repository.template_slug, hence its place after
+-- that column exists.
+GRANT select, insert, update, delete ON data.repository_template TO api
+; ALTER TABLE data.repository_template
+    ENABLE ROW LEVEL SECURITY
+; CREATE POLICY repository_template_access_policy ON data.repository_template TO api USING (request.user_role() = 'faculty' OR (request.user_role() = ANY('{student,ta}'::text[])
+AND (is_active OR EXISTS (
+    SELECT 1
+    FROM data.assignment_repository r
+    WHERE
+        r.template_slug = repository_template.slug
+        AND (r.user_id = request.user_id() OR (r.team_nickname IS NOT NULL
+        AND r.team_nickname = (
+            SELECT u.team_nickname
+            FROM data."user" u
+            WHERE u.id = request.user_id()
+        )))
+)))) WITH CHECK (request.user_role() = 'faculty')
+; CREATE VIEW api.repository_templates AS
+    SELECT *
+    FROM data.repository_template
+; ALTER VIEW api.repository_templates
+    OWNER TO api
+; GRANT select ON api.repository_templates TO student, ta
+; GRANT select, insert, update, delete ON api.repository_templates TO faculty
+; COMMENT ON VIEW api.repository_templates IS 'Template repositories a student may create a repository from. Faculty configure them here; students read the active ones'
+; COMMENT ON COLUMN api.repository_templates.slug IS 'Key for the template, and the first half of the name of every repository created from it'
+; COMMENT ON COLUMN api.repository_templates.provider IS 'Forge the template repository lives on, such as github'
+; COMMENT ON COLUMN api.repository_templates.template_full_name IS 'Template repository as owner/repo on the provider'
+; COMMENT ON COLUMN api.repository_templates.label IS 'What the repositories page calls this template, such as "Go programming starter"'
+; COMMENT ON COLUMN api.repository_templates.description IS 'One optional line under the label'
+; COMMENT ON COLUMN api.repository_templates.is_team IS 'True when a repository from this template belongs to a team rather than a student'
+; COMMENT ON COLUMN api.repository_templates.assignment_slug IS 'The assignment this template serves, if any: its deadline governs creation, and a client may offer the repository URL for it. NULL for a template tied to no assignment'
+; COMMENT ON COLUMN api.repository_templates.is_active IS 'Whether students may create repositories from it now. Existing repositories are unaffected'
+; COMMENT ON COLUMN api.repository_templates.created_at IS 'When this template was created'
+; COMMENT ON COLUMN api.repository_templates.updated_at IS 'When this template was last changed'
+;
+-- The view keeps its name and its columns; template_slug is appended, which
+-- CREATE OR REPLACE permits. Faculty tooling that writes here now has to
+-- name a template.
+CREATE OR REPLACE VIEW api.assignment_repositories AS
+    SELECT *
+    FROM data.assignment_repository
+; ALTER VIEW api.assignment_repositories
+    OWNER TO api
+; COMMENT ON COLUMN api.assignment_repositories.assignment_slug IS 'The assignment the repository was created for, copied from its template. NULL when the template serves no assignment'
+; COMMENT ON COLUMN api.assignment_repositories.template_slug IS 'The template the repository was created from'
+;
+-- The caller's repositories, for the repositories page and the assignment
+-- page: own rows and the current team's, with the template's label and
+-- assignment and the browser URL. The row policy on
+-- data.assignment_repository already narrows a student to these; the WHERE
+-- makes the view mean "mine" for faculty too. assignment_slug is the
+-- template's current one, so a template faculty re-point follows.
+CREATE VIEW api.my_repositories WITH (security_barrier=true) AS
+    SELECT
+        r.id, r.template_slug, t.label, t.assignment_slug, t.template_full_name,
+        r.is_team, r.user_id, r.team_nickname, r.provider, r.provider_repo_id,
+        r.provider_full_name,
+        CASE
+            WHEN r.provider = 'github' THEN 'https://github.com/' || r.provider_full_name
+        END AS repo_url,
+        r.created_at, r.updated_at
+    FROM
+        data.assignment_repository r
+        JOIN data.repository_template t ON t.slug = r.template_slug
+    WHERE
+        r.user_id = request.user_id() OR (r.team_nickname IS NOT NULL
+        AND r.team_nickname = (
+            SELECT u.team_nickname
+            FROM data."user" u
+            WHERE u.id = request.user_id()
+        ))
+; ALTER VIEW api.my_repositories
+    OWNER TO api
+; GRANT select ON api.my_repositories TO student, ta, faculty
+; COMMENT ON VIEW api.my_repositories IS 'The calling user''s repositories: their own and their current team''s, with the template''s label and assignment and the browser URL. Read-only'
+; COMMENT ON COLUMN api.my_repositories.id IS 'Same as assignment_repositories.id'
+; COMMENT ON COLUMN api.my_repositories.template_slug IS 'The template the repository was created from'
+; COMMENT ON COLUMN api.my_repositories.label IS 'The template''s label'
+; COMMENT ON COLUMN api.my_repositories.assignment_slug IS 'The assignment the template currently serves, NULL when none'
+; COMMENT ON COLUMN api.my_repositories.template_full_name IS 'The template repository as owner/repo'
+; COMMENT ON COLUMN api.my_repositories.is_team IS 'True when the repository belongs to the caller''s team'
+; COMMENT ON COLUMN api.my_repositories.user_id IS 'Owning student, NULL for a team repository'
+; COMMENT ON COLUMN api.my_repositories.team_nickname IS 'Owning team, NULL for an individual repository'
+; COMMENT ON COLUMN api.my_repositories.provider IS 'Forge hosting the repository, such as github'
+; COMMENT ON COLUMN api.my_repositories.provider_repo_id IS 'Forge repository id'
+; COMMENT ON COLUMN api.my_repositories.provider_full_name IS 'Forge repository name such as org/repo'
+; COMMENT ON COLUMN api.my_repositories.repo_url IS 'Browser URL of the repository: https://github.com/<full name> on github, NULL on a forge this view does not know'
+; COMMENT ON COLUMN api.my_repositories.created_at IS 'When the repository record was created'
+; COMMENT ON COLUMN api.my_repositories.updated_at IS 'When the repository record was last changed'
+;
+-- ---------------------------------------------------------------------------
 -- data.assignment_repository_provisioning: the attempt
 -- ---------------------------------------------------------------------------
--- Shaped after data.assignment_repository: the same (slug, is_team) foreign
--- key, the same user XOR team check, the same one-per-owner partial unique
--- indexes. What it adds is the state of an attempt: the template and
+-- Shaped after data.assignment_repository: the same (template_slug, is_team)
+-- foreign key, the same user XOR team check, the same one-per-owner partial
+-- unique indexes. What it adds is the state of an attempt: the template and
 -- destination name as they were when the student clicked, the forge id once
 -- generate has returned it, the stage, and a sanitized error code. No lease:
 -- an attempt that is not finalized is simply resumed by the next request.
@@ -177,9 +266,9 @@ WHERE github_login IS NOT NULL
 -- data.assignment_repository, which finalize writes.
 CREATE TABLE data.assignment_repository_provisioning (
     id int GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    assignment_slug text NOT NULL CHECK (char_length(assignment_slug) < 100),
+    template_slug text NOT NULL CHECK (char_length(template_slug) <= 60),
     is_team boolean NOT NULL,
-    FOREIGN KEY (assignment_slug, is_team) REFERENCES data.assignment (slug, is_team) ON UPDATE CASCADE,
+    FOREIGN KEY (template_slug, is_team) REFERENCES data.repository_template (slug, is_team) ON UPDATE CASCADE,
     user_id int REFERENCES data."user" (id) ON UPDATE CASCADE,
     team_nickname text CHECK (char_length(team_nickname) < 50) REFERENCES data.team (nickname) ON UPDATE CASCADE,
     initiated_by_user_id int NOT NULL REFERENCES data."user" (id) ON UPDATE CASCADE,
@@ -195,7 +284,7 @@ CREATE TABLE data.assignment_repository_provisioning (
     created_at timestamp with time zone NOT NULL DEFAULT current_timestamp,
     updated_at timestamp with time zone NOT NULL DEFAULT current_timestamp,
     CONSTRAINT updated_after_created CHECK (updated_at >= created_at),
-    CONSTRAINT matches_assignment_is_team CHECK ((is_team
+    CONSTRAINT matches_template_is_team CHECK ((is_team
     AND team_nickname IS NOT NULL
     AND user_id IS NULL) OR (NOT is_team
     AND team_nickname IS NULL
@@ -209,15 +298,15 @@ CREATE TABLE data.assignment_repository_provisioning (
 ; ALTER TABLE data.assignment_repository_provisioning
     OWNER TO yelukerest_migrator
 ; CREATE UNIQUE INDEX assignment_repository_provisioning_unique_user
-ON data.assignment_repository_provisioning USING btree (user_id, assignment_slug)
+ON data.assignment_repository_provisioning USING btree (user_id, template_slug)
 WHERE team_nickname IS NULL
 ; CREATE UNIQUE INDEX assignment_repository_provisioning_unique_team
-ON data.assignment_repository_provisioning USING btree (team_nickname, assignment_slug)
+ON data.assignment_repository_provisioning USING btree (team_nickname, template_slug)
 WHERE user_id IS NULL
 ;
 -- Foreign key indexes, as tests/db/foreign-key-indexes.sql requires.
-CREATE INDEX idx_assignment_repository_provisioning_assignment_fk
-ON data.assignment_repository_provisioning USING btree (assignment_slug, is_team)
+CREATE INDEX idx_assignment_repository_provisioning_template_fk
+ON data.assignment_repository_provisioning USING btree (template_slug, is_team)
 ; CREATE INDEX idx_assignment_repository_provisioning_user_fk
 ON data.assignment_repository_provisioning USING btree (user_id)
 ; CREATE INDEX idx_assignment_repository_provisioning_team_fk
@@ -225,7 +314,7 @@ ON data.assignment_repository_provisioning USING btree (team_nickname)
 ; CREATE INDEX idx_assignment_repository_provisioning_initiator_fk
 ON data.assignment_repository_provisioning USING btree (initiated_by_user_id)
 ; CREATE TRIGGER tg_assignment_repository_provisioning_update_timestamps BEFORE INSERT OR UPDATE ON data.assignment_repository_provisioning FOR EACH ROW EXECUTE FUNCTION data.update_updated_at_column()
-; COMMENT ON TABLE data.assignment_repository_provisioning IS 'An attempt to provision a forge repository for a student or team on an assignment, from the click to the finalized repository row'
+; COMMENT ON TABLE data.assignment_repository_provisioning IS 'An attempt to provision a forge repository for a student or team from a template, from the click to the finalized repository row'
 ;
 -- Read-only through the view. Nobody writes this table but the RPCs, which
 -- run as the owner; the api role needs SELECT so the view can serve it, and
@@ -244,132 +333,41 @@ AND EXISTS (
         u.id = request.user_id()
         AND u.team_nickname = assignment_repository_provisioning.team_nickname
 )))))
-; CREATE VIEW api.assignment_repository_provisionings AS
+; CREATE VIEW api.repository_provisionings AS
     SELECT *
     FROM data.assignment_repository_provisioning
-; ALTER VIEW api.assignment_repository_provisionings
+; ALTER VIEW api.repository_provisionings
     OWNER TO api
-; GRANT select ON api.assignment_repository_provisionings TO student, ta, faculty
-; COMMENT ON VIEW api.assignment_repository_provisionings IS 'Repository provisioning attempts: one per student or team per assignment, with the stage the attempt has reached. Read-only; the authapp service advances it'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.id IS 'Surrogate key for this attempt'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.assignment_slug IS 'The assignment the repository is being provisioned for'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.is_team IS 'True when the repository will belong to a team, matching the assignment kind'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.user_id IS 'Owning student, set when the assignment is individual and NULL otherwise'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.team_nickname IS 'Owning team, set when the assignment is a team assignment and NULL otherwise'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.initiated_by_user_id IS 'The student who started the attempt; for a team, one of its members'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.provider IS 'Forge the repository is created on, copied from the assignment when the attempt was claimed'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.template_full_name IS 'Template repository as owner/repo, copied from the assignment when the attempt was claimed'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.destination_name IS 'Name of the repository to create, without its organization: assignment slug and GitHub login or team nickname'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.provider_repo_id IS 'Forge repository id, NULL until the forge has returned one'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.provider_full_name IS 'Forge repository name such as org/repo, NULL until the forge has returned one'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.stage IS 'How far the attempt has got: claimed, generated, granted, finalized or failed'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.error_code IS 'Stable code for why the attempt failed, NULL otherwise. Never a raw forge message'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.last_checked_at IS 'When the service last asked the forge whether the repository contents were ready'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.ready_at IS 'When the forge first reported the repository contents ready, NULL until then'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.created_at IS 'When the attempt was claimed'
-; COMMENT ON COLUMN api.assignment_repository_provisionings.updated_at IS 'When the attempt last changed'
+; GRANT select ON api.repository_provisionings TO student, ta, faculty
+; COMMENT ON VIEW api.repository_provisionings IS 'Repository provisioning attempts: one per student or team per template, with the stage the attempt has reached. Read-only; the authapp service advances it'
+; COMMENT ON COLUMN api.repository_provisionings.id IS 'Surrogate key for this attempt'
+; COMMENT ON COLUMN api.repository_provisionings.template_slug IS 'The template the repository is being created from'
+; COMMENT ON COLUMN api.repository_provisionings.is_team IS 'True when the repository will belong to a team, copied from the template'
+; COMMENT ON COLUMN api.repository_provisionings.user_id IS 'Owning student, set when the template is individual and NULL otherwise'
+; COMMENT ON COLUMN api.repository_provisionings.team_nickname IS 'Owning team, set when the template is a team template and NULL otherwise'
+; COMMENT ON COLUMN api.repository_provisionings.initiated_by_user_id IS 'The student who started the attempt; for a team, one of its members'
+; COMMENT ON COLUMN api.repository_provisionings.provider IS 'Forge the repository is created on, copied from the template when the attempt was claimed'
+; COMMENT ON COLUMN api.repository_provisionings.template_full_name IS 'Template repository as owner/repo, copied from the template when the attempt was claimed'
+; COMMENT ON COLUMN api.repository_provisionings.destination_name IS 'Name of the repository to create, without its organization: template slug and GitHub login or team nickname'
+; COMMENT ON COLUMN api.repository_provisionings.provider_repo_id IS 'Forge repository id, NULL until the forge has returned one'
+; COMMENT ON COLUMN api.repository_provisionings.provider_full_name IS 'Forge repository name such as org/repo, NULL until the forge has returned one'
+; COMMENT ON COLUMN api.repository_provisionings.stage IS 'How far the attempt has got: claimed, generated, granted, finalized or failed'
+; COMMENT ON COLUMN api.repository_provisionings.error_code IS 'Stable code for why the attempt failed, NULL otherwise. Never a raw forge message'
+; COMMENT ON COLUMN api.repository_provisionings.last_checked_at IS 'When the service last asked the forge whether the repository contents were ready'
+; COMMENT ON COLUMN api.repository_provisionings.ready_at IS 'When the forge first reported the repository contents ready, NULL until then'
+; COMMENT ON COLUMN api.repository_provisionings.created_at IS 'When the attempt was claimed'
+; COMMENT ON COLUMN api.repository_provisionings.updated_at IS 'When the attempt last changed'
 ;
 -- ---------------------------------------------------------------------------
--- The api views that carry the new columns
+-- api.users carries the identity
 -- ---------------------------------------------------------------------------
--- api.assignments lists its columns, so the base table growing does not grow
--- the view; the three template columns are appended, which CREATE OR REPLACE
--- permits. Faculty already hold INSERT and UPDATE on the view, so they
--- configure a template with an ordinary PATCH; students hold SELECT only.
-CREATE OR REPLACE VIEW api.assignments WITH (security_barrier=true) AS
-    SELECT
-        slug, points_possible, is_draft, is_markdown, is_team, title, body,
-        closed_at, created_at, updated_at, is_draft = false
-        AND current_timestamp < closed_at AS is_open,
-        repository_template_provider, repository_template_full_name,
-        repository_url_field_slug
-    FROM data.assignment
-; ALTER VIEW api.assignments
-    OWNER TO api
-; COMMENT ON COLUMN api.assignments.repository_template_provider IS 'Forge the template repository lives on, such as github; NULL when the assignment has no self-serve repository'
-; COMMENT ON COLUMN api.assignments.repository_template_full_name IS 'Template repository as owner/repo that a student''s repository is generated from; NULL when not configured'
-; COMMENT ON COLUMN api.assignments.repository_url_field_slug IS 'Slug of this assignment''s URL field that the provisioned repository is submitted through; NULL when not configured'
-;
--- api.my_assignments, as 01a08afb defined it, with the same three columns
--- appended so a client reading the me-scoped row knows whether to offer the
--- repository button.
-CREATE OR REPLACE VIEW api.my_assignments WITH (security_barrier=true) AS
-    SELECT
-        slug, title, is_team, is_draft, is_markdown, points_possible, is_open,
-        closed_at, created_at, updated_at, effective_closed_at, NOT is_draft
-        AND current_timestamp < effective_closed_at AS submission_window_open,
-        can_submit_reason IS NULL AS can_submit, can_submit_reason,
-        extension_closed_at, extension_fractional_credit, submissions,
-        repository_template_provider, repository_template_full_name,
-        repository_url_field_slug
-    FROM
-        (
-            SELECT
-                a.slug, a.title, a.is_team, a.is_draft, a.is_markdown,
-                a.points_possible, a.is_open, a.closed_at, a.created_at,
-                a.updated_at,
-                GREATEST(a.closed_at, ge.closed_at) AS effective_closed_at,
-                CASE
-                    WHEN a.is_draft THEN 'draft'
-                    WHEN current_timestamp >= GREATEST(a.closed_at, ge.closed_at) THEN 'deadline_passed'
-                    WHEN
-                        a.is_team
-                        AND me.team_nickname IS NULL THEN 'no_team'
-                END AS can_submit_reason,
-                ge.closed_at AS extension_closed_at,
-                ge.fractional_credit AS extension_fractional_credit,
-                (
-                    SELECT
-                        COALESCE(jsonb_agg(jsonb_build_object('id', s.id, 'team_nickname', s.team_nickname, 'created_at', s.created_at, 'updated_at', s.updated_at, 'fields_submitted', (
-                            SELECT count(*)
-                            FROM data.assignment_field_submission fs
-                            WHERE
-                                fs.assignment_submission_id = s.id
-                                AND fs.body <> ''
-                        ), 'fields_total', (
-                            SELECT count(*)
-                            FROM data.assignment_field af
-                            WHERE af.assignment_slug = a.slug
-                        ), 'grade', (
-                            SELECT jsonb_build_object('points', g.points, 'description', g.description, 'created_at', g.created_at)
-                            FROM data.assignment_grade g
-                            WHERE g.assignment_submission_id = s.id
-                        )) ORDER BY s.created_at DESC, s.id DESC), '[]'::jsonb)
-                    FROM data.assignment_submission s
-                    WHERE
-                        s.assignment_slug = a.slug
-                        AND (s.user_id = request.user_id() OR EXISTS (
-                            SELECT 1
-                            FROM data.assignment_submission_participant p
-                            WHERE
-                                p.assignment_submission_id = s.id
-                                AND p.user_id = request.user_id()
-                        ))
-                ) AS submissions,
-                a.repository_template_provider, a.repository_template_full_name,
-                a.repository_url_field_slug
-            FROM
-                api.assignments a
-                LEFT JOIN api.users me ON me.id = request.user_id()
-                LEFT JOIN data.assignment_grade_exception ge ON ge.assignment_slug = a.slug
-                AND ((NOT a.is_team
-                AND ge.user_id = request.user_id()) OR (a.is_team
-                AND ge.team_nickname = me.team_nickname))
-        ) mine
-; ALTER VIEW api.my_assignments
-    OWNER TO api
-; COMMENT ON COLUMN api.my_assignments.repository_template_provider IS 'Same as assignments.repository_template_provider: the forge of the template, NULL when the assignment has no self-serve repository'
-; COMMENT ON COLUMN api.my_assignments.repository_template_full_name IS 'Same as assignments.repository_template_full_name: the owner/repo template, NULL when not configured'
-; COMMENT ON COLUMN api.my_assignments.repository_url_field_slug IS 'Same as assignments.repository_url_field_slug: the URL field the provisioned repository is submitted through, NULL when not configured'
-;
--- api.users carries the identity, read-only. The existing policy on
--- data."user" shows a student their own row, and a TA or faculty every row;
--- the authapp service reads it to render a profile. Faculty held INSERT and
--- UPDATE on the whole view, which would have made a PATCH of
--- github_verified_at a way to forge a verification. Their write privilege is
--- restated column by column over the columns they had, so the three new ones
--- are reachable only through api.set_user_github_identity and
--- api.import_github_logins.
+-- Read-only. The existing policy on data."user" shows a student their own
+-- row, and a TA or faculty every row; the authapp service reads it to render
+-- a profile. Faculty held INSERT and UPDATE on the whole view, which would
+-- have made a PATCH of github_verified_at a way to forge a verification.
+-- Their write privilege is restated column by column over the columns they
+-- had, so the three new ones are reachable only through
+-- api.set_user_github_identity and api.import_github_logins.
 CREATE OR REPLACE VIEW api.users AS
     SELECT
         id, email, netid, name, lastname, organization, known_as, nickname,
@@ -391,14 +389,15 @@ CREATE OR REPLACE VIEW api.users AS
 -- views: a view runs under its owner's policies, which answer for the
 -- caller's claim, and under the service claim they would show nothing.
 --
--- Claim, or resume, an attempt for a student on an assignment. Returns the
+-- Claim, or resume, an attempt for a student on a template. Returns the
 -- attempt row plus existing_repository_id, which is NULL unless a repository
--- already exists for the owner, in which case the row is synthesized from it
--- (stage finalized) and no attempt is created or changed. That covers both a
--- student coming back after a successful provisioning and a repository the
--- old course tooling created.
-CREATE FUNCTION api.claim_repository_provisioning(p_assignment_slug text, p_user_id int) RETURNS TABLE (id int, assignment_slug text, is_team boolean, user_id int, team_nickname text, initiated_by_user_id int, provider text, template_full_name text, destination_name text, provider_repo_id bigint, provider_full_name text, stage text, error_code text, last_checked_at timestamp with time zone, ready_at timestamp with time zone, created_at timestamp with time zone, updated_at timestamp with time zone, existing_repository_id int) SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
+-- already exists for the owner and template, in which case the row is
+-- synthesized from it (stage finalized) and no attempt is created or
+-- changed. That covers both a student coming back after a successful
+-- provisioning and a repository the old course tooling created.
+CREATE FUNCTION api.claim_repository_provisioning(p_template_slug text, p_user_id int) RETURNS TABLE (id int, template_slug text, is_team boolean, user_id int, team_nickname text, initiated_by_user_id int, provider text, template_full_name text, destination_name text, provider_repo_id bigint, provider_full_name text, stage text, error_code text, last_checked_at timestamp with time zone, ready_at timestamp with time zone, created_at timestamp with time zone, updated_at timestamp with time zone, existing_repository_id int) SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
 DECLARE
+    the_template data.repository_template%ROWTYPE;
     the_assignment data.assignment%ROWTYPE;
     the_user data."user"%ROWTYPE;
     owner_team text;
@@ -414,11 +413,16 @@ BEGIN
                   DETAIL = 'only the authapp service may claim a repository provisioning';
     END IF;
 
-    SELECT a.* INTO the_assignment FROM data.assignment a WHERE a.slug = p_assignment_slug;
-    IF NOT FOUND OR the_assignment.is_draft OR the_assignment.repository_template_provider IS NULL THEN
+    SELECT t.* INTO the_template FROM data.repository_template t WHERE t.slug = p_template_slug;
+    IF NOT FOUND THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'repository_not_configured',
-            DETAIL = format('assignment %s does not exist, is a draft, or has no repository template', p_assignment_slug);
+            MESSAGE = 'template_not_found',
+            DETAIL = format('no repository template %s', p_template_slug);
+    END IF;
+    IF NOT the_template.is_active THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0001',
+            MESSAGE = 'template_inactive',
+            DETAIL = format('repository template %s is not active', p_template_slug);
     END IF;
 
     SELECT u.* INTO the_user FROM data."user" u WHERE u.id = p_user_id;
@@ -434,11 +438,11 @@ BEGIN
             DETAIL = format('user %s has role %s; only students provision repositories', p_user_id, the_user.role);
     END IF;
 
-    IF the_assignment.is_team THEN
+    IF the_template.is_team THEN
         IF the_user.team_nickname IS NULL THEN
             RAISE EXCEPTION USING ERRCODE = 'P0001',
                 MESSAGE = 'no_team',
-                DETAIL = format('%s is a team assignment and user %s is on no team', p_assignment_slug, p_user_id);
+                DETAIL = format('%s is a team template and user %s is on no team', p_template_slug, p_user_id);
         END IF;
         owner_team := the_user.team_nickname;
     ELSE
@@ -448,17 +452,17 @@ BEGIN
     -- Two clicks in flight for the same owner serialize here, so the second
     -- resumes the attempt the first created instead of tripping the unique
     -- index.
-    PERFORM pg_advisory_xact_lock(hashtext('assignment_repository_provisioning:' || p_assignment_slug || ':' || coalesce(owner_team, owner_user::text)));
+    PERFORM pg_advisory_xact_lock(hashtext('repository_provisioning:' || p_template_slug || ':' || coalesce(owner_team, owner_user::text)));
 
     SELECT r.* INTO the_repository
     FROM data.assignment_repository r
-    WHERE r.assignment_slug = p_assignment_slug
+    WHERE r.template_slug = p_template_slug
       AND r.user_id IS NOT DISTINCT FROM owner_user
       AND r.team_nickname IS NOT DISTINCT FROM owner_team;
 
     SELECT p.* INTO the_attempt
     FROM data.assignment_repository_provisioning p
-    WHERE p.assignment_slug = p_assignment_slug
+    WHERE p.template_slug = p_template_slug
       AND p.user_id IS NOT DISTINCT FROM owner_user
       AND p.team_nickname IS NOT DISTINCT FROM owner_team
     FOR UPDATE;
@@ -467,9 +471,9 @@ BEGIN
         -- The attempt's id is carried when there is one, so readiness can
         -- still be recorded against it; the rest describes the repository.
         RETURN QUERY SELECT
-            the_attempt.id, the_repository.assignment_slug, the_repository.is_team,
+            the_attempt.id, the_repository.template_slug, the_repository.is_team,
             the_repository.user_id, the_repository.team_nickname, p_user_id,
-            the_repository.provider, the_assignment.repository_template_full_name,
+            the_repository.provider, the_template.template_full_name,
             split_part(the_repository.provider_full_name, '/', 2),
             the_repository.provider_repo_id, the_repository.provider_full_name,
             'finalized'::text, NULL::text, the_attempt.last_checked_at, the_attempt.ready_at,
@@ -485,7 +489,7 @@ BEGIN
             RETURNING p.* INTO the_attempt;
         END IF;
         RETURN QUERY SELECT
-            the_attempt.id, the_attempt.assignment_slug, the_attempt.is_team,
+            the_attempt.id, the_attempt.template_slug, the_attempt.is_team,
             the_attempt.user_id, the_attempt.team_nickname, the_attempt.initiated_by_user_id,
             the_attempt.provider, the_attempt.template_full_name, the_attempt.destination_name,
             the_attempt.provider_repo_id, the_attempt.provider_full_name,
@@ -494,22 +498,30 @@ BEGIN
         RETURN;
     END IF;
 
-    -- A fresh attempt needs the assignment open for this owner: the later of
-    -- the assignment's deadline and the owner's extension, the same rule
-    -- data.assignment_field_submission_is_writable_by_current_user applies to
-    -- the submission itself.
-    SELECT GREATEST(the_assignment.closed_at, max(ge.closed_at)) INTO effective_closed_at
-    FROM data.assignment_grade_exception ge
-    WHERE ge.assignment_slug = p_assignment_slug
-      AND ge.user_id IS NOT DISTINCT FROM owner_user
-      AND ge.team_nickname IS NOT DISTINCT FROM owner_team;
-    IF current_timestamp >= effective_closed_at THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'assignment_closed',
-            DETAIL = format('%s closed for this owner at %s', p_assignment_slug, effective_closed_at);
+    -- A fresh attempt from a template that serves an assignment needs that
+    -- assignment open for this owner: published, and before the later of
+    -- its deadline and the owner's extension, the same rule
+    -- data.assignment_field_submission_is_writable_by_current_user applies
+    -- to the submission itself. A template tied to no assignment is always
+    -- open.
+    IF the_template.assignment_slug IS NOT NULL THEN
+        SELECT a.* INTO the_assignment FROM data.assignment a WHERE a.slug = the_template.assignment_slug;
+        SELECT GREATEST(the_assignment.closed_at, max(ge.closed_at)) INTO effective_closed_at
+        FROM data.assignment_grade_exception ge
+        WHERE ge.assignment_slug = the_template.assignment_slug
+          AND ge.user_id IS NOT DISTINCT FROM owner_user
+          AND ge.team_nickname IS NOT DISTINCT FROM owner_team;
+        IF the_assignment.is_draft OR current_timestamp >= effective_closed_at THEN
+            RAISE EXCEPTION USING ERRCODE = 'P0001',
+                MESSAGE = 'assignment_closed',
+                DETAIL = CASE
+                    WHEN the_assignment.is_draft THEN format('%s is a draft', the_template.assignment_slug)
+                    ELSE format('%s closed for this owner at %s', the_template.assignment_slug, effective_closed_at)
+                END;
+        END IF;
     END IF;
 
-    IF NOT the_assignment.is_team AND the_user.github_login IS NULL THEN
+    IF NOT the_template.is_team AND the_user.github_login IS NULL THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001',
             MESSAGE = 'needs_github_link',
             DETAIL = format('user %s has no GitHub login on record', p_user_id);
@@ -518,7 +530,7 @@ BEGIN
     -- GitHub caps a repository name at 100 characters, which the table's CHECK
     -- restates. A legal slug plus a legal login or team nickname can exceed
     -- it, and that is a configuration problem to name, not a CHECK to trip.
-    destination := p_assignment_slug || '-' || coalesce(owner_team, the_user.github_login);
+    destination := p_template_slug || '-' || coalesce(owner_team, the_user.github_login);
     IF char_length(destination) > 100 THEN
         RAISE EXCEPTION USING ERRCODE = 'P0001',
             MESSAGE = 'destination_name_too_long',
@@ -526,18 +538,18 @@ BEGIN
     END IF;
 
     INSERT INTO data.assignment_repository_provisioning (
-        assignment_slug, is_team, user_id, team_nickname, initiated_by_user_id,
+        template_slug, is_team, user_id, team_nickname, initiated_by_user_id,
         provider, template_full_name, destination_name, stage
     )
     VALUES (
-        p_assignment_slug, the_assignment.is_team, owner_user, owner_team, p_user_id,
-        the_assignment.repository_template_provider, the_assignment.repository_template_full_name,
+        p_template_slug, the_template.is_team, owner_user, owner_team, p_user_id,
+        the_template.provider, the_template.template_full_name,
         destination, 'claimed'
     )
     RETURNING * INTO the_attempt;
 
     RETURN QUERY SELECT
-        the_attempt.id, the_attempt.assignment_slug, the_attempt.is_team,
+        the_attempt.id, the_attempt.template_slug, the_attempt.is_team,
         the_attempt.user_id, the_attempt.team_nickname, the_attempt.initiated_by_user_id,
         the_attempt.provider, the_attempt.template_full_name, the_attempt.destination_name,
         the_attempt.provider_repo_id, the_attempt.provider_full_name,
@@ -548,12 +560,12 @@ $$
 ; ALTER FUNCTION api.claim_repository_provisioning(text, int) OWNER TO yelukerest_migrator
 ; REVOKE ALL ON FUNCTION api.claim_repository_provisioning(text, int) FROM public
 ; GRANT execute ON FUNCTION api.claim_repository_provisioning(text, int) TO app
-; COMMENT ON FUNCTION api.claim_repository_provisioning(text, int) IS 'Claim or resume the repository provisioning attempt for a user on an assignment. authapp only. Returns the attempt, or a finalized row synthesized from an existing repository with existing_repository_id set. Refuses with repository_not_configured, not_a_student, no_team, assignment_closed, needs_github_link or destination_name_too_long.'
+; COMMENT ON FUNCTION api.claim_repository_provisioning(text, int) IS 'Claim or resume the repository provisioning attempt for a user on a template. authapp only. Returns the attempt, or a finalized row synthesized from an existing repository with existing_repository_id set. Refuses with template_not_found, template_inactive, not_a_student, no_team, assignment_closed, needs_github_link or destination_name_too_long.'
 ;
 -- Record what the forge said. Transitions are forward only: claimed to
 -- generated, generated to granted, anything not finalized to failed, and the
 -- same stage again as a harmless repeat. A finalized attempt never changes.
-CREATE FUNCTION api.record_repository_provisioning(p_attempt_id int, p_stage text, p_provider_repo_id bigint = NULL, p_provider_full_name text = NULL, p_error_code text = NULL) RETURNS SETOF api.assignment_repository_provisionings SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
+CREATE FUNCTION api.record_repository_provisioning(p_attempt_id int, p_stage text, p_provider_repo_id bigint = NULL, p_provider_full_name text = NULL, p_error_code text = NULL) RETURNS SETOF api.repository_provisionings SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
 DECLARE
     the_attempt data.assignment_repository_provisioning%ROWTYPE;
 BEGIN
@@ -627,27 +639,21 @@ $$
 ; GRANT execute ON FUNCTION api.record_repository_provisioning(int, text, bigint, text, text) TO app
 ; COMMENT ON FUNCTION api.record_repository_provisioning(int, text, bigint, text, text) IS 'Advance a provisioning attempt: claimed to generated (with the forge id and name), generated to granted, or any unfinalized stage to failed with a stable error code. authapp only. Refuses with invalid_stage_transition or already_finalized.'
 ;
--- Finalize: the repository row, the submission and the URL field submission
--- in one call, which is one transaction. Requires stage granted. The deadline
--- is deliberately not checked here: the attempt was claimed while open, and
--- an attempt that the forge finished after the deadline still belongs to the
--- student. Origin is stated explicitly, as `admin provision-repos` did; the
--- field-submission defaults trigger classifies only student, ta and faculty
--- claims, so under the service claim the stated origin stands and cannot be
--- set to anything by a student request.
+-- Finalize: the repository row, and nothing else. Requires stage granted.
+-- The deadline is deliberately not checked here: the attempt was claimed
+-- while open, and an attempt that the forge finished after the deadline
+-- still belongs to the student. No submission and no field submission are
+-- written; the student hands the URL in themselves.
 --
 -- A finalized attempt finalizes again as a no-op that returns the repository
 -- row: authapp cannot tell a lost response from a failed call, and the retry
 -- has to be safe.
-CREATE FUNCTION api.finalize_repository_provisioning(p_attempt_id int, p_repo_url text, p_provider_user_id bigint = NULL) RETURNS SETOF api.assignment_repositories SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
+CREATE FUNCTION api.finalize_repository_provisioning(p_attempt_id int, p_provider_user_id bigint = NULL) RETURNS SETOF api.assignment_repositories SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
 DECLARE
     the_attempt data.assignment_repository_provisioning%ROWTYPE;
-    the_assignment data.assignment%ROWTYPE;
-    the_field data.assignment_field%ROWTYPE;
+    the_template data.repository_template%ROWTYPE;
     the_repository data.assignment_repository%ROWTYPE;
     owner_github_user_id bigint;
-    submission_id int;
-    existing_body text;
 BEGIN
     IF request.user_role() IS DISTINCT FROM 'app' OR request.app_name() IS DISTINCT FROM 'authapp' THEN
         RAISE insufficient_privilege
@@ -663,7 +669,7 @@ BEGIN
     IF the_attempt.stage = 'finalized' THEN
         RETURN QUERY SELECT r.*
         FROM data.assignment_repository r
-        WHERE r.assignment_slug = the_attempt.assignment_slug
+        WHERE r.template_slug = the_attempt.template_slug
           AND r.user_id IS NOT DISTINCT FROM the_attempt.user_id
           AND r.team_nickname IS NOT DISTINCT FROM the_attempt.team_nickname;
         RETURN;
@@ -673,37 +679,6 @@ BEGIN
         RAISE EXCEPTION USING ERRCODE = 'P0001',
             MESSAGE = 'invalid_stage_transition',
             DETAIL = format('attempt %s is at stage %s and only a granted attempt can be finalized', p_attempt_id, the_attempt.stage);
-    END IF;
-
-    SELECT a.* INTO the_assignment FROM data.assignment a WHERE a.slug = the_attempt.assignment_slug;
-    IF the_assignment.repository_url_field_slug IS NULL THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'repository_not_configured',
-            DETAIL = format('assignment %s no longer has a repository template', the_attempt.assignment_slug);
-    END IF;
-    SELECT f.* INTO the_field
-    FROM data.assignment_field f
-    WHERE f.assignment_slug = the_assignment.slug
-      AND f.slug = the_assignment.repository_url_field_slug;
-
-    -- The URL is bound to the repository the attempt recorded at generate,
-    -- so a caller cannot finalize one repository and hand in another. On
-    -- GitHub the browser URL is exactly the full name; on any other forge the
-    -- full name at least has to appear in it.
-    IF p_repo_url IS NULL
-        OR (the_attempt.provider = 'github' AND p_repo_url <> 'https://github.com/' || the_attempt.provider_full_name)
-        OR (the_attempt.provider <> 'github' AND position(the_attempt.provider_full_name IN p_repo_url) = 0) THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'repo_url_mismatch',
-            DETAIL = format('the URL does not name repository %s on %s', the_attempt.provider_full_name, the_attempt.provider);
-    END IF;
-
-    -- Checked up front so the refusal names itself; the table's own CHECK
-    -- constraints would refuse the same body a few statements later.
-    IF NOT data.text_is_url(p_repo_url) OR NOT data.text_matches(p_repo_url, the_field.pattern) THEN
-        RAISE EXCEPTION USING ERRCODE = 'P0001',
-            MESSAGE = 'url_pattern_mismatch',
-            DETAIL = format('the repository URL does not satisfy field %s of %s', the_field.slug, the_assignment.slug);
     END IF;
 
     -- The forge account the repository was granted to has to be the one the
@@ -718,20 +693,20 @@ BEGIN
         END IF;
     END IF;
 
-    -- 1. The repository row. An existing row for this owner is reused when it
-    -- is the same repository; a different one is a conflict for staff, never
-    -- an overwrite. The same forge repository recorded for another owner is a
+    -- An existing row for this owner and template is reused when it is the
+    -- same repository; a different one is a conflict for staff, never an
+    -- overwrite. The same forge repository recorded for another owner is a
     -- conflict too, before the unique index says so less clearly.
     SELECT r.* INTO the_repository
     FROM data.assignment_repository r
-    WHERE r.assignment_slug = the_attempt.assignment_slug
+    WHERE r.template_slug = the_attempt.template_slug
       AND r.user_id IS NOT DISTINCT FROM the_attempt.user_id
       AND r.team_nickname IS NOT DISTINCT FROM the_attempt.team_nickname;
     IF FOUND THEN
         IF the_repository.provider <> the_attempt.provider OR the_repository.provider_repo_id <> the_attempt.provider_repo_id THEN
             RAISE EXCEPTION USING ERRCODE = 'P0001',
                 MESSAGE = 'repository_conflict',
-                DETAIL = format('a different repository (%s %s) is already recorded for this owner on %s', the_repository.provider, the_repository.provider_repo_id, the_attempt.assignment_slug);
+                DETAIL = format('a different repository (%s %s) is already recorded for this owner on template %s', the_repository.provider, the_repository.provider_repo_id, the_attempt.template_slug);
         END IF;
     ELSE
         IF EXISTS (
@@ -742,54 +717,21 @@ BEGIN
                 MESSAGE = 'repository_conflict',
                 DETAIL = format('repository %s %s is already recorded for another owner', the_attempt.provider, the_attempt.provider_repo_id);
         END IF;
+        -- assignment_slug is the template's as it stands now, so the
+        -- repository is recorded for the assignment the template serves at
+        -- the moment it exists, not the one it served at the click.
+        SELECT t.* INTO the_template FROM data.repository_template t WHERE t.slug = the_attempt.template_slug;
         INSERT INTO data.assignment_repository (
-            assignment_slug, is_team, user_id, team_nickname,
+            template_slug, assignment_slug, is_team, user_id, team_nickname,
             provider, provider_repo_id, provider_full_name, provider_user_id
         )
         VALUES (
-            the_attempt.assignment_slug, the_attempt.is_team, the_attempt.user_id, the_attempt.team_nickname,
+            the_attempt.template_slug, the_template.assignment_slug, the_attempt.is_team, the_attempt.user_id, the_attempt.team_nickname,
             the_attempt.provider, the_attempt.provider_repo_id, the_attempt.provider_full_name, p_provider_user_id
         )
         RETURNING * INTO the_repository;
     END IF;
 
-    -- 2. The submission, created if the owner has none. The participant
-    -- snapshot trigger fills in the team as it stands now.
-    SELECT s.id INTO submission_id
-    FROM data.assignment_submission s
-    WHERE s.assignment_slug = the_attempt.assignment_slug
-      AND s.user_id IS NOT DISTINCT FROM the_attempt.user_id
-      AND s.team_nickname IS NOT DISTINCT FROM the_attempt.team_nickname;
-    IF NOT FOUND THEN
-        INSERT INTO data.assignment_submission (assignment_slug, is_team, user_id, team_nickname, submitter_user_id)
-        VALUES (the_attempt.assignment_slug, the_attempt.is_team, the_attempt.user_id, the_attempt.team_nickname, the_attempt.initiated_by_user_id)
-        RETURNING id INTO submission_id;
-    END IF;
-
-    -- 3. The URL field. A value already there is the student's, or an earlier
-    -- finalize's: identical is a no-op, different is a conflict.
-    SELECT fs.body INTO existing_body
-    FROM data.assignment_field_submission fs
-    WHERE fs.assignment_submission_id = submission_id
-      AND fs.assignment_field_slug = the_field.slug;
-    IF FOUND THEN
-        IF existing_body <> p_repo_url THEN
-            RAISE EXCEPTION USING ERRCODE = 'P0001',
-                MESSAGE = 'submission_conflict',
-                DETAIL = format('field %s of submission %s already holds a different value', the_field.slug, submission_id);
-        END IF;
-    ELSE
-        INSERT INTO data.assignment_field_submission (
-            assignment_submission_id, assignment_field_slug, assignment_slug,
-            body, submitter_user_id, origin
-        )
-        VALUES (
-            submission_id, the_field.slug, the_assignment.slug,
-            p_repo_url, the_attempt.initiated_by_user_id, 'provisioning'
-        );
-    END IF;
-
-    -- 4. The attempt is done.
     UPDATE data.assignment_repository_provisioning p
     SET stage = 'finalized', error_code = NULL
     WHERE p.id = p_attempt_id;
@@ -797,14 +739,14 @@ BEGIN
     RETURN QUERY SELECT r.* FROM data.assignment_repository r WHERE r.id = the_repository.id;
 END;
 $$
-; ALTER FUNCTION api.finalize_repository_provisioning(int, text, bigint) OWNER TO yelukerest_migrator
-; REVOKE ALL ON FUNCTION api.finalize_repository_provisioning(int, text, bigint) FROM public
-; GRANT execute ON FUNCTION api.finalize_repository_provisioning(int, text, bigint) TO app
-; COMMENT ON FUNCTION api.finalize_repository_provisioning(int, text, bigint) IS 'Finish a granted provisioning attempt in one transaction: record the repository, create the owner''s submission if missing, and submit the repository URL through the assignment''s URL field with origin provisioning. authapp only. Idempotent once finalized. Refuses with invalid_stage_transition, repo_url_mismatch, url_pattern_mismatch, github_identity_mismatch, repository_conflict or submission_conflict.'
+; ALTER FUNCTION api.finalize_repository_provisioning(int, bigint) OWNER TO yelukerest_migrator
+; REVOKE ALL ON FUNCTION api.finalize_repository_provisioning(int, bigint) FROM public
+; GRANT execute ON FUNCTION api.finalize_repository_provisioning(int, bigint) TO app
+; COMMENT ON FUNCTION api.finalize_repository_provisioning(int, bigint) IS 'Finish a granted provisioning attempt: record the repository for its owner and template, with the assignment the template serves, and mark the attempt finalized. Writes no submission. authapp only. Idempotent once finalized. Refuses with invalid_stage_transition, github_identity_mismatch or repository_conflict.'
 ;
 -- Readiness, for the poll that waits for the template contents to land
 -- (#396). ready_at is set once and never moved.
-CREATE FUNCTION api.touch_repository_provisioning_readiness(p_attempt_id int, p_ready boolean) RETURNS SETOF api.assignment_repository_provisionings SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
+CREATE FUNCTION api.touch_repository_provisioning_readiness(p_attempt_id int, p_ready boolean) RETURNS SETOF api.repository_provisionings SECURITY DEFINER LANGUAGE plpgsql SET search_path TO pg_catalog, data, request, pg_temp AS $$
 DECLARE
     attempt_stage text;
 BEGIN
@@ -988,10 +930,11 @@ $$
 -- ---------------------------------------------------------------------------
 -- Compatibility
 -- ---------------------------------------------------------------------------
--- Shape 8: api.assignment_repository_provisionings, and columns appended to
--- api.assignments, api.my_assignments and api.users. admin_api_version 15:
--- the six RPCs above. Set membership for the shape, a floor for the RPCs --
--- see docs/platform-compatibility.md.
+-- Shape 8: api.repository_templates, api.repository_provisionings and
+-- api.my_repositories; template_slug appended to api.assignment_repositories
+-- (and assignment_slug nullable there); the GitHub columns appended to
+-- api.users. admin_api_version 15: the six RPCs above. Set membership for
+-- the shape, a floor for the RPCs -- see docs/platform-compatibility.md.
 CREATE OR REPLACE VIEW api.platform_version AS
     SELECT
         'yelukerest'::text AS platform,
@@ -1001,5 +944,5 @@ CREATE OR REPLACE VIEW api.platform_version AS
     OWNER TO api
 ;
 -- PostgREST caches the schema; without this it keeps serving without the new
--- view, columns and RPCs.
+-- views, columns and RPCs.
 NOTIFY pgrst, 'reload schema'

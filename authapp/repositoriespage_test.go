@@ -115,10 +115,29 @@ func TestRepositoriesPageFiltersTemplatesByTeam(t *testing.T) {
 	page := s.page("carol", "")
 	page.expectContains(t, `data-slug="hw1"`)
 	page.expectLacks(t, `data-slug="proj"`)
-	// prof sees the templates and no buttons.
-	prof := s.page("prof", "")
-	prof.expectContains(t, "Only students create repositories here.", `data-slug="hw1"`)
-	prof.expectLacks(t, `<form class="create"`)
+}
+
+// Staff get one line. Faculty read the attempt table under a policy that
+// shows every row, so nothing of it may be rendered as theirs: with a
+// student's finalized attempt and repository present, the faculty page
+// shows no template, attempt, repository or join control, and reads none.
+func TestRepositoriesPageIsForStudents(t *testing.T) {
+	s := newProvisioningStack(t)
+	s.handler.github.join = &githubJoinApp{clientID: "x", clientSecret: "y"}
+	now := s.clock.Now()
+	s.db.seedAttempt(provisioningAttempt{TemplateSlug: "hw1", UserID: 1, InitiatedByUserID: 1, TemplateFullName: "course/hw1-starter", DestinationName: "hw1-alice", Stage: "finalized", ProviderRepoID: 5, ProviderFullName: "course/hw1-alice", ReadyAt: &now})
+	s.db.seedRepository(fakeRepositoryRow{TemplateSlug: "hw1", UserID: 1, ProviderRepoID: 5, ProviderFullName: "course/hw1-alice"})
+	s.db.users[6] = &provisioningUser{ID: 6, NetID: "ta", Role: "ta"}
+	for _, netID := range []string{"prof", "ta"} {
+		page := s.page(netID, "")
+		page.expectContains(t, "This page is for students", "Signed in as "+netID)
+		page.expectLacks(t, `data-slug=`, "hw1-alice", "Homework 1 starter", `<form`, "Connect your GitHub account", `<script`, `id="account"`)
+	}
+	for _, view := range []string{"repository_templates", "repository_provisionings", "my_repositories", "users"} {
+		if got := s.db.viewReads[view]; got != 0 {
+			t.Fatalf("the staff page read %s (%d)", view, got)
+		}
+	}
 }
 
 func TestRepositoriesPageShowsEachRowState(t *testing.T) {

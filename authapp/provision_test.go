@@ -203,8 +203,11 @@ func (f *fakePostgREST) serveRPC(w http.ResponseWriter, r *http.Request) {
 	case "set_user_github_identity":
 		user := f.users[argInt("p_user_id")]
 		id := int64(argInt("p_github_user_id"))
+		login := argString("p_github_login")
+		// Taken by the account id, or by the login under the unique index
+		// on lower(github_login), which the RPC reports the same way.
 		for _, other := range f.users {
-			if other.ID != user.ID && other.GitHubUserID == id {
+			if other.ID != user.ID && (other.GitHubUserID == id || strings.EqualFold(other.GitHubLogin, login)) {
 				f.raise(w, "github_identity_taken")
 				return
 			}
@@ -226,7 +229,7 @@ func (f *fakePostgREST) serveRPC(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		user.GitHubUserID = id
-		user.GitHubLogin = argString("p_github_login")
+		user.GitHubLogin = login
 		verified, _ := args["p_verified"].(bool)
 		f.verified[user.ID] = verified
 		if verified {
@@ -322,6 +325,11 @@ func (f *fakePostgREST) claim(w http.ResponseWriter, slug string, userID int) {
 	suffix := ownerTeam
 	if suffix == "" {
 		suffix = user.GitHubLogin
+	}
+	// GitHub caps a repository name at 100 characters; the RPC names it.
+	if len(slug+"-"+suffix) > 100 {
+		f.raise(w, "destination_name_too_long")
+		return
 	}
 	now := f.clock.Now()
 	attempt = &provisioningAttempt{
@@ -511,8 +519,8 @@ func (f *fakePostgREST) serveView(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, rows)
 	case "repository_templates":
-		if user == nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "views are read as a user"})
+		if !viewReader(user) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "views are read as a student, ta or faculty"})
 			return
 		}
 		slugs := make([]string, 0, len(f.templates))
@@ -533,11 +541,13 @@ func (f *fakePostgREST) serveView(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, rows)
 	case "repository_provisionings", "my_repositories":
-		if user == nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "views are read as the student"})
+		if !viewReader(user) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"message": "views are read as a student, ta or faculty"})
 			return
 		}
 		slug, filtered := eq("template_slug")
+		// my_repositories filters to the caller whatever their role; the
+		// attempt policy shows faculty every row.
 		visible := func(isTeam bool, userID int, team string) bool {
 			if isTeam {
 				return user.TeamNickname != "" && user.TeamNickname == team
@@ -547,7 +557,7 @@ func (f *fakePostgREST) serveView(w http.ResponseWriter, r *http.Request) {
 		if view == "repository_provisionings" {
 			rows := []*provisioningAttempt{}
 			for _, a := range f.attempts {
-				if (!filtered || a.TemplateSlug == slug) && visible(a.IsTeam, a.UserID, a.TeamNickname) {
+				if (!filtered || a.TemplateSlug == slug) && (user.Role == "faculty" || visible(a.IsTeam, a.UserID, a.TeamNickname)) {
 					rows = append(rows, a)
 				}
 			}
@@ -565,6 +575,12 @@ func (f *fakePostgREST) serveView(w http.ResponseWriter, r *http.Request) {
 		f.t.Errorf("unexpected view read %s", view)
 		writeJSON(w, http.StatusNotFound, map[string]string{"message": "no such view"})
 	}
+}
+
+// viewReader is the grant on the repository views: student, ta and faculty,
+// never the service.
+func viewReader(user *provisioningUser) bool {
+	return user != nil && (user.Role == "student" || user.Role == "ta" || user.Role == "faculty")
 }
 
 func (f *fakePostgREST) attempt(t *testing.T, slug string, userID int, team string) provisioningAttempt {
@@ -805,6 +821,19 @@ func (g *fakeGitHub) count(name string) int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.calls[name]
+}
+
+// total is every request the fake saw, whatever the endpoint.
+func (g *fakeGitHub) total() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	n := 0
+	for name, c := range g.calls {
+		if !strings.HasPrefix(name, "collaborator:") {
+			n += c
+		}
+	}
+	return n
 }
 
 func (g *fakeGitHub) addRepo(repo fakeGitHubRepo) *fakeGitHubRepo {
@@ -1743,10 +1772,15 @@ func TestProvisioningEligibilityRefusals(t *testing.T) {
 	s.post("carol", "proj").expectError(t, http.StatusForbidden, "no_team", false)
 	s.db.assignments["hw1"] = fakeAssignment{closed: true}
 	s.post("alice", "hw1").expectError(t, http.StatusForbidden, "assignment_closed", false)
+	// A legal slug plus a legal team nickname can pass GitHub's 100.
+	long := strings.Repeat("a", 60)
+	s.db.templates[long] = fakeTemplate{label: "Long", isTeam: true, template: "course/long-starter"}
+	s.db.users[1].TeamNickname = strings.Repeat("t", 45)
+	s.post("alice", long).expectError(t, http.StatusConflict, "destination_name_too_long", false)
 	if got := s.github.count("generate"); got != 0 {
 		t.Fatalf("generate calls = %d, want 0", got)
 	}
-	if s.db.rpcCalls["claim_repository_provisioning"] != 5 {
+	if s.db.rpcCalls["claim_repository_provisioning"] != 6 {
 		t.Fatalf("a malformed slug reached the claim RPC (%d claims)", s.db.rpcCalls["claim_repository_provisioning"])
 	}
 	// Other methods are refused with an Allow header.
@@ -1795,9 +1829,16 @@ func TestProvisioningFormPostRedirectsToThePage(t *testing.T) {
 	expectRedirect(t, post("bob", "hw1", nil), repositoriesPagePath+"?result=needs_org_join&template=hw1")
 	expectRedirect(t, post("alice", "nope", nil), repositoriesPagePath+"?result=template_not_found&template=nope")
 	expectRedirect(t, post("", "hw1", nil), githubJoinLoginPath+"?next="+url.QueryEscape(repositoriesPagePath))
-	// The same-origin check still applies to a form post.
-	if cross := post("alice", "hw1", map[string]string{"Sec-Fetch-Site": "cross-site"}); cross.StatusCode != http.StatusSeeOther || cross.Header.Get("Location") != repositoriesPagePath+"?result=cross_site_request&template=hw1" {
+	// The same-origin check still applies to a form post, and a refused
+	// one reaches neither the database nor GitHub.
+	s.db.users[5] = &provisioningUser{ID: 5, NetID: "dave", Role: "student", GitHubLogin: "dave"}
+	s.db.templates["hw9"] = fakeTemplate{label: "Homework 9 starter", template: "course/hw9-starter"}
+	claims, githubCalls := s.db.rpcCalls["claim_repository_provisioning"], s.github.total()
+	if cross := post("dave", "hw9", map[string]string{"Sec-Fetch-Site": "cross-site"}); cross.StatusCode != http.StatusSeeOther || cross.Header.Get("Location") != repositoriesPagePath+"?result=cross_site_request&template=hw9" {
 		t.Fatalf("cross-site form post = %d %q", cross.StatusCode, cross.Header.Get("Location"))
+	}
+	if s.db.rpcCalls["claim_repository_provisioning"] != claims || s.github.total() != githubCalls {
+		t.Fatalf("a cross-site form post claimed (%d -> %d) or called GitHub (%d -> %d)", claims, s.db.rpcCalls["claim_repository_provisioning"], githubCalls, s.github.total())
 	}
 	// A fetch that forgot Accept is still a fetch.
 	if asFetch := post("alice", "hw1", map[string]string{"Sec-Fetch-Mode": "cors"}); asFetch.StatusCode/100 != 2 || !strings.HasPrefix(asFetch.Header.Get("Content-Type"), "application/json") {

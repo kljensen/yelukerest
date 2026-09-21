@@ -2,70 +2,93 @@
 --
 -- What is lost. Dropping data.assignment_repository_provisioning drops every
 -- attempt: which students clicked, how far each attempt got, and the error
--- codes of the ones that failed. Dropping the three template columns loses
--- every assignment's repository configuration, and dropping the three GitHub
--- columns loses every linked or imported GitHub identity, verified or not.
--- None of that is reconstructible from elsewhere in this database. What is
--- NOT lost: data.assignment_repository rows, assignment submissions and the
--- field submissions finalize wrote, with their origin of 'provisioning'.
--- Those are ordinary course records and stay. Revert after real provisioning
--- has run only with a dump of the three tables in hand.
+-- codes of the ones that failed. Dropping data.repository_template loses
+-- every template faculty configured, including the ones deploy synthesized
+-- for pre-template repositories, and dropping the three GitHub columns
+-- loses every linked or imported GitHub identity, verified or not. None of
+-- that is reconstructible from elsewhere in this database. What is NOT
+-- lost: data.assignment_repository rows, which are ordinary course records
+-- and stay, keyed by assignment again as 01a011e3 defined them.
+--
+-- A repository whose template served no assignment has no assignment_slug
+-- and cannot be represented in the old shape. Rather than delete a course
+-- record, this revert refuses while any such row exists; attach or delete
+-- them first, deliberately. Revert after real provisioning has run only
+-- with a dump of the attempt and template tables in hand.
 --
 -- The api views cannot lose a column through CREATE OR REPLACE, and
--- api.assignments and api.users are named inside row policies of other
--- tables and inside api.my_assignments, so those dependents are dropped and
--- recreated exactly as the bootstrap and 01a08afb defined them.
-DROP FUNCTION IF EXISTS api.import_github_logins(text, text)
+-- api.users is named inside row policies of other tables and inside
+-- api.my_assignments, so those dependents are dropped and recreated exactly
+-- as the bootstrap and 01a08afb defined them.
+DO $$
+DECLARE
+    unattached int;
+BEGIN
+    SELECT count(*) INTO unattached FROM data.assignment_repository WHERE assignment_slug IS NULL;
+    IF unattached > 0 THEN
+        RAISE EXCEPTION '% assignment_repository rows have no assignment_slug and cannot be kept in the pre-template shape; attach or delete them before reverting', unattached;
+    END IF;
+END $$
+; DROP FUNCTION IF EXISTS api.import_github_logins(text, text)
 ; DROP FUNCTION IF EXISTS api.set_user_github_identity(int, bigint, text, boolean)
 ; DROP FUNCTION IF EXISTS api.touch_repository_provisioning_readiness(int, boolean)
-; DROP FUNCTION IF EXISTS api.finalize_repository_provisioning(int, text, bigint)
+; DROP FUNCTION IF EXISTS api.finalize_repository_provisioning(int, bigint)
 ; DROP FUNCTION IF EXISTS api.record_repository_provisioning(int, text, bigint, text, text)
 ; DROP FUNCTION IF EXISTS api.claim_repository_provisioning(text, int)
-; DROP VIEW IF EXISTS api.assignment_repository_provisionings
+; DROP VIEW IF EXISTS api.repository_provisionings
 ; DROP TABLE IF EXISTS data.assignment_repository_provisioning
+; DROP VIEW IF EXISTS api.my_repositories
+; DROP VIEW IF EXISTS api.assignment_repositories
+;
+-- The template policy names assignment_repository.template_slug, so it goes
+-- before that column; the column's foreign key goes with the column, and
+-- the template table after it.
+DROP POLICY IF EXISTS repository_template_access_policy ON data.repository_template
+; DROP INDEX data.assignment_repository_unique_user
+; DROP INDEX data.assignment_repository_unique_team
+; DROP INDEX data.idx_assignment_repository_template_fk
+; ALTER TABLE data.assignment_repository
+    DROP template_slug,
+    ALTER COLUMN assignment_slug SET NOT NULL
+; CREATE UNIQUE INDEX assignment_repository_unique_user
+ON data.assignment_repository USING btree (user_id, assignment_slug)
+WHERE team_nickname IS NULL
+; CREATE UNIQUE INDEX assignment_repository_unique_team
+ON data.assignment_repository USING btree (team_nickname, assignment_slug)
+WHERE user_id IS NULL
+; DROP VIEW IF EXISTS api.repository_templates
+; DROP TABLE IF EXISTS data.repository_template
 ; DROP POLICY IF EXISTS assignment_submission_access_policy ON data.assignment_submission
 ; DROP POLICY IF EXISTS assignment_grade_exception_access_policy ON data.assignment_grade_exception
 ; DROP POLICY IF EXISTS team_access_policy ON data.team
 ; DROP POLICY IF EXISTS user_secret_access_policy ON data.user_secret
 ; DROP VIEW IF EXISTS api.my_assignments
-; DROP VIEW IF EXISTS api.assignments
 ; DROP VIEW IF EXISTS api.users
-; DROP TRIGGER IF EXISTS tg_assignment_field_designated_url ON data.assignment_field
-; DROP FUNCTION IF EXISTS data.keep_designated_repository_url_field()
-; DROP TRIGGER IF EXISTS tg_assignment_repository_url_field ON data.assignment
-; DROP FUNCTION IF EXISTS data.check_assignment_repository_url_field()
-; ALTER TABLE data.assignment
-    DROP repository_template_provider,
-    DROP repository_template_full_name,
-    DROP repository_url_field_slug
 ; ALTER TABLE data."user"
     DROP github_user_id,
     DROP github_login,
     DROP github_verified_at
 ;
--- api.assignments as 01a05f88 left it.
-CREATE VIEW api.assignments WITH (security_barrier=true) AS
-    SELECT
-        slug, points_possible, is_draft, is_markdown, is_team, title, body,
-        closed_at, created_at, updated_at, is_draft = false
-        AND current_timestamp < closed_at AS is_open
-    FROM data.assignment
-; ALTER VIEW api.assignments
+-- api.assignment_repositories as 01a011e3 defined it.
+CREATE VIEW api.assignment_repositories AS
+    SELECT *
+    FROM data.assignment_repository
+; ALTER VIEW api.assignment_repositories
     OWNER TO api
-; GRANT select ON api.assignments TO student, ta
-; GRANT select, insert, update, delete ON api.assignments TO faculty
-; COMMENT ON VIEW api.assignments IS 'Assignments that students can view or submit, with draft rows reserved for faculty'
-; COMMENT ON COLUMN api.assignments.slug IS 'Short identifier for the assignment'
-; COMMENT ON COLUMN api.assignments.points_possible IS 'Maximum score for the assignment'
-; COMMENT ON COLUMN api.assignments.is_draft IS 'Whether the assignment is still hidden from students and TAs'
-; COMMENT ON COLUMN api.assignments.is_markdown IS 'Whether the assignment body should be rendered as Markdown'
-; COMMENT ON COLUMN api.assignments.is_team IS 'Whether submissions are made by teams instead of individuals'
-; COMMENT ON COLUMN api.assignments.title IS 'Human-readable assignment title'
-; COMMENT ON COLUMN api.assignments.body IS 'Assignment instructions or content'
-; COMMENT ON COLUMN api.assignments.closed_at IS 'Deadline after which normal submissions are closed'
-; COMMENT ON COLUMN api.assignments.created_at IS 'When this assignment row was created'
-; COMMENT ON COLUMN api.assignments.updated_at IS 'When this assignment row was last updated'
-; COMMENT ON COLUMN api.assignments.is_open IS 'Whether the assignment is published and still open for normal submission'
+; GRANT select ON api.assignment_repositories TO student, ta
+; GRANT select, insert, update, delete ON api.assignment_repositories TO faculty
+; COMMENT ON VIEW api.assignment_repositories IS 'Forge repositories provisioned for a student or team for an assignment'
+; COMMENT ON COLUMN api.assignment_repositories.id IS 'Surrogate key for this repository record'
+; COMMENT ON COLUMN api.assignment_repositories.assignment_slug IS 'The assignment this repository was provisioned for'
+; COMMENT ON COLUMN api.assignment_repositories.is_team IS 'True when the repository belongs to a team, matching the assignment kind'
+; COMMENT ON COLUMN api.assignment_repositories.user_id IS 'Owning student, set when the assignment is individual and NULL otherwise'
+; COMMENT ON COLUMN api.assignment_repositories.team_nickname IS 'Owning team, set when the assignment is a team assignment and NULL otherwise'
+; COMMENT ON COLUMN api.assignment_repositories.provider IS 'Forge hosting the repository, such as github'
+; COMMENT ON COLUMN api.assignment_repositories.provider_repo_id IS 'Forge repository id. Identity: it survives renames and transfers, and everything keys on it rather than on the name'
+; COMMENT ON COLUMN api.assignment_repositories.provider_full_name IS 'Forge repository name such as org/repo. Display only, and mutable: students rename accounts and repositories get renamed'
+; COMMENT ON COLUMN api.assignment_repositories.provider_user_id IS 'Forge account id the repository was provisioned for. Identity rather than a handle, and NULL until the account is known'
+; COMMENT ON COLUMN api.assignment_repositories.created_at IS 'When this repository record was created'
+; COMMENT ON COLUMN api.assignment_repositories.updated_at IS 'When this repository record was last changed'
 ;
 -- api.users as the bootstrap defined it, with faculty's table-wide write
 -- privileges back in place of the column list.
@@ -174,8 +197,8 @@ CREATE VIEW api.my_assignments WITH (security_barrier=true) AS
 ; COMMENT ON COLUMN api.my_assignments.extension_fractional_credit IS 'fractional_credit of the calling user''s grade exception, between 0 and 1. NULL when they have none. Never applied to points here'
 ; COMMENT ON COLUMN api.my_assignments.submissions IS 'The calling user''s submissions on this assignment, newest first, [] when none: [{id, team_nickname, created_at, updated_at, fields_submitted, fields_total, grade: null | {points, description, created_at}}]. fields_submitted counts fields with a non-empty body. A student who changed teams can have more than one'
 ;
--- The four row policies that name api.users or api.assignments, as the
--- bootstrap defined them.
+-- The four row policies that name api.users, as the bootstrap defined
+-- them.
 CREATE POLICY assignment_submission_access_policy ON data.assignment_submission TO api USING ((request.user_role() = ANY('{student,ta}'::text[])
 AND ((NOT is_team
 AND request.user_id() = user_id) OR (is_team

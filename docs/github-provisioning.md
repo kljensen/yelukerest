@@ -191,7 +191,10 @@ and answer 404 like any unknown path. Every response carries
 
 The page. Server-rendered from the database alone: rendering it never
 calls GitHub and never claims an attempt. A signed-out visitor is sent
-through `/auth/login?next=/auth/repositories` and back. Three sections:
+through `/auth/login?next=/auth/repositories` and back. It is a student's
+page: staff get one line saying so, and nothing is read for them (the
+attempt view shows faculty every row, which is exactly why none of it may
+be rendered as theirs). For a student, three sections:
 
 1. **GitHub account.** *Connected as `<login>`*, with a *verified* badge
    once the join flow has confirmed the account. Otherwise a **Connect
@@ -215,8 +218,10 @@ through `/auth/login?next=/auth/repositories` and back. Three sections:
 One external script, `/auth/repositories.js`, submits Create by `fetch`
 and re-renders the row from the JSON reply (button disabled while in
 flight), then polls the status route every three seconds while the reply
-is `copying`, honouring a longer `Retry-After`, for at most two minutes,
-after which it shows a **Check again** button. It never posts on load: the
+is `copying`, honouring a longer `Retry-After`, until two minutes after
+the click; a wait that would end past that deadline is not scheduled, and
+a **Check again** button is shown instead (`authapp/static/repositories.js`,
+whose delay arithmetic `bun test authapp/static` covers). It never posts on load: the
 page is a GET anyone can link to, so the POST is made only when the
 student presses the button. Without the script the form posts natively and
 the create route sends the browser back to the page with the outcome in

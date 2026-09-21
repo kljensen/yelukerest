@@ -420,6 +420,14 @@ func (h *githubJoinHandler) serveStart(w http.ResponseWriter, r *http.Request) {
 		writeJoinError(w, http.StatusForbidden, "not_enrolled")
 		return
 	}
+	// Students only: the join links an identity and adds the account to
+	// the students team, neither of which is for staff. The callback
+	// checks again, because a role can change while the authorize screen
+	// is open.
+	if user.Role != "student" {
+		writeJoinError(w, http.StatusForbidden, "not_a_student")
+		return
+	}
 
 	state, err := newGitHubJoinSecret()
 	if err != nil {
@@ -605,6 +613,22 @@ func (h *githubJoinHandler) serveCallback(w http.ResponseWriter, r *http.Request
 		return
 	}
 	next := pending.Next
+
+	// The role is re-read now, not trusted from start: a student whose
+	// role changed while they were on GitHub's screen is refused before
+	// the code is redeemed, so nothing is linked and no membership call
+	// is made for them.
+	user, found, err := selectUserByNetID(ctx, h.db, netID)
+	if err != nil {
+		log.Printf("github join: looking up %s at the callback: %v", netID, err)
+		redirectToNext(w, r, next, "error:"+joinErrPlatformUnavailable)
+		return
+	}
+	if !found || user.ID != pending.UserID || user.Role != "student" {
+		log.Printf("github join: refusing the callback for %s: not a student, or not the user the state was minted for", netID)
+		http.Error(w, "The GitHub join is for students of this course.", http.StatusForbidden)
+		return
+	}
 
 	query := r.URL.Query()
 	if reported := query.Get("error"); reported != "" {

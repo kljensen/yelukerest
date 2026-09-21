@@ -1037,6 +1037,40 @@ func TestJoinLinksIdentityForExistingMembers(t *testing.T) {
 // The callback returns to whatever next the join was started with, with
 // the marker in the URL's query for a page and in the fragment's query for
 // a client route, appended to a query already there.
+// The join is for students. Staff are refused at start; a student whose
+// role changes while GitHub's screen is open is refused at the callback,
+// before the code is redeemed, so nothing is linked or joined for them.
+func TestJoinIsForStudents(t *testing.T) {
+	s := newJoinStack(t)
+	s.db.users[4] = &provisioningUser{ID: 4, NetID: "prof", Role: "faculty"}
+	s.db.users[6] = &provisioningUser{ID: 6, NetID: "ta", Role: "ta"}
+	for _, netID := range []string{"prof", "ta"} {
+		reply, _ := s.start(netID, joinTestNext)
+		reply.expectStatus(t, http.StatusForbidden)
+		if !strings.Contains(reply.body, "not_a_student") {
+			t.Fatalf("%s start = %s", netID, reply.body)
+		}
+		if s.store.everHeld(sessionKeyGitHubJoin) {
+			t.Fatalf("a join state was minted for %s", netID)
+		}
+	}
+
+	_, authorization := s.start("carol", joinTestNext)
+	s.db.users[3].Role = "ta"
+	s.callback("carol", url.Values{"state": {authorization.Query().Get("state")}, "code": {joinTestCode}}).expectStatus(t, http.StatusForbidden)
+	if got := len(s.github.recorded()); got != 0 {
+		t.Fatalf("GitHub was called %d times for a caller who is no longer a student: %v", got, s.github.paths())
+	}
+	if s.db.users[3].GitHubUserID != 0 {
+		t.Fatal("an identity was linked")
+	}
+	// The state was consumed: the same callback is not honoured once the
+	// role is back.
+	s.db.users[3].Role = "student"
+	s.callback("carol", url.Values{"state": {authorization.Query().Get("state")}, "code": {joinTestCode}}).expectStatus(t, http.StatusBadRequest)
+	s.assertNothingLeaked()
+}
+
 func TestJoinCallbackReturnsToNext(t *testing.T) {
 	s := newJoinStack(t)
 	s.startAndCallback("carol", "/auth/repositories", nil).expectRedirect(t, "/auth/repositories", "ok")
