@@ -215,13 +215,18 @@ former teammate sees nothing.
 ### `GET /auth/assignments/{slug}/repository/create`
 
 A plain link for assignment text, in the way a GitHub Classroom invitation
-link is one: a small page on this origin whose script sends the POST above
-with the browser's session and then goes to the assignment page,
+link is one: a small page on this origin that explains what will happen and
+shows a *Create repository* button. The button sends the POST above with the
+browser's session and then goes to the assignment page,
 `/#/assignments/{slug}`, whatever the answer was (`ready`, `copying`,
 `needs_github_link`, `needs_org_join`, or an error); the assignment page
-shows the state. It records the repository URL in the submission
-automatically, as the POST always does. A signed-out visitor is sent
-through `/auth/login?next=…` and back. It is not a second way to create a
+shows the state. Nothing happens on the click of the link itself: the page
+is a GET anyone can link to, so the POST is made only when the student
+presses the button (the script does not fire it on load, and without the
+script the form posts to the same route, which that route's origin check
+protects). It records the repository URL in the submission automatically,
+as the POST always does. A signed-out visitor is sent through
+`/auth/login?next=…` and back. It is not a second way to create a
 repository -- same POST, same same-origin check, same limits and rules --
 and it is not the primary UX; the assignment page's button is. Use it
 where a link is the only thing available, such as the assignment's text.
