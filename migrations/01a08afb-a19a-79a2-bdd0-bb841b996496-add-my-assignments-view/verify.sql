@@ -1,9 +1,11 @@
 -- Verify add-my-assignments-view. READ ONLY and always rolled back.
 --
 -- Structural: the view exists, is owned by api, keeps its security barrier,
--- exposes exactly the contracted columns in order, is commented throughout,
--- and grants SELECT to student, ta and faculty. Behaviour is asserted in
--- tests/db/yeluke-my-assignments.sql, where a failure names the case.
+-- opens with the contracted columns in order (later migrations append; see
+-- docs/platform-compatibility.md on why a verify must not pin the shape),
+-- is commented throughout, and grants SELECT to student, ta and faculty.
+-- Behaviour is asserted in tests/db/yeluke-my-assignments.sql, where a
+-- failure names the case.
 DO $$
 DECLARE
     n int;
@@ -26,7 +28,7 @@ BEGIN
     WHERE a.attrelid = 'api.my_assignments'::regclass
       AND a.attnum > 0
       AND NOT a.attisdropped;
-    IF cols IS DISTINCT FROM ARRAY[
+    IF cols[1:17] IS DISTINCT FROM ARRAY[
         'slug', 'title', 'is_team', 'is_draft', 'is_markdown', 'points_possible',
         'is_open', 'closed_at', 'created_at', 'updated_at', 'effective_closed_at', 'submission_window_open',
         'can_submit', 'can_submit_reason', 'extension_closed_at',

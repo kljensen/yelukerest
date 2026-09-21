@@ -120,3 +120,26 @@ migration can make about the database in front of it.
   because the two uniqueness rules are two different partial indexes and a
   single entry point would pick one of them from which field happened to be
   null. See [Admin API](admin-api.md#secret-distribution).
+- `schema_compatibility_version` **8** added three views for self-serve
+  repositories: `api.repository_templates` (what a student may create a
+  repository from; faculty CRUD, students read the active ones),
+  `api.repository_provisionings` (the attempt, read-only) and
+  `api.my_repositories` (the caller's own and current team's repositories
+  with the template's label and the browser URL, read-only). It appended
+  `template_slug` to `api.assignment_repositories` and made its
+  `assignment_slug` nullable -- a repository belongs to a template, and the
+  assignment is the template's, copied onto the row -- and appended
+  `github_user_id`, `github_login` and `github_verified_at` to `api.users`.
+  A client that reads none of the new views and never inserts into
+  `api.assignment_repositories` extends its set to `{..., 8}`; one that
+  writes mapping rows must now name a `template_slug` and declares `{8}`, as
+  does one that configures templates. The GitHub columns on `api.users` are
+  read-only through the view and written only by the RPCs below.
+- `admin_api_version` **15** added the provisioning RPCs of issue #394:
+  `api.claim_repository_provisioning`, `api.record_repository_provisioning`,
+  `api.finalize_repository_provisioning`,
+  `api.touch_repository_provisioning_readiness` and
+  `api.set_user_github_identity`, callable only by the authapp service
+  credential, and `api.import_github_logins`, the faculty bootstrap that copies
+  logins out of a submitted field. See
+  [GitHub provisioning](github-provisioning.md).

@@ -9,6 +9,7 @@ import Assignments.Model
         , AssignmentGradeException
         , AssignmentSlug
         , AssignmentSubmission
+        , MyRepository
         )
 import Auth.Model exposing (CurrentUser)
 import Browser exposing (UrlRequest(..))
@@ -89,5 +90,6 @@ type Msg
     | OnChangeEngagement String Int String
     | OnSubmitEngagementResponse String Int (WebData Engagement)
     | OnFetchAssignmentGradeExceptions (WebData (List AssignmentGradeException))
+    | OnFetchMyRepositories (WebData (List MyRepository))
     | ToggleShowUserSecret String
     | OnChangeEngagementUserQuery String

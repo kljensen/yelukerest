@@ -91,6 +91,32 @@ func main() {
 		AuthappJWT:    os.Getenv("AUTHAPP_JWT"),
 	}
 
+	// GitHub provisioning (ADR 0006, issue #393). Optional: a deployment
+	// without GITHUB_PROVISIONER_ORG and a credential runs without it and says so once.
+	// A half-configured deployment is refused here, at startup, because the
+	// alternative is discovering it when a student clicks.
+	provisioner, provisioningDisabledReason, err := githubProvisionerFromEnv(os.Getenv, os.ReadFile)
+	if err != nil {
+		log.Panicf("GitHub provisioning is misconfigured: %v", err)
+	}
+	if provisioner == nil {
+		log.Println(provisioningDisabledReason)
+	} else {
+		log.Printf("GitHub provisioning enabled for organization %q", provisioner.org)
+	}
+	// The student-authorized join App (issue #399). Optional on top of
+	// provisioning, refused half-configured for the same reason.
+	joinApp, joinDisabledReason, err := githubJoinAppFromEnv(os.Getenv, provisioner, casConfig.IsDevelopment)
+	if err != nil {
+		log.Panicf("GitHub join is misconfigured: %v", err)
+	}
+	if joinApp != nil {
+		provisioner.join = joinApp
+		log.Println("GitHub join enabled: students can join the organization from the assignment page")
+	} else if joinDisabledReason != "" {
+		log.Println(joinDisabledReason)
+	}
+
 	// Set up the routes
 	mux := http.NewServeMux()
 
@@ -129,6 +155,12 @@ func main() {
 	mux.Handle("/auth/jwt", getJWT)
 	mux.Handle("/auth/token", exchangeAPIToken)
 	mux.Handle("/auth/api.json", getOpenAPI)
+
+	// Self-serve assignment repositories (issues #395, #396). Registered
+	// only when provisioning is configured; otherwise the routes do not
+	// exist and the mux answers 404.
+	registerProvisioningRoutes(mux, provisioner, fetchJWTConfig, sessionManager)
+	registerGitHubJoinRoutes(mux, provisioner, fetchJWTConfig, sessionManager)
 
 	// Proxy Hydra's Dynamic Client Registration endpoints, cleaning
 	// null/empty optional fields out of responses that break strict

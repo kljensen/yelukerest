@@ -123,6 +123,17 @@ services:
       db:
         condition: service_healthy
 
+  # The GitHub provisioner App's private key (docs/github-provisioning.md)
+  # reaches authapp as a read-only file, never as an environment variable.
+  # GITHUB_PROVISIONER_PRIVATE_KEY_HOST_FILE names it on the host; unset, an
+  # empty placeholder is mounted so a deployment without provisioning needs
+  # nothing here. In the container it is always
+  # /run/secrets/github-provisioner.pem, which is what
+  # GITHUB_PROVISIONER_PRIVATE_KEY_FILE in .env should say.
+  authapp:
+    volumes:
+      - '${GITHUB_PROVISIONER_PRIVATE_KEY_HOST_FILE:-/dev/null}:/run/secrets/github-provisioner.pem:ro'
+
   # One-shot Hydra schema migration job (issue #270). Runs
   # `hydra migrate sql up` against the dedicated hydra database and
   # exits; the hydra service waits for it to complete successfully.

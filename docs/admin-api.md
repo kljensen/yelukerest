@@ -721,9 +721,12 @@ support secret distribution.
 ## Assignment Repositories
 
 `api.assignment_repositories` records which forge repository belongs to which
-student or team for which assignment. GitHub Classroom shuts down on
-2026-08-28, so course repos provision student repositories themselves and need
-an authoritative record of what they provisioned.
+student or team, from which template, and for which assignment if the template
+serves one. GitHub Classroom shuts down on 2026-08-28, so course repos
+provision student repositories themselves and need an authoritative record of
+what they provisioned. Since schema version `8` the platform provisions them
+too, from the student's own repositories page (see
+[GitHub provisioning](github-provisioning.md)); the rows land here either way.
 
 It is a plain CRUD view, not an RPC: faculty hold `select, insert, update,
 delete` on it and PostgREST's ordinary filtering is enough. That is why
@@ -733,8 +736,9 @@ delete` on it and PostgREST's ordinary filtering is enough. That is why
 
 | Column | Kind | Notes |
 | --- | --- | --- |
-| `assignment_slug` | key | The assignment. |
-| `is_team` | key | Must agree with `api.assignments.is_team`; a foreign key enforces it. |
+| `template_slug` | key | The row of `api.repository_templates` the repository was made from. Required since schema `8`; the migration synthesized an inactive template per assignment for older rows. |
+| `assignment_slug` | fact | The assignment the template serves, copied from the template by a trigger; an explicit value that disagrees with the template is refused. Null for a template tied to no assignment. |
+| `is_team` | key | Must agree with the template's `is_team` (and so with `api.assignments.is_team`); foreign keys enforce both. |
 | `user_id` / `team_nickname` | key | Exactly one, as on `api.assignment_submissions`. |
 | `provider` | key | The forge. Defaults to `github`; a second forge is a new value, not a new table. |
 | `provider_repo_id` | identity | The forge's numeric repository id. |
@@ -750,7 +754,7 @@ silent -- a name-based key reattaches to whatever holds the name next.
 Uniqueness is enforced two ways, and both matter to a provisioning run that has
 to be safe to retry:
 
-- one repository per student per assignment, and per team per assignment
+- one repository per student per template, and per team per template
 - one row per repository per forge, on `(provider, provider_repo_id)`
 
 A retry that re-creates a repository therefore fails loudly rather than
@@ -767,7 +771,13 @@ a repository is a grant on the forge, and a student moved off a team loses it
 there at the same moment.
 
 `api.platform_version.schema_compatibility_version` includes `5` for
-deployments that carry this view.
+deployments that carry this view, and `8` for ones where it carries
+`template_slug` and sits beside `api.repository_templates`,
+`api.repository_provisionings` and `api.my_repositories`. Those three are
+documented with the routes that use them in
+[GitHub provisioning](github-provisioning.md): templates are faculty CRUD
+(the exact `POST` body is under *Enablement order* there), the other two
+are read-only.
 
 ## Repository Snapshots
 
@@ -1029,6 +1039,7 @@ nothing is an error naming it, rather than a silently empty export.
 | Quiz import reversal | Supported by `api.revert_quiz_import` | Restores every before image an import's ledger recorded, refuses if a grade moved since unless forced, and is itself an audited import. Faculty only. |
 | Deadline extensions | Supported by `api.grant_assignment_extension` | Absolute deadlines, current-team resolution for team assignments, non-destructive. Assignments only; paper quizzes have no deadline a student can act against. |
 | Secret distribution | Supported by `api.upsert_user_secrets` / `api.upsert_team_secrets` | Partial-index upsert keyed on `netid`/`team_nickname` + `slug`, with dry-run. Returns counts only; no response or error ever carries a secret body. |
-| Repository mapping | Supported by `api.assignment_repositories` | Which forge repository belongs to which student or team for which assignment. Plain faculty CRUD, keyed on ids rather than names. Students read their own row only. |
+| Repository mapping | Supported by `api.assignment_repositories` | Which forge repository belongs to which student or team, from which template, and for which assignment. Plain faculty CRUD, keyed on ids rather than names. Students read their own row only. |
+| Repository templates | Supported by `api.repository_templates` | What a student may create a repository from on `/auth/repositories`; activating a row is the switch. Plain faculty CRUD; `api.repository_provisionings` and `api.my_repositories` are the read-only views beside it. |
 | Repository snapshots | Supported by `api.assignment_repository_snapshots` / `api.assignment_repository_snapshots_due` | Commit SHA, bundle URI, effective deadline, observed capture time. One row per repository per deadline. The queue polls for work that has become due, so an extension granted after a capture is picked up rather than missed, and a failed capture simply stays on the queue. |
 | Grade exception audit trail | Planned | `data.assignment_grade_exception` carries no actor, reason, or source columns, so an extension is not yet attributable the way an imported grade is. |

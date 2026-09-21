@@ -1,0 +1,26 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a0bb0d-6906-7a43-ba37-dc6bef112939"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a0b2a1-bc58-7b90-92cf-0b27118b0cfb"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+# The schema goes back exactly; the rows do not. revert.sql says what is lost
+# (every provisioning attempt, every repository template, every GitHub
+# identity) and what survives (repository rows, which are ordinary course
+# records), and refuses rather than deleting a repository whose template
+# served no assignment, since the old shape cannot hold it.
+reversibility = "reversible"
+
+[[allow]]
+lint = "lint.index_without_concurrently"
+reason = "The template and provisioning indexes are built on tables created a few statements earlier in this same transaction, with no rows and no concurrent writer. The indexes on data.\"user\" (the GitHub account id and login) and on data.assignment_repository (the per-template unique keys and the template foreign key) are on small tables that this deployment locks anyway for ALTER TABLE ... ADD COLUMN. CONCURRENTLY cannot run inside the transaction Zapadka owns."
+
+[[allow]]
+lint = "lint.constraint_scans_table"
+reason = "The new CHECK constraints on data.\"user\" are over columns this same statement adds, so every existing row holds NULL and satisfies them. The NOT NULL and foreign key on data.assignment_repository.template_slug are validated against rows the backfill a few statements earlier has just pointed at a template, so the scan cannot fail either. The tables hold one course's people and repositories, not millions of rows; ADD COLUMN takes the ACCESS EXCLUSIVE lock regardless, and NOT VALID followed by a later VALIDATE could not be separated from the transaction Zapadka owns."

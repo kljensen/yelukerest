@@ -9,6 +9,7 @@ module Assignments.Model exposing
     , AssignmentSlug
     , AssignmentSubmission
     , AssignmentSubmissionAction(..)
+    , MyRepository
     , NotSubmissibleReason(..)
     , PendingAssignmentFieldSubmissionRequests
     , PendingBeginAssignments
@@ -22,7 +23,10 @@ module Assignments.Model exposing
     , assignmentsDecoder
     , assignmentSubmissionAction
     , isSubmissible
+    , myRepositoriesDecoder
     , notSubmissibleMessage
+    , fieldAcceptsRepositoryUrl
+    , repositoryUrlForField
     , submissionBelongsToUser
     , valuesForSubmissionID
     )
@@ -33,6 +37,7 @@ import Dict exposing (Dict)
 import Json.Decode as Decode
 import Json.Decode.Extra
 import Json.Decode.Pipeline exposing (optional, required)
+import Regex
 import RemoteData exposing (WebData)
 import Time exposing (Posix)
 
@@ -216,6 +221,100 @@ assignmentFieldSubmissionDecoder =
         |> required "submitter_user_id" Decode.int
         |> required "created_at" Json.Decode.Extra.datetime
         |> required "updated_at" Json.Decode.Extra.datetime
+
+
+{-| A row of api.my\_repositories: a repository the student (or their team)
+created from a template, with the assignment the template served, if any,
+and the browser URL, which is NULL on a forge the view does not know.
+-}
+type alias MyRepository =
+    { template_slug : String
+    , label : String
+    , assignment_slug : Maybe String
+    , template_full_name : String
+    , repo_url : Maybe String
+    , is_team : Bool
+    , user_id : Maybe Int
+    , team_nickname : Maybe String
+    , provider_full_name : String
+    , created_at : Posix
+    }
+
+
+myRepositoryDecoder : Decode.Decoder MyRepository
+myRepositoryDecoder =
+    Decode.succeed MyRepository
+        |> required "template_slug" Decode.string
+        |> required "label" Decode.string
+        |> required "assignment_slug" (Decode.nullable Decode.string)
+        |> required "template_full_name" Decode.string
+        |> required "repo_url" (Decode.nullable Decode.string)
+        |> required "is_team" Decode.bool
+        |> required "user_id" (Decode.nullable Decode.int)
+        |> required "team_nickname" (Decode.nullable Decode.string)
+        |> required "provider_full_name" Decode.string
+        |> required "created_at" Json.Decode.Extra.datetime
+
+
+myRepositoriesDecoder : Decode.Decoder (List MyRepository)
+myRepositoriesDecoder =
+    Decode.list myRepositoryDecoder
+
+
+{-| Whether a repository URL belongs in this field. An assignment can have
+several URL fields (a repository, a Google Doc, a deployed app), and the
+hint must not land under the wrong one.
+
+The field's slug or label has to say "repo" or "repository" -- as a word,
+since "report" contains "repo" and a sprint-report field is not one. A
+pattern cannot stand in for that: patterns like `.*` or `https?://.*` accept
+a GitHub URL under any field. What a pattern can do is rule the URL out:
+when the field has one that compiles, the URL must match it, anchored as the
+browser anchors the pattern attribute on submit. One that does not compile
+is ignored.
+
+-}
+fieldAcceptsRepositoryUrl : AssignmentField -> String -> Bool
+fieldAcceptsRepositoryUrl field url =
+    let
+        patternAccepts =
+            if field.pattern == "" then
+                True
+
+            else
+                Regex.fromString ("^(?:" ++ field.pattern ++ ")$")
+                    |> Maybe.map (\regex -> Regex.contains regex url)
+                    |> Maybe.withDefault True
+
+        isRepoWord w =
+            w == "repo" || w == "repos" || String.startsWith "reposit" w
+
+        mentionsRepo s =
+            String.toLower s
+                |> String.map
+                    (\c ->
+                        if Char.isAlphaNum c then
+                            c
+
+                        else
+                            ' '
+                    )
+                |> String.words
+                |> List.any isRepoWord
+    in
+    (mentionsRepo field.slug || mentionsRepo field.label) && patternAccepts
+
+
+{-| The browser URL of the first repository created for this assignment that
+the field accepts, in the order the rows were fetched.
+-}
+repositoryUrlForField : AssignmentSlug -> AssignmentField -> List MyRepository -> Maybe String
+repositoryUrlForField assignmentSlug field repositories =
+    repositories
+        |> List.filter (\r -> r.assignment_slug == Just assignmentSlug)
+        |> List.filterMap .repo_url
+        |> List.filter (fieldAcceptsRepositoryUrl field)
+        |> List.head
 
 
 type NotSubmissibleReason

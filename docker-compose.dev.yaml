@@ -41,6 +41,13 @@ services:
       # FQDN may be unset, so pin the MCP resource URL explicitly (used
       # as the DCR audience allowlist, issue #272).
       - MCP_RESOURCE_URL=${MCP_RESOURCE_URL:-https://localhost/mcp}
+    # The provisioning suite (bin/test-provisioning.sh) points
+    # GITHUB_PROVISIONER_API_BASE_URL at a fake GitHub running on the host.
+    # Docker Desktop resolves host.docker.internal by itself; on Linux this
+    # entry is what makes the name resolve. The GITHUB_PROVISIONER_* variables
+    # themselves come through docker-compose.base.yaml, empty by default.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   mcpapp:
     environment:
