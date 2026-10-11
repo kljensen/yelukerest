@@ -10,7 +10,7 @@ import Assignments.Model
         , AssignmentSlug
         , AssignmentSubmission
         )
-import Auth.Model exposing (CurrentUser)
+import Auth.Model exposing (CurrentUser, JWT)
 import Browser exposing (UrlRequest(..))
 import ApiTokens.Model exposing (ApiToken, CreatedToken)
 import ConnectedApps.Model exposing (ConnectedApps)
@@ -81,7 +81,7 @@ type Msg
     | LinkClicked UrlRequest
     | Tick Posix
     | OnSubmitAssignmentFieldSubmissions AssignmentSubmission
-    | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData (List AssignmentFieldSubmission))
+    | OnSubmitAssignmentFieldSubmissionsResponse AssignmentSlug (WebData ( JWT, List AssignmentFieldSubmission ))
     | OnUpdateAssignmentFieldSubmissionInput Int String String
     | OnFetchEngagements (WebData (List Engagement))
     | OnFetchUsers (WebData (List User))

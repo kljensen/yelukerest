@@ -442,11 +442,9 @@ update msg model =
                     Dict.insert assignmentSubmission.assignment_slug RemoteData.Loading model.pendingAssignmentFieldSubmissionRequests
             in
             case model.currentUser of
-                RemoteData.Success user ->
+                RemoteData.Success _ ->
                     ( { model | pendingAssignmentFieldSubmissionRequests = pendingRequest }
-                    , Cmd.batch
-                        [ sendAssignmentFieldSubmissions user.jwt assignmentSubmission.assignment_slug values
-                        ]
+                    , sendAssignmentFieldSubmissions assignmentSubmission.assignment_slug values
                     )
 
                 _ ->
@@ -463,26 +461,26 @@ update msg model =
             ( { model | assignmentFieldSubmissionInputs = newAfsi }, Cmd.none )
 
         Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug response ->
-            -- todo, update the model.assignmentSubmissions
-            case ( model.currentUser, model.assignmentSubmissions ) of
-                ( RemoteData.Success user, RemoteData.Success submissions ) ->
-                    case response of
-                        RemoteData.Success newSubmissions ->
-                            let
-                                pfsrs =
-                                    Dict.remove assignmentSlug model.pendingAssignmentFieldSubmissionRequests
+            case ( model.currentUser, response ) of
+                ( RemoteData.Success user, RemoteData.Success ( jwt, _ ) ) ->
+                    let
+                        -- The save fetched a fresh JWT; keep it so the
+                        -- refetch below, and later requests, are not rejected.
+                        freshUser =
+                            { user | jwt = jwt }
+                    in
+                    ( { model
+                        | currentUser = RemoteData.Success freshUser
+                        , pendingAssignmentFieldSubmissionRequests = Dict.insert assignmentSlug (RemoteData.Success ()) model.pendingAssignmentFieldSubmissionRequests
+                        , assignmentFieldSubmissionInputs = Dict.empty
+                      }
+                    , fetchAssignmentSubmissions freshUser
+                    )
 
-                                cmd =
-                                    Cmd.batch [ fetchAssignmentSubmissions user ]
-
-                                newModel =
-                                    { model | pendingAssignmentFieldSubmissionRequests = pfsrs, assignmentFieldSubmissionInputs = Dict.empty }
-                            in
-                            -- Lazy for right now - just re-fetch all assignment fiend submissions
-                            ( newModel, cmd )
-
-                        _ ->
-                            ( model, Cmd.none )
+                ( _, RemoteData.Failure error ) ->
+                    ( { model | pendingAssignmentFieldSubmissionRequests = Dict.insert assignmentSlug (RemoteData.Failure error) model.pendingAssignmentFieldSubmissionRequests }
+                    , Cmd.none
+                    )
 
                 ( _, _ ) ->
                     ( model, Cmd.none )

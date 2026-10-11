@@ -10,7 +10,8 @@ module Assignments.Commands exposing
 
 import Assignments.Model
     exposing
-        ( AssignmentGrade
+        ( AssignmentFieldSubmission
+        , AssignmentGrade
         , AssignmentGradeDistribution
         , AssignmentSlug
         , assignmentFieldSubmissionsDecoder
@@ -21,13 +22,14 @@ import Assignments.Model
         , assignmentSubmissionsDecoder
         , assignmentsDecoder
         )
-import Auth.Commands exposing (fetchForCurrentUser, sendRequestWithJWT)
+import Auth.Commands exposing (fetchForCurrentUser, fetchJWTTask, handleJsonResponse)
 import Auth.Model exposing (CurrentUser, JWT)
 import Http
 import Json.Encode as Encode
 import Msgs exposing (Msg)
 import RemoteData exposing (WebData)
 import String
+import Task
 import Tuple
 
 
@@ -120,35 +122,36 @@ encodeAFSList assignmentSlug valueTuples =
         |> Encode.list (encodeAFS assignmentSlug)
 
 
-sendAssignmentFieldSubmissions : JWT -> String -> List ( String, String ) -> Cmd Msg
-sendAssignmentFieldSubmissions jwt assignmentSlug valueTuples =
-    let
-        headers =
+{-| Fetch a fresh JWT before saving. The JWT from page load expires after an
+hour, while the login session behind /auth/jwt lasts a day, so a student who
+left the page open had every save rejected. The fresh JWT comes back with the
+response so the caller can store it.
+-}
+sendAssignmentFieldSubmissions : String -> List ( String, String ) -> Cmd Msg
+sendAssignmentFieldSubmissions assignmentSlug valueTuples =
+    fetchJWTTask
+        |> Task.andThen
+            (\jwt ->
+                postAssignmentFieldSubmissionsTask jwt assignmentSlug valueTuples
+                    |> Task.map (Tuple.pair jwt)
+            )
+        |> Task.attempt (RemoteData.fromResult >> Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug)
+
+
+postAssignmentFieldSubmissionsTask : JWT -> String -> List ( String, String ) -> Task.Task Http.Error (List AssignmentFieldSubmission)
+postAssignmentFieldSubmissionsTask jwt assignmentSlug valueTuples =
+    Http.task
+        { method = "POST"
+        , headers =
             [ Http.header "Authorization" ("Bearer " ++ jwt)
             , Http.header "Prefer" "return=representation"
             , Http.header "Prefer" "resolution=merge-duplicates"
-
-            -- , Http.header "Accept" "application/vnd.pgrst.object+json"
             ]
-
-        obj =
-            List.map
-
-        msg =
-            Msgs.OnSubmitAssignmentFieldSubmissionsResponse assignmentSlug
-
-        request =
-            Http.request
-                { method = "POST"
-                , headers = headers
-                , url = "/rest/assignment_field_submissions"
-                , timeout = Nothing
-                , tracker = Nothing
-                , expect = Http.expectJson (RemoteData.fromResult >> msg) assignmentFieldSubmissionsDecoder
-                , body = Http.jsonBody (encodeAFSList assignmentSlug valueTuples)
-                }
-    in
-    request
+        , url = "/rest/assignment_field_submissions"
+        , body = Http.jsonBody (encodeAFSList assignmentSlug valueTuples)
+        , resolver = Http.stringResolver (handleJsonResponse assignmentFieldSubmissionsDecoder)
+        , timeout = Nothing
+        }
 
 
 {-| Notice that there is no way to restrict this

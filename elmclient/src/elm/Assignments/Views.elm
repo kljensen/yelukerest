@@ -10,6 +10,7 @@ import Assignments.Model
         , AssignmentSlug
         , AssignmentSubmission
         , AssignmentSubmissionAction(..)
+        , PendingAssignmentFieldSubmissionRequests
         , PendingBeginAssignments
         , assignmentSubmissionAction
         , notSubmissibleMessage
@@ -23,6 +24,7 @@ import Dict
 import Html exposing (Html, a, div)
 import Html.Attributes as Attrs
 import Html.Events as Events
+import Http
 import Json.Decode as Decode
 import Markdown
 import Models exposing (TimeZone)
@@ -252,8 +254,8 @@ exceptionMatches slug user_id maybeNickname exception =
         False
 
 
-detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
-detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments slug _ =
+detailView : WebData CurrentUser -> Maybe Posix -> TimeZone -> WebData (List Assignment) -> WebData (List AssignmentSubmission) -> WebData (List AssignmentGradeException) -> PendingBeginAssignments -> PendingAssignmentFieldSubmissionRequests -> AssignmentSlug -> Maybe Posix -> Html.Html Msg
+detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions wdExceptions pendingBeginAssignments pendingSaves slug _ =
     case mergeDetailViewData wdCurrentUser maybeDate wdAssignments assignmentSubmissions of
         Just data ->
             let
@@ -267,10 +269,13 @@ detailView wdCurrentUser maybeDate timeZone wdAssignments assignmentSubmissions 
 
                 maybePendingBegin =
                     Dict.get slug pendingBeginAssignments
+
+                maybePendingSave =
+                    Dict.get slug pendingSaves
             in
             case maybeAssignment of
                 Just assignment ->
-                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin
+                    detailViewForJustAssignment data.user data.date timeZone assignment maybeSubmission wdExceptions maybePendingBegin maybePendingSave
 
                 Nothing ->
                     meetingNotFoundView slug
@@ -305,8 +310,8 @@ showDueDate dueDate timeZone maybeException _ _ =
             dueString
 
 
-detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Html.Html Msg
-detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment =
+detailViewForJustAssignment : CurrentUser -> Posix -> TimeZone -> Assignment -> Maybe AssignmentSubmission -> WebData (List AssignmentGradeException) -> Maybe (WebData AssignmentSubmission) -> Maybe (WebData ()) -> Html.Html Msg
+detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission wdExceptions maybeBeginAssignment maybePendingSave =
     let
         maybeException =
             wdExceptions
@@ -329,12 +334,12 @@ detailViewForJustAssignment user currentDate timeZone assignment maybeSubmission
                     [ showPreviousAssignment assignment submission
                     , Html.hr [] []
                     , Html.h3 [] [ Html.text "Update submission" ]
-                    , renderAssignmentSubmissionAction maybeBeginAssignment
+                    , renderAssignmentSubmissionAction maybeBeginAssignment maybePendingSave
                         (assignmentSubmissionAction currentDate maybeException assignment user (Just submission))
                     ]
 
             Nothing ->
-                renderAssignmentSubmissionAction maybeBeginAssignment
+                renderAssignmentSubmissionAction maybeBeginAssignment maybePendingSave
                     (assignmentSubmissionAction currentDate maybeException assignment user Nothing)
         ]
 
@@ -351,14 +356,14 @@ showPreviousAssignment assignment submission =
         )
 
 
-renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> AssignmentSubmissionAction -> Html.Html Msg
-renderAssignmentSubmissionAction maybeBeginAssignment action =
+renderAssignmentSubmissionAction : Maybe (WebData AssignmentSubmission) -> Maybe (WebData ()) -> AssignmentSubmissionAction -> Html.Html Msg
+renderAssignmentSubmissionAction maybeBeginAssignment maybePendingSave action =
     case action of
         CanBeginAssignment assignment2 ->
             showBeginAssignmentButton assignment2 maybeBeginAssignment
 
         CanUpdateAssignment assignment2 submission ->
-            showSubmissionForm submission assignment2
+            showSubmissionForm submission assignment2 maybePendingSave
 
         CannotSubmitAssignment reason ->
             Common.Views.divWithText (notSubmissibleMessage reason)
@@ -390,8 +395,8 @@ showBeginAssignmentButton assignment maybeBeginAssignment =
             Html.text "other error"
 
 
-showSubmissionForm : AssignmentSubmission -> Assignment -> Html.Html Msg
-showSubmissionForm submission assignment =
+showSubmissionForm : AssignmentSubmission -> Assignment -> Maybe (WebData ()) -> Html.Html Msg
+showSubmissionForm submission assignment maybePendingSave =
     Html.form
         [ Events.custom
             "submit"
@@ -402,7 +407,64 @@ showSubmissionForm submission assignment =
                 }
             )
         ]
-        (List.map (showFormField submission) assignment.fields ++ [ Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ] ])
+        (List.map (showFormField submission) assignment.fields ++ [ submitButton maybePendingSave, saveResult maybePendingSave ])
+
+
+submitButton : Maybe (WebData ()) -> Html.Html Msg
+submitButton maybePendingSave =
+    case maybePendingSave of
+        Just RemoteData.Loading ->
+            Html.button [ Attrs.class "btn btn-primary black bg-silver", Attrs.disabled True ] [ Html.text "Saving..." ]
+
+        _ ->
+            Html.button [ Attrs.class "btn btn-primary" ] [ Html.text "Submit" ]
+
+
+{-| The inputs keep what was typed whether or not a save succeeds, so say which
+it was. A failed save used to show nothing, which looked like success.
+-}
+saveResult : Maybe (WebData ()) -> Html.Html Msg
+saveResult maybePendingSave =
+    case maybePendingSave of
+        Just (RemoteData.Success ()) ->
+            Html.div [ Attrs.class "green" ] [ Html.text "Saved." ]
+
+        Just (RemoteData.Failure error) ->
+            Html.div [ Attrs.class "red" ] (saveErrorMessage error)
+
+        _ ->
+            Html.text ""
+
+
+saveErrorMessage : Http.Error -> List (Html.Html Msg)
+saveErrorMessage error =
+    case error of
+        Http.BadStatus 401 ->
+            -- A new tab keeps what the student typed in this one.
+            [ Html.text "Not saved: your login has expired. "
+            , Html.a [ Attrs.href "/auth/login", Attrs.target "_blank" ] [ Html.text "Log in again" ]
+            , Html.text " in a new tab, then come back and click Submit."
+            ]
+
+        Http.BadStatus code ->
+            [ Html.text
+                ("Not saved: the server rejected this submission (HTTP "
+                    ++ String.fromInt code
+                    ++ "). Check that each value matches the required format and that the assignment is still open."
+                )
+            ]
+
+        Http.NetworkError ->
+            [ Html.text "Not saved: could not reach the server. Check your connection and click Submit again." ]
+
+        Http.Timeout ->
+            [ Html.text "Not saved: the server took too long to respond. Click Submit again." ]
+
+        Http.BadBody _ ->
+            [ Html.text "The server's reply could not be read. Reload the page to check whether your submission was saved." ]
+
+        Http.BadUrl _ ->
+            [ Html.text "Not saved: the request could not be sent. Reload the page and try again." ]
 
 
 showFormField : AssignmentSubmission -> AssignmentField -> Html.Html Msg

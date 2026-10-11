@@ -3,6 +3,7 @@ module Auth.Commands exposing
     , fetchCurrentUserUrl
     , fetchForCurrentUser
     , fetchForJWT
+    , fetchJWTTask
     , handleJsonResponse
     , requestForJWT
     , sendRequestWithJWT

@@ -110,7 +110,7 @@ type alias AssignmentFieldSubmissionInputs =
 
 
 type alias PendingAssignmentFieldSubmissionRequests =
-    Dict AssignmentSlug (WebData (List AssignmentSubmission))
+    Dict AssignmentSlug (WebData ())
 
 
 type alias PendingBeginAssignments =
