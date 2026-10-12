@@ -163,6 +163,14 @@ Then...
 7. Update the JWTs in your .env
 8. Restart. Good to go.
 
+Production uses Route 53 for ACME DNS challenges by default. For a Cloudflare
+zone, set `CADDY_ENV=production-cloudflare` and provide a zone-scoped
+`CLOUDFLARE_API_TOKEN` with Zone read and DNS edit permissions.
+Course-specific Caddy routes belong in
+`caddy/course/*.caddyfile`; that directory is mounted read-only and
+its generated files are ignored by git, keeping the application configuration
+generic across courses.
+
 If you get a CAS error it may be because `AUTHAPP_JWT` is missing or invalid.
 See `docs/auth-jwt-flow.md` for the full CAS/session/PostgREST JWT model.
 Course admin tooling should check the deployed platform/schema compatibility

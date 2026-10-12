@@ -1,0 +1,43 @@
+# Course-independent production hosts. The selected production profile defines
+# dns_tls, keeping the site topology separate from its DNS provider.
+{$FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	import app
+	import dns_tls
+}
+
+{$NAKED_FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# This is a naked domain, so redirect it to the www subdomain.
+	redir https://{$FQDN}{uri}
+	import dns_tls
+}
+
+# Codeframe's public artifact host. It serves arbitrary user-authored HTML and
+# JavaScript, so it is kept off the course origin -- and, since issue #359, off
+# the editor's origin as well: no session cookie is ever set here, so a page a
+# student wrote has no cookie to borrow. See the codeframe_artifacts snippet.
+code.{$NAKED_FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	import codeframe_artifacts
+	import dns_tls
+}
+
+# Codeframe's authenticated editor. Everything that is not /auth/* is behind
+# CAS, and the session cookie lives only on this name. Keep it one label under
+# the naked domain so a conventional *.<domain> CAS registration covers it.
+editor.{$NAKED_FQDN} {
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	# Framing the editor is how a hostile page would drive a publish with a
+	# borrowed click, so only this origin may do it. Not DENY: codeframe's own
+	# landing page embeds the editor in its "Try it live!" pane, and DENY broke
+	# that -- the editor is legitimately framed, just never by anybody else.
+	#
+	# frame-ancestors is the header modern browsers honour and the only one of
+	# the two that can say "same origin only" precisely; X-Frame-Options stays
+	# for anything that predates CSP.
+	header Content-Security-Policy "frame-ancestors 'self'"
+	header X-Frame-Options "SAMEORIGIN"
+	import codeframe_editor
+	import dns_tls
+}

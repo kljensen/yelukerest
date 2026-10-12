@@ -90,12 +90,16 @@ services:
             - AWS_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID}
             - AWS_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY}
             - AWS_REGION=${CADDY_ACME_AWS_REGION}
+            - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
 
         volumes:
             - elmclient-build:/var/elmclient/
             - './caddy/Caddyfile:/etc/caddy/Caddyfile'
             - './caddy/development.caddyfile:/etc/caddy/development.caddyfile'
             - './caddy/production.caddyfile:/etc/caddy/production.caddyfile'
+            - './caddy/production-cloudflare.caddyfile:/etc/caddy/production-cloudflare.caddyfile'
+            - './caddy/production-sites.caddyfile:/etc/caddy/production-sites.caddyfile'
+            - './caddy/course:/etc/caddy/course:ro'
             - './caddy/html:/usr/share/caddy/html'
             - './caddy/user_code:/usr/share/caddy/user_code'
             - caddy_data:/data

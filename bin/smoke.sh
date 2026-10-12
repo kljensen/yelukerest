@@ -264,7 +264,7 @@ main() {
     check_http_header "authapp permissions policy" "$BASE_URL/auth/me" "401" "$HEADER_PERMISSIONS"
     check_http_header "authapp frame denial" "$BASE_URL/auth/me" "401" "$HEADER_X_FRAME"
 
-    if [ "${CADDY_ENV:-}" = "production" ]; then
+    if [ "${CADDY_ENV:-production}" != "development" ]; then
         check_http_header "production HSTS" "$BASE_URL/" "200" '^strict-transport-security: max-age=31536000; includeSubDomains'
     fi
 

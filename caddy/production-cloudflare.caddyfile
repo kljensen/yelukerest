@@ -1,0 +1,10 @@
+# Cloudflare production profile. Select with CADDY_ENV=production-cloudflare
+# and provide a zone-scoped CLOUDFLARE_API_TOKEN with Zone read and DNS edit
+# permissions.
+(dns_tls) {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+}
+
+import production-sites.caddyfile

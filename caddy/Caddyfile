@@ -328,3 +328,8 @@
 }
 
 import {$CADDY_ENV:production}.caddyfile
+
+# Optional course-owned routes. The directory is deliberately empty in this
+# repository; course provisioning may install files without modifying the
+# generic Yelukerest checkout.
+import course/*.caddyfile

@@ -1,84 +1,14 @@
-{$FQDN} {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	import app
+# Default production profile: AWS Route 53 supplies ACME DNS challenges.
+# Course-independent host routing lives in production-sites.caddyfile.
+(dns_tls) {
 	tls {
 		dns route53 {
-			# Notice that the plug-in will read
-			# AWS_REGION, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY
-			# https://github.com/libdns/route53/blob/5afde8b82bff9494c83a6ed5a58c5ca3a6b0b93f/provider.go#L18C62-L18C72
+			# The plug-in reads AWS_REGION, AWS_ACCESS_KEY_ID, and
+			# AWS_SECRET_ACCESS_KEY from the Caddy container environment.
+			# https://github.com/libdns/route53
 			wait_for_propagation true
 		}
 	}
 }
 
-{$NAKED_FQDN} {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	# This is a naked domain, so we need to redirect it to the www subdomain
-	redir https://{$FQDN}{uri}
-	tls {
-		dns route53 {
-			wait_for_propagation true
-		}
-	}
-}
-
-# Codeframe's public artifact host. It serves arbitrary user-authored HTML and
-# JavaScript, so it is kept off the course origin -- and, since issue #359, off
-# the editor's origin as well: no session cookie is ever set here, so a page a
-# student wrote has no cookie to borrow. See the codeframe_artifacts snippet.
-code.{$NAKED_FQDN} {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	import codeframe_artifacts
-	tls {
-		dns route53 {
-			wait_for_propagation true
-		}
-	}
-}
-
-# Codeframe's authenticated editor. Everything that is not /auth/* is behind
-# CAS, and the session cookie lives only on this name. A single label under the
-# naked domain because Yale CAS's *.656.mba wildcard matches one label only
-# (issue #364).
-editor.{$NAKED_FQDN} {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	# Framing the editor is how a hostile page would drive a publish with a
-	# borrowed click, so only this origin may do it. Not DENY: codeframe's own
-	# landing page embeds the editor in its "Try it live!" pane, and DENY broke
-	# that with "editor.656.mba refused to connect" -- the editor IS
-	# legitimately framed, just never by anybody else.
-	#
-	# frame-ancestors is the header modern browsers honour and the only one of
-	# the two that can say "same origin only" precisely; X-Frame-Options stays
-	# for anything that predates CSP.
-	header Content-Security-Policy "frame-ancestors 'self'"
-	header X-Frame-Options "SAMEORIGIN"
-	import codeframe_editor
-	tls {
-		dns route53 {
-			wait_for_propagation true
-		}
-	}
-}
-
-# The tacky-website voting app (yale-mgt-656-fall-2026/tacky-website-voting).
-# It runs as its own compose project on this host and joins this stack's
-# network under the alias tacky-voting; nothing here publishes a port for it.
-# Its own CAS session cookie is host-only to this name, and it checks the
-# Origin header on every vote write, because code.{$NAKED_FQDN} is the same
-# site and a student's page could otherwise form-post a vote
-# (admin issue #43). A single label under the naked domain, as for editor.
-vote.{$NAKED_FQDN} {
-	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
-	header X-Frame-Options "DENY"
-	reverse_proxy tacky-voting:8080 {
-		# The app derives its CAS callback from these two headers.
-		header_up X-Forwarded-Proto {scheme}
-		header_up X-Forwarded-Host {host}
-	}
-	tls {
-		dns route53 {
-			wait_for_propagation true
-		}
-	}
-}
+import production-sites.caddyfile
