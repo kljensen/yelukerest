@@ -227,7 +227,7 @@ docker run --rm \
   -e POSTGRES_DATA_PATH=/var/lib/postgresql/18/docker \
   -v "$DRILL_VOLUME:/var/lib/postgresql" \
   --entrypoint sh \
-  yelukerest-postgres:18.4-pgbackrest -ceu '
+  yelukerest-postgres:18.6-pgbackrest -ceu '
     repo_path="/${S3_PREFIX}"
     # pgBackRest reads PGBACKREST_* environment variables as configuration and
     # they beat the config file. The backup image sets
@@ -276,7 +276,7 @@ docker run --rm \
   -e RESTORE_TARGET_TIME="$RESTORE_TARGET_TIME" \
   -v "$DRILL_VOLUME:/var/lib/postgresql" \
   --entrypoint sh \
-  yelukerest-postgres:18.4-pgbackrest -ceu '
+  yelukerest-postgres:18.6-pgbackrest -ceu '
     export PGBACKREST_REPO1_PATH="/${S3_PREFIX}"
     rm -rf "$POSTGRES_DATA_PATH"
     mkdir -p "$POSTGRES_DATA_PATH"
@@ -300,8 +300,8 @@ Two choices in there are load-bearing:
   fact written into the repository's history and can confuse a later restore.
   The local harness uses `promote` because its MinIO repository is thrown away
   at the end of the run; a drill against the production repository must not.
-- **The image must be `yelukerest-postgres:18.4-pgbackrest`.** Stock
-  `postgres:18.4` cannot finish recovery: the generated `restore_command`
+- **The image must be `yelukerest-postgres:18.6-pgbackrest`.** Stock
+  `postgres:18.6` cannot finish recovery: the generated `restore_command`
   invokes `pgbackrest archive-get`, and stock Postgres has no pgBackRest
   binary. The cluster will start, fail to fetch WAL, and sit there looking
   broken for a reason that has nothing to do with your backups.
@@ -318,7 +318,7 @@ docker run -d --name yelukerest-restore-drill-db \
   -e POSTGRES_PASSWORD="$SUPER_USER_PASSWORD" \
   -e POSTGRES_DB="$DB_NAME" \
   -v "$DRILL_VOLUME:/var/lib/postgresql" \
-  yelukerest-postgres:18.4-pgbackrest \
+  yelukerest-postgres:18.6-pgbackrest \
   postgres -c archive_mode=off
 ```
 
@@ -499,7 +499,7 @@ echo "$CODEFRAME_VOLUME"   # sanity-check the name before anything writes to it
 
 compose stop codeframe     # the only writer; stop it before reading or writing
 
-docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db:ro" alpine:3.24.1 \
+docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db:ro" alpine:3.24.3 \
   sh -ceu 'if [ -s /codeframe/db/publish-log.jsonl ]; then
              echo "LIVE LOG PRESENT: use the merging restore"
            else
@@ -521,7 +521,7 @@ published since cannot collide.
 docker run --rm \
   -v "$CODEFRAME_VOLUME:/codeframe/db" \
   -v "$PWD/tmp/codeframe-restore:/in:ro" \
-  alpine:3.24.1 tar -xzf "/in/$ARCHIVE" -C /codeframe/db
+  alpine:3.24.3 tar -xzf "/in/$ARCHIVE" -C /codeframe/db
 
 compose start codeframe
 ```
@@ -540,10 +540,10 @@ and the replacement — the frame survives, its attribution does not.
 mkdir -p tmp/codeframe-scratch
 docker run --rm -v "$PWD/tmp/codeframe-restore:/in:ro" \
   -v "$PWD/tmp/codeframe-scratch:/out" \
-  alpine:3.24.1 tar -xzf "/in/$ARCHIVE" -C /out
+  alpine:3.24.3 tar -xzf "/in/$ARCHIVE" -C /out
 
 # codeframe is already stopped, so nothing can append while this runs
-docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db:ro" alpine:3.24.1 \
+docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db:ro" alpine:3.24.3 \
   cat /codeframe/db/publish-log.jsonl > tmp/publish-log.live.jsonl
 
 sort -u tmp/codeframe-scratch/publish-log.jsonl tmp/publish-log.live.jsonl \
@@ -553,7 +553,7 @@ rm tmp/codeframe-scratch/publish-log.jsonl
 docker run --rm -v "$CODEFRAME_VOLUME:/codeframe/db" \
   -v "$PWD/tmp/codeframe-scratch:/in:ro" \
   -v "$PWD/tmp/publish-log.merged.jsonl:/log:ro" \
-  alpine:3.24.1 sh -ceu '
+  alpine:3.24.3 sh -ceu '
     cp -a /in/. /codeframe/db/
     cp /log /codeframe/db/publish-log.jsonl
   '

@@ -6,7 +6,7 @@ set -a
 set +a
 
 VOLUMES=yelukerest-letsencrypt:/etc/letsencrypt
-IMAGE=alpine:3.24.1
+IMAGE=alpine:3.24.3
 
 make_cert() {
     domain=$1

@@ -12,7 +12,7 @@
 #
 # Upstream is unmaintained, so local changes live as a patch layer applied at
 # build time rather than as a fork. See patches/ for what each one is for.
-FROM node:22.8.0-alpine3.19
+FROM node:22.23.4-alpine3.24
 
 # GNU tar, not busybox's applet: npm tarballs carry file entries and no
 # directory entries, and only GNU tar can extract a subtree by prefix.

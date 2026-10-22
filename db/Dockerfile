@@ -1,4 +1,4 @@
-FROM postgres:18.4-alpine3.24 AS base
+FROM postgres:18.6-alpine3.24 AS base
 
 RUN apk add --no-cache pgbackrest
 

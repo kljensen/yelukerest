@@ -1,4 +1,4 @@
-FROM alpine:3.24.1
+FROM alpine:3.24.3
 
 COPY install.sh install.sh
 RUN sh install.sh && rm install.sh

@@ -1,7 +1,7 @@
 ARG ELM_TOOLS_IMAGE=ghcr.io/kljensen/docker-elm-dev-static:0.19.2@sha256:2f73527ba7e6ab55e37a9e6b9960caa5a4a658b40fd346824baa1a13933ee840
 
 FROM ${ELM_TOOLS_IMAGE} AS elm_tools
-FROM alpine:3.24.1
+FROM alpine:3.24.3
 
 RUN apk add --no-cache bash ca-certificates git gzip inotify-tools jq
 

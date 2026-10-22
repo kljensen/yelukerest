@@ -1,4 +1,4 @@
-FROM golang:1.25.11-alpine3.24 AS builder
+FROM golang:1.25.14-alpine3.24 AS builder
 RUN apk --no-cache add ca-certificates
 
 # create a working directory

@@ -3,7 +3,7 @@ ARG DENO_IMAGE=denoland/deno:alpine-1.46.3@sha256:25bd4946f68c643ba7ce2428a13673
 
 FROM ${ELM_TOOLS_IMAGE} AS elm_tools
 FROM ${DENO_IMAGE} AS deno_tools
-FROM alpine:3.24.1 AS base
+FROM alpine:3.24.3 AS base
 
 RUN apk add --no-cache ca-certificates gzip inotify-tools jq
 

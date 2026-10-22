@@ -168,7 +168,7 @@ restore_backup() {
         -e POSTGRES_DATA_PATH=/var/lib/postgresql/18/docker \
         -e RESTORE_TARGET_TIME="$restore_target_time" \
         -v "${RESTORE_VOLUME_NAME}:/var/lib/postgresql" \
-        yelukerest-postgres:18.4-pgbackrest \
+        yelukerest-postgres:18.6-pgbackrest \
         -ceu '
             rm -rf "$POSTGRES_DATA_PATH"
             mkdir -p "$POSTGRES_DATA_PATH"
@@ -281,7 +281,7 @@ verify_restored_backup() {
         -e POSTGRES_PASSWORD="$SUPER_USER_PASSWORD_VALUE" \
         -e POSTGRES_DB="$DB_NAME_VALUE" \
         -v "${RESTORE_VOLUME_NAME}:/var/lib/postgresql" \
-        yelukerest-postgres:18.4-pgbackrest \
+        yelukerest-postgres:18.6-pgbackrest \
         postgres -c archive_mode=off >/dev/null
 
     for _ in $(seq 1 30); do
