@@ -20,6 +20,7 @@ import DataGrants.Model exposing (ApiGrant, CreatedGrant, GrantDraft, emptyDraft
 import Dict exposing (Dict)
 import Engagements.Model exposing (Engagement, PendingSubmit)
 import Meetings.Model exposing (Meeting, MeetingSlug)
+import Pages.Model exposing (Pages)
 import Quizzes.Model
     exposing
         ( Quiz
@@ -37,19 +38,11 @@ import Users.Model exposing (User, UserSecret)
 
 type alias Flags =
     { courseTitle : String
-    , piazzaURL : Maybe String
-    , aboutURL : String
-    , canvasURL : String
-    , slackURL : Maybe String
     }
 
 
 type alias UIElements =
     { courseTitle : String
-    , piazzaURL : Maybe String
-    , aboutURL : String
-    , canvasURL : String
-    , slackURL : Maybe String
 
     -- Where an AI assistant connects, built from the origin the browser is
     -- already on rather than configured, so the #/mcp page can never show a
@@ -109,6 +102,9 @@ type alias Model =
     , quizGrades : WebData (List QuizGrade)
     , quizGradeDistributions : WebData (List QuizGradeDistribution)
     , uiElements : UIElements
+
+    -- The faculty-editable `home` and `about` copy, keyed by `key`.
+    , pages : WebData Pages
     , assignmentGradeExceptions : WebData (List AssignmentGradeException)
     , assignmentSubmissions : WebData (List AssignmentSubmission)
     , assignmentGrades : WebData (List AssignmentGrade)
@@ -178,12 +174,9 @@ initialModel flags url route key =
     , quizGradeDistributions = RemoteData.NotAsked
     , uiElements =
         { courseTitle = flags.courseTitle
-        , piazzaURL = flags.piazzaURL
-        , aboutURL = flags.aboutURL
-        , canvasURL = flags.canvasURL
-        , slackURL = flags.slackURL
         , mcpEndpoint = mcpEndpoint url
         }
+    , pages = RemoteData.Loading
     , assignmentGradeExceptions = RemoteData.NotAsked
     , assignmentSubmissions = RemoteData.NotAsked
     , assignmentGrades = RemoteData.NotAsked
@@ -212,6 +205,7 @@ initialModel flags url route key =
 
 type Route
     = IndexRoute
+    | AboutRoute
     | CurrentUserDashboardRoute
     | MeetingListRoute
     | MeetingDetailRoute MeetingSlug

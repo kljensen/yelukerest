@@ -18,6 +18,7 @@ import DataGrants.Model exposing (ApiGrant, CreatedGrant)
 import Http
 import Engagements.Model exposing (Engagement)
 import Meetings.Model exposing (Meeting)
+import Pages.Model exposing (Pages)
 import Quizzes.Model
     exposing
         ( Quiz
@@ -39,6 +40,7 @@ type BrowserLocation
 
 type Msg
     = OnFetchMeetings (WebData (List Meeting))
+    | OnFetchPages (WebData Pages)
     | OnFetchConnectedApps (WebData ConnectedApps)
     | OnFetchApiTokens (WebData (List ApiToken))
     | OnCreateApiToken (WebData CreatedToken)

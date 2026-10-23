@@ -1,10 +1,9 @@
 module Meetings.Views exposing (detailView, listView)
 
 import Auth.Model exposing (CurrentUser, isLoggedInFacultyOrTA)
-import Common.Views exposing (longDateToString)
+import Common.Views exposing (longDateToString, markdownToHTML)
 import Html exposing (Html)
 import Html.Attributes as Attrs
-import Markdown exposing (toHtmlWith)
 import Meetings.Model exposing (Meeting, MeetingSlug)
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
@@ -14,18 +13,6 @@ import Quizzes.Model
         , paperQuizStatusText
         )
 import RemoteData exposing (WebData)
-
-
-markdownToHTML : List (Html.Attribute msg) -> String -> Html msg 
-markdownToHTML attributes md =
-    let 
-        options = { githubFlavored = Just { tables = True, breaks = False }
-            , defaultHighlighting = Nothing
-            , sanitize = True
-            , smartypants = False
-            }
-    in
-    toHtmlWith options attributes md
 
 
 listView : TimeZone -> WebData (List Meeting) -> Html Msg

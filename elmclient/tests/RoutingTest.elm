@@ -42,6 +42,10 @@ tests =
             \_ ->
                 parseLocation (StringLocation "https://example.test/#data-grants")
                     |> Expect.equal DataGrantsRoute
+        , test "parses the about route" <|
+            \_ ->
+                parseLocation (StringLocation "https://example.test/#/about")
+                    |> Expect.equal AboutRoute
         , test "parses the MCP instructions route" <|
             \_ ->
                 parseLocation (StringLocation "https://example.test/#mcp")

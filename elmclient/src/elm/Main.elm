@@ -7,6 +7,7 @@ import Common.Commands exposing (getTimeZone, getTimeZoneName, updateDate)
 import Meetings.Commands exposing (fetchMeetings)
 import Models exposing (Flags, Model, initialModel)
 import Msgs exposing (BrowserLocation(..), Msg)
+import Pages.Commands exposing (fetchPages)
 import Routing
 import Subscriptions exposing (subscriptions)
 import Update exposing (update)
@@ -26,6 +27,7 @@ init flags url key =
     ( m
     , Cmd.batch
         [ fetchMeetings
+        , fetchPages
         , fetchCurrentUser
         , updateDate
         , getTimeZone

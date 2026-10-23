@@ -4,7 +4,6 @@ import Assignments.Views
 import Auth.Model exposing (CurrentUser)
 import Auth.Views
 import Browser exposing (Document)
-import Common.Views exposing (piazzaLink, slackLink)
 import ApiTokens.Views
 import ConnectedApps.Views
 import Dashboard.Views
@@ -12,11 +11,13 @@ import DataGrants.Views
 import Engagements.Views exposing (maybeEditEngagements)
 import Html exposing (Html, a, div, h1, text)
 import Html.Attributes exposing (href)
-import Html.Lazy exposing (lazy, lazy2, lazy7)
+import Html.Lazy exposing (lazy, lazy2, lazy3, lazy7)
 import Mcp.Views
 import Meetings.Views
 import Models exposing (Model, UIElements)
 import Msgs exposing (Msg)
+import Pages.Model exposing (Pages)
+import Pages.Views
 import RemoteData exposing (WebData)
 
 
@@ -33,7 +34,10 @@ page : Model -> Html Msg
 page model =
     case model.route of
         Models.IndexRoute ->
-            lazy2 indexView model.currentUser model.uiElements
+            lazy3 indexView model.currentUser model.uiElements model.pages
+
+        Models.AboutRoute ->
+            lazy2 Pages.Views.aboutView notFoundView model.pages
 
         Models.CurrentUserDashboardRoute ->
             Dashboard.Views.dashboard model
@@ -77,16 +81,18 @@ page model =
             notFoundView
 
 
-indexView : WebData CurrentUser -> UIElements -> Html Msg
-indexView currentUser uiElements =
+indexView : WebData CurrentUser -> UIElements -> WebData Pages -> Html Msg
+indexView currentUser uiElements pages =
     div []
         [ h1 [] [ text uiElements.courseTitle ]
-        , div [] [ a [ href uiElements.aboutURL ] [ text "About" ] ]
+        , Pages.Views.homeView pages
         , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
         , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
-        , div [] [ Html.a [ href uiElements.canvasURL ] [ Html.text "Canvas" ] ]
-        , piazzaLink uiElements.piazzaURL
-        , slackLink uiElements.slackURL
+        , if Pages.Views.hasAbout pages then
+            div [] [ a [ href "#/about" ] [ text "About" ] ]
+
+          else
+            text ""
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard currentUser ]
         ]

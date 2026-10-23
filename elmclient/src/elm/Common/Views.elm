@@ -4,16 +4,16 @@ module Common.Views exposing
     , dateTitleHrefRow
     , divWithText
     , longDateToString
-    , piazzaLink
+    , markdownToHTML
     , shortDateToString
     , showDraftStatus
-    , slackLink
     , stringDateDelta
     )
 
 import DateFormat
 import Html exposing (Html)
 import Html.Attributes as Attrs
+import Markdown exposing (toHtmlWith)
 import Models exposing (TimeZone)
 import Msgs exposing (Msg)
 import Time exposing (Posix, Zone, ZoneName(..))
@@ -57,26 +57,21 @@ divWithText theText =
     Html.div [] [ Html.text theText ]
 
 
-piazzaLink : Maybe String -> Html Msg
-piazzaLink piazzaURL =
-    maybeLink piazzaURL "Piazza"
+{-| Render untrusted Markdown: raw HTML is sanitized away, and GitHub-style
+tables are allowed.
+-}
+markdownToHTML : List (Html.Attribute msg) -> String -> Html msg
+markdownToHTML attributes md =
+    let
+        options =
+            { githubFlavored = Just { tables = True, breaks = False }
+            , defaultHighlighting = Nothing
+            , sanitize = True
+            , smartypants = False
+            }
+    in
+    toHtmlWith options attributes md
 
-slackLink : Maybe String -> Html Msg
-slackLink slackURL =
-    maybeLink slackURL "Slack"
-
-maybeLink : Maybe String -> String -> Html Msg
-maybeLink theURL theText =
-    case theURL of
-        Just url ->
-            case url of 
-                "" ->
-                    Html.text ""
-                _  ->
-                    Html.a [ Attrs.href url ] [ Html.text theText ]
-
-        Nothing ->
-            Html.text ""
 
 shortDayOfWeek : Posix -> Zone -> String
 shortDayOfWeek t z =

@@ -381,6 +381,9 @@ update msg model =
         Msgs.OnFetchMeetings response ->
             ( { model | meetings = response }, Cmd.none )
 
+        Msgs.OnFetchPages response ->
+            ( { model | pages = response }, Cmd.none )
+
         Msgs.OnFetchAssignments response ->
             ( { model | assignments = response }, Cmd.none )
 

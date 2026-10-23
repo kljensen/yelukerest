@@ -11,6 +11,7 @@ matchers : Parser (Route -> a) a
 matchers =
     oneOf
         [ map IndexRoute top
+        , map AboutRoute (s "about")
         , map CurrentUserDashboardRoute (s "dashboard")
         , map MeetingListRoute (s "meetings")
         , map MeetingDetailRoute (s "meetings" </> string)
