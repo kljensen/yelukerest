@@ -21,8 +21,8 @@ tests =
     describe "Models.mcpEndpoint"
         [ test "uses the origin, not the page the student is on" <|
             \_ ->
-                endpointFor "https://www.656.mba/#/mcp"
-                    |> Expect.equal "https://www.656.mba/mcp"
+                endpointFor "https://www.example.test/#/mcp"
+                    |> Expect.equal "https://www.example.test/mcp"
         , -- What the client actually sees: a browser location for an
           -- ordinary https site carries no port, so `port_` is Nothing and
           -- nothing is printed. This does not exercise an explicit `:443`,

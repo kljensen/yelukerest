@@ -48,12 +48,12 @@ tests =
                     |> Expect.equal McpRoute
         , test "routes the Url that Browser.application hands Main.init" <|
             \_ ->
-                urlLocation "https://www.656.mba/#/mcp"
+                urlLocation "https://www.example.test/#/mcp"
                     |> parseLocation
                     |> Expect.equal McpRoute
         , test "routes a deep link on startup, not just the index" <|
             \_ ->
-                urlLocation "https://www.656.mba/#/assignments/homework-1"
+                urlLocation "https://www.example.test/#/assignments/homework-1"
                     |> parseLocation
                     |> Expect.equal (AssignmentDetailRoute "homework-1")
         , test "online quiz-taking route is no longer available" <|

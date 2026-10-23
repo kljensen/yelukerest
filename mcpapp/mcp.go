@@ -55,14 +55,14 @@ type toolDeps struct {
 // be derived from the course title.
 const (
 	// defaultServerName is the machine identifier when MCP_SERVER_NAME is
-	// unset. Deployments set MCP_SERVER_NAME (mgt656-mcp in production) and
-	// then leave it alone.
+	// unset. Each deployment sets MCP_SERVER_NAME to its own course id
+	// (e.g. mgt101-mcp) and then leaves it alone.
 	defaultServerName = "course-mcp"
 	// defaultServerTitle is the display name when COURSE_TITLE is unset,
 	// which is every deployment that has not been told which course it runs.
 	defaultServerTitle = "Course data MCP"
-	// serverTitleSuffix turns a course title ("MGT656") into a connector
-	// title ("MGT656 MCP Server").
+	// serverTitleSuffix turns a course title ("MGT101") into a connector
+	// title ("MGT101 MCP Server").
 	serverTitleSuffix = " MCP Server"
 )
 

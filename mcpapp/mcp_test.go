@@ -515,15 +515,15 @@ func initializedServerInfo(t *testing.T) *mcp.Implementation {
 // Issue #371: Name is the programmatic identifier and must be the configured,
 // term-stable one; Title is what a human reads and must name the course.
 func TestServerIdentityFromEnvironment(t *testing.T) {
-	t.Setenv("MCP_SERVER_NAME", "mgt656-mcp")
-	t.Setenv("COURSE_TITLE", "MGT656")
+	t.Setenv("MCP_SERVER_NAME", "mgt101-mcp")
+	t.Setenv("COURSE_TITLE", "MGT101")
 
 	info := initializedServerInfo(t)
-	if info.Name != "mgt656-mcp" {
-		t.Fatalf("server name = %q, want %q", info.Name, "mgt656-mcp")
+	if info.Name != "mgt101-mcp" {
+		t.Fatalf("server name = %q, want %q", info.Name, "mgt101-mcp")
 	}
-	if info.Title != "MGT656 MCP Server" {
-		t.Fatalf("server title = %q, want %q", info.Title, "MGT656 MCP Server")
+	if info.Title != "MGT101 MCP Server" {
+		t.Fatalf("server title = %q, want %q", info.Title, "MGT101 MCP Server")
 	}
 }
 

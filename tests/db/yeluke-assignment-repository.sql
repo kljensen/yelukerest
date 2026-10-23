@@ -26,27 +26,27 @@ SELECT has_table('data', 'assignment_repository', 'assignment_repository table s
 SELECT lives_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name, provider_user_id)
-        VALUES (''exam-1'', FALSE, 1, 100000001, ''mgt-656/exam-1-abc123'', 900000001)
+        VALUES (''exam-1'', FALSE, 1, 100000001, ''course-org/exam-1-abc123'', 900000001)
     ', 'an individual repository names a user and no team')
 ; SELECT lives_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, team_nickname, provider_repo_id, provider_full_name)
-        VALUES (''project-update-1'', TRUE, ''bright-fog'', 100000002, ''mgt-656/project-update-1-bright-fog'')
+        VALUES (''project-update-1'', TRUE, ''bright-fog'', 100000002, ''course-org/project-update-1-bright-fog'')
     ', 'a team repository names a team and no user')
 ; SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, team_nickname, provider_repo_id, provider_full_name)
-        VALUES (''exam-1'', FALSE, 2, ''hazy-mountain'', 100000003, ''mgt-656/both'')
+        VALUES (''exam-1'', FALSE, 2, ''hazy-mountain'', 100000003, ''course-org/both'')
     ', '23514', NULL, 'a repository cannot belong to a user and a team at once')
 ; SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, provider_repo_id, provider_full_name)
-        VALUES (''exam-1'', FALSE, 100000004, ''mgt-656/nobody'')
+        VALUES (''exam-1'', FALSE, 100000004, ''course-org/nobody'')
     ', '23514', NULL, 'an individual repository cannot belong to nobody')
 ; SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-        VALUES (''project-update-1'', TRUE, 2, 100000005, ''mgt-656/team-owned-by-a-user'')
+        VALUES (''project-update-1'', TRUE, 2, 100000005, ''course-org/team-owned-by-a-user'')
     ', '23514', NULL, 'a team repository cannot belong to a user')
 ;
 -- The foreign key to (assignment.slug, assignment.is_team) is what makes a team
@@ -55,7 +55,7 @@ SELECT lives_ok('
 SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, team_nickname, provider_repo_id, provider_full_name)
-        VALUES (''exam-1'', TRUE, ''bright-fog'', 100000006, ''mgt-656/team-repo-on-solo-assignment'')
+        VALUES (''exam-1'', TRUE, ''bright-fog'', 100000006, ''course-org/team-repo-on-solo-assignment'')
     ', '23503', NULL, 'a team repository cannot be provisioned for an individual assignment')
 ;
 -- ---------------------------------------------------------------------------
@@ -64,17 +64,17 @@ SELECT throws_ok('
 SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-        VALUES (''exam-1'', FALSE, 1, 100000007, ''mgt-656/exam-1-abc123-again'')
+        VALUES (''exam-1'', FALSE, 1, 100000007, ''course-org/exam-1-abc123-again'')
     ', '23505', NULL, 'a student cannot have two repositories for one assignment')
 ; SELECT lives_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-        VALUES (''team-selection'', FALSE, 1, 100000008, ''mgt-656/team-selection-abc123'')
+        VALUES (''team-selection'', FALSE, 1, 100000008, ''course-org/team-selection-abc123'')
     ', 'the same student can have a repository for a different assignment')
 ; SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, team_nickname, provider_repo_id, provider_full_name)
-        VALUES (''project-update-1'', TRUE, ''bright-fog'', 100000009, ''mgt-656/project-update-1-bright-fog-again'')
+        VALUES (''project-update-1'', TRUE, ''bright-fog'', 100000009, ''course-org/project-update-1-bright-fog-again'')
     ', '23505', NULL, 'a team cannot have two repositories for one assignment')
 ;
 -- Identity, from the other direction: one repository is the repository of at
@@ -83,7 +83,7 @@ SELECT throws_ok('
 SELECT throws_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-        VALUES (''exam-1'', FALSE, 2, 100000001, ''mgt-656/exam-1-bde456'')
+        VALUES (''exam-1'', FALSE, 2, 100000001, ''course-org/exam-1-bde456'')
     ', '23505', NULL, 'one forge repository cannot be handed to two students')
 ;
 -- Repo ids are only unique within a forge, which is why `provider` is part of
@@ -91,7 +91,7 @@ SELECT throws_ok('
 SELECT lives_ok('
         INSERT INTO data.assignment_repository
             (assignment_slug, is_team, user_id, provider, provider_repo_id, provider_full_name)
-        VALUES (''exam-1'', FALSE, 2, ''gitea'', 100000001, ''mgt-656/exam-1-bde456'')
+        VALUES (''exam-1'', FALSE, 2, ''gitea'', 100000001, ''course-org/exam-1-bde456'')
     ', 'the same repository id on a different forge is a different repository')
 ;
 -- ---------------------------------------------------------------------------
@@ -102,33 +102,33 @@ SELECT lives_ok('
 DELETE FROM data.assignment_repository
 ; INSERT INTO data.assignment_repository (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
 VALUES
-    ('exam-1', false, 1, 200000001, 'mgt-656/exam-1-abc123'),
-    ('exam-1', false, 2, 200000002, 'mgt-656/exam-1-bde456')
+    ('exam-1', false, 1, 200000001, 'course-org/exam-1-abc123'),
+    ('exam-1', false, 2, 200000002, 'course-org/exam-1-bde456')
 ; INSERT INTO data.assignment_repository (assignment_slug, is_team, team_nickname, provider_repo_id, provider_full_name)
 VALUES
-    ('project-update-1', true, 'bright-fog', 200000003, 'mgt-656/project-update-1-bright-fog'),
-    ('project-update-1', true, 'hazy-mountain', 200000004, 'mgt-656/project-update-1-hazy-mountain')
+    ('project-update-1', true, 'bright-fog', 200000003, 'course-org/project-update-1-bright-fog'),
+    ('project-update-1', true, 'hazy-mountain', 200000004, 'course-org/project-update-1-hazy-mountain')
 ; SET LOCAL role TO faculty
 ; SET "request.jwt.claim.role" TO faculty
 ; SET "request.jwt.claim.user_id" TO "3"
-; SELECT set_eq('SELECT provider_full_name FROM api.assignment_repositories', ARRAY['mgt-656/exam-1-abc123', 'mgt-656/exam-1-bde456', 'mgt-656/project-update-1-bright-fog', 'mgt-656/project-update-1-hazy-mountain'], 'faculty should see every provisioned repository')
+; SELECT set_eq('SELECT provider_full_name FROM api.assignment_repositories', ARRAY['course-org/exam-1-abc123', 'course-org/exam-1-bde456', 'course-org/project-update-1-bright-fog', 'course-org/project-update-1-hazy-mountain'], 'faculty should see every provisioned repository')
 ; SELECT lives_ok('
         INSERT INTO api.assignment_repositories
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-        VALUES (''team-selection'', FALSE, 1, 200000005, ''mgt-656/team-selection-abc123'')
+        VALUES (''team-selection'', FALSE, 1, 200000005, ''course-org/team-selection-abc123'')
     ', 'faculty should be able to provision a repository through the view')
 ;
 -- Names are display and expected to go stale; a rename must be an update of
 -- this row rather than a new identity.
 SELECT lives_ok('
         UPDATE api.assignment_repositories
-        SET provider_full_name = ''mgt-656/exam-1-alice''
+        SET provider_full_name = ''course-org/exam-1-alice''
         WHERE provider_repo_id = 200000001
     ', 'faculty should be able to record a repository rename')
 ; SET LOCAL role TO student
 ; SET "request.jwt.claim.role" TO student
 ; SET "request.jwt.claim.user_id" TO "1"
-; SELECT set_eq('SELECT provider_full_name FROM api.assignment_repositories', ARRAY['mgt-656/exam-1-alice', 'mgt-656/project-update-1-bright-fog', 'mgt-656/team-selection-abc123'], 'a student should see their own repositories and their current team''s, and nothing else')
+; SELECT set_eq('SELECT provider_full_name FROM api.assignment_repositories', ARRAY['course-org/exam-1-alice', 'course-org/project-update-1-bright-fog', 'course-org/team-selection-abc123'], 'a student should see their own repositories and their current team''s, and nothing else')
 ; SELECT is_empty('
         SELECT provider_full_name FROM api.assignment_repositories
         WHERE provider_repo_id IN (200000002, 200000004)
@@ -136,7 +136,7 @@ SELECT lives_ok('
 ; SELECT throws_ok('
         INSERT INTO api.assignment_repositories
             (assignment_slug, is_team, user_id, provider_repo_id, provider_full_name)
-        VALUES (''js-koans'', FALSE, 1, 200000006, ''mgt-656/js-koans-abc123'')
+        VALUES (''js-koans'', FALSE, 1, 200000006, ''course-org/js-koans-abc123'')
     ', '42501', NULL, 'a student cannot provision a repository for themselves')
 ;
 -- The one that matters most: a student who could repoint an assignment at
@@ -148,7 +148,7 @@ SELECT throws_ok('
     ', '42501', NULL, 'a student cannot repoint their own assignment at another repository')
 ; SELECT throws_ok('DELETE FROM api.assignment_repositories WHERE provider_repo_id = 200000001', '42501', NULL, 'a student cannot delete their own repository record')
 ; SET "request.jwt.claim.user_id" TO "2"
-; SELECT set_eq('SELECT provider_full_name FROM api.assignment_repositories', ARRAY['mgt-656/exam-1-bde456', 'mgt-656/project-update-1-hazy-mountain'], 'the other student sees their own repositories, and the first student''s are not among them')
+; SELECT set_eq('SELECT provider_full_name FROM api.assignment_repositories', ARRAY['course-org/exam-1-bde456', 'course-org/project-update-1-hazy-mountain'], 'the other student sees their own repositories, and the first student''s are not among them')
 ;
 -- A TA is on the student side of the policy, not the faculty side, so a TA with
 -- no repositories and no team sees nothing rather than everything.

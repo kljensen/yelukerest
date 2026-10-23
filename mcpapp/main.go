@@ -41,7 +41,7 @@
 //	                                                   (default course-mcp)
 //	COURSE_TITLE                                       names the course in the
 //	                                                   human-readable server
-//	                                                   title, e.g. MGT656
+//	                                                   title, e.g. MGT101
 package main
 
 import (

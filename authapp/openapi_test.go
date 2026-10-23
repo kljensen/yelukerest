@@ -248,7 +248,7 @@ func TestEnrichOpenAPITitlesTheDocumentWithTheCourse(t *testing.T) {
 	// whose API a student is reading. The name is deployment configuration, not
 	// schema: the platform serves more than one course from the same migrations,
 	// so a COMMENT ON SCHEMA would give them all the same title.
-	t.Setenv("COURSE_TITLE", "MGT656")
+	t.Setenv("COURSE_TITLE", "MGT101")
 	req := httptest.NewRequest(http.MethodGet, "http://example.test/auth/api.json", nil)
 
 	data := enrichOpenAPI(map[string]interface{}{
@@ -259,8 +259,8 @@ func TestEnrichOpenAPITitlesTheDocumentWithTheCourse(t *testing.T) {
 	if !ok {
 		t.Fatalf("info missing: %#v", data)
 	}
-	if got := info["title"]; got != "MGT656 API" {
-		t.Fatalf("title = %v, want %q", got, "MGT656 API")
+	if got := info["title"]; got != "MGT101 API" {
+		t.Fatalf("title = %v, want %q", got, "MGT101 API")
 	}
 	// The version describes the server actually answering, so it survives.
 	if got := info["version"]; got != "16.2" {
