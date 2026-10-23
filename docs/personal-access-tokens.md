@@ -58,13 +58,16 @@ Do **not** paste it into your code, commit it to git, or post it in Slack,
 Piazza or Canvas. If you commit it by accident, revoke it — do not just delete
 the commit, because it stays in the repository history.
 
+In the examples below, replace `<course-site>` with the address you use for
+the class, as it appears in your browser.
+
 ### Python
 
 ```python
 import os
 import requests
 
-BASE = "https://www.656.mba"
+BASE = "https://<course-site>"
 
 
 def get_access_token() -> str:
@@ -104,7 +107,7 @@ for meeting in r.json():
 ### JavaScript
 
 ```js
-const BASE = "https://www.656.mba";
+const BASE = "https://<course-site>";
 
 async function getAccessToken() {
   const r = await fetch(`${BASE}/auth/token`, {
@@ -138,11 +141,11 @@ console.log(await api("meetings?order=begins_at"));
 ### curl
 
 ```sh
-ACCESS_TOKEN=$(curl -s -X POST https://www.656.mba/auth/token \
+ACCESS_TOKEN=$(curl -s -X POST https://<course-site>/auth/token \
   -H "Authorization: Bearer $YELUKEREST_TOKEN" | jq -r .jwt)
 
 curl -s -H "Authorization: Bearer $ACCESS_TOKEN" \
-  "https://www.656.mba/rest/meetings?order=begins_at" | jq .
+  "https://<course-site>/rest/meetings?order=begins_at" | jq .
 ```
 
 ## What a token can do

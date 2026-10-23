@@ -168,7 +168,7 @@
 #                     session cookie is host-only to this name.
 #
 # Both are a SINGLE label under the naked domain on purpose: Yale CAS accepts
-# *.656.mba and a conventional wildcard matches one label only (issue #364), so
+# *.<domain> and a conventional wildcard matches one label only (issue #364), so
 # editor.code.<domain> would fall outside it and need hand registration.
 (codeframe_artifacts) {
 	# Anchored at .html so the artifact path and the editor entry point that

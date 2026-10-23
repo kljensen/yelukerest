@@ -433,7 +433,7 @@ This is a separate backup of a separate thing, and it is not point-in-time.
 The `codeframe_db` volume holds every page a student has published for the
 tacky-website activity, as `cf_<hash>.frame`, plus `publish-log.jsonl` naming
 who published each one. Those pages are the graded submission: the activity asks
-for a URL, so `https://code.656.mba/f/<html>/<js>.html` *is* the work, and
+for a URL, so `https://code.<domain>/f/<html>/<js>.html` *is* the work, and
 2025's submissions are recorded that way. Nothing else holds a copy. Issue #369.
 
 `backup/codeframe.sh` runs inside the backup container after each PostgreSQL
