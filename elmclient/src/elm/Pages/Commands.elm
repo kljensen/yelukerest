@@ -16,4 +16,4 @@ fetchPages =
 
 fetchPagesUrl : String
 fetchPagesUrl =
-    "/rest/ui_elements?key=in.(home,about)"
+    "/rest/ui_elements?key=eq.about"

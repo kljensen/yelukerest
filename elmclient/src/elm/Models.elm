@@ -103,7 +103,7 @@ type alias Model =
     , quizGradeDistributions : WebData (List QuizGradeDistribution)
     , uiElements : UIElements
 
-    -- The faculty-editable `home` and `about` copy, keyed by `key`.
+    -- The faculty-editable `about` copy, keyed by `key`.
     , pages : WebData Pages
     , assignmentGradeExceptions : WebData (List AssignmentGradeException)
     , assignmentSubmissions : WebData (List AssignmentSubmission)

@@ -202,18 +202,14 @@ Run `bun run doctor` after rotating secrets or editing `.env`; it checks the
 authapp service token shape and the secure PostgREST pre-request default. See
 `docs/api-client-security.md` for direct API client guidance.
 
-### Homepage and About page
+### About page
 
-The web client reads two rows of the `ui_elements` table at startup:
+The web client renders the `about` row of the `ui_elements` table at
+`#/about`, and the front page links to it only when the row exists. Put the
+course description, schedule, and links (Canvas, Slack, and so on) there.
 
-- `home` is shown on the front page under the course title, above the fixed
-  Meetings, Assignments, About, API and login links. Put course links (Canvas,
-  Slack, and so on) here.
-- `about` is shown at `#/about`; the front page links to it only when the row
-  exists.
-
-Each row's `body` is rendered as sanitized Markdown when `is_markdown` is true
-and as plain text otherwise. Faculty create or replace a row with a PostgREST
+The row's `body` is rendered as sanitized Markdown when `is_markdown` is true
+and as plain text otherwise. Faculty create or replace it with a PostgREST
 upsert, using a faculty JWT such as `YELUKEREST_CLIENT_JWT` above (faculty hold
 the SELECT, INSERT and UPDATE on `api.ui_elements` that an upsert needs):
 
@@ -222,13 +218,13 @@ curl -X POST https://www.example.test/rest/ui_elements \
   -H "Authorization: Bearer $FACULTY_JWT" \
   -H "Content-Type: application/json" \
   -H "Prefer: resolution=merge-duplicates" \
-  -d '{"key":"home","body":"[Canvas](https://canvas.example.test)","is_markdown":true}'
+  -d '{"key":"about","body":"[Canvas](https://canvas.example.test)","is_markdown":true}'
 ```
 
 Upgrading: the `ELMCLIENT_ABOUT_URL`, `ELMCLIENT_PIAZZA_URL`,
 `ELMCLIENT_CANVAS_URL` and `ELMCLIENT_SLACK_URL` variables are gone. A
-deployment that set them must move those links into a `home` row, or they
-disappear from the front page.
+deployment that set them must move those links into the `about` row, or they
+disappear from the site.
 
 ### AI agents / MCP
 

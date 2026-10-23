@@ -6,7 +6,7 @@ import Json.Decode.Pipeline exposing (required)
 
 
 {-| A faculty-editable block of copy from the `ui_elements` table. The client
-reads only the `home` and `about` keys.
+reads only the `about` key.
 -}
 type alias Page =
     { key : String

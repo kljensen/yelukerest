@@ -22,25 +22,25 @@ tests =
             [ test "keys the rows by key" <|
                 \_ ->
                     Decode.decodeString pagesDecoder
-                        """[{"key":"home","body":"Welcome","is_markdown":true,"created_at":"2026-01-01T00:00:00+00:00","updated_at":"2026-01-01T00:00:00+00:00"},
+                        """[{"key":"staff","body":"Welcome","is_markdown":true,"created_at":"2026-01-01T00:00:00+00:00","updated_at":"2026-01-01T00:00:00+00:00"},
                             {"key":"about","body":"About us","is_markdown":false}]"""
                         |> Expect.equal
                             (Ok
                                 (Dict.fromList
-                                    [ ( "home", Page "home" "Welcome" True )
+                                    [ ( "staff", Page "staff" "Welcome" True )
                                     , ( "about", Page "about" "About us" False )
                                     ]
                                 )
                             )
             , test "reads null body and is_markdown as an empty plain-text body" <|
                 \_ ->
-                    Decode.decodeString pagesDecoder """[{"key":"home","body":null,"is_markdown":null}]"""
-                        |> Expect.equal (Ok (Dict.fromList [ ( "home", Page "home" "" False ) ]))
+                    Decode.decodeString pagesDecoder """[{"key":"about","body":null,"is_markdown":null}]"""
+                        |> Expect.equal (Ok (Dict.fromList [ ( "about", Page "about" "" False ) ]))
             ]
         , describe "pageBody"
             [ test "renders a plain-text body as text with its line breaks kept" <|
                 \_ ->
-                    Pages.Views.pageBody (Page "home" "line one\n**not bold**" False)
+                    Pages.Views.pageBody (Page "about" "line one\n**not bold**" False)
                         |> Query.fromHtml
                         |> Query.has
                             [ Selector.text "line one\n**not bold**"
@@ -52,18 +52,15 @@ tests =
             -- was taken rather than the plain-text one.
             , test "renders a markdown body with the markdown renderer, not as plain text" <|
                 \_ ->
-                    Pages.Views.pageBody (Page "home" "**bold**" True)
+                    Pages.Views.pageBody (Page "about" "**bold**" True)
                         |> Query.fromHtml
                         |> Query.hasNot [ Selector.style "white-space" "pre-wrap" ]
             ]
         , describe "home page"
-            [ test "shows the home body and links to About when both rows exist" <|
+            [ test "links to About when the row exists" <|
                 \_ ->
-                    indexWith (RemoteData.Success (Dict.fromList [ plain "home" "Office hours are on Fridays", plain "about" "x" ]))
-                        |> Query.has
-                            [ Selector.text "Office hours are on Fridays"
-                            , Selector.attribute (Attrs.href "#/about")
-                            ]
+                    indexWith (RemoteData.Success (Dict.fromList [ plain "about" "x" ]))
+                        |> Query.has [ Selector.attribute (Attrs.href "#/about") ]
             , test "keeps the fixed links and hides About when there are no rows" <|
                 \_ ->
                     let
@@ -95,7 +92,7 @@ tests =
                         |> Query.has [ Selector.text "Taught by the course staff" ]
             , test "is not found when there is no about row" <|
                 \_ ->
-                    aboutWith (RemoteData.Success (Dict.fromList [ plain "home" "x" ]))
+                    aboutWith (RemoteData.Success Dict.empty)
                         |> Query.has [ Selector.text "Not found" ]
             , test "shows a loading state while loading" <|
                 \_ ->

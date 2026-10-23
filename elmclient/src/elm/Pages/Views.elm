@@ -1,4 +1,4 @@
-module Pages.Views exposing (aboutView, hasAbout, homeView, pageBody)
+module Pages.Views exposing (aboutView, hasAbout, pageBody)
 
 import Common.Views exposing (markdownToHTML)
 import Dict
@@ -17,19 +17,9 @@ pageBody page =
         Html.div [ Attrs.style "white-space" "pre-wrap" ] [ Html.text page.body ]
 
 
-{-| The `home` body, or nothing. The homepage's fixed links must work whether
-or not the row exists or the fetch succeeded, so there is no error state here.
+{-| The homepage links to About only once the row is known to exist, so a
+failed fetch hides the link rather than showing an error.
 -}
-homeView : WebData Pages -> Html msg
-homeView pages =
-    case findPage "home" pages of
-        Just page ->
-            pageBody page
-
-        Nothing ->
-            Html.text ""
-
-
 hasAbout : WebData Pages -> Bool
 hasAbout pages =
     findPage "about" pages /= Nothing
@@ -47,7 +37,7 @@ aboutView notFound pages =
         RemoteData.Success found ->
             case Dict.get "about" found of
                 Just page ->
-                    pageBody page
+                    Html.div [ Attrs.class "about-page" ] [ pageBody page ]
 
                 Nothing ->
                     notFound

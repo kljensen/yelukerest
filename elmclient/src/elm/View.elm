@@ -85,14 +85,13 @@ indexView : WebData CurrentUser -> UIElements -> WebData Pages -> Html Msg
 indexView currentUser uiElements pages =
     div []
         [ h1 [] [ text uiElements.courseTitle ]
-        , Pages.Views.homeView pages
-        , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
-        , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
         , if Pages.Views.hasAbout pages then
             div [] [ a [ href "#/about" ] [ text "About" ] ]
 
           else
             text ""
+        , div [] [ a [ href "#/meetings" ] [ text "Meetings" ] ]
+        , div [] [ a [ href "#/assignments" ] [ text "Assignments" ] ]
         , div [] [ a [ href "/openapi/" ] [ text "API" ] ]
         , div [] [ Auth.Views.loginOrDashboard currentUser ]
         ]
