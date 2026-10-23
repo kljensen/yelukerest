@@ -45,8 +45,6 @@ compose() {
     CADDY_ACME_ACCESS_KEY_ID=${CADDY_ACME_ACCESS_KEY_ID:-} \
     CADDY_ACME_SECRET_ACCESS_KEY=${CADDY_ACME_SECRET_ACCESS_KEY:-} \
     CADDY_ACME_AWS_REGION=${CADDY_ACME_AWS_REGION:-} \
-    ELMCLIENT_PIAZZA_URL=${ELMCLIENT_PIAZZA_URL:-} \
-    ELMCLIENT_SLACK_URL=${ELMCLIENT_SLACK_URL:-} \
         docker compose -f docker-compose.base.yaml -f docker-compose.dev.yaml -f "$OVERRIDE_FILE" "$@"
 }
 

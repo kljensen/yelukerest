@@ -14,10 +14,6 @@ services:
         working_dir: /opt/app
         environment:
             - DEVELOPMENT=${DEVELOPMENT}
-            - PIAZZA_URL=${ELMCLIENT_PIAZZA_URL}
-            - ABOUT_URL=${ELMCLIENT_ABOUT_URL}
-            - CANVAS_URL=${ELMCLIENT_CANVAS_URL}
-            - SLACK_URL=${ELMCLIENT_SLACK_URL}
             - COURSE_TITLE=${ELMCLIENT_COURSE_TITLE}
         volumes:
             - elmclient-build:/opt/app/dist

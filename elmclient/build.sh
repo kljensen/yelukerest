@@ -22,18 +22,7 @@ cp src/static/fonts/* "$dist/static/fonts/"
     printf 'window.YELUKEREST_FLAGS = '
     jq -n \
         --arg courseTitle "${COURSE_TITLE:-}" \
-        --arg piazzaURL "${PIAZZA_URL:-}" \
-        --arg aboutURL "${ABOUT_URL:-}" \
-        --arg canvasURL "${CANVAS_URL:-}" \
-        --arg slackURL "${SLACK_URL:-}" \
-        'def optional: if . == "" then null else . end;
-        {
-            courseTitle: $courseTitle,
-            piazzaURL: ($piazzaURL | optional),
-            aboutURL: $aboutURL,
-            canvasURL: $canvasURL,
-            slackURL: ($slackURL | optional)
-        }'
+        '{ courseTitle: $courseTitle }'
     cat <<'EOF'
 ;
 
