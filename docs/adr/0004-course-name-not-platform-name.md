@@ -30,7 +30,7 @@ assistant reads says MGT656, or simply "course". The MCP server's
 `Name` as "intended for programmatic or logical use" and `Title` as "intended
 for UI and end-user contexts". A machine identifier that changed every August,
 as a course title does, would be the wrong kind of stable. It comes from
-`MCP_SERVER_NAME`, set to `mgt656-mcp`, and is expected to outlive any one term.
+`MCP_SERVER_NAME`, set per course (e.g. `mgt656-mcp`), and is expected to outlive any one term.
 
 **These keep the platform name, deliberately and permanently:**
 

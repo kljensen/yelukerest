@@ -10,8 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Connect to development database**: `./bin/connect_to.sh` or use the `pg_connect.sh` script
 
 ### Production
-- **Deploy migrations to production**: `./bin/deploy-prod.sh` (read-only: reports what is
-  pending), then `./bin/deploy-prod.sh --deploy`. Runs on the production host over ssh,
+- **Deploy migrations to production**: `./bin/deploy-prod.sh --host <host>` (read-only:
+  reports what is pending), then add `--deploy`. There is no default host; `--host` or
+  `YELUKEREST_PROD_HOST` is required. Runs on the production host over ssh,
   because that is the only place the database is reachable and where credentials live.
 - **Start production environment**: `./bin/prod.sh up` (uses docker-compose.base.yaml + docker-compose.prod.yaml)
 - **Stop production environment**: `./bin/prod.sh down`
