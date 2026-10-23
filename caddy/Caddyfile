@@ -10,6 +10,13 @@
 
 (elmclient) {
 	root * /var/elmclient
+	# The client's asset names never change between deploys, and with no
+	# Cache-Control Cloudflare caches .js/.css for hours, so a deploy could
+	# pair a stale elm.js with a fresh init.js. no-cache still lets caches
+	# keep the file but makes them revalidate it by ETag (a 304 when
+	# unchanged). "?" sets it only when the response has none, so upstream
+	# headers such as /auth's no-store win.
+	header ?Cache-Control "no-cache"
 	file_server
 }
 
