@@ -85,7 +85,7 @@ settings screen moved, which is why none is.
   sign in with `codex mcp login`.
 
 Two things that are the same everywhere. The name a tool asks for is **your own
-label** for the connection — `mgt656-fall-2026` is a good one — not the
+label** for the connection — the course number in lowercase is a good one — not the
 server's identity, and nothing breaks if an existing connection is called
 something else. And adding the address is not yet connecting: each tool has a
 second step that opens the browser for CAS and the consent page below.
@@ -122,7 +122,7 @@ the browser sign-in and talks to `/mcp` on the client's behalf.
 ```json
 {
   "mcpServers": {
-    "mgt656-fall-2026": {
+    "course": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "https://<course-site>/mcp"]
     }

@@ -22,13 +22,13 @@ every student following it would land on a 404 while being told it was their
 own sign-in that was wrong.
 
 -}
-page : String -> Html Msg
-page endpoint =
+page : String -> String -> Html Msg
+page courseTitle endpoint =
     div [ class "mcp" ]
         [ h1 [] [ text "Connect an AI assistant" ]
         , introduction
         , networkView
-        , endpointView endpoint
+        , endpointView courseTitle endpoint
         , setupView
         , writeScopeView
         ]
@@ -66,17 +66,44 @@ networkView =
         ]
 
 
-endpointView : String -> Html Msg
-endpointView endpoint =
+endpointView : String -> String -> Html Msg
+endpointView courseTitle endpoint =
     div []
         [ h2 [] [ text "The address" ]
         , copyRow endpoint "copy the course MCP address"
         , p []
             [ text "This is a remote MCP server that signs you in through your browser (OAuth). When a setup page asks for a URL, this is it. When it asks for a name, that name is a label in your own configuration and can be anything — "
-            , code [] [ text "mgt656-fall-2026" ]
+            , code [] [ text (connectionLabel courseTitle) ]
             , text " is a good one. Adding the address is not yet connecting: each tool has a second step that opens the browser for CAS and the consent page."
             ]
         ]
+
+
+{-| A suggested label for the connection, from the course title: "MGT 802"
+becomes "mgt-802". Falls back to "course" when the title is empty.
+-}
+connectionLabel : String -> String
+connectionLabel courseTitle =
+    let
+        label =
+            courseTitle
+                |> String.toLower
+                |> String.map
+                    (\c ->
+                        if Char.isAlphaNum c then
+                            c
+
+                        else
+                            ' '
+                    )
+                |> String.words
+                |> String.join "-"
+    in
+    if String.isEmpty label then
+        "course"
+
+    else
+        label
 
 
 {-| A thing to copy, in the shape the API tokens page uses for a new token:

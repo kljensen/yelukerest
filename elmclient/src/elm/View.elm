@@ -71,7 +71,7 @@ page model =
             DataGrants.Views.page model.timeZone.zone model
 
         Models.McpRoute ->
-            lazy Mcp.Views.page model.uiElements.mcpEndpoint
+            lazy2 Mcp.Views.page model.uiElements.courseTitle model.uiElements.mcpEndpoint
 
         Models.NotFoundRoute ->
             notFoundView
