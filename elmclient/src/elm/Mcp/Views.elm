@@ -1,4 +1,4 @@
-module Mcp.Views exposing (page)
+module Mcp.Views exposing (connectionLabel, page)
 
 import Html exposing (Html, a, button, code, div, h1, h2, li, p, strong, text, ul)
 import Html.Attributes exposing (attribute, class, href, target, type_)
