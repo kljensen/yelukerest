@@ -9,17 +9,17 @@
 -- them the first time enrollment changes, a handle is renamed, an extension is
 -- granted, or a repo is recreated.
 --
--- Consumer: yale-mgt-656-fall-2026/admin#21.
+-- Consumer: a course admin repo's repository roster tooling.
 --
 -- Deployed inside a transaction Zapadka opens and commits.
 -- Do not write BEGIN, COMMIT, ROLLBACK, or SAVEPOINT here.
 -- ---------------------------------------------------------------------------
 -- data.assignment_repository
 -- ---------------------------------------------------------------------------
--- Course scope is the database. This platform serves MGT 656 and MGT 858, but
--- as separate deployments -- there is no `course` table and never has been --
--- so the issue's "(course, assignment, student)" uniqueness is exactly
--- (assignment, student) here. Nothing about the shape is 656-specific.
+-- Course scope is the database. This platform serves several courses, but as
+-- separate deployments -- there is no `course` table and never has been -- so
+-- the issue's "(course, assignment, student)" uniqueness is exactly
+-- (assignment, student) here. Nothing about the shape is course-specific.
 --
 -- Nothing about the shape is GitHub-specific either. `provider` is a column, so
 -- a second forge is a new value rather than a new table.

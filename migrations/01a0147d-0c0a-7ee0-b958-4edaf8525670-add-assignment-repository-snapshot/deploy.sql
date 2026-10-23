@@ -12,7 +12,7 @@
 -- because a bundle carries every branch and the grader needs to know which
 -- commit was the one.
 --
--- Consumer: `admin snapshot-repos` in yale-mgt-656-fall-2026/admin.
+-- Consumer: a course admin repo's `snapshot-repos` command.
 --
 -- Deployed inside a transaction Zapadka opens and commits.
 -- Do not write BEGIN, COMMIT, ROLLBACK, or SAVEPOINT here.
