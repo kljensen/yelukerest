@@ -258,7 +258,8 @@ main() {
     check_http_header "PostgREST frame denial" "$BASE_URL/rest/" "200" "$HEADER_X_FRAME"
     check_http_header "authapp login redirects to CAS" "$BASE_URL/auth/login" "307" '^[Ll]ocation: .*/cas/login\?service=.*auth%2Fvalidate'
     check_http "authapp unauthenticated /auth/me" "$BASE_URL/auth/me" "401" 'Unauthorized'
-    check_http "authapp unauthenticated /auth/api.json" "$BASE_URL/auth/api.json" "401" 'Unauthorized'
+    # Public since bfc864d: signed-out callers get PostgREST's anonymous document.
+    check_http "authapp unauthenticated /auth/api.json" "$BASE_URL/auth/api.json" "200" '"/meetings"'
     check_http_header "authapp nosniff header" "$BASE_URL/auth/me" "401" "$HEADER_NOSNIFF"
     check_http_header "authapp referrer policy" "$BASE_URL/auth/me" "401" "$HEADER_REFERRER"
     check_http_header "authapp permissions policy" "$BASE_URL/auth/me" "401" "$HEADER_PERMISSIONS"
