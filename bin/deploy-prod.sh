@@ -23,7 +23,9 @@
 
 set -eu
 
-HOST="${YELUKEREST_PROD_HOST:-www.656.mba}"
+# No default host: this platform serves several courses, and deploying to the
+# wrong one by omission is worse than being asked.
+HOST="${YELUKEREST_PROD_HOST:-}"
 DIR="${YELUKEREST_PROD_DIR:-yelukerest}"
 REF="${YELUKEREST_PROD_REF:-origin/main}"
 DEPLOY=""
@@ -48,7 +50,8 @@ usage: $0 [--deploy] [--rehash] [--services "a b c"] [--host HOST] [--ref REF]
               recreate is enough for it. This does both, which is correct for
               either.
 
-  --host      production host (default $HOST, or YELUKEREST_PROD_HOST)
+  --host      production host, e.g. www.<course>.mba (or set
+              YELUKEREST_PROD_HOST; one of the two is required)
   --ref       git ref to deploy (default $REF, or YELUKEREST_PROD_REF)
 USAGE
     exit 2
@@ -65,6 +68,11 @@ while [ $# -gt 0 ]; do
         *) echo "unknown argument: $1" >&2; usage ;;
     esac
 done
+
+if [ -z "$HOST" ]; then
+    echo "Refusing: no production host. Pass --host or set YELUKEREST_PROD_HOST." >&2
+    exit 2
+fi
 
 # The server pulls from the remote, so anything only on this laptop cannot be
 # deployed. Catching that here turns a confusing "0 pending" into an answer.
