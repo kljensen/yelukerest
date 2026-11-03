@@ -110,7 +110,54 @@ DB_TEST_HOST=127.0.0.1 \
 DB_TEST_PORT=$DB_PORT \
     bun run test_db
 
+# An extensionless file in the Elm client's build directory, so
+# tests/rest/short_link_routing.js can show a real file wins over a
+# same-named short link (issue #409). The client's next build clears it.
+SHORT_LINK_STATIC_FILE=short-link-static-file
+compose run --rm --no-deps -T --entrypoint sh elmclient -c \
+    "printf 'static\n' > /opt/app/dist/$SHORT_LINK_STATIC_FILE"
+
 TEST_BASE_URL=https://localhost:${HTTPS_PORT} \
 DB_TEST_HOST=127.0.0.1 \
 DB_TEST_PORT=$DB_PORT \
+TEST_SHORT_LINK_STATIC_FILE=$SHORT_LINK_STATIC_FILE \
     bun run test_rest
+
+compose run --rm --no-deps -T --entrypoint sh elmclient -c \
+    "rm -f /opt/app/dist/$SHORT_LINK_STATIC_FILE"
+
+# With PostgREST down a short link must fail as a 5xx, not as a 404 that a
+# person or a cache would read as "no such link" (issue #409). Last, because
+# it stops a service the suites above need.
+compose stop postgrest
+short_link_down=$(curl -k -sS -o /dev/null -D - -w 'status=%{http_code}\n' \
+    "https://localhost:${HTTPS_PORT}/short-link-upstream-down" 2>/dev/null || true)
+# Paths the matcher excludes never reach PostgREST, so they stay Caddy's 404
+# even now; a 502 here would mean one was sent to the resolver.
+excluded_down=""
+for path in /rest /auth /cas /a/rnn /openapi /oauth2 /RNN /-rnn \
+    /abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; do
+    code=$(curl -k -sS -o /dev/null -w '%{http_code}' "https://localhost:${HTTPS_PORT}${path}" 2>/dev/null || true)
+    if [ "$code" != 404 ]; then
+        excluded_down="$excluded_down $path=$code"
+    fi
+done
+compose start postgrest
+if [ -n "$excluded_down" ]; then
+    echo "Excluded paths with PostgREST down did not answer 404:$excluded_down" >&2
+    exit 1
+fi
+case "$short_link_down" in
+    *status=5[0-9][0-9]*) ;;
+    *)
+        echo "A short link with PostgREST down did not answer 5xx:" >&2
+        echo "$short_link_down" >&2
+        exit 1
+        ;;
+esac
+if ! printf '%s\n' "$short_link_down" | grep -qi '^cache-control: no-store'; then
+    echo "A short link with PostgREST down was not sent Cache-Control: no-store:" >&2
+    echo "$short_link_down" >&2
+    exit 1
+fi
+echo "ok: a short link with PostgREST down answers $(printf '%s\n' "$short_link_down" | sed -n 's/^status=//p')"
