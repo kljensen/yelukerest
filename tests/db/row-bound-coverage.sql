@@ -49,7 +49,7 @@ CREATE VIEW pg_temp.writable_base_table AS
         FROM pg_temp.writable_base_table b
         JOIN pg_class c ON c.oid = b.reloid
         JOIN pg_namespace n ON n.oid = c.relnamespace
-    ', ARRAY['data.assignment_field_submission', 'data.assignment_submission', 'data.engagement'], 'the set of base tables a student or TA may write is the one this bound was designed for')
+    ', ARRAY['data.assignment_field_submission', 'data.assignment_submission', 'data.engagement', 'data.short_link'], 'the set of base tables a student or TA may write is the one this bound was designed for')
 ;
 -- The invariant that survives a new table: every writable base table carries
 -- the bound for INSERT, UPDATE and DELETE. All three even where no grant
