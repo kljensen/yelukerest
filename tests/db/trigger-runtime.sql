@@ -1,4 +1,4 @@
-SELECT plan(24)
+SELECT plan(25)
 ; SELECT
     set_eq('
         SELECT c.relname || ''.'' || t.tgname
@@ -11,7 +11,10 @@ SELECT plan(24)
     -- The statement-level row bound (issue #346).
     'assignment_field_submission.tg_assignment_field_submission_row_bound_insert', 'assignment_field_submission.tg_assignment_field_submission_row_bound_update', 'assignment_field_submission.tg_assignment_field_submission_row_bound_delete', 'assignment_field_submission.tg_assignment_field_submission_single_parent_insert', 'assignment_field_submission.tg_assignment_field_submission_single_parent_update', 'assignment_field_submission.tg_assignment_field_submission_single_parent_delete', 'assignment_field_submission_event.tg_assignment_field_submission_event_append_only', 'assignment_grade.tg_assignment_grade_default', 'assignment_grade.tg_assignment_grade_event_history', 'assignment_grade_event.tg_assignment_grade_event_append_only', 'assignment_grade_exception.tg_assignment_grade_exception_default', 'assignment_repository.tg_assignment_repository_update_timestamps', 'assignment_submission.tg_assignment_submission_default', 'assignment_submission.tg_assignment_submission_row_bound_insert', 'assignment_submission.tg_assignment_submission_row_bound_update', 'assignment_submission.tg_assignment_submission_row_bound_delete', 'mcp_grant_revocation.mcp_grant_revocation_no_update', 'assignment_submission.tg_assignment_submission_participants', 'engagement.tg_engagement_row_bound_insert', 'engagement.tg_engagement_row_bound_update', 'engagement.tg_engagement_row_bound_delete', 'engagement.tg_engagement_update_timestamps', 'grade.tg_grade_default', 'grade.tg_grade_event_history', 'grade_event.tg_grade_event_append_only', 'grade_snapshot.tg_grade_snapshot_default', 'mcp_jwt_mint_event.tg_mcp_jwt_mint_event_append_only', 'meeting.tg_meeting_default', 'quiz.tg_quiz_default', 'quiz_grade.tg_quiz_grade_default', 'quiz_grade.tg_quiz_grade_event_history', 'quiz_grade_event.tg_quiz_grade_event_append_only', 'quiz_submission.tg_quiz_submission_default', 'team.tg_team_update_timestamps', 'ui_element.tg_ui_element_update_timestamps', 'user.tg_user_student_engagement_rows', 'user.tg_users_default', 'user_secret.tg_user_secret_default',
     -- Grant immutability (issue #384), exercised in tests/db/yeluke-api-grants.sql.
-    'api_grant.tg_api_grant_first_revocation_only', 'api_grant_assignment.tg_api_grant_assignment_immutable', 'api_grant_assignment_field.tg_api_grant_assignment_field_immutable'], 'all data triggers are intentionally covered by runtime tests')
+    'api_grant.tg_api_grant_first_revocation_only', 'api_grant_assignment.tg_api_grant_assignment_immutable', 'api_grant_assignment_field.tg_api_grant_assignment_field_immutable',
+    -- Short links (issue #408): the timestamps below; the row bound in
+    -- tests/db/yeluke-short-link.sql.
+    'short_link.tg_short_link_update_timestamps', 'short_link.tg_short_link_row_bound_insert', 'short_link.tg_short_link_row_bound_update', 'short_link.tg_short_link_row_bound_delete'], 'all data triggers are intentionally covered by runtime tests')
 ; SELECT set_eq('
         SELECT p.proname::text
         FROM pg_proc p
@@ -168,5 +171,8 @@ VALUES ('team-selection')
         AND user_id = 5
         RETURNING assignment_slug, points_possible, updated_at > ''2020-01-01''::timestamptz
     ', ' VALUES (''team-selection''::text, 50::smallint, true) ', 'tg_assignment_grade_default fills assignment_slug and points_possible')
+; INSERT INTO data.short_link (slug, url, created_at, updated_at)
+VALUES ('trigger-runtime', 'https://example.com/before', '2020-01-01', '2020-01-01')
+; SELECT results_eq(' UPDATE data.short_link SET url = ''https://example.com/after'' WHERE slug = ''trigger-runtime'' RETURNING updated_at > ''2020-01-01''::timestamptz ', ARRAY[true], 'tg_short_link_update_timestamps refreshes updated_at')
 ; SELECT *
 FROM finish()

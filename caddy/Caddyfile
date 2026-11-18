@@ -10,7 +10,68 @@
 
 (elmclient) {
 	root * /var/elmclient
-	file_server
+	# The client's asset names never change between deploys, and with no
+	# Cache-Control Cloudflare caches .js/.css for hours, so a deploy could
+	# pair a stale elm.js with a fresh init.js. no-cache still lets caches
+	# keep the file but makes them revalidate it by ETag (a 304 when
+	# unchanged). "?" sets it only when the response has none, so upstream
+	# headers such as /auth's no-store win.
+	header ?Cache-Control "no-cache"
+
+	# Course short links (issues #408, #409): a GET or HEAD for a missing
+	# single-segment path, such as /rnn, asks the database where it goes.
+	# The slug pattern and the reserved names match data.short_link's
+	# constraints. The bare reserved paths are excluded because their routes
+	# only match /<prefix>/*; /mcp, /oauth2/* and /userinfo have routes of
+	# their own and are listed so the exclusion is the whole reserved set.
+	@short_link {
+		method GET HEAD
+		path_regexp short ^/([a-z0-9][a-z0-9-]{0,39})$
+		not path /rest /auth /cas /mcp /oauth2 /userinfo /openapi
+	}
+
+	# One route, so the order is the file order: a real file wins over a
+	# same-named slug, then the resolver, then 404. Matcher-less, it sorts
+	# after every route with a matcher in the site, so /rest/*, /auth/*,
+	# /mcp, the Hydra paths and /openapi/* are still tried first, and a 404
+	# they answer is theirs. Not handle_errors on 404: when a proxy fails
+	# inside an error handler, Caddy 2.11 writes the original 404 rather
+	# than the 502.
+	route {
+		file_server {
+			pass_thru
+		}
+		handle @short_link {
+			# Set here rather than taken from upstream so a 502 (PostgREST
+			# down) carries it too; the upstream copy is dropped below so the
+			# header is not sent twice.
+			header Cache-Control "no-store"
+			reverse_proxy postgrest:{$POSTGREST_PORT} {
+				# The whole URI, query included, so ?select= and friends
+				# cannot change the call.
+				rewrite /rpc/follow_short_link?slug={re.short.1}
+				# PostgREST answers HEAD on an RPC with a bare 204 and drops
+				# response.status and response.headers, so a HEAD goes up as
+				# a GET; Go's server still sends the client no body.
+				method GET
+				# A browser's text/html gets 406 from PostgREST.
+				header_up Accept application/json
+				# A link is followed as anonymous: an expired or student token
+				# must not break a public redirect. Nothing else the browser
+				# sends may shape the call either.
+				header_up -Authorization
+				header_up -Cookie
+				header_up -Accept-Profile
+				header_up -Content-Profile
+				header_up -Prefer
+				header_up -Range
+				header_up -Range-Unit
+				header_down -Access-Control-*
+				header_down -Cache-Control
+			}
+		}
+		respond "Not found" 404
+	}
 }
 
 (security_headers) {

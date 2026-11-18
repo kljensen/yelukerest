@@ -1,0 +1,17 @@
+format_version = 1
+
+# This migration's permanent identity. Never change it.
+id = "01a1a247-8700-71b1-9f17-d65ed0337fc4"
+
+# The migrations that must be applied before this one. Order within the list
+# does not matter; these are graph edges, not a sequence.
+depends = ["01a0b2a1-bc58-7b90-92cf-0b27118b0cfb"]
+
+# "required" runs deploy.sql inside a transaction Zapadka owns.
+transaction = "required"
+
+reversibility = "reversible"
+
+[[allow]]
+lint = "lint.index_without_concurrently"
+reason = "The one index is on data.short_link, which is created a few statements earlier in this same transaction: it has no rows to scan and no concurrent writer can see it yet. CONCURRENTLY is also unavailable, since it cannot run inside the transaction Zapadka owns."
